@@ -9,6 +9,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * Timeout-aware event runtime decorator for isolating direct runtime handlers.
@@ -25,14 +26,20 @@ public final class BoundedMassEventRuntime implements MassEventRuntime {
     public static final String EVENT_ERROR = "EVENT_ERROR";
 
     private final MassEventRuntime delegate;
-    private final RuntimeTaskExecutor executor;
+    private final Supplier<RuntimeTaskExecutor> executorSupplier;
     private final long timeoutMillis;
 
     public BoundedMassEventRuntime(MassEventRuntime delegate,
                                    RuntimeTaskExecutor executor,
                                    long timeoutMillis) {
+        this(delegate, () -> executor, timeoutMillis);
+    }
+
+    public BoundedMassEventRuntime(MassEventRuntime delegate,
+                                   Supplier<RuntimeTaskExecutor> executorSupplier,
+                                   long timeoutMillis) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
-        this.executor = Objects.requireNonNull(executor, "executor");
+        this.executorSupplier = Objects.requireNonNull(executorSupplier, "executorSupplier");
         if (timeoutMillis <= 0) {
             throw new IllegalArgumentException("timeoutMillis must be positive");
         }
@@ -53,6 +60,11 @@ public final class BoundedMassEventRuntime implements MassEventRuntime {
     public CoreEventResponse dispatch(CoreEventRequest request, CoreEventPrincipal principal) {
         CoreEventRequest normalizedRequest = Objects.requireNonNull(request, "request");
         Future<CoreEventResponse> future;
+        RuntimeTaskExecutor executor = executorSupplier.get();
+        if (executor == null) {
+            return CoreEventResponse.failure(EVENT_REJECTED, "event runtime executor is unavailable",
+                    normalizedRequest.getRequestId());
+        }
         try {
             future = executor.submit(() -> delegate.dispatch(normalizedRequest, principal));
         } catch (RejectedExecutionException e) {

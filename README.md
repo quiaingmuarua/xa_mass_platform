@@ -67,7 +67,7 @@ The transport-neutral runtime model is now framed around three channels:
 - Real Spring Boot entrypoint: `xa-mass-dev-app`
 - Java baseline: JDK 21. The root Maven reactor and Java worker samples compile with `maven.compiler.release=21`, and CI uses Temurin 21.
 - Java 21 is the supported runtime floor. Use virtual threads for runtime/transport/event execution boundaries only behind explicit runtime abstractions such as `RuntimeTaskExecutor`; do not make engine lifecycle correctness depend on asynchronous execution.
-- Current SDK control-plane event dispatch is synchronous and does not yet enforce handler timeout or isolation; keep direct runtime event handlers short until that path is moved behind a bounded runtime executor.
+- SDK control-plane event dispatch remains synchronous by default for compatibility. SDK embedding can enable bounded virtual-thread handler isolation with `transport(... -> eventHandlerTimeoutMillis(...))`; timeout cancellation is cooperative, so direct runtime handlers should still use interrupt-aware blocking APIs.
 - Embedded transport adapter bootstraps receive the shared runtime executor; blocking transport work should use that executor instead of adapter-local thread pools.
 - Embedded transport delivery uses runtime-level admission control: in-memory delivery has a configurable total queued-item cap plus per-worker caps, exposes store stats through SDK queue diagnostics, and wakes waiting pollers on runtime shutdown before Redis/JDBC replacement.
 - The dev-app enables Spring virtual threads so bounded external worker long-polling can use simple blocking code without consuming platform request threads.

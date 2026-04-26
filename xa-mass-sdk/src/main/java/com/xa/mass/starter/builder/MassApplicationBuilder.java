@@ -150,6 +150,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
+            config.setEventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
+            return this;
+        }
+
         public TransportBuilder inputQueue(MessageQueue<String> inputQueue) {
             config.setInputQueue(inputQueue);
             return this;

@@ -43,6 +43,7 @@ public class TransportConfig {
     private TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
+    private long eventHandlerTimeoutMillis;
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
@@ -66,6 +67,7 @@ public class TransportConfig {
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
+        this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
     }
 
     public boolean isEnabled() {
@@ -209,6 +211,17 @@ public class TransportConfig {
             throw new IllegalArgumentException("maxDeliveryQueuedItems must be positive");
         }
         this.maxDeliveryQueuedItems = maxDeliveryQueuedItems;
+    }
+
+    public long getEventHandlerTimeoutMillis() {
+        return eventHandlerTimeoutMillis;
+    }
+
+    public void setEventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
+        if (eventHandlerTimeoutMillis < 0) {
+            throw new IllegalArgumentException("eventHandlerTimeoutMillis must be greater than or equal to 0");
+        }
+        this.eventHandlerTimeoutMillis = eventHandlerTimeoutMillis;
     }
 
     Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {

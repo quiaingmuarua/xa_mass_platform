@@ -82,6 +82,7 @@ import org.junit.jupiter.api.function.Executable;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -475,12 +476,16 @@ class MassSdkTest {
     void transportRuntimeCompositionSnapshotsDeliveryQueueCapacity() {
         TransportConfig config = new TransportConfig();
         config.setMaxDeliveryQueuedItems(42);
+        config.setEventHandlerTimeoutMillis(123);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         config.setMaxDeliveryQueuedItems(84);
+        config.setEventHandlerTimeoutMillis(456);
 
         assertEquals(42, runtimeComposition.getMaxDeliveryQueuedItems());
+        assertEquals(123, runtimeComposition.getEventHandlerTimeoutMillis());
         assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
+        assertThrows(IllegalArgumentException.class, () -> config.setEventHandlerTimeoutMillis(-1));
     }
 
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
@@ -607,6 +612,82 @@ class MassSdkTest {
             Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
             assertEquals(true, deliveryQueue.get("available"));
             assertEquals(7, deliveryQueue.get("maxQueuedItems"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void configuredEventHandlerTimeoutBoundsDirectRuntimeDispatch() throws Exception {
+        CountDownLatch interrupted = new CountDownLatch(1);
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false))
+                        .eventHandlerTimeoutMillis(50))
+                .engine(engine -> engine.enabled(false))
+                .build();
+        app.registerEventDefinition(EventDefinition.builder()
+                .code("sdk.event.slow")
+                .name("Slow Event")
+                .handler((request, principal) -> {
+                    try {
+                        Thread.sleep(5_000);
+                        return EventResponse.success(Boolean.TRUE, request.getRequestId());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        interrupted.countDown();
+                        return EventResponse.failure("INTERRUPTED", "handler interrupted", request.getRequestId());
+                    }
+                })
+                .build());
+        app.grantClientEventPermissions("client-a", List.of("sdk.event.slow"));
+        app.grantUserEventPermissions("user-a", List.of("sdk.event.slow"));
+
+        try {
+            app.start();
+
+            EventResponse response = app.dispatchEvent(
+                    EventRequest.builder()
+                            .event("sdk.event.slow")
+                            .requestId("req-slow")
+                            .build(),
+                    EventPrincipal.of("client-a", "user-a")
+            );
+
+            assertFalse(response.isSuccess());
+            assertEquals("EVENT_TIMEOUT", response.getCode());
+            assertEquals("req-slow", response.getRequestId());
+            assertTrue(interrupted.await(1, TimeUnit.SECONDS));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void configuredEventRuntimeCanRestartWithApplication() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false))
+                        .eventHandlerTimeoutMillis(1_000))
+                .engine(engine -> engine.enabled(false))
+                .build();
+        app.registerEventDefinition(EventDefinition.builder()
+                .code("sdk.event.fast")
+                .name("Fast Event")
+                .handler((request, principal) -> EventResponse.success(
+                        Map.of("virtualThread", Thread.currentThread().isVirtual()),
+                        request.getRequestId()))
+                .build());
+        app.grantClientEventPermissions("client-a", List.of("sdk.event.fast"));
+        app.grantUserEventPermissions("user-a", List.of("sdk.event.fast"));
+
+        try {
+            app.start();
+            assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
+            app.stop();
+
+            app.start();
+            assertEventDispatchRunsOnVirtualThread(app, "req-fast-2");
         } finally {
             app.stop();
         }
@@ -2207,6 +2288,20 @@ class MassSdkTest {
         for (Executable operation : operations) {
             Assertions.assertThrows(IllegalStateException.class, operation);
         }
+    }
+
+    private static void assertEventDispatchRunsOnVirtualThread(MassSdkApplication app, String requestId) {
+        EventResponse response = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("sdk.event.fast")
+                        .requestId(requestId)
+                        .build(),
+                EventPrincipal.of("client-a", "user-a")
+        );
+
+        assertTrue(response.isSuccess());
+        assertEquals(requestId, response.getRequestId());
+        assertEquals(true, ((Map<?, ?>) response.getData()).get("virtualThread"));
     }
 
     private static MassSdk.TransportOptions disableBundledWebSocket(MassSdk.TransportOptions transport,

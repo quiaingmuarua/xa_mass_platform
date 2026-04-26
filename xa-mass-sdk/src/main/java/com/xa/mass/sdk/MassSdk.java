@@ -108,6 +108,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
+            delegate.eventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
+            return this;
+        }
+
         public TransportOptions inputQueue(MessageQueue<String> inputQueue) {
             delegate.inputQueue(inputQueue);
             return this;

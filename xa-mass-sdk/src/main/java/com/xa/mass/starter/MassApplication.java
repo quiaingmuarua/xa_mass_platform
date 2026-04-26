@@ -3,6 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
@@ -47,11 +48,12 @@ public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     private static final int TRANSPORT_RUNTIME_MAX_PENDING_TASKS = 10_000;
+    private static final int EVENT_RUNTIME_MAX_PENDING_TASKS = 10_000;
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
+    private final MassEventRuntime eventRuntime;
     private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
     private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
     private final List<TransportServer> transportServers = new ArrayList<>();
@@ -62,6 +64,7 @@ public class MassApplication {
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportDeliveryService transportDeliveryService;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
+    private RuntimeTaskExecutor eventRuntimeTaskExecutor;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -69,6 +72,7 @@ public class MassApplication {
         this.engine = engine;
         this.transportRuntimeComposition = transportConfig.snapshotRuntimeComposition();
         this.engineConfig = engineConfig;
+        this.eventRuntime = createEventRuntime();
     }
 
     public void start() {
@@ -117,6 +121,7 @@ public class MassApplication {
             } finally {
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
+                stopEventRuntimeTaskExecutor();
             }
 
             LogUtils.clearMdc();
@@ -134,6 +139,7 @@ public class MassApplication {
             managedTransportAdapters.clear();
             rawWorkerMessageChannels.clear();
             transportServers.clear();
+            startEventRuntimeTaskExecutor();
             endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
@@ -200,6 +206,7 @@ public class MassApplication {
             try {
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
+                stopEventRuntimeTaskExecutor();
             } catch (Exception stopError) {
                 logger.warn("Failed to stop transport runtime executor after initialization failure", stopError);
             }
@@ -276,6 +283,35 @@ public class MassApplication {
         }
         executor.shutdown();
         executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    private void startEventRuntimeTaskExecutor() {
+        if (transportRuntimeComposition.getEventHandlerTimeoutMillis() <= 0 || eventRuntimeTaskExecutor != null) {
+            return;
+        }
+        eventRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
+                "runtime-event-handler-",
+                EVENT_RUNTIME_MAX_PENDING_TASKS
+        );
+    }
+
+    private void stopEventRuntimeTaskExecutor() throws Exception {
+        RuntimeTaskExecutor executor = eventRuntimeTaskExecutor;
+        eventRuntimeTaskExecutor = null;
+        if (executor == null) {
+            return;
+        }
+        executor.shutdown();
+        executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    private MassEventRuntime createEventRuntime() {
+        InMemoryMassEventRuntime inMemoryRuntime = new InMemoryMassEventRuntime();
+        long timeoutMillis = transportRuntimeComposition.getEventHandlerTimeoutMillis();
+        if (timeoutMillis <= 0) {
+            return inMemoryRuntime;
+        }
+        return new BoundedMassEventRuntime(inMemoryRuntime, () -> eventRuntimeTaskExecutor, timeoutMillis);
     }
 
     private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {

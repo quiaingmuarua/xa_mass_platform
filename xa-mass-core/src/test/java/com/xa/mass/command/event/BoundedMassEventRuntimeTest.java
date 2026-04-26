@@ -133,6 +133,24 @@ class BoundedMassEventRuntimeTest {
         }
     }
 
+    @Test
+    void returnsRejectedWhenExecutorSupplierIsUnavailable() {
+        BoundedMassEventRuntime runtime = new BoundedMassEventRuntime(
+                new InMemoryMassEventRuntime(),
+                () -> null,
+                1_000
+        );
+        runtime.register(descriptor("platform.test.unavailable"), (request, principal) ->
+                CoreEventResponse.success(Boolean.TRUE, request.getRequestId()));
+
+        CoreEventResponse response = runtime.dispatch(request("platform.test.unavailable", "req-unavailable"), null);
+
+        assertFalse(response.isSuccess());
+        assertEquals(BoundedMassEventRuntime.EVENT_REJECTED, response.getCode());
+        assertEquals("event runtime executor is unavailable", response.getMessage());
+        assertEquals("req-unavailable", response.getRequestId());
+    }
+
     private static CoreEventDescriptor descriptor(String event) {
         return CoreEventDescriptor.builder().event(event).enabled(true).build();
     }

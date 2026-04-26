@@ -242,6 +242,8 @@ primary adapter does not silently erase pre-start registration identity.
 Runtime delivery backlog admission is configured through the transport builder;
 `maxDeliveryQueuedItems(...)` controls the total in-memory queued dispatch cap
 used by the embedded delivery store before a Redis/JDBC-backed store is added.
-SDK control-plane event dispatch is still synchronous in `InMemoryMassEventRuntime`.
-Direct runtime handlers should stay short and cooperative until the event path
-has bounded executor isolation and explicit timeout semantics.
+SDK control-plane event dispatch is still synchronous by default for
+compatibility. Use `transport(... -> eventHandlerTimeoutMillis(...))` to wrap
+direct runtime handlers in bounded virtual-thread execution; timeout returns an
+`EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
+remain interrupt-aware and use bounded I/O.
