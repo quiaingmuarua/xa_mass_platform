@@ -115,6 +115,7 @@ class TransportDeliveryServiceTest {
         assertEquals(1, stats.getQueuedItems());
         assertEquals(1, stats.getQueueCount());
         assertEquals(10, stats.getMaxQueuedItems());
+        assertEquals(0L, stats.getOldestQueuedAgeMillis());
     }
 
     @Test

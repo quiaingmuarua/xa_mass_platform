@@ -452,7 +452,8 @@ public class MassApplication {
                     "queuedItems", 0,
                     "queueCount", 0,
                     "waitingPollers", 0,
-                    "maxQueuedItems", 0
+                    "maxQueuedItems", 0,
+                    "oldestQueuedAgeMillis", 0L
             );
         }
         TransportDeliveryStoreStats stats = deliveryService.stats();
@@ -461,7 +462,8 @@ public class MassApplication {
                 "queuedItems", stats.getQueuedItems(),
                 "queueCount", stats.getQueueCount(),
                 "waitingPollers", stats.getWaitingPollers(),
-                "maxQueuedItems", stats.getMaxQueuedItems()
+                "maxQueuedItems", stats.getMaxQueuedItems(),
+                "oldestQueuedAgeMillis", stats.getOldestQueuedAgeMillis()
         );
     }
 

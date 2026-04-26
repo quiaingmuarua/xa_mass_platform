@@ -598,6 +598,7 @@ class MassSdkTest {
             assertEquals(0, deliveryQueue.get("queueCount"));
             assertEquals(0, deliveryQueue.get("waitingPollers"));
             assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
+            assertEquals(0L, deliveryQueue.get("oldestQueuedAgeMillis"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));

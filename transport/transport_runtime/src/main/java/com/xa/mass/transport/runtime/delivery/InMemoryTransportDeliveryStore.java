@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 /**
  * In-memory runtime delivery store used by embedded transport runtimes.
@@ -25,16 +26,22 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private final AtomicInteger queuedItems = new AtomicInteger();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int maxQueuedItems;
+    private final LongSupplier currentTimeMillis;
 
     public InMemoryTransportDeliveryStore() {
         this(DEFAULT_MAX_QUEUED_ITEMS);
     }
 
     public InMemoryTransportDeliveryStore(int maxQueuedItems) {
+        this(maxQueuedItems, System::currentTimeMillis);
+    }
+
+    InMemoryTransportDeliveryStore(int maxQueuedItems, LongSupplier currentTimeMillis) {
         if (maxQueuedItems <= 0) {
             throw new IllegalArgumentException("maxQueuedItems must be greater than 0");
         }
         this.maxQueuedItems = maxQueuedItems;
+        this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
     }
 
     @Override
@@ -69,7 +76,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 }
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "runtime delivery backlog is full");
             }
-            queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, System.currentTimeMillis()));
+            queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, currentTimeMillis.getAsLong()));
             queue.notifyAll();
             return DispatchOutcome.queued(normalizedAdapterId, item);
         }
@@ -145,16 +152,25 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     @Override
     public TransportDeliveryStoreStats stats() {
         int waiters = 0;
+        long oldestCreatedAt = Long.MAX_VALUE;
         for (DeliveryQueue queue : deliveryByWorker.values()) {
             synchronized (queue) {
                 waiters += queue.waiters;
+                TransportDelivery oldest = queue.items.peekFirst();
+                if (oldest != null) {
+                    oldestCreatedAt = Math.min(oldestCreatedAt, oldest.getCreatedAtEpochMillis());
+                }
             }
         }
+        long oldestQueuedAgeMillis = oldestCreatedAt == Long.MAX_VALUE
+                ? 0L
+                : Math.max(0L, currentTimeMillis.getAsLong() - oldestCreatedAt);
         return new TransportDeliveryStoreStats(
                 queuedItems.get(),
                 deliveryByWorker.size(),
                 waiters,
-                maxQueuedItems
+                maxQueuedItems,
+                oldestQueuedAgeMillis
         );
     }
 

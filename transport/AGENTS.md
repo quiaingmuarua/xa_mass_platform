@@ -13,6 +13,7 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - `com.xa.mass.sdk.transport.*` is SDK composition, not transport module internals.
 - Stable transport concepts are limited to dispatch channel/outcome, runtime delivery,
   result ingest, and result envelope. See [../doc/TRANSPORT_BOUNDARY_BASELINE.md](../doc/TRANSPORT_BOUNDARY_BASELINE.md).
+- High-volume worker-event delivery direction is [../doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md).
 
 ## 1. Module Map
 

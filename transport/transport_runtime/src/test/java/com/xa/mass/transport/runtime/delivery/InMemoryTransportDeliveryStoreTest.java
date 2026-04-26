@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -95,20 +96,25 @@ class InMemoryTransportDeliveryStoreTest {
 
     @Test
     void statsTrackQueuedItemsQueuesAndCapacity() {
-        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10);
+        AtomicLong now = new AtomicLong(1_000L);
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, now::get);
         store.enqueue("polling", item("msg-1", "worker-1"), 10);
+        now.set(1_250L);
         store.enqueue("polling", item("msg-2", "worker-1"), 10);
         store.enqueue("polling", item("msg-3", "worker-2"), 10);
+        now.set(1_500L);
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(3, queued.getQueuedItems());
         assertEquals(2, queued.getQueueCount());
         assertEquals(10, queued.getMaxQueuedItems());
+        assertEquals(500L, queued.getOldestQueuedAgeMillis());
 
         store.drain("polling", "worker-1", 10);
         TransportDeliveryStoreStats remaining = store.stats();
         assertEquals(1, remaining.getQueuedItems());
         assertEquals(1, remaining.getQueueCount());
+        assertEquals(250L, remaining.getOldestQueuedAgeMillis());
     }
 
     @Test
