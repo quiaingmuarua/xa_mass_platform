@@ -28,6 +28,7 @@ class TransportDeliveryServiceTest {
 
         assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
         assertEquals(1L, service.stats().getDirectSentItems());
+        assertEquals(1L, service.directStatsByAdapter().get("websocket").getSentItems());
     }
 
     @Test
@@ -44,6 +45,7 @@ class TransportDeliveryServiceTest {
         assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
         assertEquals(1L, service.stats().getDirectOfflineItems());
+        assertEquals(1L, service.directStatsByAdapter().get("socket").getOfflineItems());
     }
 
     @Test
@@ -60,6 +62,7 @@ class TransportDeliveryServiceTest {
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
         assertEquals("dispatcher context is unavailable", outcomes.get(0).getReason());
         assertEquals(1L, service.stats().getDirectUnavailableItems());
+        assertEquals(1L, service.directStatsByAdapter().get("websocket").getUnavailableItems());
     }
 
     @Test
@@ -80,6 +83,7 @@ class TransportDeliveryServiceTest {
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
         assertFalse(called.get());
         assertEquals(1L, service.stats().getDirectInvalidItems());
+        assertEquals(1L, service.directStatsByAdapter().get("websocket").getInvalidItems());
     }
 
     @Test
@@ -99,6 +103,19 @@ class TransportDeliveryServiceTest {
         assertTrue(outcomes.get(0).isRetryable());
         assertEquals("write failed", outcomes.get(0).getReason());
         assertEquals(1L, service.stats().getDirectFailedItems());
+        assertEquals(1L, service.directStatsByAdapter().get("socket").getFailedItems());
+    }
+
+    @Test
+    void directStatsByAdapterNormalizeAdapterIds() {
+        TransportDeliveryService service = service();
+
+        service.sendDirect(" WebSocket ", List.of(item("msg-1", "worker-1")), item -> true, "unavailable");
+        service.sendDirect("websocket", List.of(item("msg-2", "worker-2")), item -> false, "unavailable");
+
+        TransportDirectDeliveryStats stats = service.directStatsByAdapter().get("websocket");
+        assertEquals(1L, stats.getSentItems());
+        assertEquals(1L, stats.getOfflineItems());
     }
 
     @Test

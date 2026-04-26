@@ -26,6 +26,7 @@ import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.TransportServer;
@@ -447,13 +448,15 @@ public class MassApplication {
     private Map<String, Object> getTransportDeliveryQueueDetail() {
         TransportDeliveryService deliveryService = transportDeliveryService;
         if (deliveryService == null) {
-            return deliveryQueueDetail(false, null);
+            return deliveryQueueDetail(false, null, Map.of());
         }
         TransportDeliveryStoreStats stats = deliveryService.stats();
-        return deliveryQueueDetail(true, stats);
+        return deliveryQueueDetail(true, stats, deliveryService.directStatsByAdapter());
     }
 
-    private Map<String, Object> deliveryQueueDetail(boolean available, TransportDeliveryStoreStats stats) {
+    private Map<String, Object> deliveryQueueDetail(boolean available,
+                                                   TransportDeliveryStoreStats stats,
+                                                   Map<String, TransportDirectDeliveryStats> directByAdapter) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("available", available);
         map.put("queuedItems", stats != null ? stats.getQueuedItems() : 0);
@@ -472,6 +475,24 @@ public class MassApplication {
         map.put("directFailedItems", stats != null ? stats.getDirectFailedItems() : 0L);
         map.put("directInvalidItems", stats != null ? stats.getDirectInvalidItems() : 0L);
         map.put("directUnavailableItems", stats != null ? stats.getDirectUnavailableItems() : 0L);
+        map.put("directByAdapter", directByAdapterDetail(directByAdapter));
+        return Map.copyOf(map);
+    }
+
+    private Map<String, Object> directByAdapterDetail(Map<String, TransportDirectDeliveryStats> directByAdapter) {
+        if (directByAdapter == null || directByAdapter.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        directByAdapter.forEach((adapterId, stats) -> {
+            Map<String, Object> adapterStats = new LinkedHashMap<>();
+            adapterStats.put("sentItems", stats != null ? stats.getSentItems() : 0L);
+            adapterStats.put("offlineItems", stats != null ? stats.getOfflineItems() : 0L);
+            adapterStats.put("failedItems", stats != null ? stats.getFailedItems() : 0L);
+            adapterStats.put("invalidItems", stats != null ? stats.getInvalidItems() : 0L);
+            adapterStats.put("unavailableItems", stats != null ? stats.getUnavailableItems() : 0L);
+            map.put(adapterId, Map.copyOf(adapterStats));
+        });
         return Map.copyOf(map);
     }
 

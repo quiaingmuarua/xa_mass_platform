@@ -610,6 +610,7 @@ class MassSdkTest {
             assertEquals(0L, deliveryQueue.get("directFailedItems"));
             assertEquals(0L, deliveryQueue.get("directInvalidItems"));
             assertEquals(0L, deliveryQueue.get("directUnavailableItems"));
+            assertEquals(Map.of(), deliveryQueue.get("directByAdapter"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));

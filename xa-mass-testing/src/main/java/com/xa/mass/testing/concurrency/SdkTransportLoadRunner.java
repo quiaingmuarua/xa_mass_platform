@@ -363,6 +363,20 @@ public final class SdkTransportLoadRunner {
                 require(snapshot.directOfflineItems() == 0,
                         "realtime delivery should not observe offline endpoints during steady load; offline="
                                 + snapshot.directOfflineItems());
+                DirectAdapterSnapshot adapterSnapshot = snapshot.directByAdapter().get(config.transport().adapterId());
+                require(adapterSnapshot != null,
+                        "realtime delivery should expose adapter direct diagnostics for "
+                                + config.transport().adapterId());
+                require(adapterSnapshot.sentItems() >= totalMessages,
+                        "realtime adapter should direct-send at least every logical message; adapter="
+                                + config.transport().adapterId() + " sent=" + adapterSnapshot.sentItems()
+                                + " total=" + totalMessages);
+                require(adapterSnapshot.offlineItems() == 0,
+                        "realtime adapter should not observe offline endpoints during steady load; adapter="
+                                + config.transport().adapterId() + " offline=" + adapterSnapshot.offlineItems());
+                require(adapterSnapshot.failedItems() == 0,
+                        "realtime adapter should not observe direct-send failures during steady load; adapter="
+                                + config.transport().adapterId() + " failed=" + adapterSnapshot.failedItems());
             }
             return snapshot;
         }
@@ -1043,7 +1057,8 @@ public final class SdkTransportLoadRunner {
                                          long directOfflineItems,
                                          long directFailedItems,
                                          long directInvalidItems,
-                                         long directUnavailableItems) {
+                                         long directUnavailableItems,
+                                         Map<String, DirectAdapterSnapshot> directByAdapter) {
         private static DeliveryQueueSnapshot from(Map<String, Object> source) {
             return new DeliveryQueueSnapshot(
                     booleanValue(source.get("available")),
@@ -1062,7 +1077,8 @@ public final class SdkTransportLoadRunner {
                     longValue(source.get("directOfflineItems")),
                     longValue(source.get("directFailedItems")),
                     longValue(source.get("directInvalidItems")),
-                    longValue(source.get("directUnavailableItems"))
+                    longValue(source.get("directUnavailableItems")),
+                    parseDirectByAdapter(source.get("directByAdapter"))
             );
         }
 
@@ -1085,8 +1101,38 @@ public final class SdkTransportLoadRunner {
             values.put("directFailedItems", directFailedItems);
             values.put("directInvalidItems", directInvalidItems);
             values.put("directUnavailableItems", directUnavailableItems);
+            values.put("directByAdapter", directByAdapter);
             return Map.copyOf(values);
         }
+    }
+
+    private record DirectAdapterSnapshot(long sentItems,
+                                         long offlineItems,
+                                         long failedItems,
+                                         long invalidItems,
+                                         long unavailableItems) {
+        private static DirectAdapterSnapshot from(Map<?, ?> source) {
+            return new DirectAdapterSnapshot(
+                    longValue(source.get("sentItems")),
+                    longValue(source.get("offlineItems")),
+                    longValue(source.get("failedItems")),
+                    longValue(source.get("invalidItems")),
+                    longValue(source.get("unavailableItems"))
+            );
+        }
+    }
+
+    private static Map<String, DirectAdapterSnapshot> parseDirectByAdapter(Object value) {
+        if (!(value instanceof Map<?, ?> source) || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, DirectAdapterSnapshot> snapshots = new LinkedHashMap<>();
+        source.forEach((adapterId, rawStats) -> {
+            if (adapterId != null && rawStats instanceof Map<?, ?> stats) {
+                snapshots.put(String.valueOf(adapterId), DirectAdapterSnapshot.from(stats));
+            }
+        });
+        return Map.copyOf(snapshots);
     }
 
     private static int intProperty(String key, int defaultValue) {
