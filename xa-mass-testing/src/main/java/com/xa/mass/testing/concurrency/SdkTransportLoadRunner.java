@@ -95,7 +95,7 @@ public final class SdkTransportLoadRunner {
             exitCode = 1;
             throw t;
         } finally {
-            // The embedded runtime currently leaves non-daemon transport/runtime threads alive
+            // The embedded runtime currently leaves non-daemon transport_runtime threads alive
             // after the scenario completes. Force process exit for this CLI-style load runner so
             // Maven exec and CI-style invocations terminate deterministically.
             if (booleanProperty("mass.sdk.load.forceExit", true)) {

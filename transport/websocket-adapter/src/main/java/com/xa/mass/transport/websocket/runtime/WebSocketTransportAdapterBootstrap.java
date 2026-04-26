@@ -1,12 +1,12 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.starter.transport.ManagedTransportAdapter;
-import com.xa.mass.starter.transport.CompositeWorkerEndpointRegistry;
-import com.xa.mass.starter.transport.TransportAdapterBootstrap;
-import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
-import com.xa.mass.starter.transport.TransportAdapterContribution;
-import com.xa.mass.starter.transport.TransportAdapterDescriptor;
-import com.xa.mass.starter.transport.TransportBinding;
+import com.xa.mass.transport.runtime.ManagedTransportAdapter;
+import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
+import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
@@ -86,7 +86,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     private static final class WebSocketRawWorkerMessageChannel
-            implements com.xa.mass.starter.transport.RawWorkerMessageChannel {
+            implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
 
         private final com.xa.mass.transport.WorkerEndpointRegistry endpointRegistry;
 

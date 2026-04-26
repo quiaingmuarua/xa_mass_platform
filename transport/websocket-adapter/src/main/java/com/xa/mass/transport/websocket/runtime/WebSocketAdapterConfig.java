@@ -1,6 +1,6 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Objects;

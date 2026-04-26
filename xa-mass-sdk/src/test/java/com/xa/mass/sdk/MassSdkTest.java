@@ -53,17 +53,17 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
-import com.xa.mass.starter.transport.CompositeWorkerEndpointRegistry;
-import com.xa.mass.starter.transport.RuntimeEventBusWorkerSystemEventChannel;
-import com.xa.mass.starter.transport.TransportAdapterBootstrap;
-import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
-import com.xa.mass.starter.transport.TransportAdapterContribution;
-import com.xa.mass.starter.transport.TransportAdapterDescriptor;
-import com.xa.mass.starter.transport.TransportBinding;
-import com.xa.mass.starter.transport.TransportRegistrationResolver;
-import com.xa.mass.starter.transport.TransportRuntimeRegistry;
-import com.xa.mass.starter.transport.TransportServerFactoryContext;
-import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
+import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
+import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRegistrationResolver;
+import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.TransportServerFactoryContext;
+import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
@@ -1997,7 +1997,11 @@ class MassSdkTest {
         Assertions.assertThrows(NoSuchFieldException.class, () -> MassApplication.class.getDeclaredField("massWebSocketAdapter"));
         Assertions.assertThrows(NoSuchFieldException.class, () -> MassApplication.class.getDeclaredField("webSocketConfig"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.builder.MassGatewayBuilder"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.PollingWorkerAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.WebSocketWorkerAdapter"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.TransportRuntimeRegistry"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.MassWebSocketAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.config.WebSocketConfig"));
@@ -2079,10 +2083,10 @@ class MassSdkTest {
                 String.class
         ));
         Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("isWebSocketEnabled"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
+                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("isWebSocketEnabled"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
                 com.xa.mass.engine.TaskManager.class,
                 com.xa.mass.engine.WorkerManager.class,
                 com.xa.mass.base.channel.tranporter.MessageTransporter.class,

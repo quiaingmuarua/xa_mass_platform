@@ -1,9 +1,9 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.starter.transport.TransportAdapterBootstrap;
-import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
-import com.xa.mass.starter.transport.TransportAdapterContribution;
-import com.xa.mass.starter.transport.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
+import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.Test;

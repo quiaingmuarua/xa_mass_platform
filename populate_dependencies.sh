@@ -7,9 +7,9 @@ MODULES=(
   "."
   "xa-mass-web"
   "xa-mass-core"
-  "transport/api"
+  "transport/transport_api"
   "transport/polling-adapter"
-  "transport/runtime"
+  "transport/transport_runtime"
   "xa-mass-engine"
   "transport/websocket-adapter"
   "xa-mass-sdk-api"
@@ -24,5 +24,4 @@ for module in "${MODULES[@]}"; do
 done
 
 echo "Dependencies cached in $HOME/.m2/repository"
-
 

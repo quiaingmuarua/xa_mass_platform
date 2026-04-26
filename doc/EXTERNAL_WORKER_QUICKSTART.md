@@ -37,7 +37,7 @@ From repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/api/target/classes:transport/polling-adapter/target/classes:transport/runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 

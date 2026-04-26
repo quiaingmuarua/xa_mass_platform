@@ -75,7 +75,7 @@ Use the harness to answer:
 
 - does SDK registration still compose into a runnable transport-aware runtime
 - does polling behave differently from WebSocket under the same scheduling pressure
-- did a transport/runtime change break real scheduling without needing the full Boot shell
+- did a transport_runtime change break real scheduling without needing the full Boot shell
 
 ## 5. Position In The Test System
 

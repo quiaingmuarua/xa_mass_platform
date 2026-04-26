@@ -4,12 +4,12 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
-import com.xa.mass.starter.transport.ManagedTransportAdapter;
-import com.xa.mass.starter.transport.RawWorkerMessageChannel;
-import com.xa.mass.starter.transport.TransportAdapterBootstrap;
-import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
-import com.xa.mass.starter.transport.TransportAdapterContribution;
-import com.xa.mass.starter.transport.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.ManagedTransportAdapter;
+import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
+import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
+import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 

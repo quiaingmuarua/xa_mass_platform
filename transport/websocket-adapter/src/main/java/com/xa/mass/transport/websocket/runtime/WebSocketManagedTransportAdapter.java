@@ -1,6 +1,6 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.starter.transport.ManagedTransportAdapter;
+import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import org.slf4j.Logger;
