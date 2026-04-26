@@ -5,6 +5,7 @@ import com.xa.mass.starter.transport.RawWorkerMessageChannel;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
 import com.xa.mass.starter.transport.TransportAdapterContribution;
+import com.xa.mass.starter.transport.TransportAdapterDescriptor;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
@@ -22,6 +23,15 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     public SocketTransportAdapterBootstrap(SocketAdapterConfig config) {
         this.config = new SocketAdapterConfig(config);
+    }
+
+    @Override
+    public TransportAdapterDescriptor descriptor() {
+        return new TransportAdapterDescriptor(
+                SocketRealtimeWorkerAdapter.PROTOCOL,
+                com.xa.mass.transport.WorkerTransportHints.REALTIME,
+                java.util.Set.of("tcp-socket")
+        );
     }
 
     @Override

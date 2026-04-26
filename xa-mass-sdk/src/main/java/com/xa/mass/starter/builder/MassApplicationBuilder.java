@@ -205,9 +205,8 @@ public class MassApplicationBuilder {
     public MassApplication build() {
         TransportConfig transportSnapshot = new TransportConfig(transportConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
-        WebSocketAdapterConfig webSocketConfig = transportSnapshot.getDefaultWebSocketAdapterConfig();
-        logger.info("Building MassApplication with configuration: wsPort={}, transport={}, engine={}",
-                webSocketConfig.getServerPort(),
+        logger.info("Building MassApplication with configuration: adapters={}, transport={}, engine={}",
+                describeAdapterSummary(transportSnapshot),
                 transportSnapshot.isEnabled(),
                 engineSnapshot.isEnabled());
 
@@ -224,6 +223,20 @@ public class MassApplicationBuilder {
                 transportSnapshot,
                 engineSnapshot
         );
+    }
+
+    private static String describeAdapterSummary(TransportConfig transportConfig) {
+        WebSocketAdapterConfig webSocket = transportConfig.getDefaultWebSocketAdapterConfig();
+        SocketAdapterConfig socket = transportConfig.getDefaultSocketAdapterConfig();
+        return "[websocket(enabled=" + webSocket.isEnabled()
+                + ",serverEnabled=" + webSocket.isServerEnabled()
+                + ",port=" + webSocket.getServerPort()
+                + ",path=" + webSocket.getEndpointPath()
+                + "), socket(enabled=" + socket.isEnabled()
+                + ",serverEnabled=" + socket.isServerEnabled()
+                + ",host=" + socket.getBindHost()
+                + ",port=" + socket.getServerPort()
+                + ")]";
     }
 
     public static class TransportBuilder {

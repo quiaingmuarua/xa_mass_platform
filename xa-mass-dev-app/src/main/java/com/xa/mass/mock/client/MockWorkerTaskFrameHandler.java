@@ -293,7 +293,8 @@ final class MockWorkerTaskFrameHandler {
                                                        long finishedAtEpochMillis,
                                                        String taskStatus) {
         Map<String, Object> execution = new LinkedHashMap<>();
-        execution.put("transport", "websocket");
+        execution.put("adapterId", "websocket");
+        execution.put("transportHint", "realtime");
         execution.put("startedAtEpochMs", startedAtEpochMillis);
         execution.put("finishedAtEpochMs", finishedAtEpochMillis);
         execution.put("startedAt", Instant.ofEpochMilli(startedAtEpochMillis).toString());

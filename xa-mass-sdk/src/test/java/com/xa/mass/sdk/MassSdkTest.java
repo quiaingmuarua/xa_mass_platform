@@ -21,7 +21,9 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
@@ -56,7 +58,9 @@ import com.xa.mass.starter.transport.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
 import com.xa.mass.starter.transport.TransportAdapterContribution;
+import com.xa.mass.starter.transport.TransportAdapterDescriptor;
 import com.xa.mass.starter.transport.TransportBinding;
+import com.xa.mass.starter.transport.TransportRegistrationResolver;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -275,6 +279,125 @@ class MassSdkTest {
     }
 
     @Test
+    void runtimeCompositionExposesAdapterOwnedConfigSnapshots() {
+        TransportConfig config = new TransportConfig();
+        config.getDefaultWebSocketAdapterConfig().setServerPort(19095);
+        config.getDefaultWebSocketAdapterConfig().setEndpointPath("/runtime-ws");
+        config.getDefaultSocketAdapterConfig().setEnabled(true);
+        config.getDefaultSocketAdapterConfig().setServerEnabled(true);
+        config.getDefaultSocketAdapterConfig().setServerPort(18123);
+        config.getDefaultSocketAdapterConfig().setBindHost("127.0.0.1");
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        WebSocketAdapterConfig webSocketConfig = runtimeComposition.getDefaultWebSocketAdapterConfig();
+        SocketAdapterConfig socketConfig = runtimeComposition.getDefaultSocketAdapterConfig();
+
+        assertEquals(19095, webSocketConfig.getServerPort());
+        assertEquals("/runtime-ws", webSocketConfig.getEndpointPath());
+        assertTrue(socketConfig.isEnabled());
+        assertTrue(socketConfig.isServerEnabled());
+        assertEquals(18123, socketConfig.getServerPort());
+        assertEquals("127.0.0.1", socketConfig.getBindHost());
+
+        webSocketConfig.setServerPort(19999);
+        socketConfig.setServerPort(19998);
+        assertEquals(19095, runtimeComposition.getDefaultWebSocketAdapterConfig().getServerPort());
+        assertEquals(18123, runtimeComposition.getDefaultSocketAdapterConfig().getServerPort());
+    }
+
+    @Test
+    void transportConfigDeprecatedRuntimeHelpersReuseCompatibilitySnapshotUntilMutation() {
+        TransportConfig config = new TransportConfig();
+
+        WorkerEndpointRegistry firstRegistry = config.resolveWorkerEndpointRegistry();
+        WorkerEndpointRegistry secondRegistry = config.resolveWorkerEndpointRegistry();
+        assertSame(firstRegistry, secondRegistry);
+
+        WorkerEndpointRegistry overriddenRegistry = mock(WorkerEndpointRegistry.class);
+        config.setWorkerEndpointRegistry(overriddenRegistry);
+        assertSame(overriddenRegistry, config.resolveWorkerEndpointRegistry());
+
+        WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
+        config.setCustomSystemEventChannel(customSystemEventChannel);
+        assertSame(customSystemEventChannel, config.resolveSystemEventChannel());
+
+        WorkerTransportRuntimeFactory customFactory = context -> mock(TransportRuntimeRegistry.class);
+        config.setWorkerTransportRuntimeFactory(customFactory);
+        assertSame(customFactory, config.resolveWorkerTransportRuntimeFactory());
+    }
+
+    @Test
+    void nestedWebSocketAdapterMutationsInvalidateTransportConfigCompatibilitySnapshot() {
+        TransportConfig config = new TransportConfig();
+        config.resolveTransportAdapterBootstrap();
+
+        config.getDefaultWebSocketAdapterConfig().setEnabled(false);
+        config.getDefaultWebSocketAdapterConfig().setServerEnabled(false);
+
+        TransportAdapterContribution contribution = config.resolveTransportAdapterBootstrap().create(
+                new TransportAdapterBootstrapContext<>(
+                        null,
+                        new CompositeWorkerEndpointRegistry(),
+                        null,
+                        new RuntimeEventBusWorkerSystemEventChannel()
+                )
+        );
+
+        assertNull(contribution.getTransportBinding());
+        assertNull(contribution.getManagedTransportAdapter());
+        assertNull(contribution.getTransportServer());
+        assertNull(contribution.getRawWorkerMessageChannel());
+    }
+
+    @Test
+    void nestedSocketAdapterMutationsInvalidateTransportConfigCompatibilitySnapshot() {
+        TransportConfig config = new TransportConfig();
+        config.resolveSocketTransportAdapterBootstrap();
+
+        config.getDefaultSocketAdapterConfig().setEnabled(true);
+        config.getDefaultSocketAdapterConfig().setServerEnabled(true);
+
+        TransportAdapterContribution contribution = config.resolveSocketTransportAdapterBootstrap().create(
+                new TransportAdapterBootstrapContext<>(
+                        null,
+                        new CompositeWorkerEndpointRegistry(),
+                        mock(TaskResultIngestChannel.class),
+                        new RuntimeEventBusWorkerSystemEventChannel()
+                )
+        );
+
+        assertNotNull(contribution.getTransportBinding());
+        assertNotNull(contribution.getTransportServer());
+        assertNotNull(contribution.getRawWorkerMessageChannel());
+    }
+
+    @Test
+    void nestedWebSocketFactoryMutationInvalidatesTransportConfigCompatibilitySnapshot() {
+        TransportConfig config = new TransportConfig();
+        config.resolveWorkerEndpointRegistry();
+
+        AtomicReference<TransportServerFactoryContext> capturedContext = new AtomicReference<>();
+        TransportServer server = mock(TransportServer.class);
+
+        config.getDefaultWebSocketAdapterConfig().setEndpointPath("/compat-mutated");
+        config.getDefaultWebSocketAdapterConfig().setTransportServerFactory(context -> {
+            capturedContext.set(context);
+            return server;
+        });
+
+        TransportServer created = config.createTransportServer(
+                mock(WebSocketDispatchRuntimeContext.class),
+                mock(WorkerEndpointRegistry.class),
+                19101
+        );
+
+        assertSame(server, created);
+        assertNotNull(capturedContext.get());
+        assertEquals(19101, capturedContext.get().getPort());
+        assertEquals("/compat-mutated", capturedContext.get().getEndpointPath());
+    }
+
+    @Test
     void defaultWebSocketTransportBootstrapRejectsNonSessionRegistry() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
@@ -296,6 +419,45 @@ class MassSdkTest {
         );
 
         assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
+    }
+
+    @Test
+    void transportRuntimeCompositionResolvesRegistrationAdapterIdBeforeStart() {
+        TransportConfig config = new TransportConfig();
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("polling", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
+        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("ws", "realtime"));
+    }
+
+    @Test
+    void transportRuntimeCompositionRejectsAmbiguousRealtimeRegistrationBeforeStart() {
+        TransportConfig config = new TransportConfig();
+        config.getDefaultSocketAdapterConfig().setEnabled(true);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
+        );
+
+        assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]",
+                error.getMessage());
+    }
+
+    @Test
+    void transportRuntimeCompositionUsesCustomPrimaryBootstrapDescriptorEvenWhenWebsocketIsDisabled() {
+        TransportConfig config = new TransportConfig();
+        config.getDefaultWebSocketAdapterConfig().setEnabled(false);
+        config.setTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
+                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME, Set.of("custom-rt-alias"))
+        ));
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt-alias", "realtime"));
     }
 
     @Test
@@ -390,6 +552,13 @@ class MassSdkTest {
         Assertions.assertTrue(com.xa.mass.starter.MassWebSocketAdapter.class.isAnnotationPresent(Deprecated.class),
                 "MassWebSocketAdapter must remain deprecated now that embedded runtime owns adapter lifecycle");
 
+        Assertions.assertTrue(
+                com.xa.mass.starter.MassWebSocketAdapter.class
+                        .getDeclaredConstructor(WebSocketConfig.class, WebSocketDispatchRuntimeContext.class)
+                        .isAnnotationPresent(Deprecated.class),
+                "MassWebSocketAdapter(WebSocketConfig, WebSocketDispatchRuntimeContext) must remain deprecated"
+        );
+
         Set<java.lang.reflect.Method> methods = Set.of(
                 com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketConfig"),
                 com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketMessageDispatcher")
@@ -399,6 +568,60 @@ class MassSdkTest {
             Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
                     method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
         }
+    }
+
+    @Test
+    void massWebSocketAdapterReturnsConfigSnapshotCopy() {
+        WebSocketAdapterConfig adapterConfig = new WebSocketAdapterConfig();
+        adapterConfig.setEnabled(true);
+        adapterConfig.setServerEnabled(true);
+        adapterConfig.setServerPort(19097);
+        adapterConfig.setEndpointPath("/compat-shell");
+        adapterConfig.setMaxConnections(77);
+
+        WebSocketDispatchRuntimeContext dispatcherContext = mock(WebSocketDispatchRuntimeContext.class);
+        com.xa.mass.starter.MassWebSocketAdapter adapter =
+                new com.xa.mass.starter.MassWebSocketAdapter(adapterConfig, dispatcherContext);
+
+        WebSocketConfig first = adapter.getWebSocketConfig();
+        WebSocketConfig second = adapter.getWebSocketConfig();
+
+        assertNotSame(first, second);
+        assertEquals(19097, first.getDefaultWebSocketAdapterConfig().getServerPort());
+        assertEquals("/compat-shell", first.getDefaultWebSocketAdapterConfig().getEndpointPath());
+        assertEquals(77, first.getDefaultWebSocketAdapterConfig().getMaxConnections());
+
+        first.getDefaultWebSocketAdapterConfig().setServerPort(19999);
+        assertEquals(19097, adapter.getWebSocketConfig().getDefaultWebSocketAdapterConfig().getServerPort());
+    }
+
+    @Test
+    void massWebSocketAdapterDelegatesLifecycleToManagedTransportAdapter() {
+        WebSocketAdapterConfig adapterConfig = new WebSocketAdapterConfig();
+        adapterConfig.setEnabled(true);
+        adapterConfig.setMaxConnections(33);
+
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        WebSocketDispatchRuntimeContext dispatcherContext = mock(WebSocketDispatchRuntimeContext.class);
+        when(dispatcherContext.getEndpointRegistry()).thenReturn(endpointRegistry);
+
+        com.xa.mass.starter.MassWebSocketAdapter adapter =
+                new com.xa.mass.starter.MassWebSocketAdapter(adapterConfig, dispatcherContext);
+
+        assertFalse(adapter.isRunning());
+        assertNull(adapter.getWebSocketMessageDispatcher());
+
+        adapter.start();
+
+        assertTrue(adapter.isRunning());
+        assertNotNull(adapter.getWebSocketMessageDispatcher());
+        assertTrue(adapter.getWebSocketMessageDispatcher().isRunning());
+
+        adapter.stop();
+
+        assertFalse(adapter.isRunning());
+        assertFalse(adapter.getWebSocketMessageDispatcher().isRunning());
+        verify(endpointRegistry).shutdown();
     }
 
     @Test
@@ -579,6 +802,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.registerWorker(WorkerRegistration.builder()
@@ -1252,6 +1476,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         Map<String, String> workerAttributes = new LinkedHashMap<>();
@@ -1304,6 +1529,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
@@ -1338,6 +1564,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
@@ -1363,6 +1590,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
@@ -1411,6 +1639,7 @@ class MassSdkTest {
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.registerWorker(WorkerRegistration.builder()
@@ -1566,6 +1795,45 @@ class MassSdkTest {
 
             assertEquals("socket", app.getWorkerAdapterId("realtime-worker-socket"));
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-socket"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("output", WorkerTransportMessage.class);
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
+                context.getSystemEventChannel(),
+                List.of(
+                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                                .build(),
+                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME, Set.of("tcp-socket")))
+                                .build()
+                )
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-websocket")
+                    .adapterId("websocket")
+                    .transportHint("realtime")
+                    .build());
+            app.getWorker("realtime-worker-websocket").setOnlineStrategy(null);
+
+            assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
         } finally {
             app.stop();
         }
@@ -1959,6 +2227,26 @@ class MassSdkTest {
         return supplier.get();
     }
 
+    private static void stubDefaultTransportRegistrationResolution(MassApplication delegate) {
+        TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
+                new TransportAdapterDescriptor(
+                        WorkerTransportHints.POLLING,
+                        WorkerTransportHints.POLLING,
+                        Set.of("pull", "queue")
+                ),
+                new TransportAdapterDescriptor(
+                        "websocket",
+                        WorkerTransportHints.REALTIME,
+                        Set.of("ws")
+                )
+        ));
+        when(delegate.resolveRegistrationAdapterId(any(), any()))
+                .thenAnswer(invocation -> resolver.resolveRegistrationAdapterId(
+                        invocation.getArgument(0, String.class),
+                        invocation.getArgument(1, String.class)
+                ));
+    }
+
     @FunctionalInterface
     private interface ThrowingSupplier<T> {
         T get() throws Exception;
@@ -2055,6 +2343,26 @@ class MassSdkTest {
             return TransportAdapterContribution.builder()
                     .transportServer(transportServer)
                     .build();
+        }
+    }
+
+    private static final class DescriptorOnlyBootstrap
+            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+
+        private final TransportAdapterDescriptor descriptor;
+
+        private DescriptorOnlyBootstrap(TransportAdapterDescriptor descriptor) {
+            this.descriptor = descriptor;
+        }
+
+        @Override
+        public TransportAdapterDescriptor descriptor() {
+            return descriptor;
+        }
+
+        @Override
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+            return TransportAdapterContribution.empty();
         }
     }
 

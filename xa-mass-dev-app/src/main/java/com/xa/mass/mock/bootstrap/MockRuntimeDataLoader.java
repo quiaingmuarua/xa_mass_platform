@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -158,11 +159,17 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         if (worker.getWorkerGroupId() != null) {
             worker.setWorkerGroupId(worker.getWorkerGroupId().toLowerCase());
         }
-        if (worker.getOnlineStrategy() == null || worker.getOnlineStrategy().isBlank()) {
-            worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        } else {
-            worker.setOnlineStrategy(WorkerTransportHints.normalize(worker.getOnlineStrategy()));
+        String adapterId = worker.getAdapterId();
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("Worker fixture must declare adapterId: " + worker.getWorkerId());
         }
+        worker.setAdapterId(adapterId.trim().toLowerCase(Locale.ROOT));
+        String onlineStrategy = worker.getOnlineStrategy();
+        if (onlineStrategy == null || onlineStrategy.isBlank()) {
+            throw new IllegalArgumentException("Worker fixture must declare onlineStrategy/transportHint: "
+                    + worker.getWorkerId());
+        }
+        worker.setOnlineStrategy(WorkerTransportHints.normalize(onlineStrategy));
         List<String> supportedProjects = worker.getSupportedProjects();
         if (supportedProjects == null || supportedProjects.isEmpty()) {
             worker.setSupportedProjects(List.of("demoApp", "testApp"));

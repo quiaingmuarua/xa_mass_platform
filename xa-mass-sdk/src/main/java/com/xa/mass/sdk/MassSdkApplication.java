@@ -342,8 +342,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         }
         String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
         if (transportHint == null && delegate.getTransportRuntimeRegistry() != null) {
-            String adapterId = delegate.getTransportRuntimeRegistry().resolveWorkerAdapterId(worker.getWorkerId());
-            transportHint = WorkerTransportHints.normalize(adapterId);
+            transportHint = delegate.getTransportRuntimeRegistry().resolveWorkerTransportHint(worker.getWorkerId());
         }
         if (transportHint == null) {
             throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.getWorkerId());
@@ -1197,16 +1196,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         if (delegate.getTransportRuntimeRegistry() != null) {
             return delegate.getTransportRuntimeRegistry().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
         }
-        if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
-            return requestedAdapterId.trim().toLowerCase(Locale.ROOT);
+        String delegateResolvedAdapterId = delegate.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        if (delegateResolvedAdapterId != null && !delegateResolvedAdapterId.isBlank()) {
+            return delegateResolvedAdapterId;
         }
-        if (WorkerTransportHints.POLLING.equals(transportHint)) {
-            return WorkerTransportHints.POLLING;
-        }
-        if (WorkerTransportHints.REALTIME.equals(transportHint)) {
-            return "websocket";
-        }
-        throw new IllegalArgumentException("Unsupported worker transportHint '" + transportHint + "'");
+        throw new IllegalStateException(
+                "Worker adapterId could not be resolved because transport runtime registration metadata is unavailable");
     }
 
     private EventDefinition requireEnabledEventDefinition(String eventCode) {

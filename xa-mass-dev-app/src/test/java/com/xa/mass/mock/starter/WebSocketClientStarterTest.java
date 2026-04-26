@@ -65,9 +65,25 @@ class WebSocketClientStarterTest {
         starter.shutdown();
     }
 
+    @Test
+    void websocketClientFilterUsesConcreteAdapterIdInsteadOfTransportFamily() {
+        TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of());
+
+        assertTrue(starter.isWebSocketClientWorker(worker("worker-ws", "websocket", "realtime")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-socket", "socket", "realtime")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-polling", "polling", "polling")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-missing", null, "realtime")));
+    }
+
     private static Worker worker(String workerId) {
+        return worker(workerId, null, null);
+    }
+
+    private static Worker worker(String workerId, String adapterId, String onlineStrategy) {
         Worker w = new Worker();
         w.setWorkerId(workerId);
+        w.setAdapterId(adapterId);
+        w.setOnlineStrategy(onlineStrategy);
         return w;
     }
 

@@ -3,6 +3,7 @@
     "workerId": "node-realtime-worker-001",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": ["demo.dispatch"],

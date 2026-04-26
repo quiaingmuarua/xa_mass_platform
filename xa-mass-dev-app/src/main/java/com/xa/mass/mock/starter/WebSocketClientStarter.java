@@ -8,7 +8,6 @@ import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.transport.WorkerTransportHints;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,12 +90,12 @@ public class WebSocketClientStarter {
 
             List<Worker> workers = loadWorkers();
             if (workers == null || workers.isEmpty()) {
-                log.warn("No SDK-registered realtime mock workers found, skipping client startup");
+                log.warn("No SDK-registered websocket mock workers found, skipping client startup");
                 started.set(false);
                 return;
             }
 
-            log.info("Found {} SDK-registered realtime mock workers, establishing connections", workers.size());
+            log.info("Found {} SDK-registered websocket mock workers, establishing connections", workers.size());
 
             clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
             establishConnections(workers, baseUri);
@@ -117,7 +116,7 @@ public class WebSocketClientStarter {
      *
      * <p>The starter intentionally does not read worker JSON. Resource creation
      * belongs to the SDK runtime; this class only opens WebSocket adapter clients
-     * for workers that declare a realtime/WebSocket-compatible transport hint.
+     * for workers whose concrete transport identity is the WebSocket adapter.
      */
     protected List<Worker> loadWorkers() {
         if (runtimeApplication == null) {
@@ -125,19 +124,16 @@ public class WebSocketClientStarter {
             return List.of();
         }
         return runtimeApplication.getAllWorkers().stream()
-                .filter(this::isRealtimeClientWorker)
+                .filter(this::isWebSocketClientWorker)
                 .toList();
     }
 
-    private boolean isRealtimeClientWorker(Worker worker) {
+    protected boolean isWebSocketClientWorker(Worker worker) {
         if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
             return false;
         }
-        String strategy = worker.getOnlineStrategy();
-        if (strategy == null || strategy.isBlank()) {
-            return true;
-        }
-        return WorkerTransportHints.isRealtime(strategy);
+        String adapterId = worker.getAdapterId();
+        return adapterId != null && "websocket".equalsIgnoreCase(adapterId.trim());
     }
 
     /**

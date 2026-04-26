@@ -334,6 +334,18 @@ public class MassApplication {
         return transportRuntimeRegistry;
     }
 
+    /**
+     * Internal registration helper used by SDK/starter compatibility paths
+     * when worker registration input must be normalized before the live
+     * transport runtime registry is assembled.
+     */
+    public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
+        if (transportRuntimeRegistry != null) {
+            return transportRuntimeRegistry.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        }
+        return transportRuntimeComposition.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+    }
+
     public MassEngine getEngine() {
         return engine;
     }

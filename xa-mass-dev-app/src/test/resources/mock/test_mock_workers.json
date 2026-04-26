@@ -3,6 +3,8 @@
     "workerId": "it-worker-0",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
+    "adapterId": "websocket",
+    "onlineStrategy": "realtime",
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [
       "demo.dispatch",
@@ -18,6 +20,8 @@
     "workerId": "it-worker-1",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
+    "adapterId": "websocket",
+    "onlineStrategy": "realtime",
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [
       "demo.dispatch",

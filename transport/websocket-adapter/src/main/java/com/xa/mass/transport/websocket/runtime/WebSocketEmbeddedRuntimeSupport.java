@@ -11,11 +11,13 @@ import com.xa.mass.transport.websocket.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
 
 import java.util.function.Consumer;
 
@@ -87,6 +89,42 @@ public final class WebSocketEmbeddedRuntimeSupport {
                 new WebSocketInputProcessor(dispatcherContext)::process,
                 endpointRegistry
         );
+    }
+
+    public static TransportServer createTransportServer(WebSocketAdapterConfig config,
+                                                        WebSocketDispatchRuntimeContext dispatcherContext,
+                                                        WorkerEndpointRegistry endpointRegistry) {
+        return createTransportServer(
+                config,
+                dispatcherContext,
+                endpointRegistry,
+                config.getServerPort()
+        );
+    }
+
+    public static TransportServer createTransportServer(WebSocketAdapterConfig config,
+                                                        WebSocketDispatchRuntimeContext dispatcherContext,
+                                                        WorkerEndpointRegistry endpointRegistry,
+                                                        int port) {
+        if (!config.isServerEnabled()) {
+            return null;
+        }
+        TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
+                config.getTransportServerFactory();
+        if (transportServerFactory == null) {
+            return createTransportServer(
+                    port,
+                    config.getEndpointPath(),
+                    dispatcherContext,
+                    endpointRegistry
+            );
+        }
+        return transportServerFactory.create(new TransportServerFactoryContext(
+                endpointRegistry,
+                new WebSocketInputProcessor(dispatcherContext)::process,
+                port,
+                config.getEndpointPath()
+        ));
     }
 
     public static TransportServer createTransportServer(int port,

@@ -4,9 +4,13 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.starter.transport.TransportAdapterDescriptor;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
+import com.xa.mass.starter.transport.TransportRegistrationResolver;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
+import com.xa.mass.starter.worker.PollingWorkerAdapter;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -47,6 +51,7 @@ public class TransportRuntimeComposition {
     private final List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
+    private transient TransportRegistrationResolver compatibilityRegistrationResolver;
 
     public TransportRuntimeComposition(TransportConfig source) {
         this.transporterType = source.getTransporterType();
@@ -130,6 +135,14 @@ public class TransportRuntimeComposition {
         };
     }
 
+    public WebSocketAdapterConfig getDefaultWebSocketAdapterConfig() {
+        return new WebSocketAdapterConfig(defaultWebSocketAdapterConfig);
+    }
+
+    public SocketAdapterConfig getDefaultSocketAdapterConfig() {
+        return new SocketAdapterConfig(defaultSocketAdapterConfig);
+    }
+
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
         if (workerEndpointRegistry != null) {
             return workerEndpointRegistry;
@@ -163,13 +176,78 @@ public class TransportRuntimeComposition {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
+    public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
+        if (!usesDefaultWorkerTransportRuntimeFactory()) {
+            if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
+                return requestedAdapterId.trim().toLowerCase(java.util.Locale.ROOT);
+            }
+            throw new IllegalStateException(
+                    "worker adapterId must be set before runtime start when a custom worker transport runtime factory is configured");
+        }
+        return compatibilityRegistrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+    }
+
     public List<TransportAdapterBootstrap<WorkerTransportMessage>> resolveTransportAdapterBootstraps() {
         List<TransportAdapterBootstrap<WorkerTransportMessage>> bootstraps = new ArrayList<>();
-        bootstraps.add(transportAdapterBootstrap != null
-                ? transportAdapterBootstrap
-                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig));
-        bootstraps.add(new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig));
+        bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
+        bootstraps.add(resolveDefaultSocketTransportAdapterBootstrap());
         bootstraps.addAll(additionalTransportAdapterBootstraps);
         return List.copyOf(bootstraps);
+    }
+
+    TransportAdapterBootstrap<WorkerTransportMessage> resolvePrimaryTransportAdapterBootstrap() {
+        return transportAdapterBootstrap != null
+                ? transportAdapterBootstrap
+                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig);
+    }
+
+    TransportAdapterBootstrap<WorkerTransportMessage> resolveDefaultSocketTransportAdapterBootstrap() {
+        return new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig);
+    }
+
+    private TransportRegistrationResolver compatibilityRegistrationResolver() {
+        if (compatibilityRegistrationResolver == null) {
+            compatibilityRegistrationResolver = new TransportRegistrationResolver(resolveRegistrationDescriptors());
+        }
+        return compatibilityRegistrationResolver;
+    }
+
+    private List<TransportAdapterDescriptor> resolveRegistrationDescriptors() {
+        List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
+        descriptors.add(new TransportAdapterDescriptor(
+                PollingWorkerAdapter.PROTOCOL,
+                WorkerTransportHints.POLLING,
+                java.util.Set.of("pull", "queue")
+        ));
+        TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
+        if (transportAdapterBootstrap != null) {
+            TransportAdapterDescriptor primaryDescriptor = primaryBootstrap.descriptor();
+            if (primaryDescriptor != null) {
+                descriptors.add(primaryDescriptor);
+            }
+        } else if (defaultWebSocketAdapterConfig.isEnabled()) {
+            TransportAdapterDescriptor webSocketDescriptor = primaryBootstrap.descriptor();
+            if (webSocketDescriptor != null) {
+                descriptors.add(webSocketDescriptor);
+            }
+        }
+        if (defaultSocketAdapterConfig.isEnabled()) {
+            TransportAdapterDescriptor socketDescriptor = resolveDefaultSocketTransportAdapterBootstrap().descriptor();
+            if (socketDescriptor != null) {
+                descriptors.add(socketDescriptor);
+            }
+        }
+        for (TransportAdapterBootstrap<WorkerTransportMessage> bootstrap : additionalTransportAdapterBootstraps) {
+            TransportAdapterDescriptor descriptor = bootstrap.descriptor();
+            if (descriptor != null) {
+                descriptors.add(descriptor);
+            }
+        }
+        return List.copyOf(descriptors);
+    }
+
+    private boolean usesDefaultWorkerTransportRuntimeFactory() {
+        return workerTransportRuntimeFactory == null
+                || workerTransportRuntimeFactory instanceof DefaultWorkerTransportRuntimeFactory;
     }
 }

@@ -77,6 +77,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
                 "eventBindings", List.of(Map.of(
@@ -85,6 +86,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 ))
         ), workerHeaders);
         assertApiOk(registerResponse);
+        assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
 

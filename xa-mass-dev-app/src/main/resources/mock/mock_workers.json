@@ -3,6 +3,7 @@
     "workerId": "worker-pool-a-1",
     "workerGroupId": "pool-a",
     "agentVersion": "1.2.0",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "attributes": {
       "runtime": "mock-websocket-client",
@@ -26,6 +27,7 @@
     "workerId": "worker-pool-a-2",
     "workerGroupId": "pool-a",
     "agentVersion": "1.2.0",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "attributes": {
       "runtime": "mock-websocket-client",
@@ -49,6 +51,7 @@
     "workerId": "worker-pool-a-3",
     "workerGroupId": "pool-a",
     "agentVersion": "1.2.0",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "attributes": {
       "runtime": "mock-websocket-client",
@@ -72,6 +75,7 @@
     "workerId": "worker-pool-b-1",
     "workerGroupId": "pool-b",
     "agentVersion": "1.2.1",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "attributes": {
       "runtime": "mock-websocket-client",
@@ -94,6 +98,7 @@
     "workerId": "worker-pool-b-2",
     "workerGroupId": "pool-b",
     "agentVersion": "1.2.1",
+    "adapterId": "websocket",
     "onlineStrategy": "realtime",
     "attributes": {
       "runtime": "mock-websocket-client",

@@ -39,6 +39,11 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
     public synchronized void register(String adapterId, WorkerEndpointRegistry registry) {
         String normalizedAdapterId = normalizeAdapterId(adapterId);
         Objects.requireNonNull(registry, "registry");
+        WorkerEndpointRegistry existing = registriesByAdapterId.get(normalizedAdapterId);
+        if (existing != null && existing != registry) {
+            throw new IllegalArgumentException("Endpoint registry already registered for adapterId '"
+                    + normalizedAdapterId + "'");
+        }
         registriesByAdapterId.put(normalizedAdapterId, registry);
         if (registry instanceof WorkerEndpointInspector inspector) {
             inspectorsByAdapterId.put(normalizedAdapterId, inspector);

@@ -136,6 +136,27 @@ class MockRuntimeDataLoaderTest {
         assertEquals(List.of("basic_worker_check"), runtime.ruleIds());
     }
 
+    @Test
+    void loadIntoRejectsWorkerFixtureWithoutExplicitTransportIdentity() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        MockRuntimeDataLoader loader = loader(
+                """
+                [
+                  {
+                    "workerId": "worker-missing-adapter",
+                    "onlineStrategy": "realtime"
+                  }
+                ]
+                """,
+                null,
+                null,
+                null
+        );
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> loader.loadInto(runtime));
+        assertEquals("Worker fixture must declare adapterId: worker-missing-adapter", error.getMessage());
+    }
+
     private MockRuntimeDataLoader loader(String workersJson,
                                          String workerContextsJson,
                                          String tasksJson,
@@ -163,6 +184,8 @@ class MockRuntimeDataLoaderTest {
                   {
                     "workerId": "worker-us-1",
                     "workerGroupId": "POOL-US",
+                    "adapterId": "websocket",
+                    "onlineStrategy": "realtime",
                     "agentVersion": "1.0.0",
                     "status": "ONLINE",
                     "supportedEventCodes": ["demo.dispatch"]
@@ -170,6 +193,8 @@ class MockRuntimeDataLoaderTest {
                   {
                     "workerId": "worker-gb-1",
                     "workerGroupId": "POOL-GB",
+                    "adapterId": "websocket",
+                    "onlineStrategy": "realtime",
                     "agentVersion": "1.0.1",
                     "status": "ONLINE",
                     "supportedEventCodes": ["demo.dispatch.gb"]
@@ -234,6 +259,7 @@ class MockRuntimeDataLoaderTest {
                   {
                     "workerId": "crawler-worker-001",
                     "workerGroupId": "CRAWLER",
+                    "adapterId": "polling",
                     "onlineStrategy": "polling",
                     "supportedProjects": ["crawlerApp"],
                     "supportedEventCodes": ["crawler.fetch-page"],
@@ -321,6 +347,7 @@ class MockRuntimeDataLoaderTest {
             Worker worker = new Worker();
             worker.setWorkerId(request.getWorkerId());
             worker.setWorkerGroupId(request.getWorkerGroupId());
+            worker.setAdapterId(request.getAdapterId());
             worker.setSupportedProjects(request.getSupportedProjects());
             worker.setSupportedEventCodes(request.getSupportedEventCodes());
             worker.setOnlineStrategy(request.getTransportHint());

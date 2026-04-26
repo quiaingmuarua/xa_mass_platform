@@ -322,6 +322,7 @@ public abstract class AbstractMockE2eTest {
                 .workerGroupId(workerGroupId)
                 .supportedProjects(List.of(project))
                 .supportedEventCodes(defaultSupportedEvents(project))
+                .adapterId("websocket")
                 .transportHint("realtime")
                 .build();
     }

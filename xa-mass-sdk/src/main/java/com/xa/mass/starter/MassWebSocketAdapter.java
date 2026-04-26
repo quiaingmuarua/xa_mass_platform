@@ -3,7 +3,8 @@ package com.xa.mass.starter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.starter.config.WebSocketConfig;
-import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
+import com.xa.mass.transport.websocket.runtime.WebSocketManagedTransportAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -21,30 +22,44 @@ public class MassWebSocketAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(MassWebSocketAdapter.class);
 
-    private final WebSocketConfig config;
+    private final WebSocketAdapterConfig adapterConfig;
     private final WebSocketDispatchRuntimeContext dispatcherContext;
+    private final WebSocketManagedTransportAdapter managedTransportAdapter;
     private WebSocketMessageDispatcher messageDispatcher;
-    private boolean running = false;
 
+    /**
+     * @deprecated Prefer the adapter-owned
+     * {@link #MassWebSocketAdapter(WebSocketAdapterConfig, WebSocketDispatchRuntimeContext)}
+     * overload. This compatibility constructor snapshots only the bundled
+     * WebSocket adapter config from the legacy transport-global config shell.
+     */
+    @Deprecated(forRemoval = false)
     public MassWebSocketAdapter(WebSocketConfig config, WebSocketDispatchRuntimeContext dispatcherContext) {
-        this.config = config;
-        this.dispatcherContext = dispatcherContext;
+        this(config != null ? config.getDefaultWebSocketAdapterConfig() : null, dispatcherContext);
+    }
+
+    public MassWebSocketAdapter(WebSocketAdapterConfig adapterConfig,
+                                WebSocketDispatchRuntimeContext dispatcherContext) {
+        this.adapterConfig = new WebSocketAdapterConfig(java.util.Objects.requireNonNull(adapterConfig, "adapterConfig"));
+        this.dispatcherContext = java.util.Objects.requireNonNull(dispatcherContext, "dispatcherContext");
+        this.managedTransportAdapter = new WebSocketManagedTransportAdapter(
+                this.adapterConfig.getMaxConnections(),
+                this.dispatcherContext
+        );
     }
 
     public void start() {
         MDC.clear();
-        if (!config.isEnabled()) {
+        if (!adapterConfig.isEnabled()) {
             logger.info("MassWebSocketAdapter is disabled, skipping start");
             return;
         }
 
-        logger.info("Starting MassWebSocketAdapter with max connections: {}", config.getMaxConnections());
+        logger.info("Starting MassWebSocketAdapter with max connections: {}", adapterConfig.getMaxConnections());
 
         try {
-            startDispatcher();
-            initializeEndpointRuntime();
-
-            running = true;
+            dispatcher().start();
+            managedTransportAdapter.start();
             logger.info("MassWebSocketAdapter started successfully");
         } catch (Exception e) {
             MDC.clear();
@@ -55,7 +70,7 @@ public class MassWebSocketAdapter {
 
     public void stop() {
         MDC.clear();
-        if (!running) {
+        if (!isRunning()) {
             logger.info("MassWebSocketAdapter is not running, skipping stop");
             return;
         }
@@ -64,9 +79,7 @@ public class MassWebSocketAdapter {
 
         try {
             stopDispatcher();
-            shutdownEndpointRuntime();
-
-            running = false;
+            managedTransportAdapter.stop();
             logger.info("MassWebSocketAdapter stopped successfully");
         } catch (Exception e) {
             MDC.clear();
@@ -74,17 +87,12 @@ public class MassWebSocketAdapter {
         }
     }
 
-    private void startDispatcher() {
-        logger.info("Starting WebSocket compatibility dispatcher shell...");
-
-        try {
+    private WebSocketMessageDispatcher dispatcher() {
+        if (messageDispatcher == null) {
+            logger.info("Creating WebSocket compatibility dispatcher shell...");
             messageDispatcher = new WebSocketMessageDispatcher(dispatcherContext);
-            messageDispatcher.start();
-            logger.info("WebSocket compatibility dispatcher shell started successfully");
-        } catch (Exception e) {
-            logger.error("Failed to start WebSocket compatibility dispatcher shell", e);
-            throw new RuntimeException("Failed to start WebSocket compatibility dispatcher shell", e);
         }
+        return messageDispatcher;
     }
 
     private void stopDispatcher() {
@@ -100,36 +108,21 @@ public class MassWebSocketAdapter {
         }
     }
 
-    private void initializeEndpointRuntime() {
-        logger.info("Initializing endpoint runtime...");
-        logger.info("Endpoint runtime ready (max={} connections)", config.getMaxConnections());
-    }
-
-    private void shutdownEndpointRuntime() {
-        logger.info("Shutting down endpoint runtime...");
-        try {
-            WorkerEndpointRegistry endpointRegistry = dispatcherContext.getEndpointRegistry();
-            if (endpointRegistry != null) {
-                endpointRegistry.shutdown();
-            }
-            logger.info("Endpoint runtime shut down");
-        } catch (Exception e) {
-            logger.error("Error shutting down endpoint runtime", e);
-        }
-    }
-
     public boolean isRunning() {
-        return running && messageDispatcher != null && messageDispatcher.isRunning();
+        return managedTransportAdapter.isRunning() && messageDispatcher != null && messageDispatcher.isRunning();
     }
 
     /**
      * @deprecated The WebSocket config object is an advanced embedding detail.
      * Default embedding should configure WebSocket behavior before runtime
      * assembly rather than reading live adapter runtime state back through
-     * {@code MassWebSocketAdapter}.
+     * {@code MassWebSocketAdapter}. This compatibility accessor returns a
+     * snapshot copy rather than the live transport config object.
      */
     @Deprecated(forRemoval = false)
     public WebSocketConfig getWebSocketConfig() {
+        WebSocketConfig config = new WebSocketConfig();
+        config.setDefaultWebSocketAdapterConfig(adapterConfig);
         return config;
     }
 

@@ -51,7 +51,8 @@ class MockWorkerWebSocketClientTest {
         assertTrue(payload.has("execution"));
         assertTrue(payload.has("workerProfile"));
         JsonObject execution = payload.getAsJsonObject("execution");
-        assertEquals("websocket", execution.get("transport").getAsString());
+        assertEquals("websocket", execution.get("adapterId").getAsString());
+        assertEquals("realtime", execution.get("transportHint").getAsString());
         assertEquals("task-1", execution.get("taskId").getAsString());
         assertEquals("msg-1", execution.get("messageId").getAsString());
         assertEquals("demoApp", execution.get("project").getAsString());

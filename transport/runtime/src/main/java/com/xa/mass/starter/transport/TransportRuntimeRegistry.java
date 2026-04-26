@@ -22,9 +22,11 @@ import java.util.TreeSet;
  * Runtime registry of worker transport bindings assembled for an embedded
  * XA Mass runtime.
  *
- * <p>Inbound compatibility registration in this registry remains
- * protocol-oriented. Adapter-specific wire-frame shapes belong to a specific adapter only and
- * must not be treated as the identity of a business or control capability.
+ * <p>Registration and runtime routing key off canonical worker transport
+ * identity: {@code adapterId} is the concrete runtime truth, while
+ * {@code transportHint} remains only the coarse transport family. Adapter-
+ * specific wire-frame shapes belong to one adapter only and must not be
+ * treated as the identity of a business or control capability.
  */
 public final class TransportRuntimeRegistry {
 
@@ -32,6 +34,7 @@ public final class TransportRuntimeRegistry {
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final List<TransportBinding> bindings;
+    private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
     private final Map<String, List<TransportBinding>> bindingsByTransportHint;
 
@@ -46,6 +49,7 @@ public final class TransportRuntimeRegistry {
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");
         }
+        this.registrationResolver = TransportRegistrationResolver.fromBindings(this.bindings);
         this.bindingByAdapterId = new LinkedHashMap<>();
         this.bindingsByTransportHint = new LinkedHashMap<>();
         for (TransportBinding binding : this.bindings) {
@@ -62,38 +66,15 @@ public final class TransportRuntimeRegistry {
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        String normalizedTransportHint = WorkerTransportHints.normalize(transportHint);
-        if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
-            String normalizedAdapterId = normalizeAdapterId(requestedAdapterId);
-            TransportBinding binding = bindingByAdapterId.get(normalizedAdapterId);
-            if (binding == null) {
-                throw new IllegalArgumentException("Unsupported worker adapterId '" + normalizedAdapterId
-                        + "'; available adapterIds=" + availableAdapterIds());
-            }
-            if (normalizedTransportHint != null && !normalizedTransportHint.equals(binding.getTransportHint())) {
-                throw new IllegalArgumentException("Worker adapterId '" + normalizedAdapterId
-                        + "' belongs to transportHint '" + binding.getTransportHint()
-                        + "', not '" + normalizedTransportHint + "'");
-            }
-            return binding.getAdapterId();
-        }
-        if (normalizedTransportHint == null) {
-            throw new IllegalArgumentException("transportHint must not be blank");
-        }
-        List<TransportBinding> familyBindings = bindingsByTransportHint.get(normalizedTransportHint);
-        if (familyBindings == null || familyBindings.isEmpty()) {
-            throw new IllegalArgumentException("Unsupported worker transportHint '" + normalizedTransportHint
-                    + "'; available transportHints=" + availableTransportHints());
-        }
-        if (familyBindings.size() > 1) {
-            throw new IllegalArgumentException("worker adapterId must be set when transportHint '"
-                    + normalizedTransportHint + "' matches multiple adapters " + adapterIds(familyBindings));
-        }
-        return familyBindings.get(0).getAdapterId();
+        return registrationResolver.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
     public String resolveWorkerAdapterId(String workerId) {
         return resolveBindingForWorker(requireWorker(workerId)).getAdapterId();
+    }
+
+    public String resolveWorkerTransportHint(String workerId) {
+        return resolveBindingForWorker(requireWorker(workerId)).getTransportHint();
     }
 
     public WorkerAdapter resolveDispatchAdapter(String workerId) {
@@ -167,6 +148,16 @@ public final class TransportRuntimeRegistry {
     private void registerAdapterId(String adapterId, TransportBinding binding) {
         String normalized = normalizeAdapterId(adapterId);
         if (normalized != null) {
+            TransportBinding existing = bindingByAdapterId.get(normalized);
+            if (existing != null && existing != binding) {
+                if (existing.getAdapterId().equals(binding.getAdapterId())) {
+                    throw new IllegalArgumentException("Duplicate worker adapter identity '" + normalized
+                            + "' is registered more than once for adapter '" + binding.getAdapterId() + "'");
+                }
+                throw new IllegalArgumentException("Duplicate worker adapter identity '" + normalized
+                        + "' is claimed by adapters '" + existing.getAdapterId()
+                        + "' and '" + binding.getAdapterId() + "'");
+            }
             bindingByAdapterId.put(normalized, binding);
         }
     }

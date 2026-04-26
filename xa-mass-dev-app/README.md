@@ -71,7 +71,7 @@ Startup behavior:
 - gated by `mock.client.auto-start=true`
 - triggered by `ApplicationReadyEvent`
 - discovers mock clients from SDK-registered `Worker` resources
-- only opens WebSocket clients for workers with `onlineStrategy` compatible with `realtime` / `websocket`
+- only opens WebSocket clients for workers whose concrete `adapterId` is `websocket`
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
 - there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
@@ -90,6 +90,7 @@ Current fixture behavior:
 
 Default worker fixtures now carry a small executor profile:
 
+- `adapterId=websocket` for WebSocket-backed dev workers
 - `onlineStrategy=realtime` for WebSocket-backed dev workers
 - worker attributes such as `runtime`, `workerType`, `region`, and `lane`
 - worker-context attributes such as `country` and `network`
@@ -103,7 +104,7 @@ Auto-started mock WebSocket clients intentionally behave like lightweight execut
 - task responses use a deterministic small delay with stable jitter, so local runs exercise asynchronous result handling without random flakiness
 - `mock.delay.response` remains the explicit override for fault-injection tests
 - result payloads keep the legacy `status` and `mockData` fields for compatibility
-- result payloads also include `execution` metadata with timing, retry count, task id, message id, project, and transport
+- result payloads also include `execution` metadata with timing, retry count, task id, message id, project, `adapterId`, and `transportHint`
 - result payloads include `workerProfile` metadata with worker id and local mock runtime details
 
 The extra payload fields are observability data for dev-app realism. Existing lifecycle decisions still come from the task kernel, attempts, and result status.

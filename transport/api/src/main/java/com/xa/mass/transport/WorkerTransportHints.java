@@ -9,8 +9,9 @@ import java.util.Locale;
  *
  * <p>Compatibility labels such as {@code websocket}, {@code ws},
  * {@code push}, {@code pull}, and {@code queue} are normalized into the
- * stable transport identities exposed by this class. Runtime code should
- * treat the normalized value as the only transport identity truth.
+ * stable transport families exposed by this class. These values are coarse
+ * transport hints only; concrete runtime routing and worker identity must use
+ * adapter-owned {@code adapterId}.
  */
 public final class WorkerTransportHints {
 

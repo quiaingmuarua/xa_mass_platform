@@ -5,13 +5,11 @@ import com.xa.mass.starter.transport.CompositeWorkerEndpointRegistry;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
 import com.xa.mass.starter.transport.TransportAdapterContribution;
+import com.xa.mass.starter.transport.TransportAdapterDescriptor;
 import com.xa.mass.starter.transport.TransportBinding;
-import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.model.WorkerTransportMessage;
-import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 
 /**
@@ -23,6 +21,15 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     public WebSocketTransportAdapterBootstrap(WebSocketAdapterConfig config) {
         this.config = new WebSocketAdapterConfig(config);
+    }
+
+    @Override
+    public TransportAdapterDescriptor descriptor() {
+        return new TransportAdapterDescriptor(
+                com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                com.xa.mass.transport.WorkerTransportHints.REALTIME,
+                java.util.Set.of("ws")
+        );
     }
 
     @Override
@@ -48,22 +55,12 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             contribution.managedTransportAdapter(managedTransportAdapter);
         }
 
-        if (config.isServerEnabled()) {
-            TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
-                    config.getTransportServerFactory();
-            TransportServer transportServer = transportServerFactory == null
-                    ? WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                    config.getServerPort(),
-                    config.getEndpointPath(),
-                    dispatcherContext,
-                    endpointRegistry
-            )
-                    : transportServerFactory.create(new TransportServerFactoryContext(
-                    endpointRegistry,
-                    new WebSocketInputProcessor(dispatcherContext)::process,
-                    config.getServerPort(),
-                    config.getEndpointPath()
-            ));
+        TransportServer transportServer = WebSocketEmbeddedRuntimeSupport.createTransportServer(
+                config,
+                dispatcherContext,
+                endpointRegistry
+        );
+        if (transportServer != null) {
             contribution.transportServer(transportServer);
         }
 

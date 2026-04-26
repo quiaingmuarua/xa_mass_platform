@@ -93,7 +93,7 @@ app.pullWorker("crawler-worker-1").connect();
 
 `supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
 
-`transportHint` is required for worker registration. The runtime no longer guesses a default dispatch transport from WebSocket-adapter presence or adapter order. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off the canonical transport hint instead.
+`transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. If a transport family has exactly one assembled adapter, omitted `adapterId` can still resolve through that metadata; once a family has multiple adapters, registration fails fast until `adapterId` is explicit. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
@@ -230,16 +230,36 @@ deprecated advanced embedding helpers only. Embedded-runtime mainline should
 snapshot config into `TransportRuntimeComposition`, then use adapter-owned
 bootstrap/contribution assembly for the default WebSocket-backed path, or
 provide an explicit `transportServerFactory(...)` override. Adapter bootstrap
+compatibility helpers on `TransportConfig` now behave only as facades over that
+runtime snapshot path rather than holding separate runtime assembly logic.
+Direct mutation of nested adapter configs under `TransportConfig` also
+invalidates that cached compatibility snapshot, so deprecated helper calls do
+not keep a stale pre-mutation bootstrap/server view.
+Adapter bootstrap
 context now carries only neutral runtime collaborators; shared message
 transporter wiring is compatibility-only and may be absent entirely in
 adapter-native runtimes. Inbound server settings such as port/path are owned
 by the adapter bootstrap instead of being injected by `MassApplication` at
 startup time. Builder-level mainline should configure that bundled adapter
 explicitly via `transport(... -> webSocketAdapter(...))` rather than treating
-those settings as runtime-global transport facts.
+those settings as runtime-global transport facts. Read-side compatibility
+helpers on `TransportConfig` / `TransportRuntimeComposition` that expose
+transport-global WebSocket server settings are likewise compat-only; mainline
+inspection should read adapter-owned config snapshots instead.
+Pre-start worker registration resolution now also comes from adapter-owned
+transport descriptors exposed through runtime composition; if a custom worker
+transport runtime factory does not expose that metadata, worker registration
+must provide explicit `adapterId` before the runtime is started.
+Custom primary transport bootstraps are resolved from their own descriptor
+metadata rather than from the bundled WebSocket enable flag, so swapping the
+primary adapter does not silently erase pre-start registration identity.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: WebSocket adapter config and dispatcher internals are not part of the
 supported embedding surface. `getWebSocketMessageDispatcher()` now returns only
 the deprecated compatibility shell, not a queue-driven runtime mainline.
+`MassWebSocketAdapter` itself no longer carries separate endpoint-runtime logic;
+it only delegates lifecycle to the adapter-owned managed runtime shell.
+`getWebSocketConfig()` now returns only a snapshot copy of bundled WebSocket
+adapter settings rather than a live transport config object.
 `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
 deprecated: record-service and assignment-loop internals stay engine-owned.
