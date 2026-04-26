@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -52,7 +53,29 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, attemptId={}, taskId={}, messageId={}",
                 envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(), envelope.getAttemptId(),
                 report.getTaskId(), report.getMessageId());
+        validateAttemptIdentity(envelope, report);
         return ingest(report);
+    }
+
+    private void validateAttemptIdentity(TransportResultEnvelope envelope, TaskResultReport report) {
+        String attemptId = envelope.getAttemptId();
+        if (attemptId == null) {
+            return;
+        }
+        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(report.getTaskId(), report.getMessageId());
+        if (activeAttempt == null) {
+            logger.warn("Result envelope attempt identity could not be validated because no active attempt exists: taskId={}, messageId={}, envelopeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), attemptId, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
+            return;
+        }
+        if (!attemptId.equals(activeAttempt.getAttemptId())) {
+            logger.warn("Result envelope attempt identity mismatch: taskId={}, messageId={}, envelopeAttemptId={}, activeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), attemptId, activeAttempt.getAttemptId(),
+                    envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
+            return;
+        }
+        logger.debug("Result envelope attempt identity validated: taskId={}, messageId={}, attemptId={}, adapterId={}, workerId={}, endpointId={}",
+                report.getTaskId(), report.getMessageId(), attemptId, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
     }
 
     private String resolveEventCode(String taskId) {

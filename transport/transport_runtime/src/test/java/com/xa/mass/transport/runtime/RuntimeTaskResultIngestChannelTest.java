@@ -131,6 +131,26 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
     }
 
+    @Test
+    void mismatchedEnvelopeAttemptIdentityStillDelegatesDuringLogOnlyStage() {
+        Task task = createRunningTask("task-envelope-attempt-mismatch");
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "worker-1",
+                "wrong-attempt",
+                null,
+                report(task, taskMsg, "SUCCESS", "ok-mismatch", null)
+        ));
+
+        assertTrue(handled);
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
+    }
+
     private Task createRunningTask(String taskName) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
