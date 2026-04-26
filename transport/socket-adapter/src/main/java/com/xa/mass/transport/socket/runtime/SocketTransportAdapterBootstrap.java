@@ -95,9 +95,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
         @Override
         public boolean supports(String workerId, String workerAdapterId) {
-            return adapterId().equalsIgnoreCase(workerAdapterId == null ? "" : workerAdapterId.trim())
-                    && workerId != null
-                    && !workerId.isBlank()
+            return supportsAdapter(workerAdapterId)
+                    && hasWorkerId(workerId)
                     && sessionManager.isWorkerOnline(workerId);
         }
 

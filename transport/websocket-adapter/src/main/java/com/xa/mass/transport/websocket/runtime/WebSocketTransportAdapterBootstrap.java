@@ -102,9 +102,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         @Override
         public boolean supports(String workerId, String workerAdapterId) {
-            return adapterId().equalsIgnoreCase(workerAdapterId == null ? "" : workerAdapterId.trim())
-                    && workerId != null
-                    && !workerId.isBlank()
+            return supportsAdapter(workerAdapterId)
+                    && hasWorkerId(workerId)
                     && endpointRegistry.isWorkerOnline(workerId);
         }
 

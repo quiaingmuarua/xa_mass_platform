@@ -20,9 +20,23 @@ public interface RawWorkerMessageChannel {
      * given worker under the current runtime state.
      */
     default boolean supports(String workerId, String workerAdapterId) {
+        return supportsAdapter(workerAdapterId);
+    }
+
+    /**
+     * Returns whether the requested adapter id resolves to this side-channel.
+     */
+    default boolean supportsAdapter(String workerAdapterId) {
         return adapterId() != null
                 && workerAdapterId != null
                 && adapterId().equalsIgnoreCase(workerAdapterId.trim());
+    }
+
+    /**
+     * Returns whether a worker id can be used for endpoint lookup.
+     */
+    default boolean hasWorkerId(String workerId) {
+        return workerId != null && !workerId.isBlank();
     }
 
     /**
