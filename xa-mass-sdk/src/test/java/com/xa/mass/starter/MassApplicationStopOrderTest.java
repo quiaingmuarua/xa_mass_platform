@@ -18,6 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
@@ -182,6 +183,27 @@ class MassApplicationStopOrderTest {
         }
     }
 
+    @Test
+    void startFailureCleansUpInitializedRuntimeResources() {
+        List<String> order = new ArrayList<>();
+        ManagedTransportAdapter adapter = new RecordingManagedTransportAdapter(order, "adapter-stop");
+        FailingTransportServer transportServer = new FailingTransportServer(order);
+        TransportConfig transport = disabledTransportWithQueues();
+        transport.addSupplementalTransportAdapterBootstrap(new StaticManagedAdapterBootstrap(adapter));
+        transport.addSupplementalTransportAdapterBootstrap(new StaticTransportServerBootstrap(transportServer));
+
+        MassApplication app = new MassApplication(null, transport, disabledEngine());
+
+        RuntimeException failure = assertThrows(RuntimeException.class, app::start);
+
+        assertTrue(failure.getMessage().contains("Failed to start Mass Application"));
+        assertFalse(app.isRunning());
+        assertEquals(List.of("server-start", "adapter-stop", "server-stop"), order);
+        assertEquals(false, ((java.util.Map<?, ?>) app.getTransportQueueDetail().get("deliveryQueue")).get("available"));
+        assertEquals(false, ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) app.getTransportQueueDetail()
+                .get("runtimeExecutors")).get("transport")).get("available"));
+    }
+
     // ---- helpers ----
 
     private TransportConfig enabledWebSocket() {
@@ -327,6 +349,30 @@ class MassApplicationStopOrderTest {
 
         private boolean wasStopped() {
             return stopped;
+        }
+    }
+
+    private static final class FailingTransportServer implements TransportServer {
+        private final List<String> order;
+
+        private FailingTransportServer(List<String> order) {
+            this.order = order;
+        }
+
+        @Override
+        public void start() {
+            order.add("server-start");
+            throw new IllegalStateException("server failed");
+        }
+
+        @Override
+        public void stop() {
+            order.add("server-stop");
+        }
+
+        @Override
+        public boolean isRunning() {
+            return false;
         }
     }
 }

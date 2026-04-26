@@ -93,6 +93,7 @@ public class MassApplication {
             logger.info("Mass Application started successfully");
         } catch (Exception e) {
             running.set(false);
+            cleanupAfterFailedStart(e);
             LogUtils.clearMdc();
             logger.error("Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
@@ -128,6 +129,47 @@ public class MassApplication {
         } catch (Exception e) {
             LogUtils.clearMdc();
             logger.error("Error stopping Mass Application", e);
+        }
+    }
+
+    private void cleanupAfterFailedStart(Exception startupFailure) {
+        try {
+            stopManagedTransportAdapters();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop managed transport adapters after startup failure", cleanupError);
+        }
+        try {
+            if (engine != null && engineConfig.isEnabled()) {
+                engine.stop();
+            }
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop engine after startup failure", cleanupError);
+        }
+        try {
+            stopTransportServers();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop transport servers after startup failure", cleanupError);
+        }
+        try {
+            stopTransportDeliveryService();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop transport delivery service after startup failure", cleanupError);
+        }
+        try {
+            stopTransportRuntimeTaskExecutor();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop transport runtime executor after startup failure", cleanupError);
+        }
+        try {
+            stopEventRuntimeTaskExecutor();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop event runtime executor after startup failure", cleanupError);
         }
     }
 
