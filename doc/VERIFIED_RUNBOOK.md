@@ -186,6 +186,27 @@ Boot-shell E2E:
 
 Use this when the change touches result write-back, logical message finality, worker release, redispatch, or single-worker reuse.
 
+Cross-language external worker samples:
+
+```bash
+./scripts/run-external-worker-samples.sh
+```
+
+This lane proves the public third-party worker references still work as real
+external processes across:
+
+- polling + websocket + socket
+- Node.js + Java
+- worker online/offline perception
+- task dispatch, result ingest, and terminal convergence
+- realtime adapter coexistence without cross-routing
+
+CI shape:
+
+- PR/push gate: `.github/workflows/external-worker-samples.yml`
+- manual rerun: GitHub Actions `workflow_dispatch`
+- scheduled run: daily at `18:00 UTC` (`02:00` Asia/Shanghai on the next calendar day)
+
 Engine concurrency acceptance:
 
 ```bash

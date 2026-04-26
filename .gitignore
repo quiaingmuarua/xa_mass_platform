@@ -43,3 +43,23 @@ cursor.rules
 .DS_Store
 **/.DS_Store
 /.claude/
+
+### Local runtime/test artifacts ###
+*.log
+*.log.*
+/.codex-root-test.log
+__pycache__/
+*.py[cod]
+*$py.class
+
+### Local environment and secrets ###
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.local
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore

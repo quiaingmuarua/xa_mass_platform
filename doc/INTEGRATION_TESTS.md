@@ -146,6 +146,10 @@ Assignment and capacity:
 - `TaskApiMultiRoundDispatchIntegrationTest`
 - `NodeWebSocketWorkerBlackBoxIntegrationTest`
 - `NodePollingWorkerBlackBoxIntegrationTest`
+- `NodeSocketWorkerBlackBoxIntegrationTest`
+- `JavaPollingWorkerBlackBoxIntegrationTest`
+- `JavaWebSocketWorkerBlackBoxIntegrationTest`
+- `JavaSocketWorkerBlackBoxIntegrationTest`
 - `TaskApiSingleWorkerReuseIntegrationTest`
 - `TaskApiTerminateReuseIntegrationTest`
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
@@ -188,6 +192,9 @@ Important support coverage outside the E2E package:
 
 - create, approve, assign, dispatch, result write-back, and terminal convergence work through the real runtime
 - failure-path result write-back still converges to terminal closure
+- public third-party worker references remain runnable as real Node/Java external processes across polling, websocket, and socket adapters
+- realtime worker control-plane registration does not falsely imply online presence
+- websocket and socket workers can coexist under the same realtime family without cross-routing
 - reject/approve, pause/resume, running terminate, and delete guards are covered through real HTTP flows
 - paused tasks can still close to `TERMINAL` after real callbacks arrive
 - duplicate callback replay is idempotent

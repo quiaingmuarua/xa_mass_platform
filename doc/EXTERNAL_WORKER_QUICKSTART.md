@@ -1,47 +1,36 @@
 # External Worker Quickstart
 
-This document is the shortest runnable path for a third-party language worker.
+This document is the shortest current runbook for third-party workers that stay
+outside the Java SDK process.
 
 Current mainline:
 
-- external workers are polling workers
-- business execution still enters through `POST /status/api/tasks`
-- worker capability identity is global `eventCode`
-- external workers do not receive direct WebSocket-adapter control/business frames
+- polling, websocket, and socket are all active external worker validation paths
+- `transportHint` is the coarse family, `adapterId` is the concrete runtime route
+- task creation still enters through `POST /status/api/tasks`
+- capability identity is global `eventCode`
+- transport adapters deliver work; they do not redefine kernel task semantics
 
-Use this when you want a Node, Python, or Go process to join the platform without embedding the Java SDK.
+Use this when you want to validate a real external worker process in Node, Java,
+or another language without depending on in-JVM helpers.
 
-## 1. Runtime Shape
+## 1. Common Runtime Rules
 
-One external worker participates through three explicit steps:
+Every external worker path is expected to follow the same scheduling truth:
 
-1. register worker capability with `eventBindings`
-2. mark presence with `online` and `heartbeat`
-3. poll `TaskDispatchItem`, execute by `eventCode`, and submit `TaskResultReport`
+1. register worker capability through control-plane registration
+2. establish presence through the adapter-specific transport path
+3. receive canonical task dispatch, execute by `eventCode`, and submit result
 
-That means:
+What must stay true:
 
-- the worker is not a WebSocket protocol client
-- the worker does not speak WebSocket-adapter tuple routing
-- the worker never bypasses engine scheduling
-- targeting and routing still happen through task create plus normal engine matching
+- control-plane registration is not equivalent to being online
+- engine scheduling remains the only path that gives work to the worker
+- the worker should route locally by `eventCode`, not by transport-specific frame names
+- `adapterId` decides the concrete adapter route; `transportHint` remains the family hint
+- task completion still converges through normal result ingest into `TERMINAL`
 
-## 2. Dev-App Demo Credentials
-
-The verified dev runtime `com.xa.mass.mock.MockApplicationSpringBootApp` seeds a minimal crawler demo pair:
-
-- task submitter credential: `crawler-submitter-key`
-- worker polling credential: `node-worker-key`
-
-Bound scope:
-
-- project: `crawlerApp`
-- eventCode: `crawler.fetch-page`
-- workerId: `node-worker-api-001`
-
-These are development-only fixtures for local verification. They are not a production auth model.
-
-## 3. Start The Dev Runtime
+## 2. Start The Dev Runtime
 
 From repo root:
 
@@ -51,26 +40,46 @@ java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
-Default local base URL:
+Default local endpoints:
 
 ```text
-http://127.0.0.1:8088
+HTTP base URL:   http://127.0.0.1:8088
+WebSocket URL:   ws://127.0.0.1:18088/ws
+Socket host:     127.0.0.1
+Socket port:     18089
 ```
 
-## 4. Run The Node Worker
+If you need a stable local walkthrough instead of the test harness, prefer the
+sample-specific README under `samples/`.
 
-Requirements:
+## 3. Sample Matrix
 
-- Node.js 18 or newer
-- dev runtime already started
+| Path | Language | adapterId | transportHint | Startup |
+| --- | --- | --- | --- | --- |
+| `samples/worker-polling/node` | Node.js | `polling` | `polling` | `node samples/worker-polling/node/worker.mjs` |
+| `samples/worker-polling/java` | Java | `polling` | `polling` | `java -jar samples/worker-polling/java/target/worker-polling-java-sample.jar` |
+| `samples/worker-websocket/node` | Node.js | `websocket` | `realtime` | `node samples/worker-websocket/node/worker.mjs` |
+| `samples/worker-websocket/java` | Java | `websocket` | `realtime` | `java -jar samples/worker-websocket/java/target/worker-websocket-java-sample.jar` |
+| `samples/worker-socket/node` | Node.js | `socket` | `realtime` | `node samples/worker-socket/node/worker.mjs` |
+| `samples/worker-socket/java` | Java | `socket` | `realtime` | `java -jar samples/worker-socket/java/target/worker-socket-java-sample.jar` |
 
-Example:
+## 4. Polling Path
 
-```bash
-node samples/worker-polling/node/worker.mjs
+Polling workers are the fully external HTTP contract under `/worker-api/*`.
+
+Verified demo fixture defaults:
+
+```text
+submitter credential: crawler-submitter-key
+worker credential:    node-worker-key
+project:              crawlerApp
+eventCode:            crawler.fetch-page
+workerId:             node-worker-api-001
+adapterId:            polling
+transportHint:        polling
 ```
 
-Default environment used by the script:
+Default Node environment:
 
 ```text
 MASS_BASE_URL=http://127.0.0.1:8088
@@ -80,21 +89,81 @@ MASS_PROJECT=crawlerApp
 MASS_EVENT_CODE=crawler.fetch-page
 ```
 
-What the script does:
+Default Java environment:
+
+```text
+MASS_BASE_URL=http://127.0.0.1:8088
+MASS_WORKER_ID=java-worker-api-001
+MASS_WORKER_KEY=java-worker-key
+MASS_PROJECT=crawlerApp
+MASS_EVENT_CODE=crawler.fetch-page
+```
+
+Polling control/data flow:
 
 1. `POST /worker-api/workers/register`
-2. `POST /worker-api/worker-contexts/register`
+2. optional `POST /worker-api/worker-contexts/register`
 3. `POST /worker-api/workers/{workerId}/online`
 4. repeated `POST /worker-api/workers/{workerId}/heartbeat`
 5. repeated `POST /worker-api/workers/{workerId}/poll`
 6. `POST /worker-api/workers/{workerId}/results`
 7. `POST /worker-api/workers/{workerId}/offline` on shutdown
 
-## 5. Submit A Demo Task
+Polling dispatch contract:
 
-The producer side still goes through the normal task API.
+```json
+{
+  "taskId": "...",
+  "messageId": "...",
+  "workerId": "node-worker-api-001",
+  "eventCode": "crawler.fetch-page",
+  "input": {
+    "url": "https://example.com"
+  },
+  "sharedConfig": {
+    "routingCode": "us"
+  }
+}
+```
 
-Example:
+## 5. Realtime Paths
+
+Realtime workers still rely on control-plane registration, but online presence
+comes from the concrete adapter connection.
+
+### WebSocket
+
+- `adapterId=websocket`
+- `transportHint=realtime`
+- worker startup sends no HTTP polling calls
+- the connection URL carries `workerId`
+- the worker accepts canonical task-dispatch frames and returns canonical task-result frames
+
+Default environment:
+
+```text
+WORKER_ID=node-worker-realtime-001
+WS_URL=ws://127.0.0.1:18088/ws
+```
+
+### Socket
+
+- `adapterId=socket`
+- `transportHint=realtime`
+- worker opens a plain socket connection, sends a hello frame, then waits for task dispatch
+- no websocket compatibility fallback is part of this path
+
+Default environment:
+
+```text
+WORKER_ID=node-worker-socket-001
+SOCKET_HOST=127.0.0.1
+SOCKET_PORT=18089
+```
+
+## 6. Task Submission
+
+Producer traffic still goes through the normal task API:
 
 ```bash
 curl -X POST http://127.0.0.1:8088/status/api/tasks \
@@ -125,91 +194,40 @@ curl -X POST "http://127.0.0.1:8088/status/api/tasks/<taskId>/audit?approved=tru
 
 Expected behavior:
 
-- engine matches the task by `eventCode`
-- the polling worker receives a `TaskDispatchItem`
-- the Node handler fetches the page
-- result is written back through `TaskMsg.output`
+- task remains `READY` while no matching external worker is online
+- once the right adapter-backed worker is online, dispatch reaches that worker
+- output carries the sample identity through `integrationProbe` and/or `workerProfile`
 - task converges to `TERMINAL`
+- worker returns offline after process shutdown or transport disconnect
 
-## 6. Minimal Protocol Contract
+## 7. Black-Box Acceptance
 
-External worker registration request:
+Current executable acceptance coverage:
 
-```json
-{
-  "workerId": "node-worker-api-001",
-  "workerGroupId": "node-runtime",
-  "attributes": {
-    "lang": "node"
-  },
-  "eventBindings": [
-    {
-      "eventCode": "crawler.fetch-page",
-      "projectCodes": ["crawlerApp"]
-    }
-  ]
-}
-```
+- `NodePollingWorkerBlackBoxIntegrationTest`
+- `JavaPollingWorkerBlackBoxIntegrationTest`
+- `NodeWebSocketWorkerBlackBoxIntegrationTest`
+- `JavaWebSocketWorkerBlackBoxIntegrationTest`
+- `NodeSocketWorkerBlackBoxIntegrationTest`
+- `JavaSocketWorkerBlackBoxIntegrationTest`
 
-Polled item shape to care about:
+These tests verify:
 
-```json
-{
-  "taskId": "...",
-  "messageId": "...",
-  "workerId": "node-worker-api-001",
-  "eventCode": "crawler.fetch-page",
-  "input": {
-    "url": "https://example.com"
-  },
-  "sharedConfig": {
-    "routingCode": "us"
-  }
-}
-```
+- registration and transport presence are distinct
+- worker online/offline state is observable by runtime
+- task dispatch and result ingest stay on the engine mainline
+- `websocket` and `socket` can coexist under the same `realtime` family without cross-routing
+- sample outputs identify which external worker actually handled the task
 
-Contract note:
+## 8. Extending To Another Language
 
-- `TaskDispatchItem.input` is the normalized logical payload for the worker handler
-- SDK-internal payload wrappers such as `{ "type": "json", "data": ... }` are not part of the worker contract
-
-Result submit shape:
-
-```json
-{
-  "taskId": "...",
-  "messageId": "...",
-  "success": true,
-  "detail": "crawler-success",
-  "output": {
-    "url": "https://example.com",
-    "statusCode": 200,
-    "title": "Example Domain"
-  }
-}
-```
-
-## 7. Handler Model
-
-The worker should dispatch locally by `eventCode`.
-
-That is the key point:
-
-- capability registration is `eventBindings[].eventCode`
-- polled work identity is `TaskDispatchItem.eventCode`
-- local execution switch is `eventCode`
-- worker capability matching in the engine is `supportedEventCodes`
-
-Do not build a second routing model around WebSocket-adapter frame type or transport adapter details.
-
-## 8. Extending Beyond Node
-
-For Python, Go, Rust, or any other language, keep the same shape:
+For Python, Go, Rust, or another language, keep the same contract shape:
 
 - one process-level worker identity
-- declare capability with `eventBindings`
-- optional worker context if routing needs it
+- explicit `adapterId + transportHint` at registration time
+- capability registration through `eventBindings`
 - local handler map keyed by `eventCode`
-- task result callback with `taskId + messageId`
+- canonical task-result callback keyed by `taskId + messageId`
 
-Only the local HTTP client and handler implementation changes.
+Do not build a second routing model around websocket tuple history, deprecated
+frame fields, or adapter-specific business semantics.

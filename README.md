@@ -189,13 +189,15 @@ app.createTask(MassTaskCreateRequest.builder()
 
 Third-party worker note:
 
-- Official non-Java worker entry is the external polling worker API under `/worker-api`
+- External worker validation mainline now includes polling, websocket, and socket samples under `samples/`
+- polling workers use the external HTTP worker API under `/worker-api`
 - `/worker-api` requires an SDK credential whose permissions include `worker:poll` and whose attributes bind `workerId`
+- realtime workers still register capability through the control plane, but become online only after the concrete adapter connection is established
 - external workers register capability through `eventBindings`, not adapter-internal frame types
-- external workers receive `TaskDispatchItem`, execute locally by `eventCode`, and submit `TaskResultReport`
+- external workers route locally by `eventCode` and keep `adapterId + transportHint` explicit in the registration model
+- polling workers receive `TaskDispatchItem` and submit `TaskResultReport`; realtime workers receive canonical task-dispatch frames and submit canonical task-result frames
 - `TaskDispatchItem.input` is the logical per-item payload; transport does not expose SDK-internal wrapper shapes such as `{type,data}`
-- external workers do not receive direct business/control events outside the task lifecycle
-- runnable third-party worker samples and local verification paths live in [`samples/`](./samples/), [`doc/EXTERNAL_WORKER_QUICKSTART.md`](./doc/EXTERNAL_WORKER_QUICKSTART.md), and [`samples/worker-polling/node/worker.mjs`](./samples/worker-polling/node/worker.mjs)
+- runnable third-party worker samples and validation runbooks live in [`samples/`](./samples/) and [`doc/EXTERNAL_WORKER_QUICKSTART.md`](./doc/EXTERNAL_WORKER_QUICKSTART.md)
 
 Module boundary note:
 

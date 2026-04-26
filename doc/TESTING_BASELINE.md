@@ -28,6 +28,7 @@ Keep the layers distinct:
 | `module` | guard one module boundary or helper contract | one module family | support |
 | `SDK embedded harness` | exercise real SDK registration/runtime composition without Boot shell | embedded runtime + polling/WebSocket worker transports | support |
 | `Boot-shell E2E` | prove the real runtime path converges through `xa-mass-dev-app` | HTTP + runtime + transport + persistence projection | core |
+| `cross-language sample black-box` | prove public third-party worker references stay runnable and scheduler-correct | external Node/Java processes across polling/realtime adapters | core |
 | `concurrency` | prove race-heavy paths converge to an allowed stable state | result/retry/expiry/release/redispatch races | core |
 | `perf` | expose hot-path cost, storage pressure, and throughput regressions | engine hot paths and queue-like pressure | core |
 | `chaos` | prove the platform degrades and recovers under disruptive conditions | disconnects, delays, restarts, dropped callbacks, queue jitter | planned core robustness lane |
@@ -35,6 +36,7 @@ Keep the layers distinct:
 Working rule:
 
 - `E2E`, `concurrency`, and `perf` are the current runnable core acceptance stack
+- `cross-language sample black-box` is a core acceptance lane for third-party worker validation, even though it runs through the Boot-shell app
 - `chaos` is important, but should stay a scheduled or release-oriented lane until the suite is stable and deterministic enough to trust
 - `invariant` and `module` tests matter, but they are not sufficient evidence that the platform is ready
 
@@ -43,6 +45,7 @@ Working rule:
 Current runnable acceptance entry points:
 
 - `Boot-shell E2E`: `xa-mass-dev-app`
+- `cross-language sample black-box`: `xa-mass-dev-app`
 - `concurrency`: `xa-mass-engine`
 - `perf`: `xa-mass-testing`
 - `SDK embedded harness`: `xa-mass-testing`
@@ -52,6 +55,7 @@ Current command entry points:
 
 - see [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) for copy-paste commands
 - see [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md) for point-specific commands
+- use `./scripts/run-external-worker-samples.sh` for the third-party worker validation lane
 - converge new cross-cutting harnesses into `xa-mass-testing`; keep engine-local deterministic race tests in `xa-mass-engine` until they no longer need engine-internal proximity
 - use the SDK embedded harness when you need real SDK registration plus transport-aware scheduling pressure without the heavier Boot-shell app context
 
@@ -67,6 +71,7 @@ Do not collapse every lane into one required gate.
 | --- | --- | --- |
 | `invariant` / `module` | PR required | cheap, deterministic, high signal for local regressions |
 | focused `Boot-shell E2E` | PR required | mainline runtime acceptance must stay green on each change |
+| `cross-language sample black-box` | PR required plus nightly scheduled | guards public third-party worker references against in-repo transport shortcuts or hidden assumptions |
 | deterministic `concurrency` subset | PR required when the touched path is race-sensitive | catches double-finalize, release races, callback ordering regressions early |
 | `perf` smoke | PR optional or non-blocking | useful signal, but CI machine variance should not block every PR |
 | heavier `concurrency` matrix | nightly or release | broader race matrices cost more time and are less stable under shared CI noise |
@@ -82,14 +87,16 @@ PR rule:
 
 Current CI wiring is still simpler than the recommended target.
 
-From [../.github/workflows/maven.yml](../.github/workflows/maven.yml):
+From [../.github/workflows/maven.yml](../.github/workflows/maven.yml) and [../.github/workflows/external-worker-samples.yml](../.github/workflows/external-worker-samples.yml):
 
 - `build`: broad `./mvnw -B test`
 - `lifecycle-integration`: focused `xa-mass-dev-app` lifecycle integration subset
+- `cross-language-blackbox`: explicit external worker sample regression through `./scripts/run-external-worker-samples.sh` on PR/push plus a scheduled daily run
 
 This means:
 
 - the repo already treats `E2E`-style runtime checks as CI-significant
+- cross-language sample validation is now an explicit CI-visible lane instead of only being implicitly covered by broad test execution
 - `concurrency`, `perf`, and `chaos` lane placement is still only partially expressed in workflow structure
 - document the intended lane placement now, then evolve CI wiring later without losing the test-system shape
 

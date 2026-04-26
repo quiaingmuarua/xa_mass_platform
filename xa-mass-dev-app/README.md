@@ -213,6 +213,12 @@ Transport-focused regression command:
 mvn --% -pl xa-mass-dev-app -am -Dtest=MockWorkerSocketClientTest,SocketClientStarterTest,SocketTaskApiIntegrationTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
+Cross-language sample black-box regression:
+
+```bash
+./scripts/run-external-worker-samples.sh
+```
+
 Covered areas:
 
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
