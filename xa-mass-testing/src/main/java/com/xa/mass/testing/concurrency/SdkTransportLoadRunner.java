@@ -137,7 +137,9 @@ public final class SdkTransportLoadRunner {
                 long wallNanos = System.nanoTime() - wallStartNanos;
                 FinalTaskStats finalTaskStats = collectFinalTaskStats(app, taskIds);
                 FinalMessageStats finalMessageStats = collectFinalMessageStats(app, taskIds);
-                Path reportPath = writeReport(config, runtime, finalTaskStats, finalMessageStats, wallNanos, metrics.snapshot());
+                DeliveryQueueSnapshot deliveryQueue = collectDeliveryQueueSnapshot(app, finalMessageStats.totalMessages());
+                Path reportPath = writeReport(config, runtime, finalTaskStats, finalMessageStats,
+                        deliveryQueue, wallNanos, metrics.snapshot());
 
                 return new LoadReport(
                         config,
@@ -155,6 +157,11 @@ public final class SdkTransportLoadRunner {
                         metrics.receivedDispatchItems.sum(),
                         metrics.resultSubmissions.sum(),
                         metrics.syntheticRetryFailures.sum(),
+                        deliveryQueue.queuedItems(),
+                        deliveryQueue.enqueuedItems(),
+                        deliveryQueue.drainedItems(),
+                        deliveryQueue.backpressureRejectedItems(),
+                        deliveryQueue.oldestQueuedAgeMillis(),
                         metrics.maxReceivedBatchSize.get(),
                         metrics.maxConcurrentProcessing.get(),
                         nanosToMillis(metrics.totalProcessingNanos.sum()),
@@ -321,10 +328,36 @@ public final class SdkTransportLoadRunner {
             return new FinalMessageStats(total, success, failed, expired);
         }
 
+        @SuppressWarnings("unchecked")
+        private DeliveryQueueSnapshot collectDeliveryQueueSnapshot(MassSdkApplication app, long totalMessages) {
+            Map<String, Object> queueDetail = app.getQueueDetail();
+            Map<String, Object> deliveryQueue = (Map<String, Object>) queueDetail.get("deliveryQueue");
+            require(deliveryQueue != null, "deliveryQueue diagnostics should be available");
+            DeliveryQueueSnapshot snapshot = DeliveryQueueSnapshot.from(deliveryQueue);
+            require(snapshot.available(), "deliveryQueue should be available during SDK transport load run");
+            require(snapshot.queuedItems() == 0,
+                    "deliveryQueue should drain to zero after terminal convergence; queued=" + snapshot.queuedItems());
+            require(snapshot.oldestQueuedAgeMillis() == 0,
+                    "deliveryQueue oldest queued age should reset after drain; age=" + snapshot.oldestQueuedAgeMillis());
+            require(snapshot.backpressureRejectedItems() == 0,
+                    "SDK transport load should not hit delivery backpressure; rejected="
+                            + snapshot.backpressureRejectedItems());
+            if (config.transport() == WorkerTransportMode.POLLING) {
+                require(snapshot.enqueuedItems() >= totalMessages,
+                        "polling delivery should enqueue at least every logical message; enqueued="
+                                + snapshot.enqueuedItems() + " total=" + totalMessages);
+                require(snapshot.drainedItems() >= totalMessages,
+                        "polling delivery should drain at least every logical message; drained="
+                                + snapshot.drainedItems() + " total=" + totalMessages);
+            }
+            return snapshot;
+        }
+
         private static Path writeReport(LoadConfig config,
                                         EmbeddedRuntime runtime,
                                         FinalTaskStats finalTaskStats,
                                         FinalMessageStats finalMessageStats,
+                                        DeliveryQueueSnapshot deliveryQueue,
                                         long wallNanos,
                                         RuntimeMetricsSnapshot metrics) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>();
@@ -337,6 +370,7 @@ public final class SdkTransportLoadRunner {
             report.put("wallClock", Map.of("totalMillis", nanosToMillis(wallNanos)));
             report.put("tasks", finalTaskStats.toMap());
             report.put("messages", finalMessageStats.toMap());
+            report.put("deliveryQueue", deliveryQueue.toMap());
             report.put("workerMetrics", metrics.toMap());
 
             Path reportDir = TestingPaths.reportDir("concurrency-reports");
@@ -925,6 +959,11 @@ public final class SdkTransportLoadRunner {
                               long receivedDispatchItems,
                               long resultSubmissions,
                               long syntheticRetryFailures,
+                              long queuedDeliveryItems,
+                              long enqueuedDeliveryItems,
+                              long drainedDeliveryItems,
+                              long backpressureRejectedDeliveryItems,
+                              long oldestQueuedDeliveryAgeMillis,
                               long maxReceivedBatchSize,
                               int maxConcurrentProcessing,
                               double totalProcessingMillis,
@@ -933,7 +972,9 @@ public final class SdkTransportLoadRunner {
             return String.format(Locale.ROOT,
                     "SdkTransportLoad transport=%s port=%d tasks=%d terminal=%d reasons=%s messages=%d success=%d "
                             + "failed=%d expired=%d wall=%.3fms receiveCycles=%d emptyReceiveCycles=%d dispatches=%d "
-                            + "results=%d syntheticRetries=%d maxReceiveBatch=%d maxConcurrentProcessing=%d report=%s",
+                            + "results=%d syntheticRetries=%d deliveryQueued=%d deliveryEnqueued=%d "
+                            + "deliveryDrained=%d deliveryBackpressure=%d deliveryOldestAgeMs=%d "
+                            + "maxReceiveBatch=%d maxConcurrentProcessing=%d report=%s",
                     config.transport().label(),
                     transportPort,
                     createdTasks,
@@ -949,10 +990,62 @@ public final class SdkTransportLoadRunner {
                     receivedDispatchItems,
                     resultSubmissions,
                     syntheticRetryFailures,
+                    queuedDeliveryItems,
+                    enqueuedDeliveryItems,
+                    drainedDeliveryItems,
+                    backpressureRejectedDeliveryItems,
+                    oldestQueuedDeliveryAgeMillis,
                     maxReceivedBatchSize,
                     maxConcurrentProcessing,
                     reportPath
             );
+        }
+    }
+
+    private record DeliveryQueueSnapshot(boolean available,
+                                         long queuedItems,
+                                         long queueCount,
+                                         long waitingPollers,
+                                         long maxQueuedItems,
+                                         long oldestQueuedAgeMillis,
+                                         long enqueuedItems,
+                                         long drainedItems,
+                                         long backpressureRejectedItems,
+                                         long invalidItems,
+                                         long unavailableItems,
+                                         long shutdownClearedItems) {
+        private static DeliveryQueueSnapshot from(Map<String, Object> source) {
+            return new DeliveryQueueSnapshot(
+                    booleanValue(source.get("available")),
+                    longValue(source.get("queuedItems")),
+                    longValue(source.get("queueCount")),
+                    longValue(source.get("waitingPollers")),
+                    longValue(source.get("maxQueuedItems")),
+                    longValue(source.get("oldestQueuedAgeMillis")),
+                    longValue(source.get("enqueuedItems")),
+                    longValue(source.get("drainedItems")),
+                    longValue(source.get("backpressureRejectedItems")),
+                    longValue(source.get("invalidItems")),
+                    longValue(source.get("unavailableItems")),
+                    longValue(source.get("shutdownClearedItems"))
+            );
+        }
+
+        private Map<String, Object> toMap() {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("available", available);
+            values.put("queuedItems", queuedItems);
+            values.put("queueCount", queueCount);
+            values.put("waitingPollers", waitingPollers);
+            values.put("maxQueuedItems", maxQueuedItems);
+            values.put("oldestQueuedAgeMillis", oldestQueuedAgeMillis);
+            values.put("enqueuedItems", enqueuedItems);
+            values.put("drainedItems", drainedItems);
+            values.put("backpressureRejectedItems", backpressureRejectedItems);
+            values.put("invalidItems", invalidItems);
+            values.put("unavailableItems", unavailableItems);
+            values.put("shutdownClearedItems", shutdownClearedItems);
+            return Map.copyOf(values);
         }
     }
 
@@ -970,6 +1063,20 @@ public final class SdkTransportLoadRunner {
             return defaultValue;
         }
         return Boolean.parseBoolean(raw.trim());
+    }
+
+    private static boolean booleanValue(Object value) {
+        return value instanceof Boolean bool && bool;
+    }
+
+    private static long longValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return Long.parseLong(text.trim());
+        }
+        return 0L;
     }
 
     private static double nanosToMillis(long nanos) {
