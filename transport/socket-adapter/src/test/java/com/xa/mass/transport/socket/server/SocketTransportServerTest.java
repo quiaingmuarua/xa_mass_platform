@@ -5,7 +5,10 @@ import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedWriter;
+import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +51,42 @@ class SocketTransportServerTest {
 
         assertFalse(server.isRunning());
         assertNull(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+    }
+
+    @Test
+    void helloFrameRegistersSocketSession() throws Exception {
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
+        SocketSessionManager sessionManager = new SocketSessionManager(null);
+        SocketTransportServer server = new SocketTransportServer(
+                "127.0.0.1",
+                0,
+                10,
+                sessionManager,
+                new SocketTransportFrameCodec(),
+                null,
+                null,
+                executor
+        );
+
+        try {
+            server.start();
+            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\"}");
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> sessionManager.isWorkerOnline("worker-1"),
+                        "hello frame should register worker socket session");
+            }
+        } finally {
+            server.stop();
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
     }
 
     @Test
