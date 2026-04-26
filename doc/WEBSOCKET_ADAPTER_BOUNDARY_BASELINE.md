@@ -7,7 +7,7 @@ Purpose:
 - keep one platform source of truth
 - keep the WebSocket adapter thin
 - the WebSocket adapter module sources live under `transport/websocket-adapter`; current artifact identity is `xa-mass-transport-websocket`, and its Java package identity is `com.xa.mass.transport.websocket.*`
-- keep `xa-mass-transport-api` transport-neutral
+- keep `xa-mass-transport-api` transport-neutral; its module sources now live under `transport/transport_api`
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
 - move default WebSocket bootstrap toward the WebSocket adapter instead of teaching SDK mainline more adapter runtime internals
@@ -22,8 +22,9 @@ Read the platform in four layers:
 - platform truth
   - `engine`: task lifecycle, assignment, retry, timeout, result acceptance, terminal convergence, audit truth
   - `sdk`: runtime composition, registration, event permission, runtime catalog, producer/worker entry
-- transport-neutral runtime contract
+- transport-neutral runtime contract and assembly
   - `transport-api`: dispatch/result/system-event seams, endpoint registry, transport server contracts
+  - `transport-runtime`: adapter binding, routing registry, task-result ingest wiring, raw/control side-channel resolution
 - adapter implementation
   - `websocket-adapter`: WebSocket server, session registry, frame codec, transport forwarding, transport diagnostics
 - worker runtime

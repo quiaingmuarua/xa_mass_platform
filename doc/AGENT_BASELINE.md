@@ -127,13 +127,13 @@ Current canonical boundaries:
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
 - `xa-mass-sdk-api` holds the stable SDK-facing catalog, auth, and request-model types shared with HTTP surfaces.
-- Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
+- Embedded runtime composition now lives inside `xa-mass-sdk`; SDK-facing builder/facade types remain under `com.xa.mass.starter.*`, SDK-owned transport composition now lives under `com.xa.mass.sdk.transport.*`, and shared transport runtime assembly lives under `com.xa.mass.transport.runtime.*`. It is not the primary Boot entry.
 - `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
 - Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-dev-app`.
-- `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
+- `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries. Its module sources now live under `transport/transport_api`.
 - `xa-mass-transport-polling` now holds the default pull/polling worker adapter implementation that `xa-mass-sdk` composes by default.
-- `xa-mass-transport-runtime` now holds the shared transport runtime registry, dispatch listener, and task-result ingest channel used by `xa-mass-sdk`.
+- `xa-mass-transport-runtime` now holds the shared transport runtime registry, dispatch listener, and task-result ingest channel used by `xa-mass-sdk`. Its module sources now live under `transport/transport_runtime`, and its main Java package namespace is `com.xa.mass.transport.runtime.*`.
 - `xa-mass-transport-websocket` should be read as the current WebSocket transport adapter artifact, not as the only valid worker runtime path. Its module sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
 - Read [./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - WebSocket adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.

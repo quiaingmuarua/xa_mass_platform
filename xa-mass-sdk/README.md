@@ -4,7 +4,7 @@
 
 It carries both:
 
-- the embedded runtime composition (`com.xa.mass.starter.*`)
+- the embedded runtime composition, split between SDK-facing builder/facade types (`com.xa.mass.starter.*`), SDK-owned transport composition (`com.xa.mass.sdk.transport.*`), and shared transport runtime assembly (`com.xa.mass.transport.runtime.*`)
 - the consumer-facing SDK facade (`com.xa.mass.sdk.*`)
 
 The runtime composition has been folded into this artifact so library callers
@@ -167,9 +167,11 @@ The returned `MassSdkApplication` exposes:
 
 `com.xa.mass.sdk.*` is the stable public API surface for this artifact.
 
-`com.xa.mass.starter.*` remains available for advanced embedding, but it is a
-lower-level runtime composition layer and does not carry the same compatibility
-commitment as the SDK facade.
+`com.xa.mass.starter.*` remains available for advanced embedding at the builder
+and facade boundary, but it is a lower-level runtime composition layer and does
+not carry the same compatibility commitment as the SDK facade. Transport-owned
+runtime internals now live under `com.xa.mass.transport.runtime.*`, and the SDK
+default transport composition lives under `com.xa.mass.sdk.transport.*`.
 
 Mock/demo bootstrap behavior is intentionally outside the SDK core. Keep custom
 bootstrap code on `MassRuntimeControl`.

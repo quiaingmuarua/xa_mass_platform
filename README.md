@@ -68,7 +68,7 @@ The transport-neutral runtime model is now framed around three channels:
 - Do not treat the embedded runtime classes as a Spring Boot app
 - Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
-- `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
+- `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries; module sources live under `transport/transport_api`
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
 - `xa-mass-sdk` is also the SDK-first resource entry for project/event metadata, task creation, and worker registration; runtime project validation now flows through a core project registry seeded by defaults and extended by SDK registration
 - global SDK event codes are the mainline capability identity for dispatch, permissions, and worker capability declarations; project membership remains scope metadata rather than part of the identity key
@@ -112,9 +112,9 @@ Primary endpoints:
 - `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk` and exposes the current HTTP control console and JSON APIs through `xa-mass-web`
 - `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
 - `xa-mass-sdk-api`: stable SDK-facing catalog/auth/model contract shared by `xa-mass-sdk` and `xa-mass-web`
-- `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
+- `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries; sources live under `transport/transport_api`
 - `xa-mass-transport-polling`: pull/polling worker adapter module used by the default SDK composition
-- `xa-mass-transport-runtime`: shared transport runtime assembly used by the SDK composition
+- `xa-mass-transport-runtime`: shared transport runtime assembly used by the SDK composition; sources live under `transport/transport_runtime`, and its main Java package is `com.xa.mass.transport.runtime.*`
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-transport-websocket`: current WebSocket task transport adapter plus dispatch runtime; module sources live under `transport/websocket-adapter`, and its Java package identity is `com.xa.mass.transport.websocket.*`
@@ -206,7 +206,7 @@ Module boundary note:
 - `xa-mass-dev-app` uses `xa-mass-sdk` as its runtime entry and keeps `xa-mass-web` explicit because the current mock app also serves REST APIs and the backend-hosted control console shell
 - `xa-mass-web` currently depends on both `xa-mass-sdk` and `xa-mass-sdk-api`: SDK runtime/auth/task operations come from `xa-mass-sdk`, while shared SDK-facing metadata and request shapes also live in `xa-mass-sdk-api`
 - avoid making `xa-mass-sdk` depend on API/UI modules; that would make third-party SDK consumers pull demo web surfaces unnecessarily
-- embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`
+- embedded runtime composition now lives inside `xa-mass-sdk`, with SDK-facing builder/facade types under `com.xa.mass.starter.*`, SDK-owned transport composition under `com.xa.mass.sdk.transport.*`, and shared transport runtime assembly under `com.xa.mass.transport.runtime.*`
 - if an older doc references removed modules or archive code, treat that as historical drift rather than something missing from the current repo
 
 ## Documentation Layout
