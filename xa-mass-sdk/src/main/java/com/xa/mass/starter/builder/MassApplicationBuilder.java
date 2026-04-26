@@ -150,6 +150,16 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder transportRuntimeMaxPendingTasks(int maxPendingTasks) {
+            config.setTransportRuntimeMaxPendingTasks(maxPendingTasks);
+            return this;
+        }
+
+        public TransportBuilder eventRuntimeMaxPendingTasks(int maxPendingTasks) {
+            config.setEventRuntimeMaxPendingTasks(maxPendingTasks);
+            return this;
+        }
+
         public TransportBuilder eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
             config.setEventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
             return this;

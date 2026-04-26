@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 public class TransportConfig {
 
     public static final int DEFAULT_MAX_DELIVERY_QUEUED_ITEMS = 100_000;
+    public static final int DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS = 10_000;
 
     private MessageTransporterFactory.TransporterType transporterType =
             MessageTransporterFactory.TransporterType.QUEUE_BASED;
@@ -43,6 +44,8 @@ public class TransportConfig {
     private TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
+    private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
+    private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
 
     public TransportConfig() {
@@ -67,6 +70,8 @@ public class TransportConfig {
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
+        this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
+        this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
     }
 
@@ -215,6 +220,28 @@ public class TransportConfig {
 
     public long getEventHandlerTimeoutMillis() {
         return eventHandlerTimeoutMillis;
+    }
+
+    public int getTransportRuntimeMaxPendingTasks() {
+        return transportRuntimeMaxPendingTasks;
+    }
+
+    public void setTransportRuntimeMaxPendingTasks(int transportRuntimeMaxPendingTasks) {
+        if (transportRuntimeMaxPendingTasks <= 0) {
+            throw new IllegalArgumentException("transportRuntimeMaxPendingTasks must be positive");
+        }
+        this.transportRuntimeMaxPendingTasks = transportRuntimeMaxPendingTasks;
+    }
+
+    public int getEventRuntimeMaxPendingTasks() {
+        return eventRuntimeMaxPendingTasks;
+    }
+
+    public void setEventRuntimeMaxPendingTasks(int eventRuntimeMaxPendingTasks) {
+        if (eventRuntimeMaxPendingTasks <= 0) {
+            throw new IllegalArgumentException("eventRuntimeMaxPendingTasks must be positive");
+        }
+        this.eventRuntimeMaxPendingTasks = eventRuntimeMaxPendingTasks;
     }
 
     public void setEventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {

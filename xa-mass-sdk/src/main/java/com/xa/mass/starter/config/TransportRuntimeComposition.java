@@ -50,6 +50,8 @@ public class TransportRuntimeComposition {
     private final TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
+    private final int transportRuntimeMaxPendingTasks;
+    private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
@@ -69,6 +71,8 @@ public class TransportRuntimeComposition {
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
+        this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
+        this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
     }
 
@@ -170,6 +174,14 @@ public class TransportRuntimeComposition {
 
     public long getEventHandlerTimeoutMillis() {
         return eventHandlerTimeoutMillis;
+    }
+
+    public int getTransportRuntimeMaxPendingTasks() {
+        return transportRuntimeMaxPendingTasks;
+    }
+
+    public int getEventRuntimeMaxPendingTasks() {
+        return eventRuntimeMaxPendingTasks;
     }
 
     TransportAdapterBootstrap<WorkerTransportMessage> resolvePrimaryTransportAdapterBootstrap() {

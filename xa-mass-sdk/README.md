@@ -242,6 +242,9 @@ primary adapter does not silently erase pre-start registration identity.
 Runtime delivery backlog admission is configured through the transport builder;
 `maxDeliveryQueuedItems(...)` controls the total in-memory queued dispatch cap
 used by the embedded delivery store before a Redis/JDBC-backed store is added.
+Runtime executor admission is also configurable through
+`transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`;
+both default to 10000 pending tasks and are reported in executor diagnostics.
 SDK control-plane event dispatch is still synchronous by default for
 compatibility. Use `transport(... -> eventHandlerTimeoutMillis(...))` to wrap
 direct runtime handlers in bounded virtual-thread execution; timeout returns an

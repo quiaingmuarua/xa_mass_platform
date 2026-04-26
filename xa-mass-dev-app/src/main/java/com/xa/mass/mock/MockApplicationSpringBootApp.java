@@ -66,6 +66,12 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.runtime.event-handler-timeout-ms:0}")
     private long eventHandlerTimeoutMillis;
 
+    @Value("${mass.runtime.transport-max-pending-tasks:10000}")
+    private int transportRuntimeMaxPendingTasks;
+
+    @Value("${mass.runtime.event-max-pending-tasks:10000}")
+    private int eventRuntimeMaxPendingTasks;
+
     @Value("${mass.mock.data.workers:mock/mock_workers.json}")
     private String workersConfigPath;
 
@@ -122,6 +128,8 @@ public class MockApplicationSpringBootApp {
                                 .serverEnabled(massSocketEnabled)
                                 .server(massSocketPort)
                                 .maxConnections(maxConnections))
+                        .transportRuntimeMaxPendingTasks(transportRuntimeMaxPendingTasks)
+                        .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
                         .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))

@@ -600,6 +600,7 @@ class MassSdkTest {
             assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
+            assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
         } finally {
             app.stop();
@@ -621,6 +622,28 @@ class MassSdkTest {
             Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
             assertEquals(true, deliveryQueue.get("available"));
             assertEquals(7, deliveryQueue.get("maxQueuedItems"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void runtimeExecutorPendingCapacityCanBeConfigured() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
+                        .transportRuntimeMaxPendingTasks(17)
+                        .eventRuntimeMaxPendingTasks(3)
+                        .eventHandlerTimeoutMillis(1_000))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        try {
+            app.start();
+
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            assertEquals(17, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
+            assertEquals(3, ((Map<?, ?>) runtimeExecutors.get("event")).get("maxPendingTasks"));
         } finally {
             app.stop();
         }

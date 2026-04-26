@@ -697,7 +697,8 @@ Notes:
   shared dispatch backlog and polling waiters, not engine-owned task lifecycle
   or retry state.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned
-  transport and optional bounded event-handler executors.
+  transport and optional bounded event-handler executors. `maxPendingTasks`
+  reflects SDK runtime config, not a fixed platform constant.
 
 ### 4.3 Queue Metrics
 

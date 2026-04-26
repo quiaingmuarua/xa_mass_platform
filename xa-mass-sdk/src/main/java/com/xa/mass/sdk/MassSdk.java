@@ -108,6 +108,16 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions transportRuntimeMaxPendingTasks(int maxPendingTasks) {
+            delegate.transportRuntimeMaxPendingTasks(maxPendingTasks);
+            return this;
+        }
+
+        public TransportOptions eventRuntimeMaxPendingTasks(int maxPendingTasks) {
+            delegate.eventRuntimeMaxPendingTasks(maxPendingTasks);
+            return this;
+        }
+
         public TransportOptions eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
             delegate.eventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
             return this;

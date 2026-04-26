@@ -117,8 +117,10 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> transport = (Map<String, Object>) runtimeExecutors.get("transport");
         Map<String, Object> event = (Map<String, Object>) runtimeExecutors.get("event");
         assertEquals(true, transport.get("available"));
+        assertEquals(10000, transport.get("maxPendingTasks"));
         assertEquals(true, event.get("available"),
                 "dev-app should enable bounded SDK event handler execution by default");
+        assertEquals(2000, event.get("maxPendingTasks"));
     }
 
     private void registerPollingWorker(String workerId) {

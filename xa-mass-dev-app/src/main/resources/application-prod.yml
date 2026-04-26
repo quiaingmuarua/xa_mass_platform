@@ -2,6 +2,8 @@
 mass:
   runtime:
     event-handler-timeout-ms: 5000
+    transport-max-pending-tasks: 20000
+    event-max-pending-tasks: 5000
   websocket:
     port: 18088
     max-connections: 5000

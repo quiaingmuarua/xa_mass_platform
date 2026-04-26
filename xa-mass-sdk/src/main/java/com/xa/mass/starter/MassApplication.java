@@ -48,8 +48,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
-    private static final int TRANSPORT_RUNTIME_MAX_PENDING_TASKS = 10_000;
-    private static final int EVENT_RUNTIME_MAX_PENDING_TASKS = 10_000;
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -159,7 +157,7 @@ public class MassApplication {
             transportDeliveryService = deliveryService;
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
-                    TRANSPORT_RUNTIME_MAX_PENDING_TASKS
+                    transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
@@ -292,7 +290,7 @@ public class MassApplication {
         }
         eventRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "runtime-event-handler-",
-                EVENT_RUNTIME_MAX_PENDING_TASKS
+                transportRuntimeComposition.getEventRuntimeMaxPendingTasks()
         );
     }
 
