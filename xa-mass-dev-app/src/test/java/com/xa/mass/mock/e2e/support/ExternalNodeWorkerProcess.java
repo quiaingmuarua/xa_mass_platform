@@ -8,7 +8,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -51,11 +50,11 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         ));
     }
 
-    public static ExternalNodeWorkerProcess startSocket(String workerId, String host, int port) throws Exception {
+    public static ExternalNodeWorkerProcess startSocketSample(String workerId, String host, int port) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(host, "host");
 
-        return startClasspathScript("node/node_socket_worker.mjs", Map.of(
+        return startRepoScript("samples/worker-socket/node/worker.mjs", Map.of(
                 "WORKER_ID", workerId,
                 "SOCKET_HOST", host,
                 "SOCKET_PORT", String.valueOf(port)
@@ -134,11 +133,6 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         outputPump.join(DEFAULT_SHUTDOWN_TIMEOUT.toMillis());
     }
 
-    private static ExternalNodeWorkerProcess startClasspathScript(String classpathLocation,
-                                                                  Map<String, String> environment) throws Exception {
-        return startProcess(resolveScriptPath(classpathLocation), environment, null);
-    }
-
     private static ExternalNodeWorkerProcess startRepoScript(String repoRelativePath,
                                                              Map<String, String> environment) throws Exception {
         return startProcess(resolveRepoFile(repoRelativePath), environment, null);
@@ -184,14 +178,6 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         }
         throw new IllegalStateException("Repo script not found: " + repoRelativePath
                 + " from cwd=" + current);
-    }
-
-    private static Path resolveScriptPath(String classpathLocation) throws Exception {
-        URL resource = ExternalNodeWorkerProcess.class.getClassLoader().getResource(classpathLocation);
-        if (resource == null) {
-            throw new IllegalStateException("Node worker script not found on classpath: " + classpathLocation);
-        }
-        return Paths.get(resource.toURI());
     }
 
     private void runCloseAction() throws Exception {

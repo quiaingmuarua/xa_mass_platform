@@ -1,10 +1,24 @@
 # Java Socket Worker Sample
 
-This directory is reserved for the third-party Java socket worker sample.
+Build from repo root:
 
-Planned contract:
+```bash
+./mvnw -f samples/worker-socket/java/pom.xml -DskipTests package
+```
 
-- external worker registration with `adapterId=socket`
-- realtime presence established through the socket adapter contract
-- canonical task-dispatch/task-result semantics without WebSocket fallback
-- local execution keyed by `eventCode`
+Run:
+
+```bash
+java -jar samples/worker-socket/java/target/worker-socket-java-sample.jar
+```
+
+Required environment:
+
+```text
+WORKER_ID=java-worker-socket-001
+SOCKET_HOST=127.0.0.1
+SOCKET_PORT=18089
+```
+
+This sample uses the socket adapter handshake plus canonical
+task-dispatch and task-result frames without WebSocket fallback.

@@ -25,6 +25,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
     private static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
     private static volatile boolean pollingSampleBuilt;
     private static volatile boolean websocketSampleBuilt;
+    private static volatile boolean socketSampleBuilt;
 
     private final Process process;
     private final ThrowingCloseAction closeAction;
@@ -64,6 +65,21 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         return startJar(resolveRepoFile("samples/worker-websocket/java/target/worker-websocket-java-sample.jar"), Map.of(
                 "WORKER_ID", workerId,
                 "WS_URL", wsUri.toString()
+        ), null);
+    }
+
+    public static ExternalJavaWorkerProcess startSocketSample(String workerId, String host, int port) throws Exception {
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(host, "host");
+        if (port <= 0) {
+            throw new IllegalArgumentException("port must be positive");
+        }
+
+        ensureSocketSampleBuilt();
+        return startJar(resolveRepoFile("samples/worker-socket/java/target/worker-socket-java-sample.jar"), Map.of(
+                "WORKER_ID", workerId,
+                "SOCKET_HOST", host,
+                "SOCKET_PORT", String.valueOf(port)
         ), null);
     }
 
@@ -146,6 +162,19 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
             }
             buildSample("samples/worker-websocket/java/pom.xml", "Java websocket");
             websocketSampleBuilt = true;
+        }
+    }
+
+    private static void ensureSocketSampleBuilt() throws Exception {
+        if (socketSampleBuilt) {
+            return;
+        }
+        synchronized (ExternalJavaWorkerProcess.class) {
+            if (socketSampleBuilt) {
+                return;
+            }
+            buildSample("samples/worker-socket/java/pom.xml", "Java socket");
+            socketSampleBuilt = true;
         }
     }
 

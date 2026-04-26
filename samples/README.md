@@ -16,7 +16,9 @@ Current mainline:
 - `worker-polling/java` is the public Java polling worker sample
 - `worker-websocket/node` is the public realtime WebSocket worker sample
 - `worker-websocket/java` is the public Java realtime WebSocket worker sample
+- `worker-socket/node` is the public realtime socket worker sample
+- `worker-socket/java` is the public Java realtime socket worker sample
 
 Planned next additions:
 
-- `worker-socket/java`
+- add more language coverage only when it expands black-box contract value

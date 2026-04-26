@@ -4,7 +4,7 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
-import com.xa.mass.mock.e2e.support.ExternalNodeWorkerProcess;
+import com.xa.mass.mock.e2e.support.ExternalJavaWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
@@ -30,10 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Black-box proof that a non-JVM worker can participate through the public
- * control-plane registration plus the raw socket adapter boundary.
- */
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -48,13 +44,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
+class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final String SOCKET_WORKER_ID = "node-worker-socket-001";
-    private static final String SOCKET_WORKER_KEY = "node-worker-socket-key";
-    private static final String WEBSOCKET_WORKER_ID = "node-worker-websocket-002";
-    private static final String WEBSOCKET_WORKER_KEY = "node-worker-websocket-key";
+    private static final String SOCKET_WORKER_ID = "java-worker-socket-001";
+    private static final String SOCKET_WORKER_KEY = "java-worker-socket-key";
+    private static final String WEBSOCKET_WORKER_ID = "java-worker-websocket-002";
+    private static final String WEBSOCKET_WORKER_KEY = "java-worker-websocket-key";
 
     @Autowired
     private MassSdkApplication app;
@@ -66,7 +62,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
-    void externalNodeSocketWorkerCompletesTaskThroughExplicitSocketAdapterRegistration() throws Exception {
+    void externalJavaSocketWorkerCompletesTaskThroughExplicitSocketAdapterRegistration() throws Exception {
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
         HttpHeaders workerHeaders = sdkCredentialHeaders(SOCKET_WORKER_KEY);
@@ -74,7 +70,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 "workerId", SOCKET_WORKER_ID,
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker"),
+                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
@@ -87,18 +83,18 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
-                "taskName", "cross-language-node-socket-worker",
+                "taskName", "cross-language-java-socket-worker",
                 "userId", "crawler-agent",
                 "eventCode", "crawler.fetch-page",
                 "payloadType", "JSON",
-                "inputs", List.of(Map.of("url", "https://example.test/socket-node")),
+                "inputs", List.of(Map.of("url", "https://example.test/socket-java")),
                 "batchSize", 1
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
         assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=node-socket-black-box",
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=java-socket-black-box",
                 HttpMethod.POST,
                 null
         ));
@@ -107,7 +103,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         assertEquals("READY", readyWhileOffline.task().get("status"));
         assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
 
-        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startSocketSample(
+        try (ExternalJavaWorkerProcess worker = ExternalJavaWorkerProcess.startSocketSample(
                 SOCKET_WORKER_ID,
                 "127.0.0.1",
                 resolvedSocketPort())) {
@@ -121,20 +117,20 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;
-            assertEquals("cross-language-node-socket", output.get("integrationProbe"));
+            assertEquals("cross-language-java-socket", output.get("integrationProbe"));
             assertEquals("crawler.fetch-page", output.get("eventCode"));
-            assertEquals("https://example.test/socket-node", output.get("url"));
+            assertEquals("https://example.test/socket-java", output.get("url"));
 
             @SuppressWarnings("unchecked")
             Map<String, Object> workerProfile = (Map<String, Object>) output.get("workerProfile");
-            assertEquals("node-socket-worker", workerProfile.get("runtime"));
+            assertEquals("java-socket-worker", workerProfile.get("runtime"));
             assertEquals(SOCKET_WORKER_ID, workerProfile.get("workerId"));
         }
         waitUntil(() -> !app.isWorkerOnline(SOCKET_WORKER_ID), "socket worker should go offline after disconnect");
     }
 
     @Test
-    void websocketAndSocketAdaptersCanCoexistWithoutCrossRouting() throws Exception {
+    void websocketAndSocketJavaSamplesCanCoexistWithoutCrossRouting() throws Exception {
         registerExternalWorkerSubmitter(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
@@ -142,7 +138,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 "workerId", WEBSOCKET_WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
+                "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker"),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "demo.dispatch",
                         "projectCodes", List.of("demoApp")
@@ -153,25 +149,25 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 "workerId", SOCKET_WORKER_ID,
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker"),
+                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
                 ))
         ), sdkCredentialHeaders(SOCKET_WORKER_KEY)));
 
-        try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
+        try (ExternalJavaWorkerProcess websocketWorker = ExternalJavaWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
                 URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws"));
-             ExternalNodeWorkerProcess socketWorker = ExternalNodeWorkerProcess.startSocketSample(
+             ExternalJavaWorkerProcess socketWorker = ExternalJavaWorkerProcess.startSocketSample(
                      SOCKET_WORKER_ID,
                      "127.0.0.1",
                      resolvedSocketPort())) {
             waitForWorkerStatus(WEBSOCKET_WORKER_ID, "ONLINE", websocketWorker);
             waitForWorkerStatus(SOCKET_WORKER_ID, "ONLINE", socketWorker);
 
-            String websocketTaskId = createAndApproveTask("demoApp", "demo.dispatch", Map.of("target", "socket-coexist-ws"));
-            String socketTaskId = createAndApproveTask("crawlerApp", "crawler.fetch-page", Map.of("url", "https://example.test/socket-coexist"));
+            String websocketTaskId = createAndApproveTask("demoApp", "demo.dispatch", Map.of("target", "socket-coexist-java-ws"));
+            String socketTaskId = createAndApproveTask("crawlerApp", "crawler.fetch-page", Map.of("url", "https://example.test/socket-coexist-java"));
 
             TaskSnapshot websocketTerminal = waitForTerminalTask(websocketTaskId);
             TaskSnapshot socketTerminal = waitForTerminalTask(socketTaskId);
@@ -188,8 +184,8 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> socketProfile = (Map<String, Object>) socketOutput.get("workerProfile");
 
-            assertEquals("node-websocket-worker", websocketProfile.get("runtime"));
-            assertEquals("node-socket-worker", socketProfile.get("runtime"));
+            assertEquals("java-websocket-worker", websocketProfile.get("runtime"));
+            assertEquals("java-socket-worker", socketProfile.get("runtime"));
         }
     }
 
@@ -224,10 +220,10 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
     private void waitForWorkerStatus(String workerId,
                                      String expectedStatus,
-                                     ExternalNodeWorkerProcess workerProcess) throws InterruptedException {
+                                     ExternalJavaWorkerProcess workerProcess) throws InterruptedException {
         Worker latestWorker = null;
         for (int attempt = 0; attempt < 20; attempt++) {
-            workerProcess.assertAlive("External Node worker exited before reaching status " + expectedStatus);
+            workerProcess.assertAlive("External Java worker exited before reaching status " + expectedStatus);
             latestWorker = app.getAllWorkers().stream()
                     .filter(worker -> workerId.equals(worker.getWorkerId()))
                     .findFirst()
@@ -240,11 +236,11 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             Thread.sleep(250L);
         }
 
-        workerProcess.assertAlive("External Node worker exited while waiting for worker status");
+        workerProcess.assertAlive("External Java worker exited while waiting for worker status");
         assertNotNull(latestWorker, "Worker should have been registered in runtime");
         throw new AssertionError("Worker " + workerId + " did not reach status " + expectedStatus
                 + ". Last runtime worker=" + latestWorker
-                + "\nNode worker output:\n" + workerProcess.capturedOutput());
+                + "\nJava worker output:\n" + workerProcess.capturedOutput());
     }
 
     private HttpHeaders sdkCredentialHeaders(String credential) {
@@ -278,6 +274,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             }
             Thread.sleep(100L);
         }
-        throw new AssertionError("Socket server did not publish a bound port in time");
+        throw new AssertionError("Socket server did not publish a bound port");
     }
 }
