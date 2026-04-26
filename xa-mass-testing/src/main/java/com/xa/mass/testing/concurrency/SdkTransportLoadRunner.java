@@ -22,7 +22,12 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,6 +62,7 @@ import java.util.concurrent.atomic.LongAdder;
  * <ul>
  *   <li>`polling`: real {@link PullWorkerSession} polling/result submission</li>
  *   <li>`websocket`: real WebSocket-adapter scheduling/result callbacks</li>
+ *   <li>`socket`: real raw socket-adapter scheduling/result callbacks</li>
  * </ul>
  *
  * <p>The goal is to keep the setup lighter than Boot-shell E2E while still
@@ -79,6 +85,7 @@ import java.util.concurrent.atomic.LongAdder;
 public final class SdkTransportLoadRunner {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson FRAME_GSON = new GsonBuilder().create();
     private static final String ENDPOINT_PATH = "/testing";
 
     private SdkTransportLoadRunner() {
@@ -125,6 +132,10 @@ public final class SdkTransportLoadRunner {
                 app.start();
                 registerWorkers(app, config.workerCount(), config.transport());
                 workers = startWorkers(app, runtime);
+                waitForRealtimeWorkersReady(app, workers);
+                for (WorkerDriver worker : workers) {
+                    worker.startReceiving();
+                }
 
                 for (int i = 0; i < config.taskCount(); i++) {
                     Task task = app.createTask(buildTaskRequest(i));
@@ -143,7 +154,7 @@ public final class SdkTransportLoadRunner {
 
                 return new LoadReport(
                         config,
-                        runtime.transportPort(),
+                        runtime.boundTransportPort(config.transport()),
                         taskIds.size(),
                         finalTaskStats.terminalTasks(),
                         finalTaskStats.terminalReasons(),
@@ -187,6 +198,10 @@ public final class SdkTransportLoadRunner {
                                     .server(transportPort, ENDPOINT_PATH)
                                     .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                                     .serverEnabled(config.transport() == WorkerTransportMode.WEBSOCKET))
+                            .socketAdapter(socket -> socket
+                                    .server(transportPort)
+                                    .enabled(config.transport() == WorkerTransportMode.SOCKET)
+                                    .serverEnabled(config.transport() == WorkerTransportMode.SOCKET))
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
                             .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
                             .queueMode())
@@ -237,11 +252,58 @@ public final class SdkTransportLoadRunner {
                             metrics,
                             deliveryAttempts
                     );
+                    case SOCKET -> new SocketWorkerDriver(
+                            workerId,
+                            runtime.socketPort(),
+                            config,
+                            metrics,
+                            deliveryAttempts
+                    );
                 };
                 worker.start();
                 workers.add(worker);
             }
             return workers;
+        }
+
+        private void waitForRealtimeWorkersReady(MassSdkApplication app, List<WorkerDriver> workers)
+                throws InterruptedException {
+            if (!config.transport().usesServer()) {
+                return;
+            }
+            long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (System.nanoTime() < deadlineNanos) {
+                if (activeSessionCount(app, config.transport().adapterId()) >= config.workerCount()) {
+                    return;
+                }
+                for (WorkerDriver worker : workers) {
+                    worker.refreshReadySignal();
+                }
+                Thread.sleep(25L);
+            }
+            require(activeSessionCount(app, config.transport().adapterId()) >= config.workerCount(),
+                    "realtime workers did not become ready for adapter=" + config.transport().adapterId()
+                            + " sessions=" + app.listSessions());
+        }
+
+        private int activeSessionCount(MassSdkApplication app, String adapterId) {
+            int active = 0;
+            for (Map<String, Object> session : app.listSessions()) {
+                Object connections = session.get("connections");
+                if (!(connections instanceof List<?> list)) {
+                    continue;
+                }
+                for (Object connection : list) {
+                    if (!(connection instanceof Map<?, ?> connectionInfo)) {
+                        continue;
+                    }
+                    if (Boolean.TRUE.equals(connectionInfo.get("active"))
+                            && Objects.equals(adapterId, connectionInfo.get("transport"))) {
+                        active++;
+                    }
+                }
+            }
+            return active;
         }
 
         private MassTaskCreateRequest buildTaskRequest(int taskIndex) {
@@ -393,6 +455,7 @@ public final class SdkTransportLoadRunner {
             report.put("runtime", Map.of(
                     "transport", config.transport().label(),
                     "transportPort", runtime.transportPort(),
+                    "boundTransportPort", runtime.boundTransportPort(config.transport()),
                     "endpointPath", runtime.endpointPath()
             ));
             report.put("wallClock", Map.of("totalMillis", nanosToMillis(wallNanos)));
@@ -412,6 +475,14 @@ public final class SdkTransportLoadRunner {
 
     private interface WorkerDriver extends AutoCloseable {
         void start() throws Exception;
+
+        default void refreshReadySignal() {
+            // Most transports complete registration during start.
+        }
+
+        default void startReceiving() {
+            // Some transport clients receive as soon as they connect.
+        }
     }
 
     private static final class PollingWorkerDriver implements WorkerDriver {
@@ -566,6 +637,105 @@ public final class SdkTransportLoadRunner {
             @Override
             public void onError(Exception ex) {
                 throw new RuntimeException("WebSocket worker error for " + workerId, ex);
+            }
+        }
+    }
+
+    private static final class SocketWorkerDriver implements WorkerDriver {
+        private final String workerId;
+        private final int port;
+        private final LoadConfig config;
+        private final RuntimeMetrics metrics;
+        private final Map<String, AtomicInteger> deliveryAttempts;
+        private final ExecutorService processingExecutor;
+        private final AtomicBoolean running = new AtomicBoolean(false);
+        private final CountDownLatch stopped = new CountDownLatch(1);
+        private Socket socket;
+        private OutputStream outputStream;
+        private Thread readerThread;
+
+        private SocketWorkerDriver(String workerId,
+                                   int port,
+                                   LoadConfig config,
+                                   RuntimeMetrics metrics,
+                                   Map<String, AtomicInteger> deliveryAttempts) {
+            this.workerId = workerId;
+            this.port = port;
+            this.config = config;
+            this.metrics = metrics;
+            this.deliveryAttempts = deliveryAttempts;
+            this.processingExecutor = newProcessingExecutor(workerId, config.workerProcessingThreads());
+        }
+
+        @Override
+        public void start() throws Exception {
+            require(port > 0, "socket transport port must be allocated");
+            socket = new Socket("127.0.0.1", port);
+            outputStream = socket.getOutputStream();
+            running.set(true);
+            require(sendLine(buildSocketHello(workerId)), "socket worker failed to send hello: " + workerId);
+        }
+
+        @Override
+        public void startReceiving() {
+            readerThread = new Thread(this::runReadLoop, "SdkSocketWorker-" + workerId + "-reader");
+            readerThread.setDaemon(true);
+            readerThread.start();
+        }
+
+        private void runReadLoop() {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while (running.get() && (line = reader.readLine()) != null) {
+                    JsonObject frame = parseFrame(line);
+                    if (!isTaskDispatchFrame(frame)) {
+                        continue;
+                    }
+                    metrics.recordReceiveBatch(1);
+                    processingExecutor.submit(() -> processTaskDispatch(
+                            frame,
+                            workerId,
+                            config,
+                            metrics,
+                            deliveryAttempts,
+                            (success, detail, output) -> sendLine(buildTaskResult(frame, success, detail, output))
+                    ));
+                }
+            } catch (IOException ex) {
+                if (running.get()) {
+                    throw new RuntimeException("Socket worker read loop failed for " + workerId, ex);
+                }
+            } finally {
+                stopped.countDown();
+            }
+        }
+
+        private boolean sendLine(String json) {
+            try {
+                synchronized (this) {
+                    outputStream.write((json + "\n").getBytes(StandardCharsets.UTF_8));
+                    outputStream.flush();
+                }
+                return true;
+            } catch (IOException ex) {
+                return false;
+            }
+        }
+
+        @Override
+        public void refreshReadySignal() {
+            sendLine(buildSocketHello(workerId));
+        }
+
+        @Override
+        public void close() throws Exception {
+            running.set(false);
+            closeQuietly(socket);
+            stopped.await(5, TimeUnit.SECONDS);
+            processingExecutor.shutdown();
+            if (!processingExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                processingExecutor.shutdownNow();
             }
         }
     }
@@ -736,8 +906,15 @@ public final class SdkTransportLoadRunner {
         frame.addProperty("project", readString(taskFrame, "project"));
         frame.addProperty("success", success);
         frame.addProperty("detail", detail);
-        frame.add("output", GSON.toJsonTree(output != null ? output : Map.of()));
-        return GSON.toJson(frame);
+        frame.add("output", FRAME_GSON.toJsonTree(output != null ? output : Map.of()));
+        return FRAME_GSON.toJson(frame);
+    }
+
+    private static String buildSocketHello(String workerId) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("type", "hello");
+        frame.addProperty("workerId", workerId);
+        return FRAME_GSON.toJson(frame);
     }
 
     private static JsonObject readObject(JsonObject object, String field) {
@@ -781,6 +958,24 @@ public final class SdkTransportLoadRunner {
         private URI serverUri(String workerId) {
             require(transportPort > 0, "websocket server port must be allocated");
             return URI.create("ws://127.0.0.1:" + transportPort + endpointPath + "?workerId=" + workerId);
+        }
+
+        private int socketPort() {
+            int boundPort = socketBoundPort();
+            require(boundPort > 0, "socket server port must be allocated");
+            return boundPort;
+        }
+
+        private int boundTransportPort(WorkerTransportMode transportMode) {
+            return transportMode == WorkerTransportMode.SOCKET ? socketBoundPort() : transportPort;
+        }
+
+        private int socketBoundPort() {
+            String rawPort = System.getProperty("mass.socket.bound-port");
+            if (rawPort == null || rawPort.isBlank()) {
+                return 0;
+            }
+            return Integer.parseInt(rawPort.trim());
         }
     }
 
@@ -884,7 +1079,8 @@ public final class SdkTransportLoadRunner {
 
     private enum WorkerTransportMode {
         POLLING("polling", WorkerTransportHints.POLLING),
-        WEBSOCKET("websocket", WorkerTransportHints.REALTIME);
+        WEBSOCKET("websocket", WorkerTransportHints.REALTIME),
+        SOCKET("socket", WorkerTransportHints.REALTIME);
 
         private final String label;
         private final String transportHint;
@@ -906,6 +1102,10 @@ public final class SdkTransportLoadRunner {
             return label;
         }
 
+        private boolean usesServer() {
+            return this != POLLING;
+        }
+
         private static WorkerTransportMode fromProperty(String rawValue) {
             if (rawValue == null || rawValue.isBlank()) {
                 return POLLING;
@@ -914,6 +1114,7 @@ public final class SdkTransportLoadRunner {
             return switch (normalized) {
                 case "poll", "pull", "polling" -> POLLING;
                 case "websocket", "ws", "realtime", "push" -> WEBSOCKET;
+                case "socket", "tcp", "tcp-socket", "raw-socket" -> SOCKET;
                 default -> throw new IllegalArgumentException("Unsupported mass.sdk.load.transport: " + rawValue);
             };
         }
@@ -1174,6 +1375,17 @@ public final class SdkTransportLoadRunner {
             return socket.getLocalPort();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to allocate a free transport port", e);
+        }
+    }
+
+    private static void closeQuietly(Socket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Best-effort test driver cleanup.
         }
     }
 

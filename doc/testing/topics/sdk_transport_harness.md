@@ -10,7 +10,7 @@ Use it when you want:
 
 - real `MassSdkApplication` startup
 - real worker registration through SDK contracts
-- real polling or WebSocket worker scheduling
+- real polling, WebSocket, or raw socket worker scheduling
 - quicker iteration than Boot-shell E2E when HTTP/controller behavior is not the subject
 
 Do not use it as the only acceptance evidence when the touched path includes:
@@ -31,6 +31,7 @@ The harness validates that the SDK surface is already enough to:
 - register workers and worker contexts
 - drive polling worker sessions
 - drive registered WebSocket workers through the realtime adapter
+- drive registered raw socket workers through the socket adapter
 
 ## 3. Commands
 
@@ -44,6 +45,12 @@ WebSocket worker mode:
 
 ```bash
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=websocket
+```
+
+Socket worker mode:
+
+```bash
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket
 ```
 
 Useful scale knobs:
@@ -74,7 +81,7 @@ Look at these first:
 Use the harness to answer:
 
 - does SDK registration still compose into a runnable transport-aware runtime
-- does polling behave differently from WebSocket under the same scheduling pressure
+- does polling behave differently from WebSocket or socket under the same scheduling pressure
 - did a transport_runtime change break real scheduling without needing the full Boot shell
 
 ## 5. Position In The Test System

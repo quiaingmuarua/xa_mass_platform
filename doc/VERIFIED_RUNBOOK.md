@@ -260,11 +260,17 @@ WebSocket worker mode:
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=websocket
 ```
 
+Socket worker mode:
+
+```bash
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket
+```
+
 Expected SDK harness artifact:
 
 - JSON report under `xa-mass-testing/target/concurrency-reports/`
-- inspect `runtime.transport`, `tasks.terminalReasons`, `deliveryQueue`, and
-  `workerMetrics` first
+- inspect `runtime.transport`, `runtime.boundTransportPort`, `tasks.terminalReasons`,
+  `deliveryQueue`, and `workerMetrics` first
 
 SDK WebSocket disconnect/reconnect chaos harness:
 

@@ -80,6 +80,12 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -87,6 +93,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -309,6 +316,45 @@ class MassSdkTest {
         socketConfig.setServerPort(19998);
         assertEquals(19095, runtimeComposition.getBundledWebSocketAdapterConfig().getServerPort());
         assertEquals(18123, runtimeComposition.getBundledSocketAdapterConfig().getServerPort());
+    }
+
+    @Test
+    void sdkBundledSocketServerRegistersHelloSession() throws Exception {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .enabled(false)
+                                .serverEnabled(false))
+                        .socketAdapter(socket -> socket
+                                .server(0)
+                                .enabled(true)
+                                .serverEnabled(true))
+                        .inputQueue(new InMemoryMessageQueue<>("socket-hello-input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("socket-hello-output", WorkerTransportMessage.class))
+                        .queueMode())
+                .engine(engine -> engine.enabled(true))
+                .build();
+
+        try {
+            app.start();
+            int port = Integer.parseInt(System.getProperty(
+                    com.xa.mass.transport.socket.server.SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+                 BufferedReader ignoredReader = new BufferedReader(
+                         new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\"}");
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> app.listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
+                        "sdk socket hello should register an active socket session");
+            }
+        } finally {
+            app.stop();
+            System.clearProperty(com.xa.mass.transport.socket.server.SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
     }
 
     @Test
@@ -2552,6 +2598,31 @@ class MassSdkTest {
                     .transportServer(transportServer)
                     .build();
         }
+    }
+
+    private static void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 40; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(25L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean hasActiveSocketConnection(Map<String, Object> session) {
+        Object connections = session.get("connections");
+        if (!(connections instanceof List<?> list)) {
+            return false;
+        }
+        return list.stream().anyMatch(connection -> {
+            if (!(connection instanceof Map<?, ?> connectionInfo)) {
+                return false;
+            }
+            return Boolean.TRUE.equals(connectionInfo.get("active"))
+                    && Objects.equals("socket", connectionInfo.get("transport"));
+        });
     }
 
     private static final class DescriptorOnlyBootstrap

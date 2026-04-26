@@ -330,7 +330,7 @@ Transport high-volume readiness should be judged by these lanes:
 - unit tests for delivery store admission, drain, poll, shutdown, and stats
 - runtime tests for dispatch grouping and outcome logging
 - adapter tests for sent/offline/backpressure/unavailable outcomes
-- SDK embedded load runner for polling and realtime pressure
+- SDK embedded load runner for polling, WebSocket, and socket realtime pressure
 - Boot-shell E2E for public worker API compatibility
 - scheduled chaos probes for restart/offline/backpressure cases
 
