@@ -11,17 +11,19 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is runtime truth. `transportHint` is only a coarse transport family hint.
 - `com.xa.mass.sdk.transport.*` is SDK composition, not transport module internals.
+- Stable transport concepts are limited to dispatch channel/outcome, runtime delivery,
+  result ingest, and result envelope. See [../doc/TRANSPORT_BOUNDARY_BASELINE.md](../doc/TRANSPORT_BOUNDARY_BASELINE.md).
 
 ## 1. Module Map
 
 - `transport/transport_api`
   - Maven artifact: `xa-mass-transport-api`
   - Java packages: `com.xa.mass.transport.*`
-  - Owns transport-neutral contracts only: dispatch/result/system-event seams, endpoint registry, transport server contracts, transport models
+  - Owns transport-neutral contracts only: dispatch/result/system-event seams, endpoint registry, transport server contracts, adapter-facing transport models
 - `transport/transport_runtime`
   - Maven artifact: `xa-mass-transport-runtime`
   - Java packages: `com.xa.mass.transport.runtime.*`
-  - Owns shared runtime assembly: adapter binding, routing registry, registration resolution, result ingest wiring, raw/control side-channel resolution
+  - Owns shared runtime assembly: adapter binding, routing registry, registration resolution, delivery service/store, result ingest wiring, result-envelope validation, raw/control side-channel resolution
 - `transport/polling-adapter`
   - Maven artifact: `xa-mass-transport-polling`
   - Java packages: `com.xa.mass.transport.polling.*`
@@ -50,18 +52,41 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - Do not redefine a worker as a WebSocket client. A worker is an executor reachable through some transport.
 - Do not make `websocket-adapter` the hidden mainline for new transport work.
 - Do not push adapter-specific frame/codec types into `transport_api`.
+- Do not push runtime-only queue/store state into `transport_api`.
 - Do not add compatibility wrappers that preserve old runtime/package paths as a second mainline.
 - Do not route new socket-style behavior through WebSocket-only abstractions unless the code is explicitly protocol-agnostic.
 - Manual/raw/control messaging is a side-channel. It must not mutate task lifecycle state directly.
+- Do not add JavaBean getters for internal dispatch metadata such as attempt identity unless the worker wire contract is intentionally changed.
+- Do not enforce `leaseToken` until token generation, storage, expiry, retry behavior, compatibility, and rejection semantics are explicitly designed.
 
-## 4. Change Guide
+## 4. Boundary Freeze
+
+Use these ownership rules before adding transport abstractions:
+
+- `engine` owns worker matching, worker-context locks, `TaskMsgAttempt`, retry, release, and terminal lifecycle.
+- `transport_runtime` owns delivery queue/store/drain, adapter routing, dispatch outcome logging, and result-envelope validation.
+- concrete adapters own protocol I/O, endpoint/session state, frame/request codecs, and online/offline perception.
+- worker wire payloads must not carry internal runtime metadata by accident.
+- `TaskDispatchItem` is currently a dispatch payload plus internal metadata hybrid; do not split it until the split is planned across adapter codecs and worker API tests.
+- `TransportResultEnvelope` wraps `TaskResultReport` with runtime metadata; it is not a second worker result protocol.
+
+Prefer extending one of the stable concepts below over adding a new model:
+
+- `TaskDispatchChannel`
+- `DispatchOutcome`
+- `TransportDelivery`
+- `TaskResultIngestChannel`
+- `TransportResultEnvelope`
+
+## 5. Change Guide
 
 Use this reading order for transport work:
 
 1. local code under the touched transport module
-2. [../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) for adapter boundary questions
-3. [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) for current repo/module truth
-4. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) and [../doc/INTEGRATION_TESTS.md](../doc/INTEGRATION_TESTS.md) for verification surfaces
+2. [../doc/TRANSPORT_BOUNDARY_BASELINE.md](../doc/TRANSPORT_BOUNDARY_BASELINE.md) for transport model ownership and stable concept questions
+3. [../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) for adapter boundary questions
+4. [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) for current repo/module truth
+5. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) and [../doc/INTEGRATION_TESTS.md](../doc/INTEGRATION_TESTS.md) for verification surfaces
 
 When adding or changing an adapter:
 
@@ -71,7 +96,7 @@ When adding or changing an adapter:
 - keep server/bootstrap/session/frame concerns inside the adapter module
 - keep task lifecycle, assignment, and business event semantics out of the adapter
 
-## 5. Fast Verification
+## 6. Fast Verification
 
 Prefer these checks after transport changes:
 

@@ -9,6 +9,10 @@ import java.util.Objects;
 
 /**
  * Runtime-owned delivery service shared by concrete transport adapters.
+ *
+ * <p>Adapters use this service for queueing/draining/direct-send normalization.
+ * This service reports delivery outcomes only; task lifecycle mutation remains
+ * in engine result and assignment services.</p>
  */
 public final class TransportDeliveryService {
 

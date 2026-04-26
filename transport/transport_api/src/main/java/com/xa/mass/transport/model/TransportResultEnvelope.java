@@ -7,7 +7,13 @@ import java.util.Objects;
  * Transport-neutral envelope for task execution results reported by workers.
  *
  * <p>The report remains the protocol payload. Adapter metadata is captured here
- * so runtime code can reason about ingress without expanding wire formats.</p>
+ * so runtime code can reason about ingress without expanding wire formats.
+ * This envelope is internal transport/runtime metadata; it is not a second
+ * worker result protocol.</p>
+ *
+ * <p>{@code leaseToken} is reserved for a future explicit security design. Do
+ * not enforce it until generation, storage, expiry, retry compatibility, and
+ * rejection semantics are defined.</p>
  */
 public final class TransportResultEnvelope {
 

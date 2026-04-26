@@ -10,6 +10,15 @@ import java.util.Map;
 
 /**
  * Transport-neutral logical dispatch item delivered to worker transports.
+ *
+ * <p>This class is currently a narrow hybrid: worker-facing task payload plus
+ * runtime dispatch metadata used by adapters. Internal metadata such as
+ * {@link #attemptId()} intentionally avoids JavaBean getter naming so worker
+ * API serializers do not expose it by convention.</p>
+ *
+ * <p>Do not add more lifecycle or security state here. If this hybrid becomes
+ * a constraint, split worker payload and runtime dispatch context deliberately
+ * across adapter codec and worker API tests.</p>
  */
 public final class TaskDispatchItem {
 
