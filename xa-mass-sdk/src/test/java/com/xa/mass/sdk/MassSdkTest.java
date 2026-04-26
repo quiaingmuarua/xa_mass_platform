@@ -531,6 +531,10 @@ class MassSdkTest {
                         "queueCount", 1,
                         "waitingPollers", 0,
                         "maxQueuedItems", 100
+                ),
+                "runtimeExecutors", Map.of(
+                        "transport", Map.of("available", true, "pendingTasks", 0),
+                        "event", Map.of("available", false, "pendingTasks", 0)
                 )
         ));
         when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
@@ -546,6 +550,8 @@ class MassSdkTest {
         assertEquals(5, queueDetail.get("outputQueue"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
         assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryQueue")).get("queuedItems"));
+        assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
+                .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));
         assertEquals(0L, sessionStats.get("workerCount"));
         assertEquals(true, enqueueResult.get("success"));
@@ -592,6 +598,9 @@ class MassSdkTest {
             assertEquals(0, deliveryQueue.get("queueCount"));
             assertEquals(0, deliveryQueue.get("waitingPollers"));
             assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
+            assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
         } finally {
             app.stop();
         }
@@ -684,6 +693,9 @@ class MassSdkTest {
         try {
             app.start();
             assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
+            assertEquals(1L, ((Map<?, ?>) runtimeExecutors.get("event")).get("completedTasks"));
             app.stop();
 
             app.start();

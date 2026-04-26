@@ -661,6 +661,26 @@ Response shape:
       "queueCount": 0,
       "waitingPollers": 0,
       "maxQueuedItems": 100000
+    },
+    "runtimeExecutors": {
+      "transport": {
+        "available": true,
+        "submittedTasks": 0,
+        "completedTasks": 0,
+        "rejectedTasks": 0,
+        "activeTasks": 0,
+        "pendingTasks": 0,
+        "maxPendingTasks": 10000
+      },
+      "event": {
+        "available": false,
+        "submittedTasks": 0,
+        "completedTasks": 0,
+        "rejectedTasks": 0,
+        "activeTasks": 0,
+        "pendingTasks": 0,
+        "maxPendingTasks": 0
+      }
     }
   }
 }
@@ -676,6 +696,8 @@ Notes:
 - `deliveryQueue` is the runtime delivery-store diagnostic surface. It reports
   shared dispatch backlog and polling waiters, not engine-owned task lifecycle
   or retry state.
+- `runtimeExecutors` reports admission and execution counters for runtime-owned
+  transport and optional bounded event-handler executors.
 
 ### 4.3 Queue Metrics
 

@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
@@ -399,6 +400,7 @@ public class MassApplication {
         map.put("outputQueueSize", outputSize);
         map.put("transporterAvailable", messageTransporter != null);
         map.put("deliveryQueue", getTransportDeliveryQueueDetail());
+        map.put("runtimeExecutors", getRuntimeExecutorDetail());
         return Map.copyOf(map);
     }
 
@@ -420,6 +422,37 @@ public class MassApplication {
                 "queueCount", stats.getQueueCount(),
                 "waitingPollers", stats.getWaitingPollers(),
                 "maxQueuedItems", stats.getMaxQueuedItems()
+        );
+    }
+
+    private Map<String, Object> getRuntimeExecutorDetail() {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("transport", executorDetail(transportRuntimeTaskExecutor));
+        map.put("event", executorDetail(eventRuntimeTaskExecutor));
+        return Map.copyOf(map);
+    }
+
+    private Map<String, Object> executorDetail(RuntimeTaskExecutor executor) {
+        if (executor == null) {
+            return Map.of(
+                    "available", false,
+                    "submittedTasks", 0L,
+                    "completedTasks", 0L,
+                    "rejectedTasks", 0L,
+                    "activeTasks", 0,
+                    "pendingTasks", 0,
+                    "maxPendingTasks", 0
+            );
+        }
+        RuntimeTaskExecutorStatistics stats = executor.getStatistics();
+        return Map.of(
+                "available", true,
+                "submittedTasks", stats.getSubmittedTasks(),
+                "completedTasks", stats.getCompletedTasks(),
+                "rejectedTasks", stats.getRejectedTasks(),
+                "activeTasks", stats.getActiveTasks(),
+                "pendingTasks", stats.getPendingTasks(),
+                "maxPendingTasks", stats.getMaxPendingTasks()
         );
     }
 

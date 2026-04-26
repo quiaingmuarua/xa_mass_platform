@@ -70,6 +70,7 @@ The transport-neutral runtime model is now framed around three channels:
 - SDK control-plane event dispatch remains synchronous by default for compatibility. SDK embedding can enable bounded virtual-thread handler isolation with `transport(... -> eventHandlerTimeoutMillis(...))`; timeout cancellation is cooperative, so direct runtime handlers should still use interrupt-aware blocking APIs.
 - Embedded transport adapter bootstraps receive the shared runtime executor; blocking transport work should use that executor instead of adapter-local thread pools.
 - Embedded transport delivery uses runtime-level admission control: in-memory delivery has a configurable total queued-item cap plus per-worker caps, exposes store stats through SDK queue diagnostics, and wakes waiting pollers on runtime shutdown before Redis/JDBC replacement.
+- Runtime executor admission counters for transport and optional event-handler execution are exposed through SDK queue diagnostics for HA triage.
 - The dev-app enables Spring virtual threads so bounded external worker long-polling can use simple blocking code without consuming platform request threads.
 - Do not treat the embedded runtime classes as a Spring Boot app
 - Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`

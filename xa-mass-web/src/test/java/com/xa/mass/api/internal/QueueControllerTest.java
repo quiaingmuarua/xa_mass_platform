@@ -56,6 +56,26 @@ class QueueControllerTest {
                         "queueCount", 2,
                         "waitingPollers", 1,
                         "maxQueuedItems", 100_000
+                ),
+                "runtimeExecutors", Map.of(
+                        "transport", Map.of(
+                                "available", true,
+                                "submittedTasks", 8,
+                                "completedTasks", 7,
+                                "rejectedTasks", 1,
+                                "activeTasks", 1,
+                                "pendingTasks", 1,
+                                "maxPendingTasks", 10_000
+                        ),
+                        "event", Map.of(
+                                "available", false,
+                                "submittedTasks", 0,
+                                "completedTasks", 0,
+                                "rejectedTasks", 0,
+                                "activeTasks", 0,
+                                "pendingTasks", 0,
+                                "maxPendingTasks", 0
+                        )
                 )
         ));
 
@@ -66,6 +86,9 @@ class QueueControllerTest {
                 .andExpect(jsonPath("$.data.deliveryQueue.queuedItems").value(4))
                 .andExpect(jsonPath("$.data.deliveryQueue.queueCount").value(2))
                 .andExpect(jsonPath("$.data.deliveryQueue.waitingPollers").value(1))
-                .andExpect(jsonPath("$.data.deliveryQueue.maxQueuedItems").value(100000));
+                .andExpect(jsonPath("$.data.deliveryQueue.maxQueuedItems").value(100000))
+                .andExpect(jsonPath("$.data.runtimeExecutors.transport.available").value(true))
+                .andExpect(jsonPath("$.data.runtimeExecutors.transport.rejectedTasks").value(1))
+                .andExpect(jsonPath("$.data.runtimeExecutors.event.available").value(false));
     }
 }

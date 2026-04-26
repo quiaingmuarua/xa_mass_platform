@@ -247,3 +247,6 @@ compatibility. Use `transport(... -> eventHandlerTimeoutMillis(...))` to wrap
 direct runtime handlers in bounded virtual-thread execution; timeout returns an
 `EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
 remain interrupt-aware and use bounded I/O.
+Runtime executor diagnostics for transport and optional event-handler execution
+are surfaced through `getQueueDetail().runtimeExecutors` and the Boot-shell
+`/api/queue/detail` response.
