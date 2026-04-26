@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
+import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -133,18 +134,18 @@ public class WorkerManager {
             this.workerManager = workerManager;
         }
 
-        @com.google.common.eventbus.Subscribe
+        @MassSubscribe
         public void onWorkerOnline(WorkerOnlineEvent event) {
             log.info("Worker online: {}", event.getWorkerId());
             touchWorkerHeartbeat(event.getWorkerId());
         }
 
-        @com.google.common.eventbus.Subscribe
+        @MassSubscribe
         public void onWorkerHeartbeat(WorkerHeartbeatEvent event) {
             touchWorkerHeartbeat(event.getWorkerId());
         }
 
-        @com.google.common.eventbus.Subscribe
+        @MassSubscribe
         public void onWorkerOffline(WorkerOfflineEvent event) {
             workerManager.updateOnlineStatus(event.getWorkerId(), false);
         }

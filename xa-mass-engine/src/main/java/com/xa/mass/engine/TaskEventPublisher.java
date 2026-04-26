@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * Owns in-process task lifecycle event listeners and their invocation order.
  *
  * <p><b>Two-tier event model:</b> This publisher owns the synchronous, in-process
- * listener chain (used by the engine internals). An external Guava EventBus layer
+ * listener chain (used by the engine internals). An external runtime EventBus layer
  * (wired in {@code MassEngine}) bridges selected events to out-of-process subscribers.
  * Add listeners here when the reaction must happen inline; subscribe to the EventBus
  * when loose coupling or async delivery is required.

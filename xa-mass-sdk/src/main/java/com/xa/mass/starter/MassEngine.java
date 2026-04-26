@@ -28,7 +28,7 @@ import java.util.List;
  *       {@code addTask*Listener()} methods backed by
  *       {@link com.xa.mass.engine.TaskEventPublisher}. These fire inline on the calling
  *       thread and are used by the engine internals (assignment, resource release, etc.).</li>
- *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a Guava
+ *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a runtime
  *       {@link com.xa.mass.base.channel.eventbus.core.EventBusFacade} that bridges selected
  *       in-process events ({@code TaskCreated}, {@code TaskAssigned}, worker status changes)
  *       to external subscribers. Subscribe to the EventBus when loose coupling or
@@ -99,7 +99,7 @@ public class MassEngine {
             leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
 
-            eventBus = EventBusFactory.get("guava");
+            eventBus = EventBusFactory.get("runtime");
             @SuppressWarnings("unchecked")
             EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
             taskManager.addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
@@ -156,7 +156,7 @@ public class MassEngine {
     }
 
     /**
-     * Replays a {@link TaskCreatedEvent} for every existing task to the Guava EventBus.
+     * Replays a {@link TaskCreatedEvent} for every existing task to the runtime EventBus.
      *
      * <p>Useful for bootstrapping: newly registered EventBus subscribers can receive
      * a synthetic "created" signal for tasks that were created before they subscribed.

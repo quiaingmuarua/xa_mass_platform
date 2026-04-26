@@ -7,16 +7,16 @@ public final class EventBusFactory {
     }
 
     public static EventBusFacade<MassEvent> get(String type) {
+        if (!"runtime".equalsIgnoreCase(type)) {
+            if ("redis".equalsIgnoreCase(type)) {
+                throw new UnsupportedOperationException("Redis EventBus facade is not part of the converged runtime path");
+            }
+            throw new IllegalArgumentException("Unknown EventBus type: " + type);
+        }
         if (instance == null) {
             synchronized (EventBusFactory.class) {
                 if (instance == null) {
-                    if ("guava".equalsIgnoreCase(type)) {
-                        instance = new GuavaEventBusFacade(4);
-                    } else if ("redis".equalsIgnoreCase(type)) {
-                        throw new UnsupportedOperationException("Redis EventBus facade is not part of the converged runtime path");
-                    } else {
-                        throw new IllegalArgumentException("Unknown EventBus type: " + type);
-                    }
+                    instance = new RuntimeAsyncEventBusFacade();
                 }
             }
         }

@@ -26,7 +26,7 @@ public class AuditService {
         }
 
         log.info("[AuditService] Task review approved: tid={}", task.getTid());
-        EventBusFacade eventBus = EventBusFactory.get("guava");
+        EventBusFacade eventBus = EventBusFactory.get("runtime");
         eventBus.post(new TaskAuditedEvent(task, null, null));
     }
 }
