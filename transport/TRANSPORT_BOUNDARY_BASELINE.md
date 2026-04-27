@@ -3,6 +3,10 @@
 This note freezes the current transport model boundary so future adapter work
 does not turn transport into a second task engine.
 
+Transport is now a production data plane, not an adapter experiment. Favor
+throughput, availability, bounded admission, and idempotent runtime behavior
+over richer but expensive observability state.
+
 ## Scope
 
 Transport owns delivery mechanics for workers:
@@ -154,3 +158,9 @@ backlog, queue, backlog age, and waiting-poller diagnostics. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.
+
+Observability rule:
+
+- use logs, traces, queue stats, and indexed runtime lookups for diagnosis
+- do not add full-history, full-task, or full-queue scans to transport hot paths
+- delivery submission, result ingest, and shutdown handling should remain safe under duplicate or repeated calls

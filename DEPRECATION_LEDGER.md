@@ -14,7 +14,7 @@ Rules:
 
 - list only seams that are either explicitly deprecated or intentionally constrained compatibility paths
 - update this ledger when a seam is newly deprecated, gains a clearer replacement, or materially drops in call-site count
-- websocket-adapter-local class-by-class migration detail lives in [doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](./doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
+- websocket-adapter-local class-by-class migration detail lives in [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](./transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 - call-site counts below are grep-based repo counts captured on 2026-04-26; treat them as migration-tracking numbers, not exact semantic reachability proofs
 
 | Symbol or seam | Current location | Mainline replacement / source of truth | Current in-repo call-site count | Removal condition |

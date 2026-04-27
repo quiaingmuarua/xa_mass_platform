@@ -11,6 +11,7 @@ Purpose:
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
 - move default WebSocket bootstrap toward the WebSocket adapter instead of teaching SDK mainline more adapter runtime internals
+- keep adapter observability transport-local through logs, traces, and bounded diagnostics rather than task-model expansion
 
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
 For active adapter-local compatibility debt, also use [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) and [./refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](./refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md).
@@ -241,6 +242,12 @@ The WebSocket adapter must not become truth for:
 - terminal closure
 
 Those belong in engine/runtime trace.
+
+Operational rule:
+
+- prefer transport logs, trace events, queue/executor counters, and explicit reject paths
+- do not add scan-heavy adapter-local reconciliation just to answer observability questions
+- keep inbound/outbound/result handling idempotent where duplicate frames or reconnect churn can occur
 
 ## 10. Active Adapter Seams
 

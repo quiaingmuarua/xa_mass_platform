@@ -1,6 +1,6 @@
 # XA Mass Platform Agent Handoff
 
-This is the fastest entry point for coding agents. Keep it short. Use the owner docs under `doc/` for details.
+This is the fastest entry point for coding agents. Keep it short. Use the owner docs under `doc/` and `transport/` for details.
 
 ## 0. TL;DR
 
@@ -10,6 +10,10 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - WebSocket is one transport adapter, not the product boundary.
 - Polling/pull workers are mainline, not side features.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
+- Project direction is production-grade high-throughput and high-availability, not experimental realtime introspection.
+- Observability should come from logs, trace, and bounded diagnostics rather than scan-heavy hot-path state.
+- Prefer idempotent operations and bounded queues over richer but expensive control-plane projections.
+- Official Java baseline is Java 21 with virtual threads used through explicit runtime abstractions.
 - Real Boot entry is `xa-mass-dev-app`; embedded runtime composition lives in `xa-mass-sdk`.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
 
@@ -41,7 +45,7 @@ Canonical trust order:
 1. code
 2. verified runtime behavior
 3. this handoff
-4. active owner docs and ledgers (`doc/*`, `DEPRECATION_LEDGER.md`)
+4. active owner docs and ledgers (`doc/*`, `transport/*`, `DEPRECATION_LEDGER.md`)
 5. module README files
 6. refactor inventories and older notes only after re-verification
 
@@ -50,9 +54,9 @@ Canonical trust order:
 Start here based on the change:
 
 - transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
-- websocket adapter/transport: [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
+- websocket adapter/transport: [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
-- high-volume transport worker-event delivery: [doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
+- high-volume transport worker-event delivery: [transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
@@ -60,7 +64,7 @@ Start here based on the change:
 - integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
-- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
+- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 
 ## 3. Agent Behavior Contract
 
@@ -107,13 +111,16 @@ Deprecation and pushback:
 - Worker runtime event capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint.
 - Routing truth comes from explicit rules and worker-context signals, not `workerGroupId`.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
+- Do not add scan-heavy observability or reconciliation loops to hot paths; prefer logs, trace, counters, and indexed lookups.
+- Bias transport and lifecycle writes toward idempotent operations and explicit retry safety.
 - Read [transport/AGENTS.md](transport/AGENTS.md) before changing `transport/transport_api`, `transport/transport_runtime`, or adding a new transport adapter.
-- Read [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
+- Read [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
 ## 5. Working Defaults
 
 - Verify the current code path before changing behavior.
+- Prefer logs, traces, and bounded diagnostics over model-coupled realtime observability.
 - Prefer E2E or integration coverage for lifecycle changes.
 - When lifecycle semantics change, update [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) together.
 - Check [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md) before extending any compatibility or legacy seam.

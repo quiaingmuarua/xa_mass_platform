@@ -5,13 +5,16 @@ Last updated: 2026-04-27
 This document turns transport from an adapter experiment into a production
 data-plane design for high-volume worker events.
 
+The goal is not richer realtime introspection. The goal is a transport path
+that stays bounded, observable, and recoverable under load.
+
 Use it with:
 
-- [../transport/AGENTS.md](../transport/AGENTS.md)
+- [./AGENTS.md](./AGENTS.md)
 - [./TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md)
-- [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
-- [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
-- [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- [../doc/HIGH_VOLUME_MODEL_BASELINE.md](../doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md)
+- [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
 
 ## 1. Definition
 
@@ -57,6 +60,12 @@ behavior is still implicit:
 
 The design goal is to make the current concepts stricter rather than add new
 adapter-specific paths.
+
+Working bias:
+
+- prefer explicit admission and idempotent outcomes
+- prefer counters and trace over full-state reconstruction
+- prefer store replacement for HA over protocol churn
 
 ## 3. Target Shape
 
