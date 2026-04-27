@@ -26,6 +26,7 @@ import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
@@ -474,7 +475,25 @@ public class MassApplication {
         map.put("directFailedItems", stats != null ? stats.getDirectFailedItems() : 0L);
         map.put("directInvalidItems", stats != null ? stats.getDirectInvalidItems() : 0L);
         map.put("directUnavailableItems", stats != null ? stats.getDirectUnavailableItems() : 0L);
+        map.put("queueByAdapter", queueByAdapterDetail(stats != null ? stats.getQueueByAdapter() : Map.of()));
         map.put("directByAdapter", directByAdapterDetail(directByAdapter));
+        return Map.copyOf(map);
+    }
+
+    private Map<String, Object> queueByAdapterDetail(Map<String, TransportDeliveryQueueStats> queueByAdapter) {
+        if (queueByAdapter == null || queueByAdapter.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        queueByAdapter.forEach((adapterId, stats) -> {
+            Map<String, Object> adapterStats = new LinkedHashMap<>();
+            adapterStats.put("queuedItems", stats != null ? stats.getQueuedItems() : 0);
+            adapterStats.put("queueCount", stats != null ? stats.getQueueCount() : 0);
+            adapterStats.put("waitingPollers", stats != null ? stats.getWaitingPollers() : 0);
+            adapterStats.put("oldestQueuedAgeMillis", stats != null ? stats.getOldestQueuedAgeMillis() : 0L);
+            adapterStats.put("backpressureRejectedItems", stats != null ? stats.getBackpressureRejectedItems() : 0L);
+            map.put(adapterId, Map.copyOf(adapterStats));
+        });
         return Map.copyOf(map);
     }
 

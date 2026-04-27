@@ -2,9 +2,10 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.runtime.TaskRuntimeAssignmentRetryOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,7 @@ public class TaskAssignWorker {
     private final TaskWorkerAssignListener workerAssignListener;
     private final long retryDelayMillis;
     private final int assignmentQueueCapacity;
-    private final TaskRuntimeAssignmentRetryOptionsResolver taskRuntimeAssignmentRetryOptionsResolver;
+    private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final Map<TaskRuntimeProfile.DispatchLane, LaneState> laneStates =
             new EnumMap<>(TaskRuntimeProfile.DispatchLane.class);
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
@@ -58,17 +59,17 @@ public class TaskAssignWorker {
         this(workerAssignListener,
                 retryDelayMillis,
                 assignmentQueueCapacity,
-                new TaskRuntimeAssignmentRetryOptionsResolver());
+                new TaskRuntimeRetryPolicyResolver());
     }
 
     TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                      long retryDelayMillis,
                      int assignmentQueueCapacity,
-                     TaskRuntimeAssignmentRetryOptionsResolver taskRuntimeAssignmentRetryOptionsResolver) {
+                     TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
-        this.taskRuntimeAssignmentRetryOptionsResolver = taskRuntimeAssignmentRetryOptionsResolver;
+        this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
     }
 
     public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
@@ -295,7 +296,8 @@ public class TaskAssignWorker {
         if (laneState == null || laneState.retryExecutor == null) {
             return;
         }
-        long resolvedRetryDelayMillis = taskRuntimeAssignmentRetryOptionsResolver.resolve(task, retryDelayMillis);
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
+        long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
         laneState.scheduledRetryCount.incrementAndGet();
         TraceEventLogger.assignmentRetryScheduled(
                 task.getTid(),

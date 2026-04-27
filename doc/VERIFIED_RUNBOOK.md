@@ -192,6 +192,12 @@ Current bundle contents:
 
 Use the bundle when the goal is to validate current workspace runtime behavior after engine perf/concurrency changes. It refreshes sibling artifacts for the active workspace and then runs with a direct runtime classpath, so the smoke results come from the current workspace state instead of whatever was last installed manually.
 
+The bundle pins a more stable interactive retry-delay JVM property for the retry-wakeup smoke so cross-environment timing is less fragile.
+
+Scheduled/manual CI workflow:
+
+- `.github/workflows/perf-smokes.yml`
+
 SDK transport load harness:
 
 Polling worker mode:

@@ -453,9 +453,7 @@ class MassSdkTest {
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
                 () -> WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                        config.getBundledWebSocketAdapterConfig().getServerPort(),
-                        config.getBundledWebSocketAdapterConfig().getMaxConnections(),
-                        config.getBundledWebSocketAdapterConfig().getEndpointPath(),
+                        config.getBundledWebSocketAdapterConfig(),
                         dispatcherContext,
                         endpointRegistry
                 )
@@ -575,7 +573,16 @@ class MassSdkTest {
                         "queuedItems", 1,
                         "queueCount", 1,
                         "waitingPollers", 0,
-                        "maxQueuedItems", 100
+                        "maxQueuedItems", 100,
+                        "queueByAdapter", Map.of(
+                                "polling", Map.of(
+                                        "queuedItems", 1,
+                                        "queueCount", 1,
+                                        "waitingPollers", 0,
+                                        "oldestQueuedAgeMillis", 0L,
+                                        "backpressureRejectedItems", 0L
+                                )
+                        )
                 ),
                 "runtimeExecutors", Map.of(
                         "transport", Map.of("available", true, "pendingTasks", 0),
@@ -655,6 +662,7 @@ class MassSdkTest {
             assertEquals(0L, deliveryQueue.get("directFailedItems"));
             assertEquals(0L, deliveryQueue.get("directInvalidItems"));
             assertEquals(0L, deliveryQueue.get("directUnavailableItems"));
+            assertEquals(Map.of(), deliveryQueue.get("queueByAdapter"));
             assertEquals(Map.of(), deliveryQueue.get("directByAdapter"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
@@ -680,6 +688,7 @@ class MassSdkTest {
             Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
             assertEquals(true, deliveryQueue.get("available"));
             assertEquals(7, deliveryQueue.get("maxQueuedItems"));
+            assertEquals(Map.of(), deliveryQueue.get("queueByAdapter"));
         } finally {
             app.stop();
         }

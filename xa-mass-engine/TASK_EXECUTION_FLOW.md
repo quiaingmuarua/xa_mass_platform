@@ -45,11 +45,13 @@ Key facts:
 - `batchSize` is a per-worker cap for each dispatch round
 - `minRequiredWorkerCount` is the start gate
 - `Task.workloadClass` is task-level orchestration intent; current engine classes are `INTERACTIVE` and `BULK`
-- `TaskRuntimeProfile` is the internal normalized runtime policy used by enqueue backpressure, assignment, ready-work claim, runtime retry visibility, retry, and trace
+- `TaskRuntimeProfile` is the internal normalized runtime policy used by enqueue backpressure, assignment, ready-work claim, and trace
+- assignment retry delay and runtime retry visibility delay now resolve together through engine-internal `TaskRuntimeRetryPolicy`, so retry-side behavior stays on one workload-aware mainline
 - `INTERACTIVE` currently resolves to a smaller per-worker claim window and shorter lease cap than `BULK`
 - `INTERACTIVE` also resolves to a shorter assignment retry delay than `BULK` when a `READY` or refill-style `RUNNING` task stays eligible but no dispatch happened in the current round
 - retryable message failures and retryable lease expiry now re-enter `TaskWorkRuntime` with a workload-aware next-visible time; `INTERACTIVE` defaults to a short delayed retry and `BULK` currently stays immediate unless explicitly configured
 - when runtime retry visibility is delayed, engine now schedules the redispatch wakeup at that delay boundary instead of always emitting an immediate dispatch signal that would only empty-run the assignment path
+- delayed retry wakeups are now coalesced at the task dispatch boundary, so one retry storm does not create one sleeping redispatch task per logical message
 - `INTERACTIVE` also carries a dedicated ready-backlog cap so realtime-style tasks can fail fast before bulk-style queue growth semantics are applied
 - current lane split is an assignment-entry skeleton, not full fair scheduling or multi-executor throughput optimization
 - worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch

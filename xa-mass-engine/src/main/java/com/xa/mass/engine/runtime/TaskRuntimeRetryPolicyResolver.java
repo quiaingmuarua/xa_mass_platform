@@ -1,0 +1,58 @@
+package com.xa.mass.engine.runtime;
+
+import com.xa.mass.base.model.Task;
+
+/**
+ * Resolves workload-aware retry policy from the normalized runtime profile.
+ *
+ * <p>Current phase keeps the scope intentionally narrow: assignment requeue
+ * delay and runtime retry visibility delay resolve together so engine retry
+ * behavior has one internal source of truth.
+ */
+public class TaskRuntimeRetryPolicyResolver {
+
+    private final long interactiveAssignmentRetryDelayMillis;
+    private final long interactiveWorkRetryDelayMillis;
+    private final long bulkWorkRetryDelayMillis;
+    private final TaskRuntimeProfileResolver profileResolver;
+
+    public TaskRuntimeRetryPolicyResolver() {
+        this(
+                longProperty("xa.mass.engine.interactiveAssignmentRetryDelayMillis", 100L),
+                longProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", 100L),
+                longProperty("xa.mass.engine.bulkWorkRetryDelayMillis", 0L),
+                new TaskRuntimeProfileResolver()
+        );
+    }
+
+    public TaskRuntimeRetryPolicyResolver(long interactiveAssignmentRetryDelayMillis,
+                                          long interactiveWorkRetryDelayMillis,
+                                          long bulkWorkRetryDelayMillis,
+                                          TaskRuntimeProfileResolver profileResolver) {
+        this.interactiveAssignmentRetryDelayMillis = Math.max(1L, interactiveAssignmentRetryDelayMillis);
+        this.interactiveWorkRetryDelayMillis = Math.max(0L, interactiveWorkRetryDelayMillis);
+        this.bulkWorkRetryDelayMillis = Math.max(0L, bulkWorkRetryDelayMillis);
+        this.profileResolver = profileResolver;
+    }
+
+    public TaskRuntimeRetryPolicy resolve(Task task, long defaultAssignmentRetryDelayMillis) {
+        TaskRuntimeProfile profile = profileResolver.resolve(task);
+        long normalizedAssignmentDefaultDelayMillis = Math.max(1L, defaultAssignmentRetryDelayMillis);
+        return switch (profile.workloadClass()) {
+            case INTERACTIVE -> new TaskRuntimeRetryPolicy(
+                    profile.workloadClass(),
+                    Math.min(normalizedAssignmentDefaultDelayMillis, interactiveAssignmentRetryDelayMillis),
+                    interactiveWorkRetryDelayMillis
+            );
+            case BULK -> new TaskRuntimeRetryPolicy(
+                    profile.workloadClass(),
+                    normalizedAssignmentDefaultDelayMillis,
+                    bulkWorkRetryDelayMillis
+            );
+        };
+    }
+
+    private static long longProperty(String key, long defaultValue) {
+        return Long.getLong(key, defaultValue);
+    }
+}

@@ -6,8 +6,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.engine.runtime.TaskRuntimeWorkRetryOptionsResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.work.ActiveLeaseRecord;
@@ -28,17 +28,14 @@ class TaskResultService {
 
     private final TaskManager taskManager;
     private final TaskStateResolver stateResolver;
-    private final TaskRuntimeWorkRetryOptionsResolver taskRuntimeWorkRetryOptionsResolver;
-    private final RuntimeTaskExecutor retryWakeupExecutor;
+    private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
 
     TaskResultService(TaskManager taskManager,
                       TaskStateResolver stateResolver,
-                      TaskRuntimeWorkRetryOptionsResolver taskRuntimeWorkRetryOptionsResolver,
-                      RuntimeTaskExecutor retryWakeupExecutor) {
+                      TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver) {
         this.taskManager = taskManager;
         this.stateResolver = stateResolver;
-        this.taskRuntimeWorkRetryOptionsResolver = taskRuntimeWorkRetryOptionsResolver;
-        this.retryWakeupExecutor = retryWakeupExecutor;
+        this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
     }
 
     boolean expireTaskMessage(String taskId, String messageId) {
@@ -442,39 +439,16 @@ class TaskResultService {
         if (!retryable) {
             return 0L;
         }
-        return taskRuntimeWorkRetryOptionsResolver.resolveRetryDelayMillis(task);
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, 1L);
+        return retryPolicy.workRetryDelayMillis();
     }
 
     void shutdown() {
-        if (retryWakeupExecutor != null) {
-            retryWakeupExecutor.shutdown();
-        }
+        // Runtime-owned retry wakeup lifecycle is managed by TaskDispatchRequestService.
     }
 
     private void requestRetryDispatch(Task task, long workRetryDelayMillis) {
-        if (task == null || task.getTid() == null || task.getTid().isBlank()) {
-            return;
-        }
-        if (workRetryDelayMillis <= 0L) {
-            taskManager.getEventPublisher().publishTaskDispatchRequested(task);
-            return;
-        }
-        retryWakeupExecutor.submit(() -> {
-            try {
-                Thread.sleep(workRetryDelayMillis);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            Task refreshedTask = taskManager.getTask(task.getTid());
-            if (refreshedTask == null || refreshedTask.getStatus().isFinal()) {
-                return;
-            }
-            if (!taskManager.hasPendingDispatchableMessages(refreshedTask.getTid())) {
-                return;
-            }
-            taskManager.getEventPublisher().publishTaskDispatchRequested(refreshedTask);
-        });
+        taskManager.requestTaskRetryDispatch(task, workRetryDelayMillis);
     }
 
     private void publishAttemptClosed(Task task,

@@ -6,7 +6,10 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,6 +35,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private final AtomicLong invalidItems = new AtomicLong();
     private final AtomicLong unavailableItems = new AtomicLong();
     private final AtomicLong shutdownClearedItems = new AtomicLong();
+    private final ConcurrentMap<String, AdapterCounters> adapterCounters = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Object statsSnapshotLock = new Object();
     private final int maxQueuedItems;
@@ -64,6 +68,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         }
         if (maxItemsPerWorker <= 0) {
             backpressureRejectedItems.incrementAndGet();
+            adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
             return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue capacity is exhausted");
         }
         if (!running.get()) {
@@ -84,6 +89,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             }
             if (queue.items.size() >= maxItemsPerWorker) {
                 backpressureRejectedItems.incrementAndGet();
+                adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue is full");
             }
             if (!reserveGlobalSlot()) {
@@ -91,12 +97,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                     deliveryByWorker.remove(key, queue);
                 }
                 backpressureRejectedItems.incrementAndGet();
+                adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "runtime delivery backlog is full");
             }
             queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, currentTimeMillis.getAsLong()));
             enqueuedItems.incrementAndGet();
             invalidateStatsSnapshot();
-            queue.notifyAll();
+            signalWaitingPoller(queue);
             return DispatchOutcome.queued(normalizedAdapterId, item);
         }
     }
@@ -201,18 +208,32 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private TransportDeliveryStoreStats snapshotStats(long nowMillis) {
         int waiters = 0;
         long oldestCreatedAt = Long.MAX_VALUE;
-        for (DeliveryQueue queue : deliveryByWorker.values()) {
+        Map<String, MutableAdapterQueueStats> queueStatsByAdapter = new HashMap<>();
+        for (Map.Entry<DeliveryQueueKey, DeliveryQueue> entry : deliveryByWorker.entrySet()) {
+            DeliveryQueueKey key = entry.getKey();
+            DeliveryQueue queue = entry.getValue();
             synchronized (queue) {
                 waiters += queue.waiters;
                 TransportDelivery oldest = queue.items.peekFirst();
                 if (oldest != null) {
                     oldestCreatedAt = Math.min(oldestCreatedAt, oldest.getCreatedAtEpochMillis());
                 }
+                MutableAdapterQueueStats adapterStats = queueStatsByAdapter.computeIfAbsent(
+                        key.adapterId(),
+                        ignored -> new MutableAdapterQueueStats()
+                );
+                adapterStats.queueCount++;
+                adapterStats.waitingPollers += queue.waiters;
+                adapterStats.queuedItems += queue.items.size();
+                if (oldest != null) {
+                    adapterStats.oldestCreatedAt = Math.min(adapterStats.oldestCreatedAt, oldest.getCreatedAtEpochMillis());
+                }
             }
         }
         long oldestQueuedAgeMillis = oldestCreatedAt == Long.MAX_VALUE
                 ? 0L
                 : Math.max(0L, nowMillis - oldestCreatedAt);
+        Map<String, TransportDeliveryQueueStats> queueByAdapter = snapshotQueueByAdapter(queueStatsByAdapter, nowMillis);
         return new TransportDeliveryStoreStats(
                 queuedItems.get(),
                 deliveryByWorker.size(),
@@ -224,7 +245,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 backpressureRejectedItems.get(),
                 invalidItems.get(),
                 unavailableItems.get(),
-                shutdownClearedItems.get()
+                shutdownClearedItems.get(),
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                queueByAdapter
         );
     }
 
@@ -249,6 +276,47 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private void invalidateStatsSnapshot() {
         cachedStatsSnapshot = null;
         cachedStatsAtMillis = 0L;
+    }
+
+    private static void signalWaitingPoller(DeliveryQueue queue) {
+        if (queue.waiters > 0) {
+            queue.notify();
+        }
+    }
+
+    private Map<String, TransportDeliveryQueueStats> snapshotQueueByAdapter(
+            Map<String, MutableAdapterQueueStats> queueStatsByAdapter,
+            long nowMillis) {
+        Map<String, TransportDeliveryQueueStats> snapshot = new LinkedHashMap<>();
+        adapterCounters.keySet().stream().sorted().forEach(adapterId -> {
+            MutableAdapterQueueStats queueStats = queueStatsByAdapter.remove(adapterId);
+            snapshot.put(adapterId, toQueueStats(queueStats, adapterCounters.get(adapterId), nowMillis));
+        });
+        queueStatsByAdapter.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> snapshot.put(entry.getKey(), toQueueStats(entry.getValue(), null, nowMillis)));
+        return snapshot.isEmpty() ? Map.of() : Map.copyOf(snapshot);
+    }
+
+    private TransportDeliveryQueueStats toQueueStats(MutableAdapterQueueStats queueStats,
+                                                     AdapterCounters counters,
+                                                     long nowMillis) {
+        long oldestQueuedAgeMillis = queueStats == null || queueStats.oldestCreatedAt == Long.MAX_VALUE
+                ? 0L
+                : Math.max(0L, nowMillis - queueStats.oldestCreatedAt);
+        long backpressureRejected = counters == null ? 0L : counters.backpressureRejectedItems.get();
+        return new TransportDeliveryQueueStats(
+                queueStats == null ? 0 : queueStats.queuedItems,
+                queueStats == null ? 0 : queueStats.queueCount,
+                queueStats == null ? 0 : queueStats.waitingPollers,
+                oldestQueuedAgeMillis,
+                backpressureRejected
+        );
+    }
+
+    private AdapterCounters adapterCounters(String adapterId) {
+        String normalizedAdapterId = adapterId == null ? "unknown" : adapterId;
+        return adapterCounters.computeIfAbsent(normalizedAdapterId, ignored -> new AdapterCounters());
     }
 
     private boolean reserveGlobalSlot() {
@@ -306,5 +374,16 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private static final class DeliveryQueue {
         private final Deque<TransportDelivery> items = new ArrayDeque<>();
         private int waiters;
+    }
+
+    private static final class AdapterCounters {
+        private final AtomicLong backpressureRejectedItems = new AtomicLong();
+    }
+
+    private static final class MutableAdapterQueueStats {
+        private int queuedItems;
+        private int queueCount;
+        private int waitingPollers;
+        private long oldestCreatedAt = Long.MAX_VALUE;
     }
 }

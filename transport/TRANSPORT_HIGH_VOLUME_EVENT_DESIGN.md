@@ -169,6 +169,7 @@ Durable store requirements:
 - enforce the same admission semantics
 - expose `TransportDeliveryStoreStats`
 - support wake/drain for polling workers
+- model wake/drain as single-consumer delivery per queued item; shutdown may wake all waiters for cleanup
 - support shutdown/recovery without mutating engine lifecycle directly
 - provide indexed lookup by `(adapterId, workerId)`
 

@@ -272,7 +272,7 @@ class TaskLifecycleService {
         task.setIngestStatus(resolvePostAppendIngestStatus(task));
         taskManager.updateTask(task);
         if (task.getStatus().isActive()) {
-            taskManager.getEventPublisher().publishTaskDispatchRequested(task);
+            taskManager.requestTaskDispatch(task);
         }
         logger.info("[appendTaskItems] Added {} items to open-ended task {}", added, taskId);
         return added;

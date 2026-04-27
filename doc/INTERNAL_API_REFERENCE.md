@@ -682,6 +682,15 @@ Response shape:
       "directFailedItems": 0,
       "directInvalidItems": 0,
       "directUnavailableItems": 0,
+      "queueByAdapter": {
+        "polling": {
+          "queuedItems": 0,
+          "queueCount": 0,
+          "waitingPollers": 0,
+          "oldestQueuedAgeMillis": 0,
+          "backpressureRejectedItems": 0
+        }
+      },
       "directByAdapter": {
         "websocket": {
           "sentItems": 0,
@@ -728,8 +737,9 @@ Notes:
   or retry state. `oldestQueuedAgeMillis` is for backlog age monitoring only.
   The cumulative counters are process-local diagnostics for accepted, drained,
   rejected, invalid, unavailable, shutdown-cleared, and direct-send delivery
-  outcomes. `directByAdapter` breaks direct-send counters down by concrete
-  `adapterId` for realtime adapter troubleshooting.
+  outcomes. `queueByAdapter` breaks queue-focused store diagnostics down by
+  concrete `adapterId`, and `directByAdapter` breaks direct-send counters down
+  by concrete `adapterId` for realtime adapter troubleshooting.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned
   transport and optional bounded event-handler executors. `maxPendingTasks`
   reflects SDK runtime config, not a fixed platform constant.

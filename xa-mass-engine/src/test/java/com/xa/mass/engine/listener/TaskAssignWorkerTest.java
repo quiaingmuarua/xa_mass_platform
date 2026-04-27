@@ -3,8 +3,8 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.runtime.TaskRuntimeAssignmentRetryOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -298,7 +298,7 @@ class TaskAssignWorkerTest {
                 retryingListener,
                 200L,
                 10,
-                new TaskRuntimeAssignmentRetryOptionsResolver(25L, new TaskRuntimeProfileResolver())
+                new TaskRuntimeRetryPolicyResolver(25L, 100L, 0L, new TaskRuntimeProfileResolver())
         );
         worker.start();
 

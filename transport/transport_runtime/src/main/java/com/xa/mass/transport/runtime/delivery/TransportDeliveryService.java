@@ -77,7 +77,8 @@ public final class TransportDeliveryService {
                 directOfflineItems.get(),
                 directFailedItems.get(),
                 directInvalidItems.get(),
-                directUnavailableItems.get()
+                directUnavailableItems.get(),
+                storeStats.getQueueByAdapter()
         );
     }
 

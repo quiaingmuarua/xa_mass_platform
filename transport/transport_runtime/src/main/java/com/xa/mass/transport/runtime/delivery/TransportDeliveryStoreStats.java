@@ -1,5 +1,7 @@
 package com.xa.mass.transport.runtime.delivery;
 
+import java.util.Map;
+
 /**
  * Runtime delivery store snapshot for admission-control and HA diagnostics.
  */
@@ -21,13 +23,13 @@ public final class TransportDeliveryStoreStats {
     private final long directFailedItems;
     private final long directInvalidItems;
     private final long directUnavailableItems;
+    private final Map<String, TransportDeliveryQueueStats> queueByAdapter;
 
     public TransportDeliveryStoreStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems) {
-        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
-                0L, 0L, 0L, 0L, 0L);
+        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, 0L);
     }
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -36,7 +38,7 @@ public final class TransportDeliveryStoreStats {
                                        int maxQueuedItems,
                                        long oldestQueuedAgeMillis) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, 0L, 0L, 0L,
-                0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
+                0L, 0L, 0L);
     }
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -52,7 +54,7 @@ public final class TransportDeliveryStoreStats {
                                        long shutdownClearedItems) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
                 drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
-                0L, 0L, 0L, 0L, 0L);
+                0L, 0L, 0L, 0L, 0L, Map.of());
     }
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -71,6 +73,29 @@ public final class TransportDeliveryStoreStats {
                                        long directFailedItems,
                                        long directInvalidItems,
                                        long directUnavailableItems) {
+        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
+                drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
+                directSentItems, directOfflineItems, directFailedItems, directInvalidItems, directUnavailableItems,
+                Map.of());
+    }
+
+    public TransportDeliveryStoreStats(int queuedItems,
+                                       int queueCount,
+                                       int waitingPollers,
+                                       int maxQueuedItems,
+                                       long oldestQueuedAgeMillis,
+                                       long enqueuedItems,
+                                       long drainedItems,
+                                       long backpressureRejectedItems,
+                                       long invalidItems,
+                                       long unavailableItems,
+                                       long shutdownClearedItems,
+                                       long directSentItems,
+                                       long directOfflineItems,
+                                       long directFailedItems,
+                                       long directInvalidItems,
+                                       long directUnavailableItems,
+                                       Map<String, TransportDeliveryQueueStats> queueByAdapter) {
         this.queuedItems = Math.max(0, queuedItems);
         this.queueCount = Math.max(0, queueCount);
         this.waitingPollers = Math.max(0, waitingPollers);
@@ -87,6 +112,9 @@ public final class TransportDeliveryStoreStats {
         this.directFailedItems = Math.max(0L, directFailedItems);
         this.directInvalidItems = Math.max(0L, directInvalidItems);
         this.directUnavailableItems = Math.max(0L, directUnavailableItems);
+        this.queueByAdapter = queueByAdapter == null || queueByAdapter.isEmpty()
+                ? Map.of()
+                : Map.copyOf(queueByAdapter);
     }
 
     public int getQueuedItems() {
@@ -151,5 +179,9 @@ public final class TransportDeliveryStoreStats {
 
     public long getDirectUnavailableItems() {
         return directUnavailableItems;
+    }
+
+    public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
+        return queueByAdapter;
     }
 }

@@ -55,11 +55,12 @@ Use with:
 | heavier `perf` baseline/trend checks | nightly or release | throughput thresholds need steadier cadence |
 | `chaos` | nightly, manual, or release | valuable but usually too noisy for PR-required gates |
 
-Current workflow labels from [../.github/workflows/maven.yml](../.github/workflows/maven.yml) and [../.github/workflows/external-worker-samples.yml](../.github/workflows/external-worker-samples.yml):
+Current workflow labels from [../.github/workflows/maven.yml](../.github/workflows/maven.yml), [../.github/workflows/external-worker-samples.yml](../.github/workflows/external-worker-samples.yml), and [../.github/workflows/perf-smokes.yml](../.github/workflows/perf-smokes.yml):
 
 - `build`: broad `./mvnw -B test`
 - `lifecycle-integration`: focused `xa-mass-dev-app` lifecycle integration subset
 - `cross-language-blackbox`: external worker sample regression on PR/push plus scheduled daily run
+- `perf-smokes`: scheduled/manual perf smoke bundle with artifact upload
 
 ## 5. Change-Type Matrix
 

@@ -141,6 +141,7 @@ class TransportDeliveryServiceTest {
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
         assertEquals(0L, stats.getDirectSentItems());
+        assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
     }
 
     @Test

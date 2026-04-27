@@ -613,6 +613,70 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void delayedRetryWakeupIsCoalescedPerTaskUnderMultipleRetryableFailures() throws InterruptedException {
+        String previousInteractiveRetryDelay = System.getProperty("xa.mass.engine.interactiveWorkRetryDelayMillis");
+        try {
+            System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
+
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskCreateRequestDto dto = buildRequest("task-result-interactive-coalesced-retry", List.of("alpha", "beta"));
+            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            Task task = manager.createTask(dto);
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            List<TaskMsg> messages = manager.getTaskMessages(task.getTid());
+            messages.forEach(message -> {
+                message.setMaxRetryCount(1);
+                manager.updateTaskMessage(task.getTid(), message);
+                assignMessage(manager, task, message);
+            });
+
+            AtomicInteger dispatchEvents = new AtomicInteger();
+            CountDownLatch dispatchLatch = new CountDownLatch(1);
+            manager.addTaskDispatchListener(ignored -> {
+                if (task.getTid().equals(ignored.getTid())) {
+                    dispatchEvents.incrementAndGet();
+                    dispatchLatch.countDown();
+                }
+            });
+
+            assertTrue(manager.handleTaskMessageResult(
+                    task.getTid(),
+                    messages.get(0).getMessageId(),
+                    false,
+                    "retry-alpha",
+                    "SYNTHETIC_RETRY",
+                    null
+            ));
+            assertTrue(manager.handleTaskMessageResult(
+                    task.getTid(),
+                    messages.get(1).getMessageId(),
+                    false,
+                    "retry-beta",
+                    "SYNTHETIC_RETRY",
+                    null
+            ));
+
+            assertTrue(dispatchLatch.await(2, TimeUnit.SECONDS));
+            Thread.sleep(250);
+
+            assertEquals(1, dispatchEvents.get());
+            assertEquals(TaskMsgStatus.INIT,
+                    manager.getTaskMessage(task.getTid(), messages.get(0).getMessageId()).getStatus());
+            assertEquals(TaskMsgStatus.INIT,
+                    manager.getTaskMessage(task.getTid(), messages.get(1).getMessageId()).getStatus());
+            assertEquals(1,
+                    manager.getTaskMessage(task.getTid(), messages.get(0).getMessageId()).getRetryCount());
+            assertEquals(1,
+                    manager.getTaskMessage(task.getTid(), messages.get(1).getMessageId()).getRetryCount());
+        } finally {
+            restoreProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", previousInteractiveRetryDelay);
+        }
+    }
+
+    @Test
     void callbackWithoutActiveAttemptIsRejectedAndTraced() {
         Task task = taskManager.createTask(buildRequest("task-result-no-active-attempt", List.of("alpha")));
         taskManager.approveTask(task.getTid());

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryTransportDeliveryStoreTest {
@@ -112,6 +113,9 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(3L, queued.getEnqueuedItems());
         assertEquals(0L, queued.getDrainedItems());
         assertEquals(0L, queued.getBackpressureRejectedItems());
+        assertEquals(2, queued.getQueueByAdapter().get("polling").getQueueCount());
+        assertEquals(3, queued.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(500L, queued.getQueueByAdapter().get("polling").getOldestQueuedAgeMillis());
 
         store.drain("polling", "worker-1", 10);
         now.set(1_800L);
@@ -121,6 +125,8 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(550L, remaining.getOldestQueuedAgeMillis());
         assertEquals(3L, remaining.getEnqueuedItems());
         assertEquals(2L, remaining.getDrainedItems());
+        assertEquals(1, remaining.getQueueByAdapter().get("polling").getQueueCount());
+        assertEquals(1, remaining.getQueueByAdapter().get("polling").getQueuedItems());
     }
 
     @Test
@@ -162,6 +168,7 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(2L, stats.getBackpressureRejectedItems());
         assertEquals(1L, stats.getUnavailableItems());
         assertEquals(1L, stats.getShutdownClearedItems());
+        assertEquals(2L, stats.getQueueByAdapter().get("polling").getBackpressureRejectedItems());
     }
 
     @Test
@@ -185,6 +192,33 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
+    void enqueueWakesOnePollerPerQueuedItemForSameWorker() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+
+        CompletableFuture<List<TaskDispatchItem>> firstPoller = pollAsync(store, "worker-1");
+        CompletableFuture<List<TaskDispatchItem>> secondPoller = pollAsync(store, "worker-1");
+
+        waitUntil(() -> store.stats().getWaitingPollers() == 2);
+        store.enqueue("polling", item("msg-1", "worker-1"), 10);
+
+        CompletableFuture<List<TaskDispatchItem>> completed =
+                CompletableFuture.anyOf(firstPoller, secondPoller).thenApply(result -> castItems(result));
+        assertEquals(List.of("msg-1"),
+                completed.get(1, TimeUnit.SECONDS).stream().map(TaskDispatchItem::getMessageId).toList());
+        assertEquals(1, store.stats().getWaitingPollers());
+        assertFalse(firstPoller.isDone() && secondPoller.isDone());
+
+        store.enqueue("polling", item("msg-2", "worker-1"), 10);
+
+        assertEquals(List.of("msg-1", "msg-2"),
+                List.of(firstPoller.get(1, TimeUnit.SECONDS), secondPoller.get(1, TimeUnit.SECONDS)).stream()
+                        .flatMap(List::stream)
+                        .map(TaskDispatchItem::getMessageId)
+                        .sorted()
+                        .toList());
+    }
+
+    @Test
     void statsTrackWaitingPollers() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
@@ -198,6 +232,7 @@ class InMemoryTransportDeliveryStoreTest {
         });
 
         waitUntil(() -> store.stats().getWaitingPollers() == 1);
+        assertEquals(1, store.stats().getQueueByAdapter().get("polling").getWaitingPollers());
         store.enqueue("polling", item("msg-1", "worker-1"), 10);
 
         assertEquals(List.of("msg-1"), polled.get(1, TimeUnit.SECONDS)
@@ -205,6 +240,24 @@ class InMemoryTransportDeliveryStoreTest {
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
         assertEquals(0, store.stats().getWaitingPollers());
+        assertEquals(Map.of(), store.stats().getQueueByAdapter());
+    }
+
+    @Test
+    void statsExposePerAdapterQueueBreakdown() {
+        AtomicLong now = new AtomicLong(2_000L);
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, now::get);
+        store.enqueue("polling", item("msg-1", "worker-1"), 10);
+        store.enqueue("websocket", item("msg-2", "worker-2"), 10);
+        now.set(2_300L);
+
+        TransportDeliveryStoreStats stats = store.stats();
+
+        assertEquals(2, stats.getQueueByAdapter().size());
+        assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get("websocket").getQueuedItems());
+        assertEquals(300L, stats.getQueueByAdapter().get("polling").getOldestQueuedAgeMillis());
+        assertEquals(300L, stats.getQueueByAdapter().get("websocket").getOldestQueuedAgeMillis());
     }
 
     @Test
@@ -255,6 +308,22 @@ class InMemoryTransportDeliveryStoreTest {
                 Map.of("target", "target-1"),
                 Map.of()
         );
+    }
+
+    private CompletableFuture<List<TaskDispatchItem>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return store.poll("polling", workerId, 10, 2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return List.of();
+            }
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<TaskDispatchItem> castItems(Object result) {
+        return (List<TaskDispatchItem>) result;
     }
 
     private void waitUntil(BooleanSupplier condition) throws InterruptedException {
