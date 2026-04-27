@@ -34,12 +34,12 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
 - `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
-- `TaskMsg.output` is the canonical logical success payload for one work item; legacy `result` is only a summary/string compatibility field.
+- `TaskMsg.output` is the canonical logical success payload for one work item; `result` remains a summary/string read-model field.
 - `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
 - `target` is only a conventional key inside `TaskMsg.input`.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
-- Worker/WebSocket-adapter callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
+- Worker/WebSocket-adapter callbacks must resolve a unique active `TaskMsgAttempt`.
 - The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
 - `/status/api/workers` and `/sdk/meta/worker-capabilities` are the current joined worker capability read models: SDK registration remains capability truth, session/endpoint facts come from the transport layer, and the response joins them by `workerId`.
 

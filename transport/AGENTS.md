@@ -12,31 +12,27 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - `adapterId` is runtime truth. `transportHint` is only a coarse transport family hint.
 - `com.xa.mass.sdk.transport.*` is SDK composition, not transport module internals.
 - Stable transport concepts are limited to dispatch channel/outcome, runtime delivery,
-  result ingest, and result envelope. See [../doc/TRANSPORT_BOUNDARY_BASELINE.md](../doc/TRANSPORT_BOUNDARY_BASELINE.md).
-- High-volume worker-event delivery direction is [../doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../doc/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md).
+  result ingest, and result envelope. See [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md).
+- Observability belongs in logs, traces, and bounded queue/executor diagnostics, not scan-heavy transport-owned state.
+- For high-volume transport design work, use [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md). Do not treat it as a statement of what is already implemented.
 
 ## 1. Module Map
 
 - `transport/transport_api`
-  - Maven artifact: `xa-mass-transport-api`
-  - Java packages: `com.xa.mass.transport.*`
-  - Owns transport-neutral contracts only: dispatch/result/system-event seams, endpoint registry, transport server contracts, adapter-facing transport models
+  - artifact: `xa-mass-transport-api`
+  - owns transport-neutral contracts only
 - `transport/transport_runtime`
-  - Maven artifact: `xa-mass-transport-runtime`
-  - Java packages: `com.xa.mass.transport.runtime.*`
-  - Owns shared runtime assembly: adapter binding, routing registry, registration resolution, delivery service/store, result ingest wiring, result-envelope validation, raw/control side-channel resolution
+  - artifact: `xa-mass-transport-runtime`
+  - owns shared runtime assembly
 - `transport/polling-adapter`
-  - Maven artifact: `xa-mass-transport-polling`
-  - Java packages: `com.xa.mass.transport.polling.*`
-  - Owns polling/pull worker transport behavior
+  - artifact: `xa-mass-transport-polling`
+  - owns polling/pull worker transport behavior
 - `transport/websocket-adapter`
-  - Maven artifact: `xa-mass-transport-websocket`
-  - Java packages: `com.xa.mass.transport.websocket.*`
-  - Owns WebSocket server/session/frame/dispatch behavior only
+  - artifact: `xa-mass-transport-websocket`
+  - owns WebSocket server/session/frame/dispatch behavior only
 - `transport/socket-adapter`
-  - Maven artifact: `xa-mass-transport-socket`
-  - Java packages: `com.xa.mass.transport.socket.*`
-  - Owns socket server/session/frame/dispatch behavior only
+  - artifact: `xa-mass-transport-socket`
+  - owns socket server/session/frame/dispatch behavior only
 
 ## 2. Naming Truth
 
@@ -59,6 +55,7 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - Manual/raw/control messaging is a side-channel. It must not mutate task lifecycle state directly.
 - Do not add JavaBean getters for internal dispatch metadata such as attempt identity unless the worker wire contract is intentionally changed.
 - Do not enforce `leaseToken` until token generation, storage, expiry, retry behavior, compatibility, and rejection semantics are explicitly designed.
+- Do not add transport hot-path scans or model-coupled observability fields when logs, traces, counters, or indexed lookups can answer the question.
 
 ## 4. Boundary Freeze
 
@@ -84,10 +81,10 @@ Prefer extending one of the stable concepts below over adding a new model:
 Use this reading order for transport work:
 
 1. local code under the touched transport module
-2. [../doc/TRANSPORT_BOUNDARY_BASELINE.md](../doc/TRANSPORT_BOUNDARY_BASELINE.md) for transport model ownership and stable concept questions
-3. [../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) for adapter boundary questions
+2. [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md) for transport model ownership and stable concept questions
+3. [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) for adapter boundary questions
 4. [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) for current repo/module truth
-5. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) and [../doc/INTEGRATION_TESTS.md](../doc/INTEGRATION_TESTS.md) for verification surfaces
+5. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md), and [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md) for verification surfaces
 
 When adding or changing an adapter:
 

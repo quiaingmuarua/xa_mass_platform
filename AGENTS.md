@@ -1,6 +1,6 @@
 # XA Mass Platform Agent Handoff
 
-This is the fastest entry point for coding agents. Keep it short. Use the owner docs under `doc/` and `transport/` for details.
+This is the fastest entry point for coding agents. Keep it short. Use the owner docs under `doc/`, `transport/`, and the owning module roots for details.
 
 ## 0. TL;DR
 
@@ -9,9 +9,8 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - WebSocket is one transport adapter, not the product boundary.
 - Polling/pull workers are mainline, not side features.
-- Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
-- Project direction is production-grade high-throughput and high-availability, not experimental realtime introspection.
-- Observability should come from logs, trace, and bounded diagnostics rather than scan-heavy hot-path state.
+- Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
+- Observability is logs, trace, and bounded diagnostics; do not add scan-heavy hot-path state.
 - Prefer idempotent operations and bounded queues over richer but expensive control-plane projections.
 - Official Java baseline is Java 21 with virtual threads used through explicit runtime abstractions.
 - Real Boot entry is `xa-mass-dev-app`; embedded runtime composition lives in `xa-mass-sdk`.
@@ -35,9 +34,9 @@ Core acceptance fast path:
 - current runnable `chaos` probes live in `xa-mass-testing`
 - current runnable `E2E` surface lives in `xa-mass-dev-app`
 - `chaos` belongs in scheduled or release-style verification until the suite is broad and stable enough for stricter gating
-- `xa-mass-testing` is the planned home for cross-cutting acceptance tooling (`perf` first, then broader `concurrency` / `chaos` assets as they stabilize)
-- SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane; use them to model polling/WebSocket runtime pressure before paying for full Boot-shell E2E
-- `concurrency` is a required acceptance lane for race-sensitive lifecycle work and should live beside engine/runtime hot paths rather than being replaced by narrower unit tests
+- `xa-mass-testing` holds cross-cutting acceptance tooling and SDK embedded-runtime probes
+- SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane before full Boot-shell E2E
+- `concurrency` is a required acceptance lane for race-sensitive lifecycle work
 - all other tests are support coverage for bug localization, invariants, and fast regression checks
 
 Canonical trust order:
@@ -60,8 +59,8 @@ Start here based on the change:
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
-- perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [doc/testing/TOPIC_INDEX.md](doc/testing/TOPIC_INDEX.md)
-- integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
+- perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
+- integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-dev-app/README.md](xa-mass-dev-app/README.md)
 - policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
 - legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)

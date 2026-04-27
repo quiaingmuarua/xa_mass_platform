@@ -8,11 +8,11 @@ Use this page as the directory index and owner map once you are already inside `
 ## 1. What Each File Is For
 
 - [../README.md](../README.md)
-  - The shortest product-positioning summary: what the platform is now and what direction the current mainline is converging toward.
+  - The shortest product-positioning summary: what the platform is now.
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
   - Single repo-level index of deprecated, compatibility, and legacy seams that still exist in active paths.
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
-  - Stable project baseline for agents: platform definition, mainline goals, guardrails, active module truth, payload contract, and lifecycle baseline.
+  - Stable project baseline for agents: platform definition, guardrails, active module truth, payload contract, and lifecycle baseline.
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
   - Top-level testing-system map: taxonomy, CI placement guidance, acceptance lanes, and agent fast path.
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
@@ -25,14 +25,16 @@ Use this page as the directory index and owner map once you are already inside `
   - Verified startup path, runtime checks, and current execution conclusions.
 - [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
   - Current HTTP/API inventory, request contract, response shape, and implementation status.
-- [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
-  - Practical guide to the grouped `xa-mass-dev-app` integration suites: structure, coverage map, patterns, and current gaps.
-- [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md)
-  - Problem-oriented test navigation: start here when you need to analyze one runtime risk quickly.
 - [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
   - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
   - Task execution flow through matching, dispatch, callback write-back, and resource release.
+- [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
+  - Engine owner entry, including concurrency, release, and refill verification.
+- [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
+  - Testing-module owner entry for perf, SDK embedded-runtime harnesses, and chaos probes.
+- [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md)
+  - Dev-app owner entry, including Boot-shell E2E suite map and fixture rules.
 - [../transport/AGENTS.md](../transport/AGENTS.md)
   - Transport-local handoff, module split, naming truth, and verification fast path.
 - [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
@@ -40,7 +42,7 @@ Use this page as the directory index and owner map once you are already inside `
 - [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md)
   - Stable transport model ownership, hot-path rule, and adapter/runtime split.
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
-  - Production transport data-plane direction for throughput, backpressure, and HA-oriented delivery semantics.
+  - Reference design for transport throughput, backpressure, and HA-oriented delivery work.
 
 ## 2. Reading Shortcuts
 
@@ -49,7 +51,7 @@ Use this page as the directory index and owner map once you are already inside `
 - changing WebSocket adapter or transport code: go to [../transport/AGENTS.md](../transport/AGENTS.md) and [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - changing lifecycle semantics: go to [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), and [E2E_BASELINE.md](./E2E_BASELINE.md)
 - changing testing strategy, CI lane placement, or acceptance scope: go to [TESTING_BASELINE.md](./TESTING_BASELINE.md)
-- analyzing one runtime risk quickly: go to [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md)
+- analyzing one runtime risk quickly: start from the owning module README
 - changing HTTP/API contracts: go to [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 - changing startup or runtime verification: go to [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - changing policy ownership/interactions: go to [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
@@ -60,6 +62,7 @@ Use this page as the directory index and owner map once you are already inside `
 This directory should stay small and high-signal.
 
 Transport owner docs now live under `../transport/` so protocol/runtime details do not bloat the core project baseline directory.
+Module-local test and runner details should live under the owning module, not under `doc/`.
 
 Keep these rules:
 

@@ -232,5 +232,5 @@ For Python, Go, Rust, or another language, keep the same contract shape:
 - local handler map keyed by `eventCode`
 - canonical task-result callback keyed by `taskId + messageId`
 
-Do not build a second routing model around websocket tuple history, deprecated
-frame fields, or adapter-specific business semantics.
+Do not build a second routing model around adapter-specific frame metadata or
+adapter-specific business semantics.

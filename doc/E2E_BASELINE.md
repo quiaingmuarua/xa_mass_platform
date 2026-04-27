@@ -1,9 +1,9 @@
 # E2E Baseline
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 This is the short release-gate baseline for active-mainline E2E coverage.
-Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
+Detailed suite inventory stays in [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
 
 ## 1. What Counts As Real E2E

@@ -31,3 +31,29 @@
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
   - [`../doc/engine/TASK_EXECUTION_FLOW.md`](../doc/engine/TASK_EXECUTION_FLOW.md)
   - [`STORAGE_BASELINE.md`](STORAGE_BASELINE.md)
+
+## Concurrency And Refill Risks
+
+Use this module README, not `doc/`, when the risk is engine-local race or hot-path
+behavior.
+
+| Risk | Main code paths | Start tests |
+| --- | --- | --- |
+| callback result race | `TaskManager.handleTaskMessageResult(...)`, `TaskResultService` | `TaskConcurrencyAcceptanceTest`, `TaskApiCallbackReplayIntegrationTest` |
+| watchdog expiry vs late result | `LeaseExpireWatchdog`, `TaskResultService`, `TaskStateResolver` | `TaskConcurrencyAcceptanceTest`, `TaskManagerLifecycleTest` |
+| worker release and redispatch | `TaskResourceReleaseListener`, `TaskResultService` | `TaskResourceReleaseListenerTest`, `TaskApiSingleWorkerReuseIntegrationTest`, `TaskApiMultiRoundDispatchIntegrationTest` |
+| assignment refill and batching | `TaskAssignWorker`, `TaskWorkerAssignListener`, `SimpleTaskMsgAssignListener` | `TaskApiMultiRoundDispatchIntegrationTest`, `TaskApiMinimumWorkerGateIntegrationTest`, `TaskApiDelayedWorkerAvailabilityIntegrationTest` |
+
+Commands:
+
+```bash
+./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskConcurrencyAcceptanceTest,TaskManagerLifecycleTest,TaskResourceReleaseListenerTest test
+./mvnw -pl xa-mass-dev-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiDelayedWorkerAvailabilityIntegrationTest test
+```
+
+Engine-side invariants to keep:
+
+- one active attempt resolves one callback winner
+- expiry and late result must land in one allowed stable state
+- release must not unlock a still-busy worker or sibling context
+- refill must not duplicate logical `TaskMsg` rows

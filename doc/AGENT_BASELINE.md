@@ -13,8 +13,7 @@ For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
-- [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
-- [./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
+- [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -22,6 +21,10 @@ For those, use:
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 - [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
+
+Design-only reference:
+
+- [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
 
 ## 1. Using This File
 
@@ -40,13 +43,15 @@ Working rule:
 - The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
-- The current code reality is still more object-heavy than the desired production-scale hot path; use [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) for the approved compression target before expanding `Task`/`TaskMsg` hot-path responsibility.
+- For queue-first high-volume compression work, use [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md). Do not treat that design doc as current runtime truth.
 - Adapter vocabulary note: current code still uses `Worker`, `WorkerContext`, and some WebSocket-named types for today's adapter surfaces. Read those names literally inside their current scope, but keep new cross-adapter boundaries transport-neutral.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
-- The platform direction is transport-agnostic: task dispatch, result ingest, and worker system events should remain explicit seams rather than being encoded into one transport shape.
+- The current runtime model is transport-agnostic: task dispatch, result ingest, and worker system events are explicit seams rather than one transport shape.
+- Observability belongs in logs, traces, counters, and bounded diagnostics. Do not push scan-heavy operational introspection back into hot-path domain models.
+- Favor idempotent dispatch, result, and retry-side operations so duplicate delivery or reconnect churn stays manageable.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
+- The runtime entry is library/SDK-first. Demo runtime surfaces validate the kernel; they do not redefine it.
 
 ## 3. Platform Model
 
@@ -60,7 +65,7 @@ Working rule:
 Interpretation rules:
 
 - the abstract concepts are the stable architecture boundary
-- future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
+- new worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
 - SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEventDefinition(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
@@ -72,92 +77,59 @@ Interpretation rules:
 
 ## 4. Model Boundaries
 
-Boundary rules:
+Keep one canonical truth per boundary:
 
-- each boundary layer may have its own models
-- each boundary layer should have one canonical truth
-- model names should expose the layer they belong to
-- avoid the same class name meaning different things in different modules
-- transport metadata, protocol frame metadata, and business payload should not silently share ownership of the same fields
+- HTTP API: typed controller-edge request models plus `ApiResponse<T>`
+- SDK API: `MassTaskCreateRequest`, `MassTaskRequest`, `EventDefinition`
+- engine/core: `Task`, `TaskMsg`, `TaskMsgAttempt`, matching and lifecycle state
+- transport runtime: transport-neutral dispatch/result/system-event seams
+- WebSocket adapter: raw frame I/O, adapter-local codec, and addressability only
 
-Current canonical boundaries:
+Rules:
 
-- HTTP API boundary
-  - canonical response envelope: `com.xa.mass.api.model.ApiResponse<T>`
-  - canonical request contract: typed controller-edge request models
-  - task requests live under `com.xa.mass.api.model.task.*`
-  - worker requests live under `com.xa.mass.api.model.worker.*`
-- SDK boundary
-  - canonical public task-create requests: `MassTaskCreateRequest` and `MassTaskRequest`
-  - canonical public capability definition: `EventDefinition`
-  - `EventDefinition.code` is globally unique capability identity
-  - engine DTOs are internal conversion targets, not public SDK surface
-- websocket adapter transport boundary
-  - inbound mainline: `raw json + connection facts -> canonical seam`
-  - outbound mainline: `canonical seam + explicit addressability -> raw json`
-  - canonical embedded-runtime outbound carrier: `com.xa.mass.transport.model.WorkerTransportMessage`
-  - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the WebSocket adapter mainline
-- websocket adapter compatibility boundary
-  - WebSocket task data-plane now uses canonical root-level task dispatch/result frames
-  - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
-  - manual worker debug is task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`; the WebSocket adapter does not carry a separate control/debug protocol
-  - any remaining legacy transport fields are diagnostics only; they are not business/control capability identity
-  - `com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
+- do not let protocol fields become business or lifecycle truth
+- do not let the same class name mean different things across layers
+- `EventDefinition.code` is globally unique capability identity
+- manual worker debug stays task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`
 
 ## 5. Architectural Guardrails
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
 - Prefer transport-neutral names and contracts for new cross-adapter boundaries.
-- `WorkerContext` is optional worker context. Not every future worker model must require one.
+- `WorkerContext` is optional worker context. Not every worker model requires one.
 - The active API is explicitly `0..n`: do not reintroduce single-context helper APIs keyed only by `workerId`; use `getWorkerContexts(...)` or `getWorkerContextById(...)`.
 - `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate. Do not push project/user identity back into `sharedConfig`, `TaskMsg.input`, or attribute bags.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
-- Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
-- typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`
+- Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`.
+- The typed JSON DSL path goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug now enters through normal task creation with explicit worker targeting in `Task.sharedConfig`; do not reintroduce a direct worker-control side-channel.
+- Do not add full-table, full-task, or full-attempt scans to hot paths for observability convenience; use indexed lookups, traces, and counters.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
 ## 6. Mainline Reality
 
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - Java baseline is JDK 21. The root reactor compiles with `maven.compiler.release=21`, Java worker samples use release 21, and CI is expected to run on Temurin 21.
-- Java 21 virtual threads are approved for future runtime, transport, event-bus, and polling execution boundaries when routed through explicit runtime abstractions. They must not redefine engine lifecycle correctness, worker lock ownership, or `TaskMsgAttempt` state semantics.
-- Current runtime executor boundary is `com.xa.mass.base.runtime.RuntimeTaskExecutor`; the default implementation is virtual-thread based with explicit admission control. Use it for runtime/event/transport blocking work instead of spreading raw executor construction into adapters.
-- SDK control-plane event dispatch through `InMemoryMassEventRuntime` remains synchronous by default for compatibility. SDK embedding can enable bounded virtual-thread handler isolation with `transport(... -> eventHandlerTimeoutMillis(...))`, which wraps dispatch in `BoundedMassEventRuntime` and returns `EVENT_TIMEOUT` on timeout. Cancellation is cooperative, so direct runtime handlers must remain interrupt-aware and use bounded I/O.
-- Embedded transport runtime composition now passes the shared runtime executor into adapter bootstraps. Blocking adapter work such as raw socket accept/client loops should submit through that context instead of creating adapter-local thread pools.
-- Runtime transport delivery has explicit backlog admission control and shutdown semantics. `InMemoryTransportDeliveryStore` enforces a configurable total queued-item cap in addition to per-worker caps, exposes `TransportDeliveryStoreStats`, rejects new delivery after shutdown, and wakes waiting pollers so future Redis/JDBC stores can preserve the same HA diagnostics and lifecycle behavior. Embedded SDK diagnostics surface these stats under `/api/queue/detail.data.deliveryQueue`; SDK embedding can set the total cap with `transport(... -> maxDeliveryQueuedItems(...))`.
-- Runtime executor admission caps are explicit SDK transport config: `transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`, both defaulting to 10000. Dev-app exposes them as `mass.runtime.transport-max-pending-tasks` and `mass.runtime.event-max-pending-tasks`.
-- Runtime executor diagnostics are surfaced under `/api/queue/detail.data.runtimeExecutors` for transport and optional bounded event-handler executors. Use these counters for admission/rejection visibility; they are not engine lifecycle state.
-- External polling supports bounded long-poll through `timeoutMs` (maximum 30000 ms). The default dev-app runtime enables Spring virtual threads so long-poll request handling does not consume platform threads.
-- `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
-- `xa-mass-sdk-api` holds the stable SDK-facing catalog, auth, and request-model types shared with HTTP surfaces.
-- Embedded runtime composition now lives inside `xa-mass-sdk`; SDK-facing builder/facade types remain under `com.xa.mass.starter.*`, SDK-owned transport composition now lives under `com.xa.mass.sdk.transport.*`, and shared transport runtime assembly lives under `com.xa.mass.transport.runtime.*`. It is not the primary Boot entry.
-- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
-- Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-dev-app`.
-- `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries. Its module sources now live under `transport/transport_api`.
-- `xa-mass-transport-polling` now holds the default pull/polling worker adapter implementation that `xa-mass-sdk` composes by default.
-- `xa-mass-transport-runtime` now holds the shared transport runtime registry, dispatch listener, and task-result ingest channel used by `xa-mass-sdk`. Its module sources now live under `transport/transport_runtime`, and its main Java package namespace is `com.xa.mass.transport.runtime.*`.
-- `xa-mass-transport-websocket` should be read as the current WebSocket transport adapter artifact, not as the only valid worker runtime path. Its module sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
-- Read [./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
-- WebSocket adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
-- WebSocket adapter runtime wiring is configured as a fixed pre-start snapshot; `WebSocketDispatchRuntimeContext` is not a mutable extension registry.
-- `com.xa.mass.engine` is the active engine path.
-- `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` plus the current SDK transport/concurrency probes and the first runnable WebSocket disconnect/reconnect chaos probe.
-- EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
-- Core acceptance is the combined `perf + concurrency + Boot-shell E2E` surface.
-- Current runnable `perf` coverage lives in `xa-mass-testing`.
-- Current runnable `concurrency` coverage lives in `xa-mass-engine`.
-- Current runnable Boot-shell E2E coverage lives in `xa-mass-dev-app`.
-- SDK embedded-runtime transport harnesses in `xa-mass-testing` are the fastest system probe when you need real SDK registration plus polling/WebSocket scheduling without booting the full dev-app shell.
-- `chaos` now has an initial runnable SDK/WebSocket disconnect-reconnect probe in `xa-mass-testing`, but the lane should still be treated as scheduled or release-oriented until the suite is broader and stable.
-- Concurrency coverage is a required acceptance lane for race-sensitive lifecycle changes; narrower unit/integration tests are support coverage for bug localization and invariants, not the primary acceptance gate.
-- worker-targeted debug/task details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
+- Java 21 virtual threads are the runtime baseline for blocking concurrency boundaries when routed through explicit runtime abstractions. They reduce concurrency complexity, but they must not redefine engine lifecycle correctness, worker lock ownership, or `TaskMsgAttempt` state semantics.
+- Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
+- SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
+- Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and adds the current HTTP/control-console shell
+- Transport module split:
+  - `transport/transport_api`: transport-neutral SPI
+  - `transport/transport_runtime`: shared transport runtime assembly
+  - `transport/polling-adapter`: pull/polling adapter
+  - `transport/websocket-adapter`: current WebSocket adapter
+  - `transport/socket-adapter`: current socket adapter
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
+- WebSocket adapter frame classification is a protocol compatibility seam only; it is not business or control capability identity
+- Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell E2E
+
+Use [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) for startup/runtime commands and diagnostics, [./TESTING_BASELINE.md](./TESTING_BASELINE.md) for lane ownership, and [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 
 ## 7. Current Contract Summary
 
@@ -210,7 +182,7 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Recommended Entry Files
+## 9. Entry Files
 
 - startup/runtime:
   - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
@@ -225,7 +197,7 @@ Important current rules:
   - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
-## 10. Guardrails For Future Agents
+## 10. Guardrails
 
 Use these positive defaults:
 

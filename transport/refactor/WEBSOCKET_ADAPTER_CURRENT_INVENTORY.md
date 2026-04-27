@@ -94,16 +94,7 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as explicit adapter processors, not as a generic middleware framework; runtime result-ingest ownership stays above transport binding
 - `Related tests`: `WebSocketInputProcessorTest`, `WebSocketOutputProcessorTest`, `TaskApiDelayedWorkerAvailabilityIntegrationTest`
 
-## 9. Removed Legacy Dispatch Loop
-
-- `Class`: `com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher`
-- `Previous responsibility`: legacy compatibility shell that wrapped adapter-local input/output processors
-- `Current state`: removed from active code; embedded runtime no longer exposes a separate queue-loop dispatcher shell
-- `Target owner`: n/a
-- `Migration phase`: completed removal; keep routing through `WebSocketInputProcessor`, `WebSocketOutputProcessor`, session/server paths, and transport-neutral runtime channels
-- `Related tests`: `WebSocketInputProcessorTest`, `WebSocketOutputProcessorTest`
-
-## 10. Fixed WebSocket Adapter Wiring Snapshot
+## 9. Fixed WebSocket Adapter Wiring Snapshot
 
 - `Class`: `com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext`
 - `Method`: constructor + getters
@@ -113,7 +104,7 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as immutable adapter runtime wiring
 - `Related tests`: `MassSdkTest`, `DispatcherInboundHandlerTest`
 
-## 11. WebSocket Adapter Embedded Runtime Support
+## 10. WebSocket Adapter Embedded Runtime Support
 
 - `Class`: `com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport`
 - `Method`: `createEndpointRegistry(...)`, `createDispatcherContext(...)`, `resolveSystemEventChannel(...)`, `createRealtimeWorkerAdapter(...)`, `createTransportServer(...)`
@@ -123,7 +114,7 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as adapter-local bootstrap helper
 - `Related tests`: `TransportChannelWiringIntegrationTest`
 
-## 12. Embedded Runtime Outbound Carrier
+## 11. Embedded Runtime Outbound Carrier
 
 - `Class`: `com.xa.mass.transport.model.WorkerTransportMessage`
 - `Method`: DTO only
@@ -146,4 +137,4 @@ These platform concerns are not owned by current `xa-mass-transport-websocket` m
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON task-frame path
 
-That is the current baseline in this checkout: the WebSocket adapter is primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`, and the adapter no longer carries a separate control-event protocol. SDK mainline no longer owns WebSocket-specific runtime helper or worker-adapter classes; adapter-owned embedded runtime support now supplies the current WebSocket-backed realtime defaults.
+That is the current baseline in this checkout: the WebSocket adapter is primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`. SDK mainline no longer owns WebSocket-specific runtime helper or worker-adapter classes; adapter-owned embedded runtime support now supplies the current WebSocket-backed realtime defaults.

@@ -234,3 +234,59 @@ Covered areas:
 - `SocketTaskApiIntegrationTest`: auto-started socket mock workers go online, receive tasks, and return canonical results
 - `MockWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
 - `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
+
+## Boot-Shell E2E Map
+
+`xa-mass-dev-app` owns the detailed E2E suite map.
+
+High-signal classes:
+
+- lifecycle:
+  - `TaskApiIntegrationTest`
+  - `TaskApiLifecycleGuardsIntegrationTest`
+  - `TaskApiPauseCompletionIntegrationTest`
+  - `TaskApiResumeAndCompleteIntegrationTest`
+  - `TaskApiTerminateRunningIntegrationTest`
+- assignment, routing, and capacity:
+  - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
+  - `TaskApiMinimumWorkerGateIntegrationTest`
+  - `TaskApiMultiRoundDispatchIntegrationTest`
+  - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+  - `TaskApiWorkerWithoutContextIntegrationTest`
+  - `TaskApiSingleWorkerReuseIntegrationTest`
+  - `TaskApiTerminateReuseIntegrationTest`
+  - `TransportChannelWiringIntegrationTest`
+  - `PollingWorkerTaskFlowIntegrationTest`
+  - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
+- results and idempotence:
+  - `TaskApiFailureResultIntegrationTest`
+  - `TaskApiMixedResultsIntegrationTest`
+  - `TaskApiCallbackReplayIntegrationTest`
+- external worker black-box:
+  - `NodePollingWorkerBlackBoxIntegrationTest`
+  - `NodeWebSocketWorkerBlackBoxIntegrationTest`
+  - `NodeSocketWorkerBlackBoxIntegrationTest`
+  - `JavaPollingWorkerBlackBoxIntegrationTest`
+  - `JavaWebSocketWorkerBlackBoxIntegrationTest`
+  - `JavaSocketWorkerBlackBoxIntegrationTest`
+- console and audit:
+  - `ControlConsoleRoutingIntegrationTest`
+  - `TaskApiStateValidationIntegrationTest`
+- targeted worker debug:
+  - `TaskApiTargetedWorkerDebugIntegrationTest`
+
+Fixture rules:
+
+- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)`
+- worker JSON and worker-context JSON are fixture inputs, not runtime truth
+- direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
+- direct `TaskManager` writes stay limited to focused white-box assertions or fault injection
+
+Current gaps:
+
+- cancel from `RUNNING` via HTTP API
+- cancel from `READY` via HTTP API
+- worker disconnect during in-flight execution
+- stronger real-runtime `EXPIRED` message coverage
+- broader `batchSize > 1` multi-worker coverage
+- resume short-circuit where a paused task is already complete underneath
