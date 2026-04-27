@@ -19,6 +19,8 @@ import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.work.ClaimedTaskWork;
+import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -211,6 +213,37 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void createFileTaskRejectsInitialInputsToKeepFileIngestChunked() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("file-shell-with-inline-input");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setSourceType(TaskSourceType.FILE);
+        dto.setSourceRef("mock/input/demo.csv");
+        dto.setInputs(List.of(java.util.Map.of("target", "alpha")));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+
+        assertEquals("FILE task sources must be created as a sourceRef shell; ingest work items in batches",
+                error.getMessage());
+    }
+
+    @Test
+    void createBatchTaskRejectsOversizedInlineInputs() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("oversized-inline");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setInputs(java.util.stream.IntStream.rangeClosed(0, TaskManager.MAX_INITIAL_INLINE_INPUTS)
+                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
+                .toList());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+
+        assertTrue(error.getMessage().contains("BATCH task initial inputs exceed inline create limit"));
+    }
+
+    @Test
     void fileTaskCanIngestItemsBeforeApprovalWithoutDispatch() {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("file-ingest-before-approval");
@@ -238,6 +271,28 @@ class TaskManagerLifecycleTest {
         assertEquals(2, updatedTask.getTaskTargetNumber());
         assertEquals(2, messages.size());
         assertEquals(0, dispatchRequests.get());
+    }
+
+    @Test
+    void appendTaskItemsRejectsOversizedIngestBatch() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("stream-shell-ingest-limit");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+        Task task = taskManager.createTask(dto);
+
+        List<java.util.Map<String, Object>> oversizedBatch = java.util.stream.IntStream
+                .rangeClosed(0, TaskManager.MAX_INGEST_BATCH_ITEMS)
+                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
+                .toList();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> taskManager.appendTaskItems(task.getTid(), oversizedBatch));
+
+        assertTrue(error.getMessage().contains("append inputs exceed ingest batch limit"));
     }
 
     @Test
@@ -648,7 +703,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStateResolutionResult.Outcome.ALREADY_FINAL, result.getOutcome());
         assertEquals(TaskStatus.TERMINAL, result.getStatus());
         assertEquals(TaskTerminalReason.MANUAL_CANCELLED, result.getTerminalReason());
-        assertEquals(1, result.getTotalMessages());
+        assertEquals(0, result.getTotalMessages());
     }
 
     @Test
@@ -1451,6 +1506,18 @@ class TaskManagerLifecycleTest {
                                   String workerId,
                                   String workerContextId,
                                   String batchId) {
+        if (manager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.getMessageId()).isEmpty()) {
+            List<ClaimedTaskWork> claimed = manager.getTaskWorkRuntime().claimReady(
+                    task.getTid(),
+                    List.of(new WorkerClaimTarget(workerId, workerContextId, batchId, 1)),
+                    1,
+                    manager.getTaskMessageLeaseSeconds()
+            );
+            if (!claimed.isEmpty() && !message.getMessageId().equals(claimed.get(0).messageId())) {
+                // Some projection-only tests intentionally assign a later message.
+                // The hot-path tests assign FIFO and get a matching runtime lease.
+            }
+        }
         message.applyLatestAttemptProjection(workerId, workerContextId, batchId);
         if (message.getStatus() == TaskMsgStatus.INIT) {
             assertTrue(message.markAsAssigned());

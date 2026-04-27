@@ -6,7 +6,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.*;
-import com.xa.mass.engine.storage.TaskStorage;
+import com.xa.mass.engine.work.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -445,7 +445,7 @@ public final class TraceEventLogger {
     }
 
     public static void taskProgressSnapshot(Task task,
-                                            TaskStorage.TaskMessageStats stats,
+                                            TaskWorkStats stats,
                                             String resolutionOutcome,
                                             boolean needsTerminalClosure,
                                             String trigger,
@@ -454,7 +454,6 @@ public final class TraceEventLogger {
         if (task == null || stats == null) {
             return;
         }
-        long finalMessages = stats.getSuccess() + stats.getFailed() + stats.getExpired();
         emit("TASK_PROGRESS_SNAPSHOT", fields(
                 "entityType", "Task",
                 "entityId", task.getTid(),
@@ -472,15 +471,15 @@ public final class TraceEventLogger {
                 "holdReason", enumName(task.getHoldReason()),
                 "schedulable", String.valueOf(task.isSchedulable()),
                 "progressPercent", formatDouble(task.getProgressPercentage()),
-                "totalMessages", String.valueOf(stats.getTotal()),
-                "successMessages", String.valueOf(stats.getSuccess()),
-                "failedMessages", String.valueOf(stats.getFailed()),
-                "expiredMessages", String.valueOf(stats.getExpired()),
-                "processingMessages", String.valueOf(stats.getProcessing()),
-                "finalMessages", String.valueOf(finalMessages),
-                "pendingMessages", String.valueOf(Math.max(stats.getTotal() - finalMessages, 0)),
-                "successRate", formatDouble(stats.getSuccessRate()),
-                "failureRate", formatDouble(stats.getFailureRate()),
+                "totalMessages", String.valueOf(stats.totalCount()),
+                "successMessages", String.valueOf(stats.successCount()),
+                "failedMessages", String.valueOf(stats.failedCount()),
+                "expiredMessages", String.valueOf(stats.expiredCount()),
+                "processingMessages", String.valueOf(stats.processingCount()),
+                "finalMessages", String.valueOf(stats.finalCount()),
+                "pendingMessages", String.valueOf(stats.pendingCount()),
+                "successRate", formatDouble(stats.successRate()),
+                "failureRate", formatDouble(stats.failureRate()),
                 "resolutionOutcome", resolutionOutcome,
                 "needsTerminalClosure", String.valueOf(needsTerminalClosure),
                 "trigger", trigger,

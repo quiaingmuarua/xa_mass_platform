@@ -10,11 +10,17 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.work.TaskWorkEnvelope;
+import com.xa.mass.engine.work.WorkEnqueueOptions;
+import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,7 +57,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
+        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -74,7 +80,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
+        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -105,7 +111,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("other-task");
         wctx.startOccupying();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
+        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
 
         listener.onTaskTerminal(task);
@@ -196,9 +202,7 @@ class TaskResourceReleaseListenerTest {
         runningMsg.setStatus(TaskMsgStatus.RUNNING);
         TaskMsgAttempt activeAttempt = activeAttempt("task-1", "msg-2", "attempt-2", "worker-1", "wctx-1");
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg, runningMsg));
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(null);
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-2")).thenReturn(activeAttempt);
+        when(taskManager.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
         listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
 
@@ -220,7 +224,7 @@ class TaskResourceReleaseListenerTest {
         wctx.startOccupying();
         wctx.block();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
+        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
@@ -263,5 +267,20 @@ class TaskResourceReleaseListenerTest {
         assertTrue(attempt.markRunning());
         assertEquals(TaskMsgAttemptStatus.RUNNING, attempt.getStatus());
         return attempt;
+    }
+
+    private InMemoryTaskWorkRuntime runtimeWithActiveLease(String taskId,
+                                                           String messageId,
+                                                           String workerId,
+                                                           String workerContextId) {
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
+        runtime.enqueue(new TaskWorkEnvelope(taskId, messageId, "demo.event",
+                        Map.of("target", messageId), null, 0, 3, null, null, Instant.now()),
+                WorkEnqueueOptions.DEFAULT);
+        runtime.claimReady(taskId,
+                List.of(new WorkerClaimTarget(workerId, workerContextId, "batch-1", 1)),
+                1,
+                30);
+        return runtime;
     }
 }

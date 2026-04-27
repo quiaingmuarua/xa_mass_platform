@@ -2,7 +2,7 @@ package com.xa.mass.engine.policy;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.storage.TaskStorage;
+import com.xa.mass.engine.work.TaskWorkStats;
 
 /**
  * Decides whether the current task/message aggregate should keep running or
@@ -13,5 +13,5 @@ import com.xa.mass.engine.storage.TaskStorage;
  */
 public interface TaskTerminalPolicy {
 
-    TaskTerminalPolicyDecision evaluate(Task task, TaskStorage.TaskMessageStats stats);
+    TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats);
 }

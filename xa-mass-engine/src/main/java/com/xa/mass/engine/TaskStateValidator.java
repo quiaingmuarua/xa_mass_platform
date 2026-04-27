@@ -8,8 +8,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.TaskWorkStats;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +43,7 @@ class TaskStateValidator {
             return result;
         }
 
-        TaskStorage.TaskMessageStats stats = taskManager.getTaskMessageStats(taskId);
+        TaskWorkStats stats = taskManager.getTaskWorkRuntime().stats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
 
         if (task.getTaskEligibleNumber() < 0) {
@@ -82,21 +82,23 @@ class TaskStateValidator {
         if (finalStatus && hasTerminalReason) {
             switch (task.getTerminalReason()) {
                 case ALL_MESSAGES_SUCCEEDED -> {
-                    if (!(stats.getTotal() > 0 && stats.getSuccess() == stats.getTotal() && stats.getFailed() == 0 && stats.getExpired() == 0 && stats.getProcessing() == 0)) {
+                    if (!(stats.totalCount() > 0 && stats.successCount() == stats.totalCount()
+                            && stats.failedCount() == 0 && stats.expiredCount() == 0 && stats.processingCount() == 0)) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED);
                     }
                 }
                 case ALL_MESSAGES_FAILED -> {
-                    if (!(stats.getTotal() > 0 && stats.getFailed() + stats.getExpired() == stats.getTotal() && stats.getSuccess() == 0 && stats.getProcessing() == 0)) {
+                    if (!(stats.totalCount() > 0 && stats.failedCount() + stats.expiredCount() == stats.totalCount()
+                            && stats.successCount() == 0 && stats.processingCount() == 0)) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_FAILED);
                     }
                 }
                 case MIXED_MESSAGE_RESULTS -> {
-                    boolean mixed = stats.getTotal() > 0
-                            && stats.getSuccess() > 0
-                            && stats.getFailed() + stats.getExpired() > 0
-                            && stats.getSuccess() + stats.getFailed() + stats.getExpired() == stats.getTotal()
-                            && stats.getProcessing() == 0;
+                    boolean mixed = stats.totalCount() > 0
+                            && stats.successCount() > 0
+                            && stats.failedCount() + stats.expiredCount() > 0
+                            && stats.finalCount() == stats.totalCount()
+                            && stats.processingCount() == 0;
                     if (!mixed) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_MIXED_RESULTS);
                     }
@@ -150,10 +152,10 @@ class TaskStateValidator {
                 needsResolution,
                 task.getStatus(),
                 task.getTerminalReason(),
-                stats.getTotal(),
-                stats.getSuccess(),
-                stats.getFailed(),
-                stats.getProcessing(),
+                stats.totalCount(),
+                stats.successCount(),
+                stats.failedCount(),
+                stats.processingCount(),
                 List.copyOf(violations)
         );
         if (!result.isValid() || result.isNeedsResolution()) {

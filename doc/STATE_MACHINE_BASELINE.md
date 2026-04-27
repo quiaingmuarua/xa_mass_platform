@@ -211,7 +211,7 @@ Must hold:
 
 - terminal task -> non-null `terminalReason`
 - non-terminal task -> null `terminalReason`
-- message-driven closure must match persisted message aggregates
+- message-driven closure must match engine work-runtime aggregate counters; `TaskMsg` remains the compatibility projection/audit view
 - open-intake task closure is only valid for `MANUAL_CANCELLED` or policy-driven stop reasons; normal message-convergence reasons must wait until `intakeStatus=SEALED`
 
 ## 8. Time-Based Policy Enforcement

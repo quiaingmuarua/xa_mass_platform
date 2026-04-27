@@ -37,12 +37,13 @@ The current mainline hot path after the first WorkRuntime slice looks like this:
 5. assignment listener matches workers and claims ready envelopes through `claimReady(...)`
 6. claim creates an active runtime lease, then updates `TaskMsgAttempt` and `TaskMsg` projection
 7. worker adapter receives the unchanged `TaskDispatchItem`
-8. result callback applies a runtime `TaskWorkResult` outcome, then updates `TaskMsgAttempt`, `TaskMsg`, and task progress
+8. result callback applies a runtime `TaskWorkResult` outcome, then updates `TaskMsgAttempt`, `TaskMsg`, and runtime-backed task progress
 9. watchdog polls expired runtime leases instead of scanning every task message
 
 That shape removes the worst assignment/expiry scans from the hot path. It
 still keeps `TaskMsg` and `TaskMsgAttempt` as synchronous compatibility models,
-so result aggregation and task counters are not fully compressed yet.
+but result aggregation and terminal convergence now read runtime counters rather
+than re-scanning the message projection.
 
 ## 2. Current Hot Spots
 
@@ -100,24 +101,24 @@ Migration target:
 - dispatch pulls ready envelopes from queue-native hot structures
 - no steady-state dispatch path should require whole-task message scans
 
-### 2.4 Result Path Still Writes Through Full TaskMsg + Attempt Semantics
+### 2.4 Result Path Still Writes Through Full TaskMsg + Attempt Projection
 
 Current path:
 
 - `TaskResultService.handleTaskMessageResult(...)`
 - requires active `TaskMsgAttempt`
-- updates attempt, updates `TaskMsg`, then updates task progress
+- applies runtime result counters, then updates attempt and `TaskMsg` projection
 
 Pressure:
 
 - semantically strong
-- expensive as the default path for high-volume message traffic
+- projection writes are still expensive as the default path for high-volume message traffic
 
 Migration target:
 
 - preserve correctness for lease, retry, and late-callback rejection
 - move heavy attempt history out of the default hot path
-- let result aggregation run from output queue plus counters
+- keep result aggregation on runtime/output counters
 
 ### 2.5 Watchdog Scans All Tasks and Their Messages
 
@@ -338,6 +339,8 @@ Current status:
 - `SimpleTaskMsgAssignListener` now claims ready work from runtime
 - persisted `TaskMsg` rows remain as the compatibility projection
 - Redis/JDBC replacement is intentionally deferred to a runtime-store implementation
+- `FILE` task creation is constrained to a `sourceRef` shell; work items must enter through bounded ingest batches instead of initial input materialization
+- inline `BATCH` create and `appendTaskItems` have explicit batch limits so high-volume producers must chunk work into the runtime queue
 
 ### 6.4 Output Queue And Counter Aggregation
 

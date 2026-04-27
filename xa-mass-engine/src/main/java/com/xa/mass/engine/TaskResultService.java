@@ -62,7 +62,7 @@ class TaskResultService {
         boolean retryableExpiry = fromStatus == TaskMsgStatus.ASSIGNED
                 && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount();
         ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, false, "task message expired",
-                null, null, retryableExpiry);
+                null, null, retryableExpiry, true);
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "stale work lease", 0);
             return false;
@@ -196,7 +196,7 @@ class TaskResultService {
             }
 
             ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, success, detail, errorCode, output,
-                    !success && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount());
+                    !success && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount(), false);
             if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
                 logger.warn("Rejecting result for task message {} because work lease is stale", messageId);
                 return false;
@@ -380,14 +380,20 @@ class TaskResultService {
                                                String detail,
                                                String errorCode,
                                                Map<String, Object> output,
-                                               boolean retryable) {
+                                               boolean retryable,
+                                               boolean expired) {
         String leaseToken = taskManager.getTaskWorkRuntime()
                 .getActiveLease(taskId, messageId)
                 .map(ActiveLeaseRecord::leaseToken)
                 .orElse(null);
-        TaskWorkResult result = success
-                ? TaskWorkResult.success(taskId, messageId, leaseToken, detail, output)
-                : TaskWorkResult.failure(taskId, messageId, leaseToken, errorCode, detail, output, retryable);
+        TaskWorkResult result;
+        if (success) {
+            result = TaskWorkResult.success(taskId, messageId, leaseToken, detail, output);
+        } else if (expired) {
+            result = TaskWorkResult.expired(taskId, messageId, leaseToken, detail, retryable);
+        } else {
+            result = TaskWorkResult.failure(taskId, messageId, leaseToken, errorCode, detail, output, retryable);
+        }
         ResultApplyOutcome outcome = taskManager.getTaskWorkRuntime().applyResult(result);
         if (outcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
             logger.debug("No active work-runtime lease for task {}, msg {}; continuing through compatibility attempt path",

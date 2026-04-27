@@ -166,6 +166,8 @@ Working rule:
 
 - source modes differ at ingress only
 - once ingested, they should become the same queue-native runnable unit
+- `file` tasks are source-reference shells at create time; inline initial inputs are rejected so large files cannot be accidentally materialized as in-memory `TaskMsg` lists
+- `batch` create and stream/file append are bounded ingest batches; callers must chunk large producers through the ingest path
 
 ## 8. Target Runnable Unit
 
@@ -275,6 +277,7 @@ Current landed slice:
 - assignment now claims ready work from runtime instead of scanning all messages for `INIT`
 - runtime owns active lease tokens and expiry indexes
 - result handling applies a runtime result outcome before updating the compatibility projection
+- task progress and terminal policy now evaluate `TaskWorkRuntime` counters instead of `TaskMsg` aggregate scans
 - task terminal/delete paths discard runtime work for that task
 
 Working rule:

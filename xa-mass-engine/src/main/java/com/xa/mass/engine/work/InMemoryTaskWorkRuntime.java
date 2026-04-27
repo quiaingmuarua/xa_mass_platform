@@ -104,6 +104,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             readyItems++;
             taskStats.readyCount++;
         }
+        taskStats.totalCount++;
         enqueuedItems.incrementAndGet();
         return WorkEnqueueOutcome.enqueued(item);
     }
@@ -238,7 +239,11 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             return ResultApplyOutcome.retryScheduled(result, "retry budget allows re-dispatch");
         }
 
-        taskStats.failedCount++;
+        if (result.expired()) {
+            taskStats.expiredCount++;
+        } else {
+            taskStats.failedCount++;
+        }
         workByKey.remove(key);
         return ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
     }
@@ -264,6 +269,17 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         }
         expiredLeaseItems.addAndGet(expired.size());
         return List.copyOf(expired);
+    }
+
+    @Override
+    public synchronized List<ActiveLeaseRecord> activeLeases(String taskId) {
+        if (!running.get() || isBlank(taskId)) {
+            return List.of();
+        }
+        return leaseByKey.entrySet().stream()
+                .filter(entry -> taskId.equals(entry.getKey().taskId()))
+                .map(Map.Entry::getValue)
+                .toList();
     }
 
     @Override
@@ -496,6 +512,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     private static final class MutableTaskStats {
+        private long totalCount;
         private long readyCount;
         private long inflightCount;
         private long delayedCount;
@@ -504,7 +521,8 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         private long expiredCount;
 
         private TaskWorkStats snapshot() {
-            return new TaskWorkStats(readyCount, inflightCount, delayedCount, successCount, failedCount, expiredCount);
+            return new TaskWorkStats(totalCount, readyCount, inflightCount, delayedCount,
+                    successCount, failedCount, expiredCount);
         }
     }
 }

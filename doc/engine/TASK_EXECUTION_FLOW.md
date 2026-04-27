@@ -104,7 +104,7 @@ Verified open-ended behavior:
 - `openEnded=true` initializes `Task.intakeStatus=OPEN`, which disables automatic terminal closure while the append window remains open
 - `POST /status/api/tasks/{taskId}/items` appends new work items as `TaskMsg.input`
 - `PUT /status/api/tasks/{taskId}/seal` closes the append window
-- once sealed, normal terminal convergence resumes when all persisted `TaskMsg` rows are final
+- once sealed, normal terminal convergence resumes when all engine runtime work items are final
 
 ## 5. RUNNING To Result Write-Back
 
@@ -117,7 +117,7 @@ Verified runtime path:
 5. `TaskResultService` applies the result to `TaskWorkRuntime` using the current active lease for `taskId + messageId`.
 6. If the runtime outcome accepts the result, `TaskManager` updates the persisted `TaskMsgAttempt` and `TaskMsg` projection.
 7. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
-8. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
+8. When all runtime work items are final, the task automatically converges to `TERMINAL`.
 
 Important guards:
 
@@ -132,7 +132,6 @@ Important guards:
 Verified runtime release behavior:
 
 - when runtime has no active lease for the worker on the current task, `TaskResourceReleaseListener` may release that worker/worker-context slot
-- a compatibility `TaskMsg` scan remains as a safety fallback during the projection migration
 - if pending `INIT` rows remain, the still-`RUNNING` task is re-submitted for another dispatch round
 - normal terminal completion releases runtime occupancy
 - manual `RUNNING -> TERMINAL` closure also releases runtime occupancy

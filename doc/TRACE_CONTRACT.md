@@ -171,7 +171,7 @@ Rules:
 4. terminal closure must include `terminalReason`
 5. retry reset must include `retryCount`
 6. match rejection must include explicit `reason`
-7. task progress snapshot must include both task aggregate counters and persisted message aggregate counters
+7. task progress snapshot must include task aggregate counters and engine work-runtime aggregate counters
 8. assignment summary must include requested/matched/dispatched worker or message counts
 9. dispatch binding summary must include per-worker batch limit and unique worker/context counts
 10. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted

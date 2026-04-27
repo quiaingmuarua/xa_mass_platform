@@ -14,9 +14,9 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -184,10 +184,10 @@ class TaskLifecycleService {
         try {
             Task task = taskManager.getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
-                TaskStorage.TaskMessageStats stats = taskManager.getTaskMessageStats(taskId);
+                TaskWorkStats stats = taskManager.getTaskWorkRuntime().stats(taskId);
                 TaskTerminalPolicyDecision decision = taskManager.getTaskTerminalPolicy().evaluate(task, stats);
                 if (decision.getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
-                    task.setTaskSuccessNumber((int) stats.getSuccess());
+                    task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
                     TaskTerminalReason terminalReason = decision.getTerminalReason();
                     TaskStatus fromStatus = task.getStatus();
                     boolean result = task.transitionTo(TaskStatus.TERMINAL, terminalReason);
@@ -249,6 +249,10 @@ class TaskLifecycleService {
         }
         if (inputs == null || inputs.isEmpty()) {
             throw new IllegalArgumentException("inputs must be a non-empty list");
+        }
+        if (inputs.size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
+            throw new IllegalArgumentException("append inputs exceed ingest batch limit: "
+                    + inputs.size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
         }
         if (!canAcceptTaskInputs(task)) {
             throw new IllegalStateException(describeInputAppendRejection(task, taskId));
@@ -377,9 +381,9 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     cancelPendingMessages(taskId);
-                    taskManager.getTaskWorkRuntime().discardTask(taskId);
                     taskManager.getScheduler().cancelTask(taskId);
                     taskManager.getEventPublisher().publishTaskTerminal(task);
+                    taskManager.getTaskWorkRuntime().discardTask(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {

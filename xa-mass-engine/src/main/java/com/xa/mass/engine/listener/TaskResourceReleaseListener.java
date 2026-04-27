@@ -9,6 +9,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,20 +42,18 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        List<ActiveLeaseRecord> leases = taskManager.getTaskWorkRuntime().activeLeases(task.getTid());
         Set<String> workerIds = new LinkedHashSet<>();
 
-        for (TaskMsg message : messages) {
-            if (message == null
-                    || message.getLatestAttemptWorkerId() == null
-                    || message.getLatestAttemptWorkerId().isBlank()) {
+        for (ActiveLeaseRecord lease : leases) {
+            if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
-            workerIds.add(message.getLatestAttemptWorkerId());
+            workerIds.add(lease.workerId());
             releaseWorkerContextIfOwnedByTask(
                     task.getTid(),
-                    message.getLatestAttemptWorkerId(),
-                    message.getLatestAttemptWorkerContextId()
+                    lease.workerId(),
+                    lease.workerContextId()
             );
         }
 
@@ -90,22 +89,7 @@ public class TaskResourceReleaseListener {
     }
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId, String closedMessageId) {
-        if (taskManager.hasProcessingMessagesForWorker(taskId, workerId)) {
-            return true;
-        }
-        List<TaskMsg> messages = taskManager.getTaskMessages(taskId);
-        for (TaskMsg message : messages) {
-            if (message == null
-                    || message.getMessageId() == null
-                    || message.getMessageId().equals(closedMessageId)
-                    || !workerId.equals(message.getLatestAttemptWorkerId())) {
-                continue;
-            }
-            if (taskManager.getLatestActiveTaskMessageAttempt(taskId, message.getMessageId()) != null) {
-                return true;
-            }
-        }
-        return false;
+        return taskManager.hasProcessingMessagesForWorker(taskId, workerId);
     }
 
     private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {

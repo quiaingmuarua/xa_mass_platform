@@ -603,7 +603,7 @@ Example response:
 Behavior:
 
 - closes the append window for an open-ended task
-- once sealed, normal terminal convergence resumes when all persisted messages are final
+- once sealed, normal terminal convergence resumes when all engine runtime work items are final
 
 Example response:
 

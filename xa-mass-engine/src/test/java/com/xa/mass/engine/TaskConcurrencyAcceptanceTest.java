@@ -10,6 +10,7 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -248,6 +249,19 @@ class TaskConcurrencyAcceptanceTest {
 
     private TaskMsg assignMessage(Task task, TaskMsg message) {
         String suffix = message.getMessageId();
+        if (taskManager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.getMessageId()).isEmpty()) {
+            taskManager.getTaskWorkRuntime().claimReady(
+                    task.getTid(),
+                    List.of(new WorkerClaimTarget(
+                            "worker-" + suffix,
+                            "worker-context-" + suffix,
+                            "batch-" + message.getRetryCount(),
+                            1
+                    )),
+                    1,
+                    taskManager.getTaskMessageLeaseSeconds()
+            );
+        }
         message.applyLatestAttemptProjection(
                 "worker-" + suffix,
                 "worker-context-" + suffix,

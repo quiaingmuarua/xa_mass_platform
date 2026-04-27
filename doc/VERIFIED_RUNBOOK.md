@@ -149,7 +149,7 @@ Result write-back and closure:
 - callbacks must resolve a unique active `TaskMsgAttempt`; legacy attempt synthesis is not part of the current path.
 - retryable failure closes the attempt, resets the logical message to `INIT`, and does not publish logical-final semantics.
 - success, retry exhaustion, expiry, and manual terminal drain close the logical message.
-- once all persisted messages are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`.
+- once all engine runtime work items are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`.
 
 Worker and worker-context truth:
 

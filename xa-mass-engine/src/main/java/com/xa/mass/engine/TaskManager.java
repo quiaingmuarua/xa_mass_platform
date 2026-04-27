@@ -10,7 +10,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
-import com.xa.mass.engine.policy.AllMessagesFinalTaskTerminalPolicy;
+import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
@@ -19,7 +19,9 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
 import com.xa.mass.engine.work.TaskWorkEnvelope;
 import com.xa.mass.engine.work.TaskWorkRuntime;
+import com.xa.mass.engine.work.WorkEnqueueOutcome;
 import com.xa.mass.engine.work.WorkEnqueueOptions;
+import com.xa.mass.engine.work.WorkEnqueueStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +38,8 @@ import java.util.function.Supplier;
 public class TaskManager {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
+    static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
+    static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
     private final TaskWorkRuntime taskWorkRuntime;
@@ -50,11 +54,11 @@ public class TaskManager {
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler) {
-        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllMessagesFinalTaskTerminalPolicy());
+        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllWorkFinalTaskTerminalPolicy());
     }
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
-        this(taskScheduler, taskStorage, new AllMessagesFinalTaskTerminalPolicy());
+        this(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy());
     }
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskTerminalPolicy taskTerminalPolicy) {
@@ -117,12 +121,7 @@ public class TaskManager {
             task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
             task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
             taskStorage.saveTask(task);
-            for (Map<String, Object> input : inputs) {
-                String messageId = java.util.UUID.randomUUID().toString();
-                TaskMsg taskMsg = new TaskMsg(messageId, tid, input);
-                taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
-                addTaskMessage(tid, taskMsg);
-            }
+            ingestInitialInputs(tid, dto, inputs);
 
             eventPublisher.publishTaskCreated(task);
             long duration = System.currentTimeMillis() - startTime;
@@ -279,8 +278,12 @@ public class TaskManager {
                 "taskId", taskId,
                 "messageId", taskMsg.getMessageId());
 
+        WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, taskMsg);
+        if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
+            throw new IllegalStateException("task work enqueue failed: status="
+                    + outcome.status() + ", reason=" + outcome.reason());
+        }
         taskStorage.addTaskMessage(taskId, taskMsg);
-        enqueueTaskWork(taskId, taskMsg);
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -468,9 +471,21 @@ public class TaskManager {
         ProjectRef.require(dto.getProject());
         UserRef.requireUserId(dto.getUserId());
         TaskSourceType sourceType = resolveSourceType(dto);
+        List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
         if (sourceType == TaskSourceType.FILE
                 && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
             throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        }
+        if (sourceType == TaskSourceType.FILE && !inputs.isEmpty()) {
+            throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
+        }
+        if (sourceType == TaskSourceType.BATCH && inputs.size() > MAX_INITIAL_INLINE_INPUTS) {
+            throw new IllegalArgumentException("BATCH task initial inputs exceed inline create limit: "
+                    + inputs.size() + " > " + MAX_INITIAL_INLINE_INPUTS);
+        }
+        if (sourceType == TaskSourceType.STREAM && inputs.size() > MAX_INGEST_BATCH_ITEMS) {
+            throw new IllegalArgumentException("STREAM task initial inputs exceed ingest batch limit: "
+                    + inputs.size() + " > " + MAX_INGEST_BATCH_ITEMS);
         }
     }
 
@@ -516,9 +531,18 @@ public class TaskManager {
         return eventPublisher;
     }
 
-    private void enqueueTaskWork(String taskId, TaskMsg taskMsg) {
+    private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
+        for (Map<String, Object> input : inputs) {
+            String messageId = java.util.UUID.randomUUID().toString();
+            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
+            taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
+            addTaskMessage(taskId, taskMsg);
+        }
+    }
+
+    private WorkEnqueueOutcome enqueueTaskWork(String taskId, TaskMsg taskMsg) {
         if (taskMsg == null || taskMsg.getStatus() != com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT) {
-            return;
+            return null;
         }
         Task task = taskStorage.getTask(taskId).orElse(null);
         TaskWorkEnvelope item = new TaskWorkEnvelope(
@@ -533,6 +557,6 @@ public class TaskManager {
                 null,
                 java.time.Instant.now()
         );
-        taskWorkRuntime.enqueue(item, WorkEnqueueOptions.DEFAULT);
+        return taskWorkRuntime.enqueue(item, WorkEnqueueOptions.DEFAULT);
     }
 }

@@ -31,7 +31,7 @@ Forbidden outcomes:
 
 - both success and expiry semantics applied to the same attempt
 - duplicate final publications
-- task left non-terminal when all persisted messages are already final
+- task left non-terminal when all runtime work items are already final
 
 ## 4. Primary Acceptance Coverage
 

@@ -5,11 +5,11 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.TaskWorkStats;
 
 /**
- * Resolves task aggregate progress and terminal convergence from persisted task messages.
+ * Resolves task aggregate progress and terminal convergence from engine work-runtime counters.
  */
 class TaskStateResolver {
 
@@ -29,8 +29,8 @@ class TaskStateResolver {
             return TaskStateResolutionResult.taskNotFound();
         }
 
-        TaskStorage.TaskMessageStats stats = taskManager.getTaskMessageStats(taskId);
-        task.setTaskSuccessNumber((int) stats.getSuccess());
+        TaskWorkStats stats = taskManager.getTaskWorkRuntime().stats(taskId);
+        task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
 
         if (task.getStatus().isFinal()) {
             taskManager.updateTask(task);
@@ -39,9 +39,9 @@ class TaskStateResolver {
             return TaskStateResolutionResult.alreadyFinal(
                     task.getStatus(),
                     task.getTerminalReason(),
-                    stats.getTotal(),
-                    stats.getSuccess(),
-                    stats.getFailed()
+                    stats.totalCount(),
+                    stats.successCount(),
+                    stats.failedCount()
             );
         }
 
@@ -52,29 +52,29 @@ class TaskStateResolver {
                     "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "task remains non-final after progress evaluation");
             return TaskStateResolutionResult.notFinalized(
                     task.getStatus(),
-                    stats.getTotal(),
-                    stats.getSuccess(),
-                    stats.getFailed()
+                    stats.totalCount(),
+                    stats.successCount(),
+                    stats.failedCount()
             );
         }
 
         TaskTerminalReason reason = decision.getTerminalReason();
         TaskStatus fromStatus = task.getStatus();
-        boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
+            boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
         if (result) {
             TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
-                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all persisted messages finalized");
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all work items finalized");
             TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
-                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all persisted messages finalized");
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all work items finalized");
             taskManager.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "FINALIZED_TO_TERMINAL", false,
-                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all persisted messages finalized");
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all work items finalized");
             taskManager.getEventPublisher().publishTaskTerminal(task);
             return TaskStateResolutionResult.finalizedToTerminal(
                     reason,
-                    stats.getTotal(),
-                    stats.getSuccess(),
-                    stats.getFailed()
+                    stats.totalCount(),
+                    stats.successCount(),
+                    stats.failedCount()
             );
         }
 
@@ -83,14 +83,14 @@ class TaskStateResolver {
                 "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "task terminal transition was rejected");
         return TaskStateResolutionResult.notFinalized(
                 task.getStatus(),
-                stats.getTotal(),
-                stats.getSuccess(),
-                stats.getFailed()
+                stats.totalCount(),
+                stats.successCount(),
+                stats.failedCount()
         );
     }
 
     private void emitTaskProgressSnapshot(Task task,
-                                          TaskStorage.TaskMessageStats stats,
+                                          TaskWorkStats stats,
                                           String resolutionOutcome,
                                           boolean needsTerminalClosure,
                                           String trigger,

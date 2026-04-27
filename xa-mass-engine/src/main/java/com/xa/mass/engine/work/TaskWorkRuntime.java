@@ -17,6 +17,8 @@ public interface TaskWorkRuntime {
 
     List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now);
 
+    List<ActiveLeaseRecord> activeLeases(String taskId);
+
     Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId);
 
     boolean hasReadyWork(String taskId);

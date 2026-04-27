@@ -20,6 +20,7 @@ class InMemoryTaskWorkRuntimeTest {
 
         assertEquals(WorkEnqueueStatus.ENQUEUED, outcome.status());
         assertEquals(1, runtime.stats("task-1").readyCount());
+        assertEquals(1, runtime.stats("task-1").totalCount());
 
         List<ClaimedTaskWork> claimed = runtime.claimReady("task-1",
                 List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30);
@@ -64,6 +65,7 @@ class InMemoryTaskWorkRuntimeTest {
         assertEquals(ResultApplyStatus.SUCCESS_APPLIED, applied.status());
         assertEquals(ResultApplyStatus.NO_ACTIVE_LEASE, duplicate.status());
         assertEquals(1, runtime.stats("task-1").successCount());
+        assertEquals(1, runtime.stats("task-1").finalCount());
         assertEquals(0, runtime.stats("task-1").inflightCount());
         assertFalse(runtime.hasActiveLeaseForWorker("task-1", "worker-1"));
     }
@@ -94,6 +96,7 @@ class InMemoryTaskWorkRuntimeTest {
                 "task-1", "msg-1", work.leaseToken(), "BOOM", "boom", Map.of(), true));
 
         assertEquals(ResultApplyStatus.RETRY_SCHEDULED, outcome.status());
+        assertEquals(1, runtime.stats("task-1").totalCount());
         assertEquals(1, runtime.stats("task-1").readyCount());
         assertEquals(0, runtime.stats("task-1").inflightCount());
 
@@ -118,6 +121,23 @@ class InMemoryTaskWorkRuntimeTest {
     }
 
     @Test
+    void expiredResultFinalizesExpiredCounter() {
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
+        runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("task-1",
+                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+
+        ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.expired(
+                "task-1", "msg-1", work.leaseToken(), "lease expired", false));
+
+        assertEquals(ResultApplyStatus.FAILURE_FINALIZED, outcome.status());
+        assertEquals(1, runtime.stats("task-1").expiredCount());
+        assertEquals(1, runtime.stats("task-1").finalCount());
+        assertEquals(0, runtime.stats("task-1").failedCount());
+        assertEquals(0, runtime.stats("task-1").inflightCount());
+    }
+
+    @Test
     void discardTaskClearsReadyDelayedAndActiveWork() {
         AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-04-27T00:00:00Z"));
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);
@@ -129,6 +149,10 @@ class InMemoryTaskWorkRuntimeTest {
                 WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("task-1",
                 List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30);
+
+        List<ActiveLeaseRecord> activeLeases = runtime.activeLeases("task-1");
+        assertEquals(1, activeLeases.size());
+        assertEquals("worker-1", activeLeases.get(0).workerId());
 
         assertEquals(3L, runtime.discardTask("task-1"));
 

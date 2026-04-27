@@ -9,6 +9,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.work.WorkerClaimTarget;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.BeforeEach;
@@ -168,6 +169,12 @@ class RuntimeTaskResultIngestChannelTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
         taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
