@@ -166,6 +166,35 @@ class InMemoryTaskWorkRuntimeTest {
         assertEquals(0L, runtime.stats().delayedItems());
     }
 
+    @Test
+    void discardTaskDoesNotRemoveOtherTaskIndexes() {
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-04-27T00:00:00Z"));
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);
+        runtime.enqueue(item("discarded-task", "ready"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(item("kept-task", "active"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(new TaskWorkEnvelope("kept-task", "delayed", "demo.event",
+                        Map.of("target", "delayed"), null, 0, 3, null,
+                        now.get().plusSeconds(60), now.get()),
+                WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork keptActive = runtime.claimReady("kept-task",
+                List.of(new WorkerClaimTarget("worker-keep", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+
+        assertEquals(1L, runtime.discardTask("discarded-task"));
+
+        assertEquals(2, runtime.stats("kept-task").totalCount());
+        assertEquals(1, runtime.activeLeases("kept-task").size());
+        assertTrue(runtime.hasActiveLeaseForWorker("kept-task", "worker-keep"));
+        assertTrue(runtime.pollExpiredLeases(10, now.get().plusSeconds(31)).stream()
+                .anyMatch(lease -> keptActive.leaseToken().equals(lease.leaseToken())));
+
+        ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.success(
+                "kept-task", "active", keptActive.leaseToken(), "done", Map.of()));
+        assertEquals(ResultApplyStatus.SUCCESS_APPLIED, outcome.status());
+        now.set(now.get().plusSeconds(61));
+        assertTrue(runtime.hasReadyWork("kept-task"));
+        assertEquals(1, runtime.stats("kept-task").readyCount());
+    }
+
     private TaskWorkEnvelope item(String taskId, String messageId) {
         return new TaskWorkEnvelope(taskId, messageId, "demo.event",
                 Map.of("target", messageId), null, 0, 3, null, null,

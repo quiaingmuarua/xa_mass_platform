@@ -7,10 +7,13 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,12 +27,17 @@ public class InMemoryTaskStorage implements TaskStorage {
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private final Map<String, MessageBucket> taskMessages = new ConcurrentHashMap<>();
     private final Map<String, Map<String, AttemptBucket>> taskMessageAttempts = new ConcurrentHashMap<>();
+    private final Map<String, LocalDateTime> maxRuntimeDeadlineByTask = new ConcurrentHashMap<>();
+    private final PriorityQueue<TaskRuntimeDeadline> maxRuntimeDeadlineIndex = new PriorityQueue<>(
+            Comparator.comparing(TaskRuntimeDeadline::deadline).thenComparing(TaskRuntimeDeadline::taskId)
+    );
 
     @Override
     public void saveTask(Task task) {
         tasks.put(task.getTid(), task);
         taskMessages.put(task.getTid(), new MessageBucket());
         taskMessageAttempts.put(task.getTid(), new ConcurrentHashMap<>());
+        updateMaxRuntimeDeadline(task);
     }
 
     @Override
@@ -43,6 +51,7 @@ public class InMemoryTaskStorage implements TaskStorage {
             return false;
         }
         tasks.put(task.getTid(), task);
+        updateMaxRuntimeDeadline(task);
         return true;
     }
 
@@ -51,6 +60,7 @@ public class InMemoryTaskStorage implements TaskStorage {
         Task removed = tasks.remove(taskId);
         taskMessages.remove(taskId);
         taskMessageAttempts.remove(taskId);
+        clearMaxRuntimeDeadline(taskId);
         return removed != null;
     }
 
@@ -71,6 +81,44 @@ public class InMemoryTaskStorage implements TaskStorage {
         return tasks.values().stream()
                 .filter(Task::isSchedulable)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+        if (now == null || limit <= 0) {
+            return List.of();
+        }
+        List<Task> expired = new ArrayList<>(Math.min(limit, 16));
+        synchronized (maxRuntimeDeadlineIndex) {
+            while (expired.size() < limit && !maxRuntimeDeadlineIndex.isEmpty()) {
+                TaskRuntimeDeadline next = maxRuntimeDeadlineIndex.peek();
+                if (!next.deadline().isBefore(now)) {
+                    break;
+                }
+                maxRuntimeDeadlineIndex.poll();
+
+                LocalDateTime currentDeadline = maxRuntimeDeadlineByTask.get(next.taskId());
+                if (!next.deadline().equals(currentDeadline)) {
+                    continue;
+                }
+
+                Task task = tasks.get(next.taskId());
+                LocalDateTime recomputedDeadline = maxRuntimeDeadline(task);
+                if (recomputedDeadline == null) {
+                    maxRuntimeDeadlineByTask.remove(next.taskId());
+                    continue;
+                }
+                if (!next.deadline().equals(recomputedDeadline)) {
+                    maxRuntimeDeadlineByTask.put(next.taskId(), recomputedDeadline);
+                    maxRuntimeDeadlineIndex.offer(new TaskRuntimeDeadline(next.taskId(), recomputedDeadline));
+                    continue;
+                }
+
+                maxRuntimeDeadlineByTask.remove(next.taskId());
+                expired.add(task);
+            }
+        }
+        return expired;
     }
 
     @Override
@@ -213,6 +261,44 @@ public class InMemoryTaskStorage implements TaskStorage {
             return null;
         }
         return attemptsByMsg.get(messageId);
+    }
+
+    private void updateMaxRuntimeDeadline(Task task) {
+        if (task == null || task.getTid() == null) {
+            return;
+        }
+        synchronized (maxRuntimeDeadlineIndex) {
+            LocalDateTime deadline = maxRuntimeDeadline(task);
+            if (deadline == null) {
+                maxRuntimeDeadlineByTask.remove(task.getTid());
+                return;
+            }
+            maxRuntimeDeadlineByTask.put(task.getTid(), deadline);
+            maxRuntimeDeadlineIndex.offer(new TaskRuntimeDeadline(task.getTid(), deadline));
+        }
+    }
+
+    private void clearMaxRuntimeDeadline(String taskId) {
+        if (taskId == null) {
+            return;
+        }
+        synchronized (maxRuntimeDeadlineIndex) {
+            maxRuntimeDeadlineByTask.remove(taskId);
+        }
+    }
+
+    private LocalDateTime maxRuntimeDeadline(Task task) {
+        if (task == null
+                || task.getStatus() == null
+                || task.getStatus().isFinal()
+                || task.getMaxRuntimeSeconds() <= 0
+                || task.getStartTime() == null) {
+            return null;
+        }
+        return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
+    }
+
+    private record TaskRuntimeDeadline(String taskId, LocalDateTime deadline) {
     }
 
     private static final class MessageBucket {

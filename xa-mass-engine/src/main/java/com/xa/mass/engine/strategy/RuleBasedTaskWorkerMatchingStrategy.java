@@ -41,7 +41,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     @Override
     public List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount) {
         List<MatchedWorkerContext> matchedWorkers = new ArrayList<>();
-        List<Worker> candidates = workerManager.getAllWorkers();
+        List<Worker> candidates = workerManager.findWorkerCandidates(task);
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",

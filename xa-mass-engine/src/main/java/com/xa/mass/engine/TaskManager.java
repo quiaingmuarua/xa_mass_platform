@@ -25,6 +25,7 @@ import com.xa.mass.engine.work.WorkEnqueueStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -215,6 +216,10 @@ public class TaskManager {
 
         LogUtils.logOperationSuccess("loaded schedulable tasks: count=" + tasks.size(), 0);
         return tasks;
+    }
+
+    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+        return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
     public boolean approveTask(String taskId) {

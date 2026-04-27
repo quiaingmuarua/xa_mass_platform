@@ -196,10 +196,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, offlineRecord.getResult());
         assertEquals(0, offlineRecord.getRuleEvaluations().size());
 
-        AssignmentRecord unsupportedRecord = findRecord(recordService, "task-prefilter", "worker-unsupported");
-        assertEquals("project not supported", unsupportedRecord.getReason());
-        assertEquals(AssignmentResult.RULE_NOT_MATCH, unsupportedRecord.getResult());
-        assertEquals(0, unsupportedRecord.getRuleEvaluations().size());
+        assertNull(findRecordOrNull(recordService, "task-prefilter", "worker-unsupported"));
 
         AssignmentRecord routingMismatchRecord = findRecord(recordService, "task-prefilter", "worker-routing-mismatch");
         assertEquals("routing code mismatch", routingMismatchRecord.getReason());
@@ -377,10 +374,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(1, matched.size());
         assertEquals("worker-event-capable", matched.get(0).getWorkerId());
 
-        AssignmentRecord rejectedRecord = findRecord(recordService, "task-sdk-event", "worker-project-only");
-        assertEquals("event not supported", rejectedRecord.getReason());
-        assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
-        assertEquals(0, rejectedRecord.getRuleEvaluations().size());
+        assertNull(findRecordOrNull(recordService, "task-sdk-event", "worker-project-only"));
     }
 
     @Test
@@ -413,12 +407,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(1, matched.size());
         assertEquals("worker-b", matched.get(0).getWorkerId());
 
-        AssignmentRecord rejectedRecord = findRecord(recordService, "task-target-worker", "worker-a");
-        assertEquals("target worker mismatch", rejectedRecord.getReason());
-        assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
-        assertEquals(0, rejectedRecord.getRuleEvaluations().size());
-        assertEquals("worker-b", rejectedRecord.getContextSnapshot().get("taskTargetWorkerId"));
-        assertEquals(Boolean.FALSE, rejectedRecord.getContextSnapshot().get("matchesTargetWorkerId"));
+        assertNull(findRecordOrNull(recordService, "task-target-worker", "worker-a"));
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-target-worker", "worker-b");
         assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
@@ -507,5 +496,12 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                 .filter(item -> workerId.equals(item.getWorkerId()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private AssignmentRecord findRecordOrNull(AssignmentRecordService recordService, String taskId, String workerId) {
+        return recordService.getRecordsByTaskId(taskId).stream()
+                .filter(item -> workerId.equals(item.getWorkerId()))
+                .findFirst()
+                .orElse(null);
     }
 }

@@ -224,9 +224,10 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
   `EXPIRED -> INIT`, `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without
   `taskMessageLogicallyFinal`. If retry budget is exhausted, the logical message stays `EXPIRED` and
   `taskMessageLogicallyFinal` is published.
-- **Max task runtime**: any non-terminal `Task` with `maxRuntimeSeconds > 0` that has been running
-  longer than that limit is terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`.
-  Set `maxRuntimeSeconds = 0` (default) to disable the limit.
+- **Max task runtime**: non-terminal tasks with `maxRuntimeSeconds > 0` are indexed by their
+  runtime deadline and polled through `TaskStorage.pollExpiredMaxRuntimeTasks(...)`; expired
+  tasks are terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`. Set
+  `maxRuntimeSeconds = 0` (default) to disable the limit.
 
 Must hold:
 - `expireTaskMessage` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`

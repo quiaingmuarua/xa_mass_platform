@@ -5,6 +5,8 @@ import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.TaskStorageFactory;
@@ -89,6 +91,13 @@ public class WorkerManager {
 
     public List<Worker> getAllWorkers() {
         return workerStorage.getAllWorkers();
+    }
+
+    public List<Worker> findWorkerCandidates(Task task) {
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        String project = task != null ? task.getProject() : null;
+        return workerStorage.findWorkerCandidates(project, eventCode, targetWorkerId);
     }
 
     public List<WorkerContext> getAllWorkerContexts() {

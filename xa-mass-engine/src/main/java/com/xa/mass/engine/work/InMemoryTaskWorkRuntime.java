@@ -31,8 +31,11 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
 
     private final Map<String, ArrayDeque<WorkKey>> readyByTask = new HashMap<>();
     private final Map<WorkKey, TaskWorkEnvelope> workByKey = new HashMap<>();
+    private final Map<String, Set<WorkKey>> workKeysByTask = new HashMap<>();
     private final Map<WorkKey, ActiveLeaseRecord> leaseByKey = new HashMap<>();
     private final Map<String, Set<WorkKey>> activeByWorker = new HashMap<>();
+    private final Map<String, Set<WorkKey>> activeByTask = new HashMap<>();
+    private final Map<String, Set<WorkKey>> delayedByTask = new HashMap<>();
     private final PriorityQueue<LeaseDeadline> leaseExpiryIndex =
             new PriorityQueue<>(Comparator.comparing(LeaseDeadline::expireAt));
     private final PriorityQueue<DelayedWork> delayedRetryIndex =
@@ -94,9 +97,11 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             return WorkEnqueueOutcome.backpressureRejected(item, "engine work backlog is full");
         }
         workByKey.put(key, item);
+        registerWorkKey(key);
         Instant now = clock.get();
         if (item.nextVisibleAt() != null && item.nextVisibleAt().isAfter(now)) {
             delayedRetryIndex.add(new DelayedWork(key, item.nextVisibleAt()));
+            registerDelayedKey(key);
             delayedItems++;
             taskStats.delayedCount++;
         } else {
@@ -143,6 +148,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             }
             if (item.nextVisibleAt() != null && item.nextVisibleAt().isAfter(leasedAt)) {
                 delayedRetryIndex.add(new DelayedWork(key, item.nextVisibleAt()));
+                registerDelayedKey(key);
                 MutableTaskStats taskStats = mutableStats(taskId);
                 decrementReady(taskId);
                 delayedItems++;
@@ -171,6 +177,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             );
             leaseByKey.put(key, lease);
             activeByWorker.computeIfAbsent(lease.workerId(), ignored -> new HashSet<>()).add(key);
+            activeByTask.computeIfAbsent(taskId, ignored -> new HashSet<>()).add(key);
             leaseExpiryIndex.add(new LeaseDeadline(key, leaseExpireAt));
             mutableStats(taskId).inflightCount++;
             claimed.add(new ClaimedTaskWork(
@@ -221,7 +228,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         resultAppliedItems.incrementAndGet();
 
         if (result.success()) {
-            workByKey.remove(key);
+            removeWorkKey(key);
             taskStats.successCount++;
             return ResultApplyOutcome.success(result);
         }
@@ -244,7 +251,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         } else {
             taskStats.failedCount++;
         }
-        workByKey.remove(key);
+        removeWorkKey(key);
         return ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
     }
 
@@ -276,9 +283,13 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get() || isBlank(taskId)) {
             return List.of();
         }
-        return leaseByKey.entrySet().stream()
-                .filter(entry -> taskId.equals(entry.getKey().taskId()))
-                .map(Map.Entry::getValue)
+        Set<WorkKey> keys = activeByTask.get(taskId);
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        return keys.stream()
+                .map(leaseByKey::get)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -356,11 +367,10 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
 
         long delayedRemoved = removeDelayedWork(taskId);
         delayedItems = Math.max(0L, delayedItems - delayedRemoved);
-        leaseExpiryIndex.removeIf(deadline -> taskId.equals(deadline.key().taskId()));
-
-        List<WorkKey> leasedKeys = leaseByKey.keySet().stream()
-                .filter(key -> taskId.equals(key.taskId()))
-                .toList();
+        Set<WorkKey> leasedKeys = activeByTask.remove(taskId);
+        if (leasedKeys == null) {
+            leasedKeys = Set.of();
+        }
         for (WorkKey key : leasedKeys) {
             ActiveLeaseRecord lease = leaseByKey.get(key);
             if (lease != null) {
@@ -368,12 +378,14 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             }
         }
 
-        List<WorkKey> workKeys = workByKey.keySet().stream()
-                .filter(key -> taskId.equals(key.taskId()))
-                .toList();
+        Set<WorkKey> workKeys = workKeysByTask.remove(taskId);
+        if (workKeys == null) {
+            workKeys = Set.of();
+        }
         for (WorkKey key : workKeys) {
-            workByKey.remove(key);
-            discarded++;
+            if (workByKey.remove(key) != null) {
+                discarded++;
+            }
         }
 
         statsByTask.remove(taskId);
@@ -391,8 +403,11 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         long cleared = readyItems + delayedItems + leaseByKey.size();
         readyByTask.clear();
         workByKey.clear();
+        workKeysByTask.clear();
         leaseByKey.clear();
         activeByWorker.clear();
+        activeByTask.clear();
+        delayedByTask.clear();
         leaseExpiryIndex.clear();
         delayedRetryIndex.clear();
         statsByTask.clear();
@@ -408,25 +423,29 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                 break;
             }
             delayedRetryIndex.poll();
-            TaskWorkEnvelope item = workByKey.get(delayed.key());
-            if (item == null || leaseByKey.containsKey(delayed.key())) {
-                continue;
-            }
-            readyByTask.computeIfAbsent(delayed.key().taskId(), ignored -> new ArrayDeque<>()).addLast(delayed.key());
+            removeDelayedKey(delayed.key());
             delayedItems = Math.max(0, delayedItems - 1);
             MutableTaskStats stats = mutableStats(delayed.key().taskId());
             if (stats.delayedCount > 0) {
                 stats.delayedCount--;
             }
+            TaskWorkEnvelope item = workByKey.get(delayed.key());
+            if (item == null || leaseByKey.containsKey(delayed.key())) {
+                continue;
+            }
+            readyByTask.computeIfAbsent(delayed.key().taskId(), ignored -> new ArrayDeque<>()).addLast(delayed.key());
             readyItems++;
             stats.readyCount++;
         }
     }
 
     private long removeDelayedWork(String taskId) {
-        long before = delayedRetryIndex.size();
-        delayedRetryIndex.removeIf(delayed -> taskId.equals(delayed.key().taskId()));
-        return before - delayedRetryIndex.size();
+        Set<WorkKey> keys = delayedByTask.remove(taskId);
+        if (keys == null || keys.isEmpty()) {
+            return 0L;
+        }
+        delayedRetryIndex.removeIf(delayed -> keys.contains(delayed.key()));
+        return keys.size();
     }
 
     private void removeLease(WorkKey key, ActiveLeaseRecord lease) {
@@ -436,6 +455,42 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             workerKeys.remove(key);
             if (workerKeys.isEmpty()) {
                 activeByWorker.remove(lease.workerId());
+            }
+        }
+        Set<WorkKey> taskKeys = activeByTask.get(key.taskId());
+        if (taskKeys != null) {
+            taskKeys.remove(key);
+            if (taskKeys.isEmpty()) {
+                activeByTask.remove(key.taskId());
+            }
+        }
+    }
+
+    private void registerWorkKey(WorkKey key) {
+        workKeysByTask.computeIfAbsent(key.taskId(), ignored -> new HashSet<>()).add(key);
+    }
+
+    private void removeWorkKey(WorkKey key) {
+        workByKey.remove(key);
+        Set<WorkKey> taskKeys = workKeysByTask.get(key.taskId());
+        if (taskKeys != null) {
+            taskKeys.remove(key);
+            if (taskKeys.isEmpty()) {
+                workKeysByTask.remove(key.taskId());
+            }
+        }
+    }
+
+    private void registerDelayedKey(WorkKey key) {
+        delayedByTask.computeIfAbsent(key.taskId(), ignored -> new HashSet<>()).add(key);
+    }
+
+    private void removeDelayedKey(WorkKey key) {
+        Set<WorkKey> taskKeys = delayedByTask.get(key.taskId());
+        if (taskKeys != null) {
+            taskKeys.remove(key);
+            if (taskKeys.isEmpty()) {
+                delayedByTask.remove(key.taskId());
             }
         }
     }

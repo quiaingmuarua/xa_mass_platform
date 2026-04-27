@@ -6,14 +6,13 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Single-threaded assignment queue worker.
+ * Single-threaded assignment signal worker.
  *
  * <p>This component drains assignment requests and retries unmatched dispatch
  * attempts. Its listener callbacks describe queue-processing progress only,
@@ -22,10 +21,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TaskAssignWorker {
     private static final Logger log = LoggerFactory.getLogger(TaskAssignWorker.class);
     private static final long DEFAULT_RETRY_DELAY_MILLIS = 1000L;
+    static final int DEFAULT_ASSIGNMENT_QUEUE_CAPACITY =
+            Integer.getInteger("xa.mass.engine.assignmentQueueCapacity", 10_000);
 
     private final TaskWorkerAssignListener workerAssignListener;
     private final long retryDelayMillis;
-    private final BlockingQueue<Task> queue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<TaskAssignmentSignal> queue;
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private final AtomicInteger scheduledRetryCount = new AtomicInteger(0);
@@ -41,8 +42,15 @@ public class TaskAssignWorker {
     }
 
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis) {
+        this(workerAssignListener, retryDelayMillis, DEFAULT_ASSIGNMENT_QUEUE_CAPACITY);
+    }
+
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                            long retryDelayMillis,
+                            int assignmentQueueCapacity) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
+        this.queue = new LinkedBlockingQueue<>(Math.max(1, assignmentQueueCapacity));
     }
 
     public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
@@ -67,7 +75,8 @@ public class TaskAssignWorker {
             while (running) {
                 Task task = null;
                 try {
-                    task = queue.take();
+                    TaskAssignmentSignal signal = queue.take();
+                    task = signal.task();
                     String taskId = task != null ? task.getTid() : null;
                     TaskStatus initialStatus = task.getStatus();
                     if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
@@ -101,23 +110,8 @@ public class TaskAssignWorker {
     }
 
     public CompletableFuture<Void> submitAll(List<Task> tasks) {
-        List<Task> acceptedTasks = new ArrayList<>();
         for (Task task : tasks) {
-            if (!trackTask(task)) {
-                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DEDUP_SKIPPED", null,
-                        "task is already queued, processing, or waiting retry", "SKIPPED");
-                continue;
-            }
-            acceptedTasks.add(task);
-        }
-
-        if (!acceptedTasks.isEmpty()) {
-            pendingTasks.addAndGet(acceptedTasks.size());
-            for (Task task : acceptedTasks) {
-                queue.offer(task);
-                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "SUBMITTED", null,
-                        "task submitted to assignment queue", "SUCCESS");
-            }
+            submit(task, true);
         }
 
         // Use the common pool instead of `executor`: the task-processing loop already occupies
@@ -150,12 +144,17 @@ public class TaskAssignWorker {
             }
             return false;
         }
+        if (!enqueueSignal(task, AssignmentSignalReason.SUBMITTED)) {
+            releaseTrackedTask(task != null ? task.getTid() : null);
+            emitQueueSnapshot(task, task != null ? task.getStatus() : null, "QUEUE_FULL", null,
+                    "assignment signal queue is full", "REJECTED");
+            return false;
+        }
         if (trackedBatchSubmission) {
             pendingTasks.incrementAndGet();
         }
-        queue.offer(task);
         emitQueueSnapshot(task, task != null ? task.getStatus() : null, "SUBMITTED", null,
-                "task submitted to assignment queue", "SUCCESS");
+                "task submitted to assignment signal queue", "SUCCESS");
         return true;
     }
 
@@ -177,9 +176,14 @@ public class TaskAssignWorker {
         retryExecutor.schedule(() -> {
             scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
             if (running && task.getStatus() == expectedStatus) {
-                queue.offer(task);
-                emitQueueSnapshot(task, expectedStatus, "RETRY_ENQUEUED", retryDelayMillis,
-                        "delayed retry enqueued task back into assignment queue", "SUCCESS");
+                if (enqueueSignal(task, AssignmentSignalReason.RETRY)) {
+                    emitQueueSnapshot(task, expectedStatus, "RETRY_ENQUEUED", retryDelayMillis,
+                            "delayed retry enqueued task back into assignment signal queue", "SUCCESS");
+                } else {
+                    emitQueueSnapshot(task, expectedStatus, "RETRY_QUEUE_FULL", retryDelayMillis,
+                            "assignment signal queue is full; retry will be rescheduled", "DEFERRED");
+                    scheduleRetry(task, expectedStatus);
+                }
                 return;
             }
             releaseTrackedTask(task.getTid());
@@ -207,7 +211,7 @@ public class TaskAssignWorker {
         trackedTaskIds.clear();
         deferredRequeueTaskIds.clear();
         emitQueueSnapshot(null, null, "STOPPING", null,
-                "assignment queue worker is stopping", "SUCCESS");
+                "assignment signal worker is stopping", "SUCCESS");
         if (retryExecutor != null) {
             retryExecutor.shutdownNow();
             try {
@@ -287,7 +291,13 @@ public class TaskAssignWorker {
             notifyAssignmentProcessed(task);
             return false;
         }
-        queue.offer(task);
+        if (!enqueueSignal(task, AssignmentSignalReason.REQUEUE)) {
+            releaseTrackedTask(taskId);
+            emitQueueSnapshot(task, status, "REQUEUE_QUEUE_FULL", null,
+                    "assignment signal queue is full; deferred requeue was dropped", "REJECTED");
+            notifyAssignmentProcessed(task);
+            return false;
+        }
         return true;
     }
 
@@ -301,5 +311,21 @@ public class TaskAssignWorker {
         if (taskId != null && !taskId.isBlank()) {
             trackedTaskIds.remove(taskId);
         }
+    }
+
+    private boolean enqueueSignal(Task task, AssignmentSignalReason reason) {
+        if (task == null || !running) {
+            return false;
+        }
+        return queue.offer(new TaskAssignmentSignal(task, reason));
+    }
+
+    private enum AssignmentSignalReason {
+        SUBMITTED,
+        RETRY,
+        REQUEUE
+    }
+
+    private record TaskAssignmentSignal(Task task, AssignmentSignalReason reason) {
     }
 }

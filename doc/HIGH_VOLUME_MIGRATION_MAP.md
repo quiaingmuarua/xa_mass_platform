@@ -33,7 +33,7 @@ The current mainline hot path after the first WorkRuntime slice looks like this:
 1. create task through `POST /status/api/tasks`
 2. materialize one `Task` plus one persisted `TaskMsg` per input item as the compatibility projection
 3. enqueue one `TaskWorkEnvelope` per `INIT` message into `TaskWorkRuntime`
-4. scheduler submits a whole `Task` into the assignment queue
+4. scheduler submits a task-ready assignment signal into a bounded assignment queue
 5. assignment listener matches workers and claims ready envelopes through `claimReady(...)`
 6. claim creates an active runtime lease, then updates `TaskMsgAttempt` and `TaskMsg` projection
 7. worker adapter receives the unchanged `TaskDispatchItem`
@@ -95,11 +95,15 @@ Pressure:
 
 - the main dispatch source no longer scans all task messages
 - assignment still carries a whole task control signal and still writes a thick compatibility projection
+- worker matching now uses indexed project/event/target candidate lookup before rule evaluation, but
+  availability, lock, worker-context, and routing decisions remain in the matching strategy
 
 Migration target:
 
 - dispatch pulls ready envelopes from queue-native hot structures
 - no steady-state dispatch path should require whole-task message scans
+- worker candidate lookup should continue moving toward store-native capability and routing indexes without
+  turning storage into the owner of assignment policy
 
 ### 2.4 Result Path Still Writes Through Full TaskMsg + Attempt Projection
 
@@ -126,16 +130,17 @@ Current path:
 
 - `LeaseExpireWatchdog`
 - polls expired active leases from `TaskWorkRuntime.pollExpiredLeases(...)`
-- still iterates tasks only for max-runtime policy enforcement
+- polls expired max-runtime tasks from `TaskStorage.pollExpiredMaxRuntimeTasks(...)`
 
 Pressure:
 
 - lease expiry recovery is now indexed
-- max-runtime policy still needs task-level scanning or a future task deadline index
+- max-runtime policy is now deadline-indexed in the in-memory store
 
 Migration target:
 
 - lease expiry should be driven by inflight indexes or timeout buckets
+- max-runtime policy should be driven by task deadline indexes or timeout buckets
 - do not find expired work by scanning every task and message in steady state
 
 ### 2.6 API Read Models Still Assume Whole-Task Message Browsing
@@ -341,6 +346,9 @@ Current status:
 - Redis/JDBC replacement is intentionally deferred to a runtime-store implementation
 - `FILE` task creation is constrained to a `sourceRef` shell; work items must enter through bounded ingest batches instead of initial input materialization
 - inline `BATCH` create and `appendTaskItems` have explicit batch limits so high-volume producers must chunk work into the runtime queue
+- `TaskAssignWorker` now uses bounded task-ready assignment signals internally, while preserving the existing submit API for in-repo callers
+- `InMemoryTaskWorkRuntime` keeps task-level work/active/delayed indexes so task discard and active-lease lookup no longer scan the global work maps
+- `InMemoryTaskStorage` keeps a max-runtime deadline index so watchdog policy enforcement no longer scans all tasks each tick
 
 ### 6.4 Output Queue And Counter Aggregation
 

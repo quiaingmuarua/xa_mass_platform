@@ -48,9 +48,9 @@ Verified runtime path:
 
 1. A task enters `READY` after `approveTask()` or `resumeTask()`.
 2. `TaskManager` notifies READY listeners.
-3. `MassEngine` hands the task to `TaskAssignWorker`.
+3. `MassEngine` hands a task-ready assignment signal to `TaskAssignWorker`.
 4. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`.
-5. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of orphaning it.
+5. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the assignment signal instead of orphaning it.
 6. If matching succeeds and the task is still `READY`:
    - `peakAssignedWorkerCount` is updated to the highest number of workers actually used by the task
    - the task transitions from `READY` to `RUNNING`
@@ -77,6 +77,9 @@ Key implementation facts:
 
 Mainline matching facts:
 
+- worker matching asks `WorkerManager.findWorkerCandidates(task)` for a bounded candidate set before rule evaluation
+- the in-memory worker store indexes candidates by target worker, SDK event code, or task project; target worker id wins over capability indexes
+- storage candidate lookup does not decide worker online availability, worker lock, worker-context availability, or routing acceptance
 - public task APIs do not define a dedicated routing-code field; matching rules should use explicit task, worker, and worker-context signals
 - `workerGroupId` is not the routing-country source of truth
 - routing-country satisfaction should come from explicit rules and worker-context-facing signals
@@ -126,6 +129,7 @@ Important guards:
 - `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
 - per-dispatch lease and retry history now lives in `TaskMsgAttempt`
 - first-slice result envelopes do not carry a worker-visible `leaseToken`; result handling resolves the active runtime lease compatibly by `taskId + messageId`
+- max-runtime policy enforcement is deadline-indexed through `TaskStorage.pollExpiredMaxRuntimeTasks(...)`; watchdog does not scan all tasks for this policy in the in-memory mainline
 
 ## 6. Resource Release
 

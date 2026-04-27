@@ -4,6 +4,8 @@ import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.InMemoryWorkerStorage;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -45,6 +48,114 @@ class WorkerManagerTest {
         manager.addWorker(worker("b", "gb"));
         manager.addWorker(worker("c", "us"));
         assertEquals(3, manager.getAllWorkers().size());
+    }
+
+    @Test
+    void findWorkerCandidatesUsesProjectIndexForNonEventTasks() {
+        Worker demoWorker = worker("w-demo", "pool-a");
+        demoWorker.setSupportedProjects(List.of("demoApp"));
+        Worker otherWorker = worker("w-other", "pool-b");
+        otherWorker.setSupportedProjects(List.of("testApp"));
+        manager.addWorker(demoWorker);
+        manager.addWorker(otherWorker);
+
+        Task task = task("demoApp", Map.of());
+
+        assertEquals(List.of("w-demo"),
+                manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
+    }
+
+    @Test
+    void findWorkerCandidatesUsesEventIndexForSdkEventTasks() {
+        Worker eventWorker = worker("w-event", "pool-a");
+        eventWorker.setSupportedProjects(List.of());
+        eventWorker.setSupportedEventCodes(List.of("demo.dispatch"));
+        Worker projectOnlyWorker = worker("w-project", "pool-b");
+        projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
+        projectOnlyWorker.setSupportedEventCodes(List.of("other.event"));
+        manager.addWorker(eventWorker);
+        manager.addWorker(projectOnlyWorker);
+
+        Task task = task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")));
+
+        assertEquals(List.of("w-event"),
+                manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
+    }
+
+    @Test
+    void findWorkerCandidatesUsesTargetWorkerBeforeCapabilityIndexes() {
+        Worker targetWorker = worker("w-target", "pool-a");
+        targetWorker.setSupportedProjects(List.of("testApp"));
+        targetWorker.setSupportedEventCodes(List.of("other.event"));
+        Worker indexedWorker = worker("w-indexed", "pool-b");
+        indexedWorker.setSupportedProjects(List.of("demoApp"));
+        indexedWorker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(targetWorker);
+        manager.addWorker(indexedWorker);
+
+        Task task = task("demoApp", Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "w-target",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
+        ));
+
+        assertEquals(List.of("w-target"),
+                manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
+    }
+
+    @Test
+    void updateWorkerRefreshesCandidateIndexes() {
+        Worker worker = worker("w-reindex", "pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(worker);
+
+        Worker updated = worker("w-reindex", "pool-a");
+        updated.setSupportedProjects(List.of("testApp"));
+        updated.setSupportedEventCodes(List.of("other.event"));
+        assertTrue(manager.updateWorker(updated));
+
+        assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of())).isEmpty());
+        assertEquals(List.of("w-reindex"),
+                manager.findWorkerCandidates(task("testApp", Map.of())).stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void updateWorkerRefreshesCandidateIndexesAfterInPlaceMutation() {
+        Worker worker = worker("w-mutable-reindex", "pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(worker);
+
+        Worker stored = manager.getWorker("w-mutable-reindex");
+        stored.setSupportedProjects(List.of("testApp"));
+        stored.setSupportedEventCodes(List.of("test.dispatch"));
+        assertTrue(manager.updateWorker(stored));
+
+        assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of())).isEmpty());
+        assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")))).isEmpty());
+        assertEquals(List.of("w-mutable-reindex"),
+                manager.findWorkerCandidates(task("testApp", Map.of())).stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+
+    @Test
+    void deleteWorkerRemovesCandidateIndexes() {
+        Worker worker = worker("w-delete-index", "pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(worker);
+
+        assertTrue(manager.deleteWorker("w-delete-index"));
+
+        assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of())).isEmpty());
+        assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")))).isEmpty());
     }
 
     // ---- filter by group ----
@@ -248,5 +359,13 @@ class WorkerManagerTest {
         w.setWorkerGroupId(workerGroupId);
         w.setStatus(WorkerStatus.ONLINE);
         return w;
+    }
+
+    private Task task(String project, Map<String, Object> sharedConfig) {
+        Task task = new Task();
+        task.setTid("task-" + project);
+        task.setProject(project);
+        task.setSharedConfig(sharedConfig);
+        return task;
     }
 }

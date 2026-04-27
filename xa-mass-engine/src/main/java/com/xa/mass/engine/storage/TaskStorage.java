@@ -8,6 +8,7 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 /** Storage abstraction for tasks and task messages. */
 public interface TaskStorage {
@@ -37,6 +38,28 @@ public interface TaskStorage {
     }
 
     List<Task> getSchedulableTasks();
+
+    /**
+     * Returns non-terminal tasks whose max-runtime deadline is due.
+     *
+     * <p>Default implementation scans tasks; storage backends should override
+     * this with a deadline index so watchdog enforcement does not depend on
+     * full task-list scans.
+     */
+    default List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+        if (now == null || limit <= 0) {
+            return List.of();
+        }
+        return getAllTasks().stream()
+                .filter(task -> task != null
+                        && task.getStatus() != null
+                        && !task.getStatus().isFinal()
+                        && task.getMaxRuntimeSeconds() > 0
+                        && task.getStartTime() != null
+                        && task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds()).isBefore(now))
+                .limit(limit)
+                .collect(java.util.stream.Collectors.toList());
+    }
 
     void addTaskMessage(String taskId, TaskMsg taskMsg);
 

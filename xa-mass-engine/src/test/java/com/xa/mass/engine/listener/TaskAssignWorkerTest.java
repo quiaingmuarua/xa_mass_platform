@@ -210,6 +210,39 @@ class TaskAssignWorkerTest {
     }
 
     @Test
+    void submitRejectsDistinctTaskWhenAssignmentSignalQueueIsFull() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch firstAttemptStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
+        TaskWorkerAssignListener blockingListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            firstAttemptStarted.countDown();
+            assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
+            task.transitionTo(TaskStatus.RUNNING);
+            return true;
+        }).when(blockingListener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(blockingListener, 50L, 1);
+        worker.start();
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(worker.submit(readyTask("blocking")));
+            assertTrue(firstAttemptStarted.await(3, TimeUnit.SECONDS));
+            assertTrue(worker.submit(readyTask("queued")));
+            assertFalse(worker.submit(readyTask("rejected")));
+
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "rejected".equals(mdc.get("taskId"))
+                            && "QUEUE_FULL".equals(mdc.get("queueAction"))
+                            && "REJECTED".equals(mdc.get("result")));
+        } finally {
+            releaseFirstAttempt.countDown();
+        }
+    }
+
+    @Test
     void runningTaskDeferredRequeueIsEnqueuedAfterCurrentAssignmentCycleFinishes() throws InterruptedException {
         worker.stop();
 

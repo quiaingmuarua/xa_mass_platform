@@ -35,6 +35,7 @@ public class LeaseExpireWatchdog {
 
     private static final Logger log = LoggerFactory.getLogger(LeaseExpireWatchdog.class);
     private static final int EXPIRED_LEASE_SCAN_LIMIT = 1000;
+    private static final int EXPIRED_TASK_RUNTIME_SCAN_LIMIT = 1000;
 
     private final TaskManager taskManager;
     private final long intervalSeconds;
@@ -74,13 +75,7 @@ public class LeaseExpireWatchdog {
         try {
             LocalDateTime now = LocalDateTime.now();
             scanExpiredLeases(java.time.Instant.now());
-            List<Task> tasks = taskManager.getAllTasks();
-            for (Task task : tasks) {
-                if (task == null || task.getStatus() == null || task.getStatus().isFinal()) {
-                    continue;
-                }
-                scanMaxRuntime(task, now);
-            }
+            scanMaxRuntime(now);
         } catch (Exception e) {
             log.error("LeaseExpireWatchdog scan failed", e);
         }
@@ -96,15 +91,11 @@ public class LeaseExpireWatchdog {
         }
     }
 
-    private void scanMaxRuntime(Task task, LocalDateTime now) {
-        int maxRuntimeSeconds = task.getMaxRuntimeSeconds();
-        if (maxRuntimeSeconds <= 0 || task.getStartTime() == null) {
-            return;
-        }
-        LocalDateTime deadline = task.getStartTime().plusSeconds(maxRuntimeSeconds);
-        if (now.isAfter(deadline)) {
+    private void scanMaxRuntime(LocalDateTime now) {
+        List<Task> expiredTasks = taskManager.pollExpiredMaxRuntimeTasks(now, EXPIRED_TASK_RUNTIME_SCAN_LIMIT);
+        for (Task task : expiredTasks) {
             log.warn("[Watchdog] Task {} exceeded max runtime of {}s (started {}), terminating",
-                    task.getTid(), maxRuntimeSeconds, task.getStartTime());
+                    task.getTid(), task.getMaxRuntimeSeconds(), task.getStartTime());
             taskManager.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED);
         }
     }
