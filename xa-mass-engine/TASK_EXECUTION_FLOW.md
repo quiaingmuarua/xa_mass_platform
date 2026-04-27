@@ -43,6 +43,7 @@ Key facts:
 
 - `batchSize` is a per-worker cap for each dispatch round
 - `minRequiredWorkerCount` is the start gate
+- worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch
 - surplus matched workers used only for the start gate are unlocked immediately
 - active lease truth is in `TaskWorkRuntime`
 - `TaskMsgAttempt` is the attempt-level audit layer
@@ -88,6 +89,7 @@ Important guards:
 - `TaskMsgStatus` stays the logical lifecycle
 - per-dispatch lease and retry history lives in `TaskMsgAttempt`
 - worker-visible `leaseToken` is not yet part of the current result contract
+- production-scale task detail should come from structured trace or audit sinks, not engine-owned full-message query expansion
 
 ## 6. Resource Release
 

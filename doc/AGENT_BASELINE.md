@@ -65,6 +65,9 @@ Rules:
 - do not let the same class name mean different things across layers
 - `EventDefinition.code` is globally unique capability identity
 - SDK-first resource creation is the preferred path: `registerWorker(...)`, `registerWorkerContext(...)`, `registerProject(...)`, `registerEventDefinition(...)`
+- task orchestration and worker matching belong at the task or task-slice level; do not reintroduce per-`TaskMsg` rule matching on the hot path
+- `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the future business-detail query model
+- large-scale task detail analysis belongs in structured trace, audit sinks, or downstream storage, not engine-owned full-message query projections
 
 ## 4. Architectural Guardrails
 
@@ -76,6 +79,7 @@ Rules:
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate. Do not push project/user identity back into `sharedConfig`, `TaskMsg.input`, or attribute bags.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`.
+- `Task` is the orchestration unit. If a workload needs materially different routing or capability semantics, split it into separate tasks or explicit task-owned slices instead of falling back to per-message matching.
 - The typed JSON DSL path goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`.
 - Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
@@ -106,6 +110,7 @@ Task and payload summary:
 - per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
 - `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
 - public create/update/read contracts do not define a dedicated routing-code field
+- engine-provided `TaskMsg` reads remain bounded compatibility helpers; production-scale detail should flow through structured trace or downstream audit storage
 - exact HTTP fields and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 Current lifecycle summary:
