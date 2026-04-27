@@ -42,7 +42,6 @@ The shared kernel is:
 - Current task-create HTTP route: `POST /status/api/tasks`
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/*`
-- Worker capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; `TaskMsg.input/output` are per-item payload boundaries
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 

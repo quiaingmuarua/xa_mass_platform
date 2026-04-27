@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -147,18 +146,6 @@ public class InMemoryTaskStorage implements TaskStorage {
     public long countTaskMessages(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.size() : 0;
-    }
-
-    @Override
-    public int countPendingDispatchableMessages(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.pendingDispatchableCount() : 0;
-    }
-
-    @Override
-    public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null && bucket.hasProcessingMessagesForWorker(workerId);
     }
 
     @Override
@@ -305,9 +292,6 @@ public class InMemoryTaskStorage implements TaskStorage {
         private final Map<String, TaskMsg> messagesById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
         private final Map<String, TaskMsgStatus> statusByMessageId = new ConcurrentHashMap<>();
-        private final Map<String, String> latestWorkerByMessageId = new ConcurrentHashMap<>();
-        private final Map<String, AtomicInteger> processingCountsByWorker = new ConcurrentHashMap<>();
-        private int initCount;
         private int successCount;
         private int failedCount;
         private int expiredCount;
@@ -378,10 +362,6 @@ public class InMemoryTaskStorage implements TaskStorage {
             return messagesById.size();
         }
 
-        private synchronized int pendingDispatchableCount() {
-            return initCount;
-        }
-
         private synchronized long successCount() {
             return successCount;
         }
@@ -398,46 +378,22 @@ public class InMemoryTaskStorage implements TaskStorage {
             return processingCount;
         }
 
-        private synchronized boolean hasProcessingMessagesForWorker(String workerId) {
-            if (workerId == null || workerId.isBlank()) {
-                return false;
-            }
-            AtomicInteger counter = processingCountsByWorker.get(workerId);
-            return counter != null && counter.get() > 0;
-        }
-
-        private void applyMessageStateDelta(TaskMsgStatus previousStatus,
-                                            String previousWorkerId,
-                                            TaskMsgStatus newStatus,
-                                            String newWorkerId) {
-            decrementMessageState(previousStatus, previousWorkerId);
-            incrementMessageState(newStatus, newWorkerId);
-        }
-
         private void reconcileMessageState(String messageId,
                                            TaskMsgStatus newStatus,
-                                           String newWorkerId) {
+                                           String ignoredWorkerId) {
             TaskMsgStatus previousStatus = statusByMessageId.get(messageId);
-            String previousWorkerId = latestWorkerByMessageId.get(messageId);
-            applyMessageStateDelta(previousStatus, previousWorkerId, newStatus, newWorkerId);
+            decrementMessageState(previousStatus);
+            incrementMessageState(newStatus);
             if (newStatus == null) {
                 statusByMessageId.remove(messageId);
             } else {
                 statusByMessageId.put(messageId, newStatus);
             }
-            if (newWorkerId == null || newWorkerId.isBlank()) {
-                latestWorkerByMessageId.remove(messageId);
-            } else {
-                latestWorkerByMessageId.put(messageId, newWorkerId);
-            }
         }
 
-        private void decrementMessageState(TaskMsgStatus status, String workerId) {
+        private void decrementMessageState(TaskMsgStatus status) {
             if (status == null) {
                 return;
-            }
-            if (status == TaskMsgStatus.INIT) {
-                initCount--;
             }
             if (status == TaskMsgStatus.SUCCESS) {
                 successCount--;
@@ -450,16 +406,12 @@ public class InMemoryTaskStorage implements TaskStorage {
             }
             if (status.isProcessing()) {
                 processingCount--;
-                decrementWorkerProcessing(workerId);
             }
         }
 
-        private void incrementMessageState(TaskMsgStatus status, String workerId) {
+        private void incrementMessageState(TaskMsgStatus status) {
             if (status == null) {
                 return;
-            }
-            if (status == TaskMsgStatus.INIT) {
-                initCount++;
             }
             if (status == TaskMsgStatus.SUCCESS) {
                 successCount++;
@@ -472,27 +424,8 @@ public class InMemoryTaskStorage implements TaskStorage {
             }
             if (status.isProcessing()) {
                 processingCount++;
-                incrementWorkerProcessing(workerId);
             }
         }
-
-        private void incrementWorkerProcessing(String workerId) {
-            if (workerId == null || workerId.isBlank()) {
-                return;
-            }
-            processingCountsByWorker.computeIfAbsent(workerId, ignored -> new AtomicInteger()).incrementAndGet();
-        }
-
-        private void decrementWorkerProcessing(String workerId) {
-            if (workerId == null || workerId.isBlank()) {
-                return;
-            }
-            processingCountsByWorker.computeIfPresent(workerId, (ignored, counter) -> {
-                int next = counter.decrementAndGet();
-                return next <= 0 ? null : counter;
-            });
-        }
-
     }
 
     private static final class AttemptBucket {

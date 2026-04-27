@@ -91,6 +91,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
         int perWorkerBatchLimit = Math.max(task.getBatchSize(), 1);
         List<TaskMsg> pushQueue = new ArrayList<>();
+        List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
         log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, totalMessages={}, perWorkerBatchLimit={}",
@@ -142,7 +143,14 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 continue;
             }
             taskManager.updateTaskMessage(task.getTid(), msg);
+            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), msg.getMessageId());
+            if (latestAttempt == null) {
+                log.warn("[MsgAssign] Skip dispatch callback for task message {} because latest attempt is missing after bind",
+                        msg.getMessageId());
+                continue;
+            }
             pushQueue.add(msg);
+            dispatchBindings.add(new TaskDispatchBinding(msg, latestAttempt));
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
@@ -191,7 +199,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 task.getTid(), pushQueue.size(), totalMessages);
 
         if (dispatchListener != null && !pushQueue.isEmpty()) {
-            dispatchListener.onTaskMsgsReady(task, List.copyOf(pushQueue));
+            dispatchListener.onTaskMsgsReady(task, List.copyOf(dispatchBindings));
         }
         return List.copyOf(pushQueue);
     }

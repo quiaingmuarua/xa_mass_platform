@@ -7,7 +7,6 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - XA Mass Platform is a general distributed task scheduling platform.
 - Stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
-- WebSocket is one transport adapter, not the product boundary.
 - Polling/pull workers are mainline, not side features.
 - Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
 - Observability is logs, trace, and bounded diagnostics; do not add scan-heavy hot-path state.
@@ -100,21 +99,16 @@ Deprecation and pushback:
 
 ## 4. Highest-Priority Guardrails
 
-- Do not shrink the product definition back into a phone/group-control system.
 - Do not let existing transport-specific names redefine the kernel; new cross-adapter boundaries should stay transport-neutral.
-- Do not define a worker as "a WebSocket client"; define it as an executor that can receive tasks, return results, and emit system events through some transport.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries.
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field.
 - `POST /status/api/tasks` is the only task-create HTTP route.
 - `eventCode` is globally unique capability identity across the runtime catalog.
-- Worker runtime event capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint.
-- Routing truth comes from explicit rules and worker-context signals, not `workerGroupId`.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
 - Do not add scan-heavy observability or reconciliation loops to hot paths; prefer logs, trace, counters, and indexed lookups.
 - Bias transport and lifecycle writes toward idempotent operations and explicit retry safety.
 - Read [transport/AGENTS.md](transport/AGENTS.md) before changing `transport/transport_api`, `transport/transport_runtime`, or adding a new transport adapter.
 - Read [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
-- Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
 ## 5. Working Defaults
 

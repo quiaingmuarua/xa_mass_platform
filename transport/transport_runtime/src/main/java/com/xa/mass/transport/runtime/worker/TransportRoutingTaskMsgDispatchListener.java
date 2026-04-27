@@ -1,8 +1,8 @@
 package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -32,15 +32,16 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
     }
 
     @Override
-    public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
-        if (task == null || taskMsgs == null || taskMsgs.isEmpty()) {
+    public void onTaskMsgsReady(Task task, List<TaskDispatchBinding> dispatchBindings) {
+        if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
 
         Map<WorkerAdapter, List<TaskDispatchItem>> grouped = new LinkedHashMap<>();
-        for (TaskMsg taskMsg : taskMsgs) {
-            WorkerAdapter adapter = resolveAdapter(taskMsg);
-            grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(TaskDispatchItem.from(task, taskMsg));
+        for (TaskDispatchBinding binding : dispatchBindings) {
+            WorkerAdapter adapter = resolveAdapter(binding);
+            grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
+                    .add(TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt()));
         }
 
         for (Map.Entry<WorkerAdapter, List<TaskDispatchItem>> entry : grouped.entrySet()) {
@@ -71,8 +72,8 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         }
     }
 
-    private WorkerAdapter resolveAdapter(TaskMsg taskMsg) {
-        String workerId = taskMsg != null ? taskMsg.getLatestAttemptWorkerId() : null;
+    private WorkerAdapter resolveAdapter(TaskDispatchBinding binding) {
+        String workerId = binding != null && binding.attempt() != null ? binding.attempt().getWorkerId() : null;
         if (workerId == null || workerManager.getWorker(workerId) == null) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }

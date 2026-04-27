@@ -19,9 +19,8 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 
 Current mainline note:
 
-- today the Boot-shell E2E path validates the stable polling external-worker path plus the current realtime adapter paths
+- today the Boot-shell E2E path validates the stable polling external-worker path plus the current websocket/socket realtime adapter paths
 - pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, `NodePollingWorkerBlackBoxIntegrationTest`, and `TransportChannelWiringIntegrationTest`
-- realtime shell coverage currently includes WebSocket and socket adapter risks, but polling remains the stable public external-worker contract
 
 Fixture note:
 
@@ -62,12 +61,11 @@ Worker and context:
 
 - worker-context attribute routing selects the right context
 - stateless worker can execute tasks without routing-required context
-- polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
+- polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal`
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
-- external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline without relying on adapter-internal frame schemas
-- the runnable Node polling worker example can join through `/worker-api`, surface capability in `/sdk/meta/*`, complete task work, and exit cleanly without relying on adapter-internal frame schemas
-- targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`
-- fixed-worker debug selection is carried by `Task.sharedConfig.targetWorkerId`, not a separate WebSocket-adapter control path
+- external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
+- the runnable Node polling worker example can join through `/worker-api`, surface capability in `/sdk/meta/*`, complete task work, and exit cleanly
+- targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
 - same worker can own multiple contexts without overwrite
 - releasing one context does not release sibling contexts
 - worker/context is reusable after normal terminal completion

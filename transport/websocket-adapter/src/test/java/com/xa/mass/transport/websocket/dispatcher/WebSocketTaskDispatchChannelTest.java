@@ -3,6 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
@@ -42,7 +43,7 @@ class WebSocketTaskDispatchChannelTest {
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task, taskMsg)));
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task, taskMsg, attempt())));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
@@ -81,7 +82,7 @@ class WebSocketTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
@@ -97,7 +98,7 @@ class WebSocketTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
@@ -108,7 +109,7 @@ class WebSocketTaskDispatchChannelTest {
     void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
@@ -130,8 +131,15 @@ class WebSocketTaskDispatchChannelTest {
 
     private TaskMsg taskMsg() {
         TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-1"));
-        taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         return taskMsg;
+    }
+
+    private TaskMsgAttempt attempt() {
+        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-1", "task-1", "msg-1", 1);
+        attempt.setWorkerId("worker-1");
+        attempt.setWorkerContextId("worker-context-1");
+        attempt.setBatchId("batch-0");
+        return attempt;
     }
 
     private TransportDeliveryService deliveryService() {

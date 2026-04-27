@@ -2,11 +2,13 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskSharedConfig;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Transport-neutral logical dispatch item delivered to worker transports.
@@ -92,7 +94,9 @@ public final class TaskDispatchItem {
         return eventCode;
     }
 
-    public static TaskDispatchItem from(Task task, TaskMsg taskMsg) {
+    public static TaskDispatchItem from(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        Objects.requireNonNull(taskMsg, "taskMsg");
+        Objects.requireNonNull(attempt, "attempt");
         return new TaskDispatchItem(
                 task.getTid(),
                 taskMsg.getMessageId(),
@@ -101,10 +105,10 @@ public final class TaskDispatchItem {
                 task.getProject(),
                 task.getUser() != null ? task.getUser().getUserId() : null,
                 taskMsg.getRetryCount(),
-                taskMsg.latestAttemptId(),
-                taskMsg.getLatestAttemptWorkerId(),
-                taskMsg.getLatestAttemptWorkerContextId(),
-                taskMsg.getLatestAttemptBatchId(),
+                attempt.getAttemptId(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
                 normalizeInput(task, taskMsg),
                 task.getSharedConfig()
         );

@@ -39,8 +39,6 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `target` is only a conventional key inside `TaskMsg.input`.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
-- Worker/WebSocket-adapter callbacks must resolve a unique active `TaskMsgAttempt`.
-- The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
 - `/status/api/workers` and `/sdk/meta/worker-capabilities` are the current joined worker capability read models: SDK registration remains capability truth, session/endpoint facts come from the transport layer, and the response joins them by `workerId`.
 
 ## 1.1 Event Control Plane Notes

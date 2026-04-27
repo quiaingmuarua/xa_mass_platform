@@ -1,32 +1,21 @@
 # Rule Engine Notes
 
-This document describes the active rule-matching surface in `xa-mass-engine`.
+This file records the active rule-matching surface in `xa-mass-engine`.
 
-## Purpose
+## Current Role
 
-The engine no longer hard-codes task-to-worker matching around a single worker-country assumption.
-The current mainline evaluates `WorkerMatchContext` through QLExpress rules and treats routing code as a task input that should normally be satisfied by worker-context/account-facing signals.
+Matching evaluates `WorkerMatchContext` through QLExpress rules.
 
-## Active Components
+Current owner types:
 
-### `WorkerMatchContext`
-
-Location: `com.xa.mass.engine.model.WorkerMatchContext`
+- `com.xa.mass.engine.model.WorkerMatchContext`
+- `com.xa.mass.engine.rules.RuleConfig`
 
 Responsibilities:
 
-- Build a stable rule-evaluation context for one `worker + workerContext + task` candidate
-- Expose strong-typed mainline fields and auxiliary attribute maps together
-- Keep routing diagnostics explicit instead of hiding them in ad hoc worker filters
-
-### `RuleConfig`
-
-Location: `com.xa.mass.engine.rules.RuleConfig`
-
-Responsibilities:
-
-- Provide default, advanced, project-specific, and loose matching rules
-- Keep the default routing rule aligned with current semantics
+- build one stable rule-evaluation context for one `worker + workerContext + task` candidate
+- expose typed fields plus auxiliary attribute maps
+- provide the default and project-specific rule set used by engine matching
 
 ## Default Rules
 
@@ -64,7 +53,7 @@ appCount < 10
 
 ## Context Keys
 
-### Worker
+Worker keys:
 
 - `workerId`
 - `workerStatus`
@@ -75,7 +64,7 @@ appCount < 10
 - `isWorkerAvailable`
 - `isWorkerLocked`
 
-### WorkerContext
+Worker-context keys:
 
 - `hasWorkerContext`
 - `workerContextId`
@@ -88,7 +77,7 @@ appCount < 10
 - `isWorkerContextReserved`
 - `isWorkerContextOccupied`
 
-### Task
+Task keys:
 
 - `taskId`
 - `taskName`
@@ -101,7 +90,7 @@ appCount < 10
 - `batchSize`
 - `minRequiredWorkerCount`
 
-### Derived Signals
+Derived signals:
 
 - `appCount`
 - `supportsProject`
@@ -140,16 +129,13 @@ agentVersion.startsWith('1.0') &&
 ## Boundaries
 
 - `workerAttributes` and `workerContextAttributes` are auxiliary labels only
-- Lifecycle, lock, and online truth must continue to come from strong-typed fields and managers
-- `routingCode` is an optional convention resolved from `Task.sharedConfig["routingCode"]`, not first-class task aggregate truth
-- Worker `workerGroupId` can still appear in diagnostics, but it is no longer the mainline country truth source
-- `isWorkerContextAvailable` means truly free for new assignment (`IDLE` and not expired)
-- `isWorkerContextUsable` is the broader runtime-health signal used for diagnostics (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
-- `WorkerContext` is optional at platform level; a worker with no context can still match when the task does not require worker-context-specific routing
-- Once a task declares routing-country requirements, a missing worker context does not silently satisfy that rule
+- lifecycle, lock, and online truth come from typed fields and managers
+- `routingCode` is an optional convention resolved from `Task.sharedConfig["routingCode"]`
+- `WorkerContext` is optional at platform level
+- once a task declares routing requirements, a missing worker context does not satisfy that rule
 
-## Guidance
+## Change Rule
 
-- Prefer explicit context keys over flattened aliases
-- Prefer end-to-end tests for routing behavior over isolated expression-only confidence
-- If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the mock E2E routing coverage together
+- prefer explicit context keys over flattened aliases
+- prefer end-to-end routing tests over expression-only confidence
+- if matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the mock E2E routing coverage together

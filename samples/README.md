@@ -1,7 +1,7 @@
 # Samples
 
-This directory holds runnable third-party worker references. They are part of
-the long-term transport validation line, not one-off examples.
+This directory holds runnable third-party worker references used by executable
+black-box acceptance.
 
 Rules:
 
@@ -39,7 +39,7 @@ Every sample should remain provable through an external-process black-box test:
 - then use the per-sample README under each subdirectory for local commands
 - use `xa-mass-dev-app` black-box tests as the executable acceptance truth
 
-## Future Additions
+## Addition Rule
 
 - add new languages only when they increase cross-language contract value
 - keep new samples aligned with `adapterId + transportHint` semantics

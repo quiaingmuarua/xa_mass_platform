@@ -28,6 +28,8 @@ import java.util.List;
 class TaskLifecycleService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
+    private static final int TERMINATION_MESSAGE_PAGE_SIZE =
+            Integer.getInteger("xa.mass.engine.terminationMessagePageSize", 512);
 
     private final TaskManager taskManager;
     private final TaskStateResolver stateResolver;
@@ -380,7 +382,7 @@ class TaskLifecycleService {
                     TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
-                    cancelPendingMessages(taskId);
+                    cancelPendingMessages(task);
                     taskManager.getScheduler().cancelTask(taskId);
                     taskManager.getEventPublisher().publishTaskTerminal(task);
                     taskManager.getTaskWorkRuntime().discardTask(taskId);
@@ -403,75 +405,91 @@ class TaskLifecycleService {
         }
     }
 
-    private void cancelPendingMessages(String taskId) {
-        List<TaskMsg> messages = taskManager.getTaskMessages(taskId);
-        for (TaskMsg msg : messages) {
-            if (msg.isCompleted()) {
-                continue;
+    private void cancelPendingMessages(Task task) {
+        String taskId = task.getTid();
+        int offset = 0;
+        while (true) {
+            List<TaskMsg> page = taskManager.getTaskMessagesPage(taskId, offset, TERMINATION_MESSAGE_PAGE_SIZE);
+            if (page.isEmpty()) {
+                return;
             }
-
-            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msg.getMessageId());
-            boolean attemptClosed = false;
-            if (activeAttempt != null) {
-                if (TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.MANUAL_CANCELLED, "task cancelled")) {
-                    taskManager.updateTaskMessageAttempt(taskId, msg.getMessageId(), activeAttempt);
-                    attemptClosed = true;
-                }
+            for (TaskMsg msg : page) {
+                cancelPendingMessage(task, msg);
             }
+            offset += page.size();
+        }
+    }
 
-            TaskMsgStatus status = msg.getStatus();
-            boolean updated = false;
-            if (status == TaskMsgStatus.INIT) {
-                updated = msg.cancelBeforeDispatch("task cancelled");
-                if (!updated) {
-                    continue;
-                }
+    private void cancelPendingMessage(Task task, TaskMsg msg) {
+        if (msg == null || msg.isCompleted()) {
+            return;
+        }
+
+        TaskMsgStatus status = msg.getStatus();
+        TaskMsgAttempt activeAttempt = null;
+        boolean attemptClosed = false;
+        if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
+            activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
+            if (activeAttempt != null
+                    && TaskMessageAttemptSupport.expireAttempt(
+                    activeAttempt,
+                    TaskMsgAttemptFinalReason.MANUAL_CANCELLED,
+                    "task cancelled")) {
+                taskManager.updateTaskMessageAttempt(task.getTid(), msg.getMessageId(), activeAttempt);
+                attemptClosed = true;
+            }
+        }
+
+        boolean updated = false;
+        if (status == TaskMsgStatus.INIT) {
+            updated = msg.cancelBeforeDispatch("task cancelled");
+            if (!updated) {
+                return;
+            }
+            TraceEventLogger.taskMsgStatusTransition(
+                    msg,
+                    TaskMsgStatus.INIT,
+                    msg.getStatus(),
+                    "CANCEL_PENDING_MESSAGES",
+                    "TaskManager",
+                    "task cancelled before dispatch"
+            );
+        } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
+            updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
+            if (updated) {
                 TraceEventLogger.taskMsgStatusTransition(
                         msg,
-                        TaskMsgStatus.INIT,
+                        status,
                         msg.getStatus(),
                         "CANCEL_PENDING_MESSAGES",
                         "TaskManager",
-                        "task cancelled before dispatch"
+                        "task cancelled after assignment"
                 );
-            } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
-                updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
-                if (updated) {
-                    TraceEventLogger.taskMsgStatusTransition(
-                            msg,
-                            status,
-                            msg.getStatus(),
-                            "CANCEL_PENDING_MESSAGES",
-                            "TaskManager",
-                            "task cancelled after assignment"
-                    );
-                }
-            }
-            if (updated) {
-                taskManager.updateTaskMessage(taskId, msg);
-                Task task = taskManager.getTask(taskId);
-                if (task != null && attemptClosed && activeAttempt != null) {
-                    TraceEventLogger.taskMessageAttemptClosed(
-                            task,
-                            msg,
-                            activeAttempt,
-                            "CANCEL_PENDING_MESSAGES",
-                            "TaskManager",
-                            "task termination closed the current attempt"
-                    );
-                    taskManager.getEventPublisher().publishTaskMessageAttemptClosed(task, msg, activeAttempt);
-                }
-                if (task != null) {
-                    TraceEventLogger.taskMessageLogicallyFinal(
-                            task,
-                            msg,
-                            "CANCEL_PENDING_MESSAGES",
-                            "TaskManager",
-                            "task termination finalized the logical message"
-                    );
-                    taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, msg);
-                }
             }
         }
+        if (!updated) {
+            return;
+        }
+
+        taskManager.updateTaskMessage(task.getTid(), msg);
+        if (attemptClosed && activeAttempt != null) {
+            TraceEventLogger.taskMessageAttemptClosed(
+                    task,
+                    msg,
+                    activeAttempt,
+                    "CANCEL_PENDING_MESSAGES",
+                    "TaskManager",
+                    "task termination closed the current attempt"
+            );
+            taskManager.getEventPublisher().publishTaskMessageAttemptClosed(task, msg, activeAttempt);
+        }
+        TraceEventLogger.taskMessageLogicallyFinal(
+                task,
+                msg,
+                "CANCEL_PENDING_MESSAGES",
+                "TaskManager",
+                "task termination finalized the logical message"
+        );
+        taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, msg);
     }
 }

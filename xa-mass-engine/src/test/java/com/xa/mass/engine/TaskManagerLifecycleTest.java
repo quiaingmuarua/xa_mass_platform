@@ -1439,6 +1439,25 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg2.getFinalReason());
     }
 
+    @Test
+    void cancelTaskUsesPagedMessageTraversalInsteadOfFullTaskMessageSnapshot() {
+        PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
+        Task task = pagingTaskManager.createTask(buildRequest("cancel-paged", List.of("a", "b", "c")));
+        pagingTaskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        pagingTaskManager.updateTask(task);
+
+        List<TaskMsg> messages = pagingTaskManager.getTaskMessages(task.getTid());
+        assignMessage(pagingTaskManager, task, messages.get(2));
+
+        pagingStorage.resetTraversalCounters();
+
+        assertTrue(pagingTaskManager.cancelTask(task.getTid()));
+        assertTrue(pagingStorage.pageReadCount.get() > 0, "cancel should page through task messages");
+        assertEquals(0, pagingStorage.fullSnapshotReadCount.get(), "cancel should not require getTaskMessages(taskId)");
+    }
+
     // ---- Bug4: Task.isCompleted() only returns true when status is final ----
 
     @Test
@@ -1601,6 +1620,28 @@ class TaskManagerLifecycleTest {
         public boolean resumeTask(String taskId) {
             resumedTaskIds.add(taskId);
             return true;
+        }
+    }
+
+    private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {
+        private final AtomicInteger fullSnapshotReadCount = new AtomicInteger();
+        private final AtomicInteger pageReadCount = new AtomicInteger();
+
+        @Override
+        public List<TaskMsg> getTaskMessages(String taskId) {
+            fullSnapshotReadCount.incrementAndGet();
+            return super.getTaskMessages(taskId);
+        }
+
+        @Override
+        public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
+            pageReadCount.incrementAndGet();
+            return super.getTaskMessagesPage(taskId, offset, limit);
+        }
+
+        private void resetTraversalCounters() {
+            fullSnapshotReadCount.set(0);
+            pageReadCount.set(0);
         }
     }
 }

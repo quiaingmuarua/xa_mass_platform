@@ -56,7 +56,6 @@ Default runtime facts:
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
 - Mock adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
-- Worker routing may use neutral strategy hints like `realtime` and `polling`; the current WebSocket adapter still accepts `websocket/ws` as compatibility aliases.
 - `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
 ## 3. Smoke Checks
@@ -133,9 +132,6 @@ Assignment and dispatch:
 
 Result write-back and closure:
 
-- Current WebSocket workers establish identity at handshake time.
-- Current WebSocket dispatch uses a canonical root-level task-dispatch frame.
-- Result write-back uses the canonical root-level task-result frame.
 - Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
 - `RuntimeTaskResultIngestChannel` writes results through `TaskManager.handleTaskMessageResult(...)`.
 - callbacks must resolve a unique active `TaskMsgAttempt`.
@@ -149,16 +145,13 @@ Worker and worker-context truth:
 - worker lock truth lives in `WorkerStorage` and is read through `WorkerManager.isLocked(...)`.
 - `WorkerContext` is optional; stateless workers are verified for tasks without context-specific routing.
 - `WorkerContext.workerId` is the owner truth for context attachment.
-- `Worker.attributes` and `WorkerContext.attributes` are defensive-copied auxiliary rule labels only.
-- routing should come from explicit rules and worker-context signals, not `workerGroupId`.
 
 Open-ended and targeted worker debug:
 
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- worker debug from the control console now creates a normal task through `POST /status/api/tasks`.
-- fixed-worker routing uses `Task.sharedConfig.targetWorkerId` and still stays inside normal task dispatch/result lifecycle.
+- worker debug from the control console creates a normal task through `POST /status/api/tasks`, with fixed-worker routing carried by `Task.sharedConfig.targetWorkerId`.
 
 ## 5. Core Acceptance Commands
 

@@ -32,7 +32,7 @@ That means the verified mainline is memory-backed storage only.
 
 ## TaskStorage
 
-`TaskStorage` owns persisted task state and per-task message state.
+`TaskStorage` owns persisted task state, message projection state, and attempt history.
 
 Main responsibilities:
 
@@ -40,7 +40,16 @@ Main responsibilities:
 - update and delete `Task`
 - query tasks by status
 - store and update `TaskMsg`
+- store and update `TaskMsgAttempt`
 - aggregate `TaskMsg` statistics for lifecycle convergence
+
+What `TaskStorage` does not own anymore:
+
+- ready-work admission
+- in-flight lease ownership
+- per-worker active-dispatch truth
+
+Those hot-path concerns belong to `TaskWorkRuntime`, not to `TaskStorage` scans.
 
 Current interface shape:
 
@@ -57,15 +66,21 @@ public interface TaskStorage {
     List<TaskMsg> getTaskMessages(String taskId);
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
+    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
+    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
+    Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
+    Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId);
+    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
     TaskMessageStats getTaskMessageStats(String taskId);
+    TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId);
 }
 ```
 
 Important current usage notes:
 
-- task completion is driven from persisted `TaskMsg` aggregates, not just task status
+- task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
-- `TaskMessageStats` is part of the task-terminal convergence path
+- `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
 
 ## WorkerStorage
 

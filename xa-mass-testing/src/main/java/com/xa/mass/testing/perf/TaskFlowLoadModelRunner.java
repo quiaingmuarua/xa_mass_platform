@@ -8,6 +8,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
@@ -99,9 +100,10 @@ public final class TaskFlowLoadModelRunner {
             AtomicReference<String> taskIdRef = new AtomicReference<>();
             Map<String, AtomicInteger> messageDeliveryAttempts = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, taskMsgs) -> {
-                dispatchMetrics.recordDispatchCycle(taskMsgs);
-                for (TaskMsg taskMsg : taskMsgs) {
+            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
+                dispatchMetrics.recordDispatchCycle(dispatchBindings);
+                for (TaskDispatchBinding binding : dispatchBindings) {
+                    TaskMsg taskMsg = binding.taskMsg();
                     callbackExecutor.submit(() -> {
                         int active = callbackMetrics.onCallbackStart();
                         try {
@@ -453,11 +455,6 @@ public final class TaskFlowLoadModelRunner {
         }
 
         @Override
-        public int countPendingDispatchableMessages(String taskId) {
-            return probe.measure("countPendingDispatchableMessages", () -> super.countPendingDispatchableMessages(taskId));
-        }
-
-        @Override
         public TaskMessageStats getTaskMessageStats(String taskId) {
             return probe.measure("getTaskMessageStats", () -> super.getTaskMessageStats(taskId));
         }
@@ -518,9 +515,9 @@ public final class TaskFlowLoadModelRunner {
         private final LongAdder dispatchCycles = new LongAdder();
         private final LongAdder totalDispatchItems = new LongAdder();
 
-        private void recordDispatchCycle(List<TaskMsg> taskMsgs) {
+        private void recordDispatchCycle(List<TaskDispatchBinding> dispatchBindings) {
             dispatchCycles.increment();
-            totalDispatchItems.add(taskMsgs.size());
+            totalDispatchItems.add(dispatchBindings.size());
         }
     }
 

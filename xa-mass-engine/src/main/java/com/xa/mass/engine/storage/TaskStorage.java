@@ -1,7 +1,6 @@
 package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
@@ -83,21 +82,6 @@ public interface TaskStorage {
 
     default long countTaskMessages(String taskId) {
         return getTaskMessageStats(taskId).getTotal();
-    }
-
-    default int countPendingDispatchableMessages(String taskId) {
-        return (int) getTaskMessages(taskId).stream()
-                .filter(taskMsg -> taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT)
-                .count();
-    }
-
-    default boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        if (workerId == null || workerId.isBlank()) {
-            return false;
-        }
-        return getTaskMessages(taskId).stream()
-                .filter(taskMsg -> taskMsg != null && taskMsg.isProcessing())
-                .anyMatch(taskMsg -> workerId.equals(taskMsg.getLatestAttemptWorkerId()));
     }
 
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);

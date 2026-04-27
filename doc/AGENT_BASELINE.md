@@ -33,7 +33,6 @@ Working rule:
 - The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
-- Adapter vocabulary note: current code still uses `Worker`, `WorkerContext`, and some WebSocket-named types for today's adapter surfaces. Read those names literally inside their current scope, but keep new cross-adapter boundaries transport-neutral.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - Stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - The current runtime model is transport-agnostic: task dispatch, result ingest, and worker system events are explicit seams rather than one transport shape.
@@ -66,7 +65,6 @@ Rules:
 - do not let the same class name mean different things across layers
 - `EventDefinition.code` is globally unique capability identity
 - SDK-first resource creation is the preferred path: `registerWorker(...)`, `registerWorkerContext(...)`, `registerProject(...)`, `registerEventDefinition(...)`
-- manual worker debug stays task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`
 
 ## 4. Architectural Guardrails
 
@@ -77,13 +75,10 @@ Rules:
 - `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate. Do not push project/user identity back into `sharedConfig`, `TaskMsg.input`, or attribute bags.
-- Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`.
 - The typed JSON DSL path goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`.
-- `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
-- Manual worker debug now enters through normal task creation with explicit worker targeting in `Task.sharedConfig`; do not reintroduce a direct worker-control side-channel.
 - Do not add full-table, full-task, or full-attempt scans to hot paths for observability convenience; use indexed lookups, traces, and counters.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
@@ -97,7 +92,6 @@ Rules:
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and adds the current HTTP/control-console shell
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
 - Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
-- WebSocket adapter frame classification is a protocol compatibility seam only; it is not business or control capability identity
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell E2E
 
 ## 6. Current Contract Summary
@@ -112,7 +106,6 @@ Task and payload summary:
 - per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
 - `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
 - public create/update/read contracts do not define a dedicated routing-code field
-- worker runtime capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
 - exact HTTP fields and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 Current lifecycle summary:
@@ -143,10 +136,7 @@ Important current rules:
 
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
 - `WorkerContext.project` is the first-class project/resource binding for account-like contexts; do not hide project ownership only inside attributes
-- `WorkerMatchContext` is the canonical rule-evaluation shape; match logic should prefer explicit signals such as `workerAttributes`, `workerContextAttributes`, `workerContextProject`, `workerContextProjectMatchesTaskProject`, `hasWorkerContext`, and `taskHasRoutingRequirement`
-- `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
-- `isWorkerContextAvailable` means truly free for new assignment; `isWorkerContextUsable` is only the broader diagnostic signal
-- new matching rules should prefer explicit worker-context signals such as `workerContextProject`, `workerContextRoutingTags`, and `workerContextAttributes`; do not reintroduce a frontend or API-level routing-code model field
+- `WorkerMatchContext` is the canonical rule-evaluation shape for matching
 - `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`

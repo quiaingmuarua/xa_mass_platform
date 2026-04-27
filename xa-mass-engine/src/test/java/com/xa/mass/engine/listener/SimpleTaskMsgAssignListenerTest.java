@@ -51,18 +51,19 @@ class SimpleTaskMsgAssignListenerTest {
         List<String> storedMsgIds = taskManager.getTaskMessages(task.getTid()).stream()
                 .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
-        AtomicReference<List<TaskMsg>> dispatched = new AtomicReference<>();
-        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, msgs) -> dispatched.set(msgs));
+        AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
+        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, bindings) -> dispatched.set(bindings));
 
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
         listener.onMsgAssign(task, List.of(matched("d1", "tk1"), matched("d2", "tk2")));
 
-        List<TaskMsg> pushed = dispatched.get();
+        List<TaskDispatchBinding> pushed = dispatched.get();
         assertNotNull(pushed);
-        assertEquals(storedMsgIds, pushed.stream().map(TaskMsg::getMessageId).collect(Collectors.toList()));
+        assertEquals(storedMsgIds, pushed.stream().map(binding -> binding.taskMsg().getMessageId()).collect(Collectors.toList()));
         assertEquals(List.of("target-0", "target-1", "target-2"),
-                pushed.stream().map(msg -> msg.getInput().get("target")).collect(Collectors.toList()));
+                pushed.stream().map(binding -> binding.taskMsg().getInput().get("target")).collect(Collectors.toList()));
+        assertTrue(pushed.stream().allMatch(binding -> binding.attempt().getWorkerId() != null));
     }
 
     @Test
