@@ -92,6 +92,7 @@ class TaskResultService {
             taskMsg.incrementRetryCount();
             taskMsg.resetForRetry();
             TraceEventLogger.taskMsgRetryReset(taskMsg,
+                    activeAttempt,
                     "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
             if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message retry reset persistence failed", 0);
@@ -147,7 +148,9 @@ class TaskResultService {
 
         synchronized (taskMsg) {
             if (taskMsg.isCompleted()) {
+                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
                 TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
+                        latestAttempt,
                         "task message already final in status " + taskMsg.getStatus());
                 logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
                         messageId, taskId, taskMsg.getStatus());
@@ -156,7 +159,9 @@ class TaskResultService {
             }
 
             if (task.getStatus().isFinal()) {
+                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
                 TraceEventLogger.callbackIgnoredLate(taskMsg,
+                        latestAttempt,
                         "task already terminal in status " + task.getStatus());
                 logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
                         taskId, messageId, taskMsg.getStatus());
@@ -176,6 +181,7 @@ class TaskResultService {
             }
             if (!isCallbackAcceptableMessageState(taskMsg)) {
                 TraceEventLogger.callbackRejectedInvalidState(taskMsg,
+                        activeAttempt,
                         "callback arrived while message status is " + taskMsg.getStatus());
                 logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
                         messageId, taskId, taskMsg.getStatus());

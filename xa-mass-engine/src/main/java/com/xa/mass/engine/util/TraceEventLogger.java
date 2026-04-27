@@ -310,6 +310,7 @@ public final class TraceEventLogger {
                 "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
                 "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "SUCCESS"
@@ -317,6 +318,10 @@ public final class TraceEventLogger {
     }
 
     public static void callbackIgnoredDuplicate(TaskMsg taskMsg, String reason) {
+        callbackIgnoredDuplicate(taskMsg, null, reason);
+    }
+
+    public static void callbackIgnoredDuplicate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -325,8 +330,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "IGNORED"
@@ -334,6 +340,10 @@ public final class TraceEventLogger {
     }
 
     public static void callbackIgnoredLate(TaskMsg taskMsg, String reason) {
+        callbackIgnoredLate(taskMsg, null, reason);
+    }
+
+    public static void callbackIgnoredLate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -342,8 +352,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "IGNORED"
@@ -367,6 +378,10 @@ public final class TraceEventLogger {
     }
 
     public static void callbackRejectedInvalidState(TaskMsg taskMsg, String reason) {
+        callbackRejectedInvalidState(taskMsg, null, reason);
+    }
+
+    public static void callbackRejectedInvalidState(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -376,8 +391,9 @@ public final class TraceEventLogger {
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
                 "taskMsgStatus", enumName(taskMsg.getStatus()),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "REJECTED"

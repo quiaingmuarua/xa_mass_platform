@@ -49,7 +49,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     @Override
-    public List<TaskMsg> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
+    public List<TaskDispatchBinding> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
             TraceEventLogger.dispatchBindingSummary(
@@ -90,7 +90,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         int perWorkerBatchLimit = Math.max(task.getBatchSize(), 1);
-        List<TaskMsg> pushQueue = new ArrayList<>();
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
@@ -137,20 +136,14 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 log.warn("[MsgAssign] Skip claimed work {} because task message was not found", work.messageId());
                 continue;
             }
-            if (!bindTaskMessage(msg, work)) {
+            TaskDispatchBinding dispatchBinding = bindTaskMessage(msg, work);
+            if (dispatchBinding == null) {
                 log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
                         msg.getMessageId(), msg.getStatus());
                 continue;
             }
             taskManager.updateTaskMessage(task.getTid(), msg);
-            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), msg.getMessageId());
-            if (latestAttempt == null) {
-                log.warn("[MsgAssign] Skip dispatch callback for task message {} because latest attempt is missing after bind",
-                        msg.getMessageId());
-                continue;
-            }
-            pushQueue.add(msg);
-            dispatchBindings.add(new TaskDispatchBinding(msg, latestAttempt));
+            dispatchBindings.add(dispatchBinding);
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
@@ -168,13 +161,15 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             }
         }
 
-        int uniqueWorkerCount = (int) pushQueue.stream()
-                .map(TaskMsg::getLatestAttemptWorkerId)
+        int uniqueWorkerCount = (int) dispatchBindings.stream()
+                .map(TaskDispatchBinding::attempt)
+                .map(TaskMsgAttempt::getWorkerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
-        int uniqueWorkerContextCount = (int) pushQueue.stream()
-                .map(TaskMsg::getLatestAttemptWorkerContextId)
+        int uniqueWorkerContextCount = (int) dispatchBindings.stream()
+                .map(TaskDispatchBinding::attempt)
+                .map(TaskMsgAttempt::getWorkerContextId)
                 .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
                 .distinct()
                 .count();
@@ -183,25 +178,25 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 totalMessages,
                 matchedWorkers.size(),
                 dispatchSlots.size(),
-                pushQueue.size(),
+                dispatchBindings.size(),
                 uniqueWorkerCount,
                 uniqueWorkerContextCount,
                 perWorkerBatchLimit,
                 "ON_MSG_ASSIGN",
                 "SimpleTaskMsgAssignListener",
-                pushQueue.isEmpty()
+                dispatchBindings.isEmpty()
                         ? "matched workers produced no dispatchable bindings"
                         : "task messages bound to dispatch slots",
-                pushQueue.isEmpty() ? "SKIPPED" : "SUCCESS"
+                dispatchBindings.isEmpty() ? "SKIPPED" : "SUCCESS"
         );
 
         log.info("[MsgAssign] Task {} pushQueue size: {} (expected pending={})",
-                task.getTid(), pushQueue.size(), totalMessages);
+                task.getTid(), dispatchBindings.size(), totalMessages);
 
-        if (dispatchListener != null && !pushQueue.isEmpty()) {
+        if (dispatchListener != null && !dispatchBindings.isEmpty()) {
             dispatchListener.onTaskMsgsReady(task, List.copyOf(dispatchBindings));
         }
-        return List.copyOf(pushQueue);
+        return List.copyOf(dispatchBindings);
     }
 
     private static final class DispatchSlot {
@@ -244,10 +239,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
     }
 
-    private boolean isPendingDispatch(TaskMsg taskMsg) {
-        return taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT;
-    }
-
     private DispatchSlot findSlot(List<DispatchSlot> dispatchSlots, String workerId, String batchId) {
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.worker().getWorkerId().equals(workerId) && slot.batchId().equals(batchId)) {
@@ -257,7 +248,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         return null;
     }
 
-    private boolean bindTaskMessage(TaskMsg taskMsg, ClaimedTaskWork work) {
+    private TaskDispatchBinding bindTaskMessage(TaskMsg taskMsg, ClaimedTaskWork work) {
         TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
@@ -272,7 +263,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
         LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(work.leaseExpireAt(), ZoneId.systemDefault());
         if (!attempt.markLeased(leaseExpireTime)) {
-            return false;
+            return null;
         }
         TraceEventLogger.taskMsgAttemptStatusTransition(
                 attempt,
@@ -284,7 +275,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         );
         TaskMsgAttemptStatus beforeDispatch = attempt.getStatus();
         if (!attempt.markDispatched()) {
-            return false;
+            return null;
         }
         TraceEventLogger.taskMsgAttemptStatusTransition(
                 attempt,
@@ -298,7 +289,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
         TaskMsgStatus beforeAssigned = taskMsg.getStatus();
         if (!taskMsg.markAsAssigned()) {
-            return false;
+            return null;
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
@@ -309,7 +300,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "task message assigned to worker"
         );
-        return true;
+        return new TaskDispatchBinding(taskMsg, attempt);
     }
 
     private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {

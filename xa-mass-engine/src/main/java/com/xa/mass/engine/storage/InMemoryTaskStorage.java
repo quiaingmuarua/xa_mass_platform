@@ -298,11 +298,11 @@ public class InMemoryTaskStorage implements TaskStorage {
             TaskMsg previous = messagesById.putIfAbsent(taskMsg.getMessageId(), taskMsg);
             if (previous == null) {
                 orderedMsgIds.addLast(taskMsg.getMessageId());
-                reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus(), taskMsg.getLatestAttemptWorkerId());
+                reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
                 return;
             }
             messagesById.put(taskMsg.getMessageId(), taskMsg);
-            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus(), taskMsg.getLatestAttemptWorkerId());
+            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
         }
 
         private synchronized Optional<TaskMsg> get(String messageId) {
@@ -315,7 +315,7 @@ public class InMemoryTaskStorage implements TaskStorage {
                 return false;
             }
             messagesById.put(taskMsg.getMessageId(), taskMsg);
-            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus(), taskMsg.getLatestAttemptWorkerId());
+            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
             return true;
         }
 
@@ -376,8 +376,7 @@ public class InMemoryTaskStorage implements TaskStorage {
         }
 
         private void reconcileMessageState(String messageId,
-                                           TaskMsgStatus newStatus,
-                                           String ignoredWorkerId) {
+                                           TaskMsgStatus newStatus) {
             TaskMsgStatus previousStatus = statusByMessageId.get(messageId);
             decrementMessageState(previousStatus);
             incrementMessageState(newStatus);

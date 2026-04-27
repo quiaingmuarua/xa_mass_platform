@@ -3,6 +3,7 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
@@ -45,7 +46,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -64,7 +65,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -84,7 +85,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -103,7 +104,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -134,7 +135,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(3);
         when(matchingStrategy.matchWorkers(same(task), eq(4))).thenReturn(List.of(matched1, matched2, matched3, matched4));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matched1)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matched1)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -267,7 +268,7 @@ class TaskWorkerAssignListenerTest {
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -296,10 +297,11 @@ class TaskWorkerAssignListenerTest {
         return worker;
     }
 
-    private TaskMsg msg(String messageId, String workerId) {
+    private TaskDispatchBinding binding(String messageId, String workerId) {
         TaskMsg taskMsg = new TaskMsg(messageId, "task-1", java.util.Map.of("target", "target"));
-        taskMsg.setLatestAttemptWorkerId(workerId);
-        return taskMsg;
+        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + messageId, "task-1", messageId, 1);
+        attempt.setWorkerId(workerId);
+        return new TaskDispatchBinding(taskMsg, attempt);
     }
 
     private MatchedWorkerContext matched(Worker worker, String workerContextId) {

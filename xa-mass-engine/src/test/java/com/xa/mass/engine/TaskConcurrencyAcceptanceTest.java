@@ -10,6 +10,7 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -204,6 +205,29 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(0, scheduler.completedTaskMsgCount.get());
             assertEquals(0, scheduler.failedTaskMsgCount.get());
             assertNull(taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
+        }
+    }
+
+    @Test
+    void callbackAcceptedTraceCarriesAttemptBatchId() {
+        Task task = createRunningSingleMessageTask("callback-accepted-batch-id");
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        assignMessage(task, message);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(
+                    task.getTid(),
+                    message.getMessageId(),
+                    true,
+                    "done",
+                    null,
+                    Map.of("outcome", "success")
+            ));
+            capture.assertHasEvent("CALLBACK_ACCEPTED", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMessageId().equals(mdc.get("messageId"))
+                            && "worker-".concat(message.getMessageId()).equals(mdc.get("latestAttemptWorkerId"))
+                            && "batch-0".equals(mdc.get("latestAttemptBatchId")));
         }
     }
 

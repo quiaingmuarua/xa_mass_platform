@@ -20,7 +20,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -140,6 +142,25 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
+        TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
+        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage);
+        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+
+        Task task = createTask(3);
+        task.setBatchSize(2);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+
+        assertEquals(3, dispatched.size());
+        assertEquals(3, trackingStorage.latestAttemptReadCount.get(),
+                "dispatch should read latest attempt only to allocate the next attempt number");
+    }
+
+    @Test
     void assignmentEmitsTaskMsgAndWorkerContextTraceEvents() {
         Task task = createTask(1);
         task.setBatchSize(1);
@@ -189,7 +210,7 @@ class SimpleTaskMsgAssignListenerTest {
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+            List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
             assertEquals(3, dispatched.size());
             capture.assertHasEvent("DISPATCH_BINDING_SUMMARY", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
@@ -214,7 +235,7 @@ class SimpleTaskMsgAssignListenerTest {
         WorkerContext wc2 = workerContext("tk2", "d2");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(4, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
@@ -237,7 +258,7 @@ class SimpleTaskMsgAssignListenerTest {
         WorkerContext wc1 = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
 
         assertEquals(2, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
@@ -260,7 +281,7 @@ class SimpleTaskMsgAssignListenerTest {
         WorkerContext wc2 = workerContext("tk2", "d2");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
@@ -391,6 +412,16 @@ class SimpleTaskMsgAssignListenerTest {
         @Override
         public boolean resumeTask(String taskId) {
             return true;
+        }
+    }
+
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+        private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
+
+        @Override
+        public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+            latestAttemptReadCount.incrementAndGet();
+            return super.getLatestTaskMessageAttempt(taskId, messageId);
         }
     }
 }

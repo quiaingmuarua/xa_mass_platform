@@ -2,7 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -126,9 +126,10 @@ public class TaskWorkerAssignListener {
         }
         unlockWorkers(matched.subList(dispatchCandidates.size(), matched.size()));
 
-        List<TaskMsg> dispatchedMessages = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
-        long usedWorkerCount = dispatchedMessages.stream()
-                .map(TaskMsg::getLatestAttemptWorkerId)
+        List<TaskDispatchBinding> dispatchedBindings = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
+        long usedWorkerCount = dispatchedBindings.stream()
+                .map(TaskDispatchBinding::attempt)
+                .map(TaskMsgAttempt::getWorkerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
@@ -137,7 +138,7 @@ public class TaskWorkerAssignListener {
                     "matched candidates produced no bound task messages", requiredStartWorkerCount);
             emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
-                    matched.size(), dispatchCandidates.size(), dispatchedMessages.size(), 0,
+                    matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), 0,
                     "matched candidates produced no bound task messages", "SKIPPED");
             return false;
         }
@@ -151,7 +152,7 @@ public class TaskWorkerAssignListener {
             unlockWorkers(dispatchCandidates);
             emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
-                    matched.size(), dispatchCandidates.size(), dispatchedMessages.size(), (int) usedWorkerCount,
+                    matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                     "task failed to transition from READY to RUNNING after dispatch", "FAILED");
             return false;
         }
@@ -167,7 +168,7 @@ public class TaskWorkerAssignListener {
         }
         emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
                 requiredStartWorkerCount, matchRequestCount,
-                matched.size(), dispatchCandidates.size(), dispatchedMessages.size(), (int) usedWorkerCount,
+                matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
         taskManager.updateTask(task);
         taskManager.publishTaskAssigned(task);
