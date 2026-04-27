@@ -380,19 +380,25 @@ public class TaskManager {
     }
 
     /**
-     * Recomputes task-level convergence from persisted task messages.
+     * Recomputes task-level convergence from runtime-owned work stats plus the
+     * persisted task aggregate.
      */
     public void updateTaskProgress(String taskId) {
         withTaskLock(taskId, () -> stateResolver.updateTaskProgress(taskId));
     }
 
     /**
-     * Resolves task state explicitly from the persisted task-message aggregate.
+     * Resolves task state explicitly from runtime-owned work stats plus the
+     * persisted task aggregate.
      */
     public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
         return withTaskLock(taskId, () -> stateResolver.resolveTaskStateFromMessages(taskId));
     }
 
+    /**
+     * Audit-only invariant validation. This path is intentionally bounded and
+     * should not be treated as a hot-path runtime query surface.
+     */
     public TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
     }

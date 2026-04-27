@@ -187,6 +187,12 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
+    public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
+        return bucket != null ? bucket.stats() : new TaskMessageAttemptStats(0, 0, 0, 0, 0);
+    }
+
+    @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null && attempt != null && attempt.getAttemptId() != null && bucket.update(attempt);
@@ -222,21 +228,12 @@ public class InMemoryTaskStorage implements TaskStorage {
         long expiredAttempts = 0;
 
         for (AttemptBucket bucket : attemptsByMsg.values()) {
-            for (TaskMsgAttempt attempt : bucket.snapshot()) {
-                totalAttempts++;
-                if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
-                    activeAttempts++;
-                }
-                if (attempt.getStatus() == TaskMsgAttemptStatus.RUNNING) {
-                    runningAttempts++;
-                }
-                if (attempt.getStatus() == TaskMsgAttemptStatus.FAILED) {
-                    failedAttempts++;
-                }
-                if (attempt.getStatus() == TaskMsgAttemptStatus.EXPIRED) {
-                    expiredAttempts++;
-                }
-            }
+            TaskMessageAttemptStats stats = bucket.stats();
+            totalAttempts += stats.getTotalAttempts();
+            activeAttempts += stats.getActiveAttempts();
+            runningAttempts += stats.getRunningAttempts();
+            failedAttempts += stats.getFailedAttempts();
+            expiredAttempts += stats.getExpiredAttempts();
         }
 
         return new TaskMessageAttemptStats(totalAttempts, activeAttempts, runningAttempts, failedAttempts, expiredAttempts);
@@ -433,6 +430,10 @@ public class InMemoryTaskStorage implements TaskStorage {
         private final ConcurrentLinkedDeque<String> orderedAttemptIds = new ConcurrentLinkedDeque<>();
         private final Map<String, TaskMsgAttemptStatus> statusByAttemptId = new ConcurrentHashMap<>();
         private String latestActiveAttemptId;
+        private int activeAttemptCount;
+        private int runningAttemptCount;
+        private int failedAttemptCount;
+        private int expiredAttemptCount;
 
         private synchronized void add(TaskMsgAttempt attempt) {
             if (attempt == null || attempt.getAttemptId() == null) {
@@ -444,8 +445,11 @@ public class InMemoryTaskStorage implements TaskStorage {
             } else {
                 attemptsById.put(attempt.getAttemptId(), attempt);
             }
-            reconcileActiveAttempt(attempt.getAttemptId(), statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
-                    attempt.getStatus());
+            reconcileAttemptState(
+                    attempt.getAttemptId(),
+                    statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
+                    attempt.getStatus()
+            );
         }
 
         private synchronized boolean update(TaskMsgAttempt attempt) {
@@ -453,8 +457,11 @@ public class InMemoryTaskStorage implements TaskStorage {
                 return false;
             }
             attemptsById.put(attempt.getAttemptId(), attempt);
-            reconcileActiveAttempt(attempt.getAttemptId(), statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
-                    attempt.getStatus());
+            reconcileAttemptState(
+                    attempt.getAttemptId(),
+                    statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
+                    attempt.getStatus()
+            );
             return true;
         }
 
@@ -484,9 +491,21 @@ public class InMemoryTaskStorage implements TaskStorage {
             return Optional.ofNullable(attemptsById.get(latestActiveAttemptId));
         }
 
-        private void reconcileActiveAttempt(String attemptId,
-                                            TaskMsgAttemptStatus previousStatus,
-                                            TaskMsgAttemptStatus currentStatus) {
+        private synchronized TaskMessageAttemptStats stats() {
+            return new TaskMessageAttemptStats(
+                    attemptsById.size(),
+                    activeAttemptCount,
+                    runningAttemptCount,
+                    failedAttemptCount,
+                    expiredAttemptCount
+            );
+        }
+
+        private void reconcileAttemptState(String attemptId,
+                                           TaskMsgAttemptStatus previousStatus,
+                                           TaskMsgAttemptStatus currentStatus) {
+            decrementStatusCounts(previousStatus);
+            incrementStatusCounts(currentStatus);
             if (currentStatus != null && currentStatus.isActive()) {
                 latestActiveAttemptId = attemptId;
                 return;
@@ -494,6 +513,42 @@ public class InMemoryTaskStorage implements TaskStorage {
             if (attemptId != null && attemptId.equals(latestActiveAttemptId)
                     && (currentStatus == null || !currentStatus.isActive())) {
                 latestActiveAttemptId = findLatestActiveAttemptId();
+            }
+        }
+
+        private void decrementStatusCounts(TaskMsgAttemptStatus status) {
+            if (status == null) {
+                return;
+            }
+            if (status.isActive()) {
+                activeAttemptCount--;
+            }
+            if (status == TaskMsgAttemptStatus.RUNNING) {
+                runningAttemptCount--;
+            }
+            if (status == TaskMsgAttemptStatus.FAILED) {
+                failedAttemptCount--;
+            }
+            if (status == TaskMsgAttemptStatus.EXPIRED) {
+                expiredAttemptCount--;
+            }
+        }
+
+        private void incrementStatusCounts(TaskMsgAttemptStatus status) {
+            if (status == null) {
+                return;
+            }
+            if (status.isActive()) {
+                activeAttemptCount++;
+            }
+            if (status == TaskMsgAttemptStatus.RUNNING) {
+                runningAttemptCount++;
+            }
+            if (status == TaskMsgAttemptStatus.FAILED) {
+                failedAttemptCount++;
+            }
+            if (status == TaskMsgAttemptStatus.EXPIRED) {
+                expiredAttemptCount++;
             }
         }
 

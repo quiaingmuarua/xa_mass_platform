@@ -115,6 +115,48 @@ public interface TaskStorage {
         return Optional.empty();
     }
 
+    /**
+     * Bounded audit helper for one logical task-message's attempt history.
+     *
+     * <p>This exists so validation/reconciliation paths can reason about
+     * active-versus-final attempt state without materializing every
+     * {@link TaskMsgAttempt} row for the message unless the backend has no
+     * better index.</p>
+     */
+    default TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, messageId);
+        long totalAttempts = 0;
+        long activeAttempts = 0;
+        long runningAttempts = 0;
+        long failedAttempts = 0;
+        long expiredAttempts = 0;
+        for (TaskMsgAttempt attempt : attempts) {
+            if (attempt == null) {
+                continue;
+            }
+            totalAttempts++;
+            if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
+                activeAttempts++;
+            }
+            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING) {
+                runningAttempts++;
+            }
+            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.FAILED) {
+                failedAttempts++;
+            }
+            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.EXPIRED) {
+                expiredAttempts++;
+            }
+        }
+        return new TaskMessageAttemptStats(
+                totalAttempts,
+                activeAttempts,
+                runningAttempts,
+                failedAttempts,
+                expiredAttempts
+        );
+    }
+
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     TaskMessageStats getTaskMessageStats(String taskId);

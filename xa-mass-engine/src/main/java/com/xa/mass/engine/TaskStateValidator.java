@@ -5,9 +5,9 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
+import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.work.TaskWorkStats;
 
@@ -18,6 +18,9 @@ import java.util.List;
  * Audits persisted task and task-message state for invariant violations and reconciliation needs.
  */
 class TaskStateValidator {
+
+    private static final int VALIDATION_MESSAGE_PAGE_SIZE =
+            Integer.getInteger("xa.mass.engine.validationMessagePageSize", 512);
 
     private final TaskManager taskManager;
 
@@ -114,34 +117,41 @@ class TaskStateValidator {
         }
 
         boolean attemptNeedsResolution = false;
-        for (TaskMsg taskMsg : taskManager.getTaskMessages(taskId)) {
-            if (taskMsg == null) {
-                continue;
+        int offset = 0;
+        while (true) {
+            List<TaskMsg> page = taskManager.getTaskMessagesPage(taskId, offset, VALIDATION_MESSAGE_PAGE_SIZE);
+            if (page.isEmpty()) {
+                break;
             }
-            if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
-                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
+            for (TaskMsg taskMsg : page) {
+                if (taskMsg == null) {
+                    continue;
+                }
+                if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
+                    violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
+                }
+                if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
+                    violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
+                }
+                TaskStorage.TaskMessageAttemptStats attemptStats =
+                        taskManager.getTaskStorage().getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
+                long activeAttemptCount = attemptStats.getActiveAttempts();
+                boolean hasActiveAttempt = activeAttemptCount > 0;
+                if (activeAttemptCount > 1) {
+                    violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
+                }
+                if (hasActiveAttempt && taskMsg.isCompleted()) {
+                    violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
+                }
+                boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
+                if (allAttemptsFinal
+                        && !taskMsg.isCompleted()
+                        && taskMsg.getStatus() != TaskMsgStatus.INIT) {
+                    attemptNeedsResolution = true;
+                    violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
+                }
             }
-            if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
-                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
-            }
-            List<TaskMsgAttempt> attempts = taskManager.getTaskMessageAttempts(taskId, taskMsg.getMessageId());
-            long activeAttemptCount = attempts.stream()
-                    .filter(attempt -> attempt.getStatus() != null && attempt.getStatus().isActive())
-                    .count();
-            boolean hasActiveAttempt = activeAttemptCount > 0;
-            if (activeAttemptCount > 1) {
-                violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
-            }
-            if (hasActiveAttempt && taskMsg.isCompleted()) {
-                violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
-            }
-            if (!attempts.isEmpty()
-                    && attempts.stream().allMatch(TaskMsgAttempt::isFinal)
-                    && !taskMsg.isCompleted()
-                    && taskMsg.getStatus() != TaskMsgStatus.INIT) {
-                attemptNeedsResolution = true;
-                violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
-            }
+            offset += page.size();
         }
 
         boolean needsResolution = !finalStatus

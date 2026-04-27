@@ -33,6 +33,34 @@ class InMemoryTaskStorageTest {
     }
 
     @Test
+    void perMessageAttemptStatsTrackIndexedAttemptStateCounts() {
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+
+        TaskMsgAttempt runningAttempt = attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING);
+        TaskMsgAttempt failedAttempt = attempt("attempt-2", 2, TaskMsgAttemptStatus.FAILED);
+
+        storage.addTaskMessageAttempt("task-1", "msg-1", runningAttempt);
+        storage.addTaskMessageAttempt("task-1", "msg-1", failedAttempt);
+
+        TaskStorage.TaskMessageAttemptStats initialStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
+        assertEquals(2, initialStats.getTotalAttempts());
+        assertEquals(1, initialStats.getActiveAttempts());
+        assertEquals(1, initialStats.getRunningAttempts());
+        assertEquals(1, initialStats.getFailedAttempts());
+        assertEquals(0, initialStats.getExpiredAttempts());
+
+        runningAttempt.setStatus(TaskMsgAttemptStatus.SUCCEEDED);
+        assertTrue(storage.updateTaskMessageAttempt("task-1", "msg-1", runningAttempt));
+
+        TaskStorage.TaskMessageAttemptStats updatedStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
+        assertEquals(2, updatedStats.getTotalAttempts());
+        assertEquals(0, updatedStats.getActiveAttempts());
+        assertEquals(0, updatedStats.getRunningAttempts());
+        assertEquals(1, updatedStats.getFailedAttempts());
+        assertEquals(0, updatedStats.getExpiredAttempts());
+    }
+
+    @Test
     void getTaskMessagesPageReadsOnlyRequestedWindowInOrder() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         Task task = new Task();

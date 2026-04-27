@@ -1113,6 +1113,29 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void validateTaskStateUsesPagedMessageTraversalAndAttemptStatsInsteadOfFullSnapshots() {
+        PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
+        Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
+        pagingTaskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        pagingTaskManager.updateTask(task);
+
+        List<TaskMsg> messages = pagingTaskManager.getTaskMessages(task.getTid());
+        assignMessage(pagingTaskManager, task, messages.get(1));
+
+        pagingStorage.resetTraversalCounters();
+
+        TaskStateValidationResult result = pagingTaskManager.validateTaskState(task.getTid());
+
+        assertTrue(result.isValid());
+        assertTrue(pagingStorage.pageReadCount.get() > 0, "validation should page through task messages");
+        assertEquals(0, pagingStorage.fullSnapshotReadCount.get(), "validation should not require getTaskMessages(taskId)");
+        assertTrue(pagingStorage.attemptStatsReadCount.get() > 0, "validation should read attempt stats per message");
+        assertEquals(0, pagingStorage.attemptSnapshotReadCount.get(), "validation should not snapshot each message attempt list");
+    }
+
+    @Test
     void validateTaskStateRejectsTerminalTaskWithoutTerminalReason() {
         Task task = taskManager.createTask(buildRequest("task-validate-missing-terminal-reason", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1626,6 +1649,8 @@ class TaskManagerLifecycleTest {
     private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {
         private final AtomicInteger fullSnapshotReadCount = new AtomicInteger();
         private final AtomicInteger pageReadCount = new AtomicInteger();
+        private final AtomicInteger attemptSnapshotReadCount = new AtomicInteger();
+        private final AtomicInteger attemptStatsReadCount = new AtomicInteger();
 
         @Override
         public List<TaskMsg> getTaskMessages(String taskId) {
@@ -1639,9 +1664,23 @@ class TaskManagerLifecycleTest {
             return super.getTaskMessagesPage(taskId, offset, limit);
         }
 
+        @Override
+        public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+            attemptSnapshotReadCount.incrementAndGet();
+            return super.getTaskMessageAttempts(taskId, messageId);
+        }
+
+        @Override
+        public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+            attemptStatsReadCount.incrementAndGet();
+            return super.getTaskMessageAttemptStats(taskId, messageId);
+        }
+
         private void resetTraversalCounters() {
             fullSnapshotReadCount.set(0);
             pageReadCount.set(0);
+            attemptSnapshotReadCount.set(0);
+            attemptStatsReadCount.set(0);
         }
     }
 }
