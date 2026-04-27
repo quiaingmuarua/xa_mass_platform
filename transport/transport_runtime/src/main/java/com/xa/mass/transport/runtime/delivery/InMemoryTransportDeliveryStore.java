@@ -22,6 +22,7 @@ import java.util.function.LongSupplier;
 public final class InMemoryTransportDeliveryStore implements TransportDeliveryStore {
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
+    private static final long STATS_CACHE_WINDOW_MILLIS = 250L;
 
     private final ConcurrentMap<DeliveryQueueKey, DeliveryQueue> deliveryByWorker = new ConcurrentHashMap<>();
     private final AtomicInteger queuedItems = new AtomicInteger();
@@ -32,8 +33,11 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     private final AtomicLong unavailableItems = new AtomicLong();
     private final AtomicLong shutdownClearedItems = new AtomicLong();
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final Object statsSnapshotLock = new Object();
     private final int maxQueuedItems;
     private final LongSupplier currentTimeMillis;
+    private volatile TransportDeliveryStoreStats cachedStatsSnapshot;
+    private volatile long cachedStatsAtMillis;
 
     public InMemoryTransportDeliveryStore() {
         this(DEFAULT_MAX_QUEUED_ITEMS);
@@ -91,6 +95,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             }
             queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, currentTimeMillis.getAsLong()));
             enqueuedItems.incrementAndGet();
+            invalidateStatsSnapshot();
             queue.notifyAll();
             return DispatchOutcome.queued(normalizedAdapterId, item);
         }
@@ -113,6 +118,9 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             List<TaskDispatchItem> items = drainLocked(queue, maxItems);
             releaseGlobalSlots(items.size());
             drainedItems.addAndGet(items.size());
+            if (!items.isEmpty()) {
+                invalidateStatsSnapshot();
+            }
             if (queue.items.isEmpty() && queue.waiters == 0) {
                 deliveryByWorker.remove(key, queue);
             }
@@ -140,6 +148,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         DeliveryQueue queue = deliveryByWorker.computeIfAbsent(key, ignored -> new DeliveryQueue());
         synchronized (queue) {
             queue.waiters++;
+            invalidateStatsSnapshot();
             try {
                 while (queue.items.isEmpty() && running.get()) {
                     long remainingNanos = deadlineNanos - System.nanoTime();
@@ -155,9 +164,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 List<TaskDispatchItem> items = drainLocked(queue, maxItems);
                 releaseGlobalSlots(items.size());
                 drainedItems.addAndGet(items.size());
+                if (!items.isEmpty()) {
+                    invalidateStatsSnapshot();
+                }
                 return List.copyOf(items);
             } finally {
                 queue.waiters--;
+                invalidateStatsSnapshot();
                 if (queue.items.isEmpty() && queue.waiters == 0) {
                     deliveryByWorker.remove(key, queue);
                 }
@@ -167,6 +180,25 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
     @Override
     public TransportDeliveryStoreStats stats() {
+        long now = currentTimeMillis.getAsLong();
+        TransportDeliveryStoreStats cached = cachedStatsSnapshot;
+        if (cached != null && now - cachedStatsAtMillis <= STATS_CACHE_WINDOW_MILLIS) {
+            return cached;
+        }
+        synchronized (statsSnapshotLock) {
+            cached = cachedStatsSnapshot;
+            now = currentTimeMillis.getAsLong();
+            if (cached != null && now - cachedStatsAtMillis <= STATS_CACHE_WINDOW_MILLIS) {
+                return cached;
+            }
+            TransportDeliveryStoreStats refreshed = snapshotStats(now);
+            cachedStatsSnapshot = refreshed;
+            cachedStatsAtMillis = now;
+            return refreshed;
+        }
+    }
+
+    private TransportDeliveryStoreStats snapshotStats(long nowMillis) {
         int waiters = 0;
         long oldestCreatedAt = Long.MAX_VALUE;
         for (DeliveryQueue queue : deliveryByWorker.values()) {
@@ -180,7 +212,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         }
         long oldestQueuedAgeMillis = oldestCreatedAt == Long.MAX_VALUE
                 ? 0L
-                : Math.max(0L, currentTimeMillis.getAsLong() - oldestCreatedAt);
+                : Math.max(0L, nowMillis - oldestCreatedAt);
         return new TransportDeliveryStoreStats(
                 queuedItems.get(),
                 deliveryByWorker.size(),
@@ -211,6 +243,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         deliveryByWorker.clear();
         queuedItems.set(0);
         shutdownClearedItems.addAndGet(clearedItems);
+        invalidateStatsSnapshot();
+    }
+
+    private void invalidateStatsSnapshot() {
+        cachedStatsSnapshot = null;
+        cachedStatsAtMillis = 0L;
     }
 
     private boolean reserveGlobalSlot() {

@@ -35,7 +35,10 @@ public final class WebSocketInputProcessor {
             if (inboundMessage == null) {
                 return true;
             }
-            JsonObject frame = context.getFrameCodec().parseObject(inboundMessage.getRawJson());
+            JsonObject frame = inboundMessage.getParsedFrame();
+            if (frame == null) {
+                frame = context.getFrameCodec().parseObject(inboundMessage.getRawJson());
+            }
             if (frame == null) {
                 return true;
             }

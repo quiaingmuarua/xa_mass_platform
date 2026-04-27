@@ -179,6 +179,19 @@ Testing-module perf load model:
 ./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner
 ```
 
+Testing-module perf smoke bundle:
+
+```bash
+xa-mass-testing/scripts/run-perf-smokes.sh
+```
+
+Current bundle contents:
+
+- `TaskWorkloadMixSmokeRunner`
+- `TaskInteractiveRetryWakeupSmokeRunner`
+
+Use the bundle when the goal is to validate current workspace runtime behavior after engine perf/concurrency changes. It builds the workspace classes and runs with a direct runtime classpath, so it does not depend on previously installed sibling artifacts.
+
 SDK transport load harness:
 
 Polling worker mode:

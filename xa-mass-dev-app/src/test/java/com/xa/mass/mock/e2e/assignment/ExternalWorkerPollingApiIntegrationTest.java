@@ -93,7 +93,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
         ), aliasHeaders);
         assertApiError(aliasRegisterResponse, 400);
         assertTrue(apiMsg(aliasRegisterResponse).contains(
-                "worker adapterId must be set when transportHint 'realtime' is used"));
+                "External worker API supports only polling or realtime transport"));
     }
 
     @Test

@@ -6,6 +6,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.engine.runtime.TaskRuntimeWorkRetryOptionsResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.work.ActiveLeaseRecord;
@@ -26,10 +28,17 @@ class TaskResultService {
 
     private final TaskManager taskManager;
     private final TaskStateResolver stateResolver;
+    private final TaskRuntimeWorkRetryOptionsResolver taskRuntimeWorkRetryOptionsResolver;
+    private final RuntimeTaskExecutor retryWakeupExecutor;
 
-    TaskResultService(TaskManager taskManager, TaskStateResolver stateResolver) {
+    TaskResultService(TaskManager taskManager,
+                      TaskStateResolver stateResolver,
+                      TaskRuntimeWorkRetryOptionsResolver taskRuntimeWorkRetryOptionsResolver,
+                      RuntimeTaskExecutor retryWakeupExecutor) {
         this.taskManager = taskManager;
         this.stateResolver = stateResolver;
+        this.taskRuntimeWorkRetryOptionsResolver = taskRuntimeWorkRetryOptionsResolver;
+        this.retryWakeupExecutor = retryWakeupExecutor;
     }
 
     boolean expireTaskMessage(String taskId, String messageId) {
@@ -42,6 +51,7 @@ class TaskResultService {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message not found", 0);
             return false;
         }
+        Task task = taskManager.getTask(taskId);
         if (taskMsg.isCompleted()) {
             logger.info("Task message {} of task {} is already in final status {}, skip expiry",
                     messageId, taskId, taskMsg.getStatus());
@@ -61,7 +71,8 @@ class TaskResultService {
         // converge to one final outcome instead of re-queueing the same work.
         boolean retryableExpiry = fromStatus == TaskMsgStatus.ASSIGNED
                 && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount();
-        ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, false, "task message expired",
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryableExpiry);
+        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, false, "task message expired",
                 null, null, retryableExpiry, true);
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "stale work lease", 0);
@@ -93,6 +104,7 @@ class TaskResultService {
             taskMsg.resetForRetry();
             TraceEventLogger.taskMsgRetryReset(taskMsg,
                     activeAttempt,
+                    workRetryDelayMillis,
                     "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
             if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message retry reset persistence failed", 0);
@@ -114,7 +126,7 @@ class TaskResultService {
         if (retryableExpiry) {
             Task updatedTask = taskManager.getTask(taskId);
             if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-                taskManager.getEventPublisher().publishTaskDispatchRequested(updatedTask);
+                requestRetryDispatch(updatedTask, workRetryDelayMillis);
             }
         }
         return true;
@@ -205,7 +217,7 @@ class TaskResultService {
                 return false;
             }
 
-            ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, success, detail, errorCode, output,
+            ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, success, detail, errorCode, output,
                     !success && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount(), false);
             if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
                 logger.warn("Rejecting result for task message {} because work lease is stale", messageId);
@@ -317,8 +329,10 @@ class TaskResultService {
 
         taskMsg.incrementRetryCount();
         taskMsg.resetForRetry();
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(taskManager.getTask(taskId), true);
         TraceEventLogger.taskMsgRetryReset(taskMsg,
                 activeAttempt,
+                workRetryDelayMillis,
                 "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
@@ -332,7 +346,7 @@ class TaskResultService {
         stateResolver.updateTaskProgress(taskId);
         updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-            taskManager.getEventPublisher().publishTaskDispatchRequested(updatedTask);
+            requestRetryDispatch(updatedTask, workRetryDelayMillis);
         }
         return true;
     }
@@ -389,7 +403,8 @@ class TaskResultService {
                 || taskMsg.getStatus() == TaskMsgStatus.RUNNING;
     }
 
-    private ResultApplyOutcome applyWorkResult(String taskId,
+    private ResultApplyOutcome applyWorkResult(Task task,
+                                               String taskId,
                                                String messageId,
                                                boolean success,
                                                String detail,
@@ -409,12 +424,57 @@ class TaskResultService {
         } else {
             result = TaskWorkResult.failure(taskId, messageId, leaseToken, errorCode, detail, output, retryable);
         }
+        if (retryable) {
+            long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
+            if (workRetryDelayMillis > 0L) {
+                result = result.withRetryVisibleAt(result.completedAt().plusMillis(workRetryDelayMillis));
+            }
+        }
         ResultApplyOutcome outcome = taskManager.getTaskWorkRuntime().applyResult(result);
         if (outcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
             logger.debug("No active work-runtime lease for task {}, msg {}; continuing through compatibility attempt path",
                     taskId, messageId);
         }
         return outcome;
+    }
+
+    private long resolveWorkRetryDelayMillis(Task task, boolean retryable) {
+        if (!retryable) {
+            return 0L;
+        }
+        return taskRuntimeWorkRetryOptionsResolver.resolveRetryDelayMillis(task);
+    }
+
+    void shutdown() {
+        if (retryWakeupExecutor != null) {
+            retryWakeupExecutor.shutdown();
+        }
+    }
+
+    private void requestRetryDispatch(Task task, long workRetryDelayMillis) {
+        if (task == null || task.getTid() == null || task.getTid().isBlank()) {
+            return;
+        }
+        if (workRetryDelayMillis <= 0L) {
+            taskManager.getEventPublisher().publishTaskDispatchRequested(task);
+            return;
+        }
+        retryWakeupExecutor.submit(() -> {
+            try {
+                Thread.sleep(workRetryDelayMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Task refreshedTask = taskManager.getTask(task.getTid());
+            if (refreshedTask == null || refreshedTask.getStatus().isFinal()) {
+                return;
+            }
+            if (!taskManager.hasPendingDispatchableMessages(refreshedTask.getTid())) {
+                return;
+            }
+            taskManager.getEventPublisher().publishTaskDispatchRequested(refreshedTask);
+        });
     }
 
     private void publishAttemptClosed(Task task,

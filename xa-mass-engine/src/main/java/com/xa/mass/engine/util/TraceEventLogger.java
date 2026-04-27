@@ -134,11 +134,12 @@ public final class TraceEventLogger {
     }
 
     public static void taskMsgRetryReset(TaskMsg taskMsg, String trigger, String source, String reason) {
-        taskMsgRetryReset(taskMsg, null, trigger, source, reason);
+        taskMsgRetryReset(taskMsg, null, null, trigger, source, reason);
     }
 
     public static void taskMsgRetryReset(TaskMsg taskMsg,
                                          TaskMsgAttempt attempt,
+                                         Long workRetryDelayMillis,
                                          String trigger,
                                          String source,
                                          String reason) {
@@ -156,6 +157,7 @@ public final class TraceEventLogger {
                 "fromStatus", "FAILED_OR_EXPIRED",
                 "toStatus", TaskMsgStatus.INIT.name(),
                 "retryCount", String.valueOf(taskMsg.getRetryCount()),
+                "workRetryDelayMillis", stringValue(workRetryDelayMillis),
                 "trigger", trigger,
                 "source", source,
                 "reason", reason,

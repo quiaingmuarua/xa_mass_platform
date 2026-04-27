@@ -16,24 +16,47 @@ HTTP/API shell behavior or Spring wiring.
 | Surface | Main runner / entry | Primary risk | Artifact |
 | --- | --- | --- | --- |
 | `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release cost, storage scan pressure | `target/perf-reports/` |
+| `perf smoke bundle` | `scripts/run-perf-smokes.sh` | current workspace perf smoke fast path for workload mix plus delayed interactive retry wakeup | `target/perf-reports/` |
 | `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; lane split smoke | `target/perf-reports/` |
+| `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; report shows whether retry overlapped active bulk | `target/perf-reports/` |
 | `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket | `target/concurrency-reports/` |
 | `chaos: websocket disconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | disconnect, reconnect, delayed result after reconnect | `target/chaos-reports/` |
 | `chaos: lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another worker | `target/chaos-reports/` |
 
 ## Commands
 
+When a runner depends on current `xa-mass-engine` / `xa-mass-sdk` changes, refresh sibling artifacts first:
+
+```bash
+./mvnw -pl xa-mass-testing -am -DskipTests install
+```
+
+Fastest current-workspace perf smoke bundle:
+
+```bash
+xa-mass-testing/scripts/run-perf-smokes.sh
+```
+
+This script builds the workspace classes and runs the smoke mains through a direct runtime classpath, so it avoids stale local-repository artifacts when `xa-mass-engine` changed in the current workspace.
+
 Perf load model:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.workloadClass=INTERACTIVE
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.workloadClass=INTERACTIVE
 ```
 
 Mixed workload perf smoke:
 
 ```bash
 cd xa-mass-testing
-..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner
+```
+
+Interactive retry wakeup perf smoke:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner
 ```
 
 SDK transport harness:
@@ -47,14 +70,14 @@ xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=sock
 WebSocket disconnect chaos:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner
 ```
 
 Lease-expiry redispatch chaos:
 
 ```bash
 cd xa-mass-testing
-..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
 ```
 
 ## Reading Rule

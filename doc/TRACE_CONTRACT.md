@@ -99,6 +99,7 @@ Specialized fields when relevant:
 
 - `terminalReason`
 - `retryCount`
+- `workRetryDelayMillis`
 - `finalReason`
 - `requiredMinWorkerCount`
 - `currentStatus`
@@ -175,7 +176,7 @@ Rules:
 2. task-message transitions must always include `taskId + messageId`
 3. worker-context transitions must always include `workerId + workerContextId`
 4. terminal closure must include `terminalReason`
-5. retry reset must include `retryCount`
+5. retry reset must include `retryCount`; when runtime retry visibility is delayed it must also include `workRetryDelayMillis`
 6. match rejection must include explicit `reason`
 7. task progress snapshot must include task aggregate counters and engine work-runtime aggregate counters
 8. task-level dispatch traces must include the resolved workload/runtime profile fields when a task is present

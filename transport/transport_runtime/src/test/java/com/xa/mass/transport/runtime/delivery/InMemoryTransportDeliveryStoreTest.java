@@ -114,12 +114,37 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(0L, queued.getBackpressureRejectedItems());
 
         store.drain("polling", "worker-1", 10);
+        now.set(1_800L);
         TransportDeliveryStoreStats remaining = store.stats();
         assertEquals(1, remaining.getQueuedItems());
         assertEquals(1, remaining.getQueueCount());
-        assertEquals(250L, remaining.getOldestQueuedAgeMillis());
+        assertEquals(550L, remaining.getOldestQueuedAgeMillis());
         assertEquals(3L, remaining.getEnqueuedItems());
         assertEquals(2L, remaining.getDrainedItems());
+    }
+
+    @Test
+    void statsUseShortLivedSnapshotCacheBeforeRefreshing() {
+        AtomicLong now = new AtomicLong(1_000L);
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, now::get);
+        store.enqueue("polling", item("msg-1", "worker-1"), 10);
+
+        TransportDeliveryStoreStats initial = store.stats();
+        assertEquals(1, initial.getQueuedItems());
+        assertEquals(1, initial.getQueueCount());
+        assertEquals(0L, initial.getOldestQueuedAgeMillis());
+
+        now.set(1_100L);
+        TransportDeliveryStoreStats cached = store.stats();
+        assertEquals(1, cached.getQueuedItems());
+        assertEquals(1, cached.getQueueCount());
+        assertEquals(0L, cached.getOldestQueuedAgeMillis());
+
+        now.set(1_300L);
+        TransportDeliveryStoreStats refreshed = store.stats();
+        assertEquals(1, refreshed.getQueuedItems());
+        assertEquals(1, refreshed.getQueueCount());
+        assertEquals(300L, refreshed.getOldestQueuedAgeMillis());
     }
 
     @Test

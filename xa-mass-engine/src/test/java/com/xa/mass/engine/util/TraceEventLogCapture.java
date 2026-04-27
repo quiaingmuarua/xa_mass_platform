@@ -25,7 +25,8 @@ public final class TraceEventLogCapture implements AutoCloseable {
     }
 
     public List<ILoggingEvent> events(String eventName) {
-        return appender.list.stream()
+        List<ILoggingEvent> snapshot = List.copyOf(appender.list);
+        return snapshot.stream()
                 .filter(event -> eventName.equals(event.getMDCPropertyMap().get("event")))
                 .collect(Collectors.toList());
     }

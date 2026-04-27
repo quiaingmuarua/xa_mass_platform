@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -565,7 +567,48 @@ class TaskManagerLifecycleTest {
                     task.getTid().equals(mdc.get("taskId"))
                             && message.getMessageId().equals(mdc.get("messageId"))
                             && "1".equals(mdc.get("retryCount"))
+                            && "0".equals(mdc.get("workRetryDelayMillis"))
                             && "INIT".equals(mdc.get("toStatus")));
+        }
+    }
+
+    @Test
+    void interactiveRetryableFailureDelaysRuntimeVisibilityButStillRequestsRedispatch() throws InterruptedException {
+        String previousInteractiveRetryDelay = System.getProperty("xa.mass.engine.interactiveWorkRetryDelayMillis");
+        try {
+            System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
+
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskCreateRequestDto dto = buildRequest("task-result-interactive-delayed-retry", List.of("alpha"));
+            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            Task task = manager.createTask(dto);
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            TaskMsg message = manager.getTaskMessages(task.getTid()).get(0);
+            assignMessage(manager, task, message, "worker-1", "worker-context-1", "batch-0");
+
+            AtomicInteger dispatchEvents = new AtomicInteger();
+            CountDownLatch dispatchLatch = new CountDownLatch(1);
+            manager.addTaskDispatchListener(ignored -> {
+                dispatchEvents.incrementAndGet();
+                dispatchLatch.countDown();
+            });
+
+            assertTrue(manager.handleTaskMessageResult(task.getTid(), message.getMessageId(), false, "boom-once"));
+
+            TaskMsg retriedMessage = manager.getTaskMessage(task.getTid(), message.getMessageId());
+            assertEquals(TaskMsgStatus.INIT, retriedMessage.getStatus());
+            assertEquals(1, retriedMessage.getRetryCount());
+            assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+            assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).delayedCount());
+            assertEquals(0, dispatchEvents.get());
+            assertFalse(dispatchLatch.await(100, TimeUnit.MILLISECONDS));
+            assertTrue(dispatchLatch.await(2, TimeUnit.SECONDS));
+            assertEquals(1, dispatchEvents.get());
+        } finally {
+            restoreProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", previousInteractiveRetryDelay);
         }
     }
 

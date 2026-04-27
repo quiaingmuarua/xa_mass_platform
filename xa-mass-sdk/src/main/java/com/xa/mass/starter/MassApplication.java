@@ -214,7 +214,6 @@ public class MassApplication {
                     : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                 TransportAdapterContribution contribution = transportAdapterBootstrap.create(
                         new TransportAdapterBootstrapContext<>(
-                                messageTransporter,
                                 endpointRegistry,
                                 taskResultIngestChannel,
                                 systemEventChannel,

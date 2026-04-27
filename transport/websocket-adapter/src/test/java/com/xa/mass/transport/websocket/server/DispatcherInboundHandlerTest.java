@@ -123,6 +123,7 @@ class DispatcherInboundHandlerTest {
         assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
+        assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("worker-1"));
     }

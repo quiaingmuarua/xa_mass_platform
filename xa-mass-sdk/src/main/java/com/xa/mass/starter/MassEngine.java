@@ -139,6 +139,9 @@ public class MassEngine {
                 assignWorker.stop();
                 assignWorker = null;
             }
+            if (taskManager != null) {
+                taskManager.shutdown();
+            }
             eventBus = null;
             running = false;
             logger.info("MassEngine stopped successfully");

@@ -13,6 +13,7 @@ public record TaskWorkResult(String taskId,
                              String detail,
                              Map<String, Object> output,
                              String outputRef,
+                             Instant retryVisibleAt,
                              Instant completedAt,
                              boolean retryable) {
 
@@ -26,7 +27,7 @@ public record TaskWorkResult(String taskId,
                                          String leaseToken,
                                          String detail,
                                          Map<String, Object> output) {
-        return new TaskWorkResult(taskId, messageId, leaseToken, true, false, null, detail, output, null, Instant.now(), false);
+        return new TaskWorkResult(taskId, messageId, leaseToken, true, false, null, detail, output, null, null, Instant.now(), false);
     }
 
     public static TaskWorkResult failure(String taskId,
@@ -36,7 +37,7 @@ public record TaskWorkResult(String taskId,
                                          String detail,
                                          Map<String, Object> output,
                                          boolean retryable) {
-        return new TaskWorkResult(taskId, messageId, leaseToken, false, false, errorCode, detail, output, null, Instant.now(), retryable);
+        return new TaskWorkResult(taskId, messageId, leaseToken, false, false, errorCode, detail, output, null, null, Instant.now(), retryable);
     }
 
     public static TaskWorkResult expired(String taskId,
@@ -45,6 +46,11 @@ public record TaskWorkResult(String taskId,
                                          String detail,
                                          boolean retryable) {
         return new TaskWorkResult(taskId, messageId, leaseToken, false, true, "LEASE_EXPIRED", detail, Map.of(),
-                null, Instant.now(), retryable);
+                null, null, Instant.now(), retryable);
+    }
+
+    public TaskWorkResult withRetryVisibleAt(Instant retryVisibleAt) {
+        return new TaskWorkResult(taskId, messageId, leaseToken, success, expired, errorCode, detail,
+                output, outputRef, retryVisibleAt, completedAt, retryable);
     }
 }

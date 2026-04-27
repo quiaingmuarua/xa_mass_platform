@@ -106,6 +106,29 @@ class InMemoryTaskWorkRuntimeTest {
     }
 
     @Test
+    void retryableFailureCanRemainDelayedUntilRetryVisibleAt() {
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-04-27T00:00:00Z"));
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);
+        runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("task-1",
+                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+
+        ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.failure(
+                "task-1", "msg-1", work.leaseToken(), "BOOM", "boom", Map.of(), true)
+                .withRetryVisibleAt(now.get().plusSeconds(5)));
+
+        assertEquals(ResultApplyStatus.RETRY_SCHEDULED, outcome.status());
+        assertEquals(0, runtime.stats("task-1").readyCount());
+        assertEquals(1, runtime.stats("task-1").delayedCount());
+        assertFalse(runtime.hasReadyWork("task-1"));
+
+        now.set(now.get().plusSeconds(6));
+        assertTrue(runtime.hasReadyWork("task-1"));
+        assertEquals(1, runtime.stats("task-1").readyCount());
+        assertEquals(0, runtime.stats("task-1").delayedCount());
+    }
+
+    @Test
     void expiredLeasesArePolledFromLeaseIndex() {
         AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-04-27T00:00:00Z"));
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);

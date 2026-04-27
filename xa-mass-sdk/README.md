@@ -225,8 +225,8 @@ Within that lower-level surface, embedded-runtime mainline snapshots
 bootstrap/contribution assembly for the default WebSocket-backed path or an
 explicit `webSocketAdapter(...).transportServerFactory(...)` override.
 Adapter bootstrap context now carries only neutral runtime collaborators; shared message
-transporter wiring is compatibility-only and may be absent entirely in
-adapter-native runtimes. Inbound server settings such as port/path are owned
+transporter state is kept out of adapter bootstrap inputs entirely. Inbound
+server settings such as port/path are owned
 by the adapter bootstrap instead of being injected by `MassApplication` at
 startup time. Builder-level mainline should configure that bundled adapter
 explicitly via `transport(... -> webSocketAdapter(...))` rather than treating

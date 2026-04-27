@@ -119,6 +119,45 @@ class WebSocketInputProcessorTest {
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
     }
 
+    @Test
+    void canonicalTaskResultCanReuseParsedInboundFrame() {
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                capturedEnvelope.set(envelope);
+                return true;
+            }
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-1");
+        frame.addProperty("taskId", "task-1");
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "ok");
+        frame.add("output", payload("status", "SUCCESS"));
+
+        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
+                "not-json-but-already-parsed",
+                "worker-from-session",
+                "endpoint-1",
+                frame
+        ));
+
+        assertTrue(result);
+        assertNotNull(capturedEnvelope.get());
+        assertEquals("worker-from-session", capturedEnvelope.get().getWorkerId());
+        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
+        assertEquals("task-1", capturedEnvelope.get().getTaskId());
+        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+    }
+
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
                 endpointRegistry,

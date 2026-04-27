@@ -71,7 +71,12 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 org.slf4j.MDC.clear();
             }
             registerSessionIfNeeded(workerId, ctx);
-            inboundMessageSink.accept(WebSocketInboundMessage.of(raw, workerId, ctx.channel().id().asShortText()));
+            inboundMessageSink.accept(WebSocketInboundMessage.of(
+                    raw,
+                    workerId,
+                    ctx.channel().id().asShortText(),
+                    frame
+            ));
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
             sendError(ctx, "INTERNAL_ERROR", "Internal server error");

@@ -242,11 +242,20 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                 && item != null
                 && item.retryCount() < item.maxRetryCount();
         if (canRetry) {
-            TaskWorkEnvelope retry = item.withRetry(item.retryCount() + 1, clock.get());
+            Instant now = clock.get();
+            Instant nextVisibleAt = resolveNextRetryVisibleAt(result, now);
+            TaskWorkEnvelope retry = item.withRetry(item.retryCount() + 1, nextVisibleAt);
             workByKey.put(key, retry);
-            readyByTask.computeIfAbsent(result.taskId(), ignored -> new ArrayDeque<>()).addLast(key);
-            readyItems++;
-            taskStats.readyCount++;
+            if (nextVisibleAt.isAfter(now)) {
+                delayedRetryIndex.add(new DelayedWork(key, nextVisibleAt));
+                registerDelayedKey(key);
+                delayedItems++;
+                taskStats.delayedCount++;
+            } else {
+                readyByTask.computeIfAbsent(result.taskId(), ignored -> new ArrayDeque<>()).addLast(key);
+                readyItems++;
+                taskStats.readyCount++;
+            }
             return ResultApplyOutcome.retryScheduled(result, "retry budget allows re-dispatch");
         }
 
@@ -539,6 +548,13 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             }
         }
         return oldest == null ? 0L : Math.max(0L, Duration.between(oldest, now).toMillis());
+    }
+
+    private Instant resolveNextRetryVisibleAt(TaskWorkResult result, Instant now) {
+        if (result == null || result.retryVisibleAt() == null || !result.retryVisibleAt().isAfter(now)) {
+            return now;
+        }
+        return result.retryVisibleAt();
     }
 
     private static boolean isBlank(String value) {

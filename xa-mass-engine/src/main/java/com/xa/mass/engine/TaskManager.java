@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -13,6 +14,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeWorkRetryOptionsResolver;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -53,6 +55,7 @@ public class TaskManager {
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
     private final TaskRuntimeEnqueueOptionsResolver taskRuntimeEnqueueOptionsResolver;
+    private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private final Map<String, ReentrantLock> taskLocks = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
@@ -80,7 +83,16 @@ public class TaskManager {
         this.stateResolver = new TaskStateResolver(this);
         this.stateValidator = new TaskStateValidator(this);
         this.lifecycleService = new TaskLifecycleService(this, stateResolver);
-        this.resultService = new TaskResultService(this, stateResolver);
+        this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
+                "engine-retry-wakeup-",
+                Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
+        );
+        this.resultService = new TaskResultService(
+                this,
+                stateResolver,
+                new TaskRuntimeWorkRetryOptionsResolver(),
+                retryWakeupExecutor
+        );
         this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }
 
@@ -442,6 +454,11 @@ public class TaskManager {
 
     public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
         eventPublisher.addTaskMessageLogicallyFinalListener(listener);
+    }
+
+    public void shutdown() {
+        resultService.shutdown();
+        taskWorkRuntime.shutdown();
     }
 
     public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {

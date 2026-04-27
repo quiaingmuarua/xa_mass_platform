@@ -393,7 +393,6 @@ class MassSdkTest {
         try {
             contribution = adapterBootstrap(runtimeComposition, "websocket").create(
                     new TransportAdapterBootstrapContext<>(
-                            null,
                             new CompositeWorkerEndpointRegistry(),
                             null,
                             new RuntimeEventBusWorkerSystemEventChannel(),
@@ -424,7 +423,6 @@ class MassSdkTest {
         try {
             contribution = adapterBootstrap(runtimeComposition, "socket").create(
                     new TransportAdapterBootstrapContext<>(
-                            null,
                             new CompositeWorkerEndpointRegistry(),
                             mock(TaskResultIngestChannel.class),
                             new RuntimeEventBusWorkerSystemEventChannel(),
