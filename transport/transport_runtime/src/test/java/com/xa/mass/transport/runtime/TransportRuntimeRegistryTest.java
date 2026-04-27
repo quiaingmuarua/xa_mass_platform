@@ -7,34 +7,12 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
 class TransportRuntimeRegistryTest {
-
-    @Test
-    void constructorRejectsDuplicateAliasClaimedByDifferentBindings() {
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> new TransportRuntimeRegistry(
-                        mock(WorkerManager.class),
-                        mock(TaskResultIngestChannel.class),
-                        mock(WorkerSystemEventChannel.class),
-                        List.of(
-                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
-                                        .build(),
-                                TransportBinding.builder(new StubWorkerAdapter("socket", WorkerTransportHints.REALTIME, Set.of("ws")))
-                                        .build()
-                        )
-                )
-        );
-
-        assertEquals("Duplicate worker adapter identity 'ws' is claimed by adapters 'websocket' and 'socket'",
-                error.getMessage());
-    }
 
     @Test
     void constructorRejectsDuplicateCanonicalAdapterIdAcrossBindings() {
@@ -45,9 +23,9 @@ class TransportRuntimeRegistryTest {
                         mock(TaskResultIngestChannel.class),
                         mock(WorkerSystemEventChannel.class),
                         List.of(
-                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
                                         .build(),
-                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("websocket-alt")))
+                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
                                         .build()
                         )
                 )
@@ -60,12 +38,10 @@ class TransportRuntimeRegistryTest {
     private static final class StubWorkerAdapter implements com.xa.mass.engine.worker.WorkerAdapter {
         private final String protocol;
         private final String transportHint;
-        private final Set<String> aliases;
 
-        private StubWorkerAdapter(String protocol, String transportHint, Set<String> aliases) {
+        private StubWorkerAdapter(String protocol, String transportHint) {
             this.protocol = protocol;
             this.transportHint = transportHint;
-            this.aliases = aliases;
         }
 
         @Override
@@ -76,11 +52,6 @@ class TransportRuntimeRegistryTest {
         @Override
         public String transportHint() {
             return transportHint;
-        }
-
-        @Override
-        public Set<String> aliases() {
-            return aliases;
         }
 
         @Override

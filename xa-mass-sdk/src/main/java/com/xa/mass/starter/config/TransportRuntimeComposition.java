@@ -205,8 +205,7 @@ public class TransportRuntimeComposition {
         List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
         descriptors.add(new TransportAdapterDescriptor(
                 PollingWorkerAdapter.PROTOCOL,
-                WorkerTransportHints.POLLING,
-                java.util.Set.of("pull", "queue")
+                WorkerTransportHints.POLLING
         ));
         TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
         if (primaryTransportAdapterBootstrap != null) {

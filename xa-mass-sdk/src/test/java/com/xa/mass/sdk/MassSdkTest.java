@@ -471,7 +471,7 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertEquals("polling", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
-        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("ws", "realtime"));
+        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("websocket", "realtime"));
     }
 
     @Test
@@ -493,12 +493,12 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
-                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME, Set.of("custom-rt-alias"))
+                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
         ));
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt-alias", "realtime"));
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
@@ -1815,7 +1815,7 @@ class MassSdkTest {
                 context.getWorkerManager(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
                         .build())
         );
 
@@ -1852,9 +1852,9 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
                                 .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME, Set.of("tcp-socket")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                                 .build()
                 )
         );
@@ -1892,9 +1892,9 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
                                 .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME, Set.of("tcp-socket")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                                 .build()
                 )
         );
@@ -1931,9 +1931,9 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
                                 .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME, Set.of("tcp-socket")))
+                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                                 .build()
                 )
         );
@@ -1997,7 +1997,7 @@ class MassSdkTest {
                 context.getWorkerManager(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", Set.of("realtime", "ws", "push"))).build())
+                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)).build())
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2035,8 +2035,8 @@ class MassSdkTest {
                 context.getWorkerManager(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
-                        .taskPullChannel(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
+                List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
+                        .taskPullChannel(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
                         .build())
         );
 
@@ -2070,8 +2070,7 @@ class MassSdkTest {
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("output", WorkerTransportMessage.class);
         StubPullCapableAdapter pollingAdapter = new StubPullCapableAdapter(
                 "polling-http-v2",
-                WorkerTransportHints.POLLING,
-                Set.of("polling-http-v2")
+                WorkerTransportHints.POLLING
         );
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
@@ -2481,13 +2480,11 @@ class MassSdkTest {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
                 new TransportAdapterDescriptor(
                         WorkerTransportHints.POLLING,
-                        WorkerTransportHints.POLLING,
-                        Set.of("pull", "queue")
+                        WorkerTransportHints.POLLING
                 ),
                 new TransportAdapterDescriptor(
                         "websocket",
-                        WorkerTransportHints.REALTIME,
-                        Set.of("ws")
+                        WorkerTransportHints.REALTIME
                 )
         ));
         when(delegate.resolveRegistrationAdapterId(any(), any()))
@@ -2505,16 +2502,14 @@ class MassSdkTest {
     private static final class StubPushOnlyAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
-        private final Set<String> aliases;
 
-        private StubPushOnlyAdapter(String protocol, Set<String> aliases) {
-            this(protocol, WorkerTransportHints.normalize(protocol), aliases);
+        private StubPushOnlyAdapter(String protocol) {
+            this(protocol, WorkerTransportHints.normalize(protocol));
         }
 
-        private StubPushOnlyAdapter(String protocol, String transportHint, Set<String> aliases) {
+        private StubPushOnlyAdapter(String protocol, String transportHint) {
             this.protocol = protocol;
             this.transportHint = transportHint;
-            this.aliases = aliases;
         }
 
         @Override
@@ -2525,11 +2520,6 @@ class MassSdkTest {
         @Override
         public String transportHint() {
             return transportHint;
-        }
-
-        @Override
-        public Set<String> aliases() {
-            return aliases;
         }
 
         @Override
@@ -2543,16 +2533,14 @@ class MassSdkTest {
     private static final class StubPullCapableAdapter implements WorkerAdapter, TaskPullChannel {
         private final String protocol;
         private final String transportHint;
-        private final Set<String> aliases;
 
-        private StubPullCapableAdapter(String protocol, Set<String> aliases) {
-            this(protocol, WorkerTransportHints.normalize(protocol), aliases);
+        private StubPullCapableAdapter(String protocol) {
+            this(protocol, WorkerTransportHints.normalize(protocol));
         }
 
-        private StubPullCapableAdapter(String protocol, String transportHint, Set<String> aliases) {
+        private StubPullCapableAdapter(String protocol, String transportHint) {
             this.protocol = protocol;
             this.transportHint = transportHint;
-            this.aliases = aliases;
         }
 
         @Override
@@ -2563,11 +2551,6 @@ class MassSdkTest {
         @Override
         public String transportHint() {
             return transportHint;
-        }
-
-        @Override
-        public Set<String> aliases() {
-            return aliases;
         }
 
         @Override

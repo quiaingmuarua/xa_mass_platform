@@ -16,6 +16,7 @@ HTTP/API shell behavior or Spring wiring.
 | Surface | Main runner / entry | Primary risk | Artifact |
 | --- | --- | --- | --- |
 | `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release cost, storage scan pressure | `target/perf-reports/` |
+| `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; lane split smoke | `target/perf-reports/` |
 | `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket | `target/concurrency-reports/` |
 | `chaos: websocket disconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | disconnect, reconnect, delayed result after reconnect | `target/chaos-reports/` |
 | `chaos: lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another worker | `target/chaos-reports/` |
@@ -26,6 +27,13 @@ Perf load model:
 
 ```bash
 ./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.workloadClass=INTERACTIVE
+```
+
+Mixed workload perf smoke:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner
 ```
 
 SDK transport harness:

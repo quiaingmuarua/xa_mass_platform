@@ -27,8 +27,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     public TransportAdapterDescriptor descriptor() {
         return new TransportAdapterDescriptor(
                 com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.PROTOCOL,
-                com.xa.mass.transport.WorkerTransportHints.REALTIME,
-                java.util.Set.of("ws")
+                com.xa.mass.transport.WorkerTransportHints.REALTIME
         );
     }
 

@@ -29,8 +29,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     public TransportAdapterDescriptor descriptor() {
         return new TransportAdapterDescriptor(
                 SocketRealtimeWorkerAdapter.PROTOCOL,
-                com.xa.mass.transport.WorkerTransportHints.REALTIME,
-                java.util.Set.of("tcp-socket")
+                com.xa.mass.transport.WorkerTransportHints.REALTIME
         );
     }
 

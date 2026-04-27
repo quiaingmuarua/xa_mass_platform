@@ -3,6 +3,7 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.*;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
@@ -139,6 +140,55 @@ class SimpleTaskMsgAssignListenerTest {
         long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
         assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
         assertTrue(upperBound <= 2, "lease should stay close to configured 2-second window");
+    }
+
+    @Test
+    void interactiveWorkloadUsesSmallPerWorkerClaimWindow() {
+        Task task = createTask(5);
+        task.setBatchSize(4);
+        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+
+        assertEquals(2, dispatched.size());
+        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        assertEquals(List.of(
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.INIT,
+                        TaskMsgStatus.INIT,
+                        TaskMsgStatus.INIT),
+                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+        assertEquals(java.util.Arrays.asList("d1", "d2", null, null, null),
+                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+    }
+
+    @Test
+    void interactiveWorkloadCapsLeaseWindowToShortProfile() {
+        taskManager.setTaskMessageLeaseSeconds(120L);
+        Task task = createTask(1);
+        task.setBatchSize(3);
+        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        LocalDateTime beforeAssign = LocalDateTime.now();
+        listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+        LocalDateTime afterAssign = LocalDateTime.now();
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId());
+
+        assertNotNull(attempt);
+        assertNotNull(attempt.getLeaseExpireTime());
+        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
+        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertTrue(lowerBound >= 29, "interactive short lease should stay close to 30 seconds");
+        assertTrue(upperBound <= 30, "interactive short lease should be capped by the short lease profile");
     }
 
     @Test

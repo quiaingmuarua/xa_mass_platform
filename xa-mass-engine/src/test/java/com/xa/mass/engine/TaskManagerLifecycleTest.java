@@ -312,6 +312,46 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void interactiveTaskAppendRespectsWorkloadAwareReadyBackpressureCap() {
+        String previousInteractiveCap = System.getProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask");
+        String previousBulkCap = System.getProperty("xa.mass.engine.bulkMaxReadyItemsPerTask");
+        try {
+            System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
+            System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
+
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskCreateRequestDto dto = new TaskCreateRequestDto();
+            dto.setTaskName("interactive-backpressure");
+            dto.setProject("demoApp");
+            dto.setUserId("agent");
+            dto.setOpenEnded(true);
+            dto.setSourceType(TaskSourceType.STREAM);
+            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "alpha")));
+
+            Task task = manager.createTask(dto);
+            assertTrue(manager.approveTask(task.getTid()));
+
+            assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+            assertEquals(1, manager.appendTaskItems(task.getTid(), List.of(
+                    java.util.Map.<String, Object>of("target", "beta")
+            )));
+
+            IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                    manager.appendTaskItems(task.getTid(), List.of(
+                            java.util.Map.<String, Object>of("target", "gamma")
+                    )));
+
+            assertTrue(error.getMessage().contains("BACKPRESSURE_REJECTED"));
+            assertEquals(2, manager.getTaskMessages(task.getTid()).size());
+            assertEquals(2, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        } finally {
+            restoreProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", previousInteractiveCap);
+            restoreProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", previousBulkCap);
+        }
+    }
+
+    @Test
     void createTaskRejectsWhenProjectIsMissing() {
         TaskCreateRequestDto dto = buildRequest("missing-project");
         dto.setProject(null);
@@ -1607,6 +1647,14 @@ class TaskManagerLifecycleTest {
         assertTrue(activeAttempt.markRunning());
         taskManager.updateTaskMessageAttempt(task.getTid(), assigned.getMessageId(), activeAttempt);
         return assigned;
+    }
+
+    private static void restoreProperty(String key, String previousValue) {
+        if (previousValue == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, previousValue);
+        }
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

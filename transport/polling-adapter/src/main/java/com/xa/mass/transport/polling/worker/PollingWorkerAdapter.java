@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
@@ -39,11 +38,6 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     @Override
     public String protocol() {
         return PROTOCOL;
-    }
-
-    @Override
-    public Set<String> aliases() {
-        return Set.of("pull", "queue");
     }
 
     @Override

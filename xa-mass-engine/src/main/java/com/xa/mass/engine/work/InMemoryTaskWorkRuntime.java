@@ -116,10 +116,14 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
 
     @Override
     public synchronized List<ClaimedTaskWork> claimReady(String taskId,
-                                                        List<WorkerClaimTarget> workers,
-                                                        int maxItems,
-                                                        long leaseSeconds) {
-        if (!running.get() || isBlank(taskId) || workers == null || workers.isEmpty() || maxItems <= 0) {
+                                                         List<WorkerClaimTarget> workers,
+                                                         TaskWorkClaimOptions options) {
+        if (!running.get() || isBlank(taskId) || workers == null || workers.isEmpty() || options == null) {
+            return List.of();
+        }
+        int maxItems = options.maxItems();
+        long leaseSeconds = options.leaseSeconds();
+        if (maxItems <= 0) {
             return List.of();
         }
         promoteDueDelayed(clock.get());

@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -214,17 +213,6 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         @Override
         public String transportHint() {
             return transportHint;
-        }
-
-        @Override
-        public Set<String> aliases() {
-            if ("websocket".equals(protocol)) {
-                return Set.of("ws");
-            }
-            if ("polling".equals(protocol)) {
-                return Set.of("pull", "queue");
-            }
-            return Set.of();
         }
 
         @Override

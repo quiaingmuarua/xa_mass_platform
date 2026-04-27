@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Runtime-owned worker adapter wrapper for concrete protocol adapters that
@@ -21,18 +20,15 @@ public class DelegatingWorkerAdapter implements WorkerAdapter {
 
     private final String adapterId;
     private final String transportHint;
-    private final Set<String> aliases;
     private final TaskDispatchChannel taskDispatchChannel;
     private final String unavailableReason;
 
     public DelegatingWorkerAdapter(String adapterId,
                                    String transportHint,
-                                   Set<String> aliases,
                                    TaskDispatchChannel taskDispatchChannel,
                                    String unavailableReason) {
         this.adapterId = requireText(adapterId, "adapterId");
         this.transportHint = requireText(transportHint, "transportHint");
-        this.aliases = aliases == null || aliases.isEmpty() ? Set.of() : Set.copyOf(aliases);
         this.taskDispatchChannel = taskDispatchChannel;
         this.unavailableReason = unavailableReason == null || unavailableReason.isBlank()
                 ? "dispatch channel is unavailable"
@@ -52,11 +48,6 @@ public class DelegatingWorkerAdapter implements WorkerAdapter {
     @Override
     public String transportHint() {
         return transportHint;
-    }
-
-    @Override
-    public Set<String> aliases() {
-        return aliases;
     }
 
     @Override

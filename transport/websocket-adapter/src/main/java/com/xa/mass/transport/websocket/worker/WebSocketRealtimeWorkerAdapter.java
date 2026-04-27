@@ -4,8 +4,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.runtime.DelegatingWorkerAdapter;
 
-import java.util.Set;
-
 /**
  * WebSocket-backed realtime worker adapter.
  *
@@ -20,7 +18,6 @@ public final class WebSocketRealtimeWorkerAdapter extends DelegatingWorkerAdapte
         super(
                 PROTOCOL,
                 WorkerTransportHints.REALTIME,
-                Set.of("ws"),
                 taskDispatchChannel,
                 "WebSocket dispatch channel is unavailable"
         );

@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,11 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DelegatingWorkerAdapterTest {
 
     @Test
-    void exposesConfiguredAdapterIdentityAndAliases() {
+    void exposesConfiguredAdapterIdentity() {
         DelegatingWorkerAdapter adapter = new DelegatingWorkerAdapter(
                 "websocket",
                 WorkerTransportHints.REALTIME,
-                Set.of("ws"),
                 items -> List.of(),
                 "missing"
         );
@@ -29,7 +27,6 @@ class DelegatingWorkerAdapterTest {
         assertEquals("websocket", adapter.protocol());
         assertEquals("websocket", adapter.adapterId());
         assertEquals(WorkerTransportHints.REALTIME, adapter.transportHint());
-        assertEquals(Set.of("ws"), adapter.aliases());
     }
 
     @Test
@@ -38,7 +35,6 @@ class DelegatingWorkerAdapterTest {
         DelegatingWorkerAdapter adapter = new DelegatingWorkerAdapter(
                 "socket",
                 WorkerTransportHints.REALTIME,
-                Set.of("tcp-socket"),
                 items -> {
                     captured.set(items);
                     return items.stream()
@@ -60,7 +56,6 @@ class DelegatingWorkerAdapterTest {
         DelegatingWorkerAdapter adapter = new DelegatingWorkerAdapter(
                 "websocket",
                 WorkerTransportHints.REALTIME,
-                Set.of("ws"),
                 null,
                 "dispatch channel is unavailable"
         );

@@ -8,9 +8,11 @@ import com.xa.mass.base.model.*;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.work.ClaimedTaskWork;
+import com.xa.mass.engine.work.TaskWorkClaimOptions;
 import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
  */
 public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private static final Logger log = LoggerFactory.getLogger(SimpleTaskMsgAssignListener.class);
+    private static final TaskRuntimeClaimOptionsResolver TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER =
+            new TaskRuntimeClaimOptionsResolver();
 
     private final TaskManager taskManager;
     private final WorkerManager workerManager;
@@ -89,7 +93,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             return List.of();
         }
 
-        int perWorkerBatchLimit = Math.max(task.getBatchSize(), 1);
+        int resolvedWorkerCount = Math.max(matchedWorkers.size(), 1);
+        TaskWorkClaimOptions claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
+                task,
+                resolvedWorkerCount,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        int perWorkerBatchLimit = claimOptions.perWorkerCapacity();
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
@@ -121,9 +131,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         perWorkerBatchLimit
                 ))
                 .collect(Collectors.toList());
-        int maxItems = Math.min(totalMessages, dispatchSlots.size() * perWorkerBatchLimit);
+        claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
+                task,
+                Math.max(dispatchSlots.size(), 1),
+                taskManager.getTaskMessageLeaseSeconds()
+        );
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime()
-                .claimReady(task.getTid(), claimTargets, maxItems, taskManager.getTaskMessageLeaseSeconds());
+                .claimReady(task.getTid(), claimTargets, claimOptions);
 
         for (ClaimedTaskWork work : claimed) {
             DispatchSlot slot = findSlot(dispatchSlots, work.workerId(), work.batchId());

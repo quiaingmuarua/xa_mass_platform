@@ -4,7 +4,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -14,7 +13,7 @@ class TransportRegistrationResolverTest {
     @Test
     void resolvesSingleAdapterFamilyWithoutExplicitAdapterId() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
-                new TransportAdapterDescriptor("polling", WorkerTransportHints.POLLING, Set.of("pull", "queue"))
+                new TransportAdapterDescriptor("polling", WorkerTransportHints.POLLING)
         ));
 
         assertEquals("polling", resolver.resolveRegistrationAdapterId(null, "polling"));
@@ -23,7 +22,7 @@ class TransportRegistrationResolverTest {
     @Test
     void rejectsRealtimeFamilyWithoutExplicitAdapterIdEvenWhenOnlyOneAdapterExists() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
-                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws"))
+                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME)
         ));
 
         IllegalArgumentException error = assertThrows(
@@ -36,20 +35,26 @@ class TransportRegistrationResolverTest {
     }
 
     @Test
-    void resolvesCompatibilityAliasToCanonicalAdapterId() {
+    void rejectsCompatibilityAliasAsAdapterId() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
-                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws"))
+                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME)
         ));
 
-        assertEquals("websocket", resolver.resolveRegistrationAdapterId("ws", "realtime"));
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> resolver.resolveRegistrationAdapterId("ws", "realtime")
+        );
+
+        assertEquals("Unsupported worker adapterId 'ws'; available adapterIds=[websocket]",
+                error.getMessage());
         assertEquals("websocket", resolver.resolveRegistrationAdapterId(" websocket ", " websocket "));
     }
 
     @Test
     void rejectsAmbiguousTransportFamilyWithoutExplicitAdapterId() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
-                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws")),
-                new TransportAdapterDescriptor("socket", WorkerTransportHints.REALTIME, Set.of("tcp-socket"))
+                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME),
+                new TransportAdapterDescriptor("socket", WorkerTransportHints.REALTIME)
         ));
 
         IllegalArgumentException error = assertThrows(
@@ -64,8 +69,8 @@ class TransportRegistrationResolverTest {
     @Test
     void rejectsExplicitAdapterIdWhenTransportHintFamilyDoesNotMatch() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
-                new TransportAdapterDescriptor("polling", WorkerTransportHints.POLLING, Set.of("pull", "queue")),
-                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws"))
+                new TransportAdapterDescriptor("polling", WorkerTransportHints.POLLING),
+                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME)
         ));
 
         IllegalArgumentException error = assertThrows(
@@ -78,26 +83,26 @@ class TransportRegistrationResolverTest {
     }
 
     @Test
-    void fromBindingsUsesWorkerAdapterAliasesAndCanonicalIds() {
+    void fromBindingsUsesCanonicalAdapterIdsOnly() {
         TransportRegistrationResolver resolver = TransportRegistrationResolver.fromBindings(List.of(
-                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME, Set.of("ws")))
+                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
                         .build()
         ));
 
-        assertEquals("websocket", resolver.resolveRegistrationAdapterId("ws", "realtime"));
+        assertEquals("websocket", resolver.resolveRegistrationAdapterId("websocket", "realtime"));
     }
 
     @Test
-    void rejectsDuplicateAliasClaimedByDifferentAdapters() {
+    void rejectsUnknownLegacyAdapterAliasEvenWhenAnotherAdapterExists() {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> new TransportRegistrationResolver(List.of(
-                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws")),
-                        new TransportAdapterDescriptor("socket", WorkerTransportHints.REALTIME, Set.of("ws"))
-                ))
+                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME),
+                        new TransportAdapterDescriptor("socket", WorkerTransportHints.REALTIME)
+                )).resolveRegistrationAdapterId("ws", "realtime")
         );
 
-        assertEquals("Duplicate worker adapter identity 'ws' is claimed by adapters 'websocket' and 'socket'",
+        assertEquals("Unsupported worker adapterId 'ws'; available adapterIds=[socket, websocket]",
                 error.getMessage());
     }
 
@@ -106,8 +111,8 @@ class TransportRegistrationResolverTest {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> new TransportRegistrationResolver(List.of(
-                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws")),
-                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("websocket-alt"))
+                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME),
+                        new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME)
                 ))
         );
 
@@ -118,12 +123,10 @@ class TransportRegistrationResolverTest {
     private static final class StubWorkerAdapter implements com.xa.mass.engine.worker.WorkerAdapter {
         private final String protocol;
         private final String transportHint;
-        private final Set<String> aliases;
 
-        private StubWorkerAdapter(String protocol, String transportHint, Set<String> aliases) {
+        private StubWorkerAdapter(String protocol, String transportHint) {
             this.protocol = protocol;
             this.transportHint = transportHint;
-            this.aliases = aliases;
         }
 
         @Override
@@ -134,11 +137,6 @@ class TransportRegistrationResolverTest {
         @Override
         public String transportHint() {
             return transportHint;
-        }
-
-        @Override
-        public Set<String> aliases() {
-            return aliases;
         }
 
         @Override

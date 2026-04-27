@@ -3,8 +3,6 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 
-import java.util.Set;
-
 /**
  * Extension seam for worker transport adapters (WebSocket, HTTP, gRPC, etc.).
  *
@@ -52,15 +50,4 @@ public interface WorkerAdapter extends TaskDispatchChannel {
         return WorkerTransportHints.normalize(protocol());
     }
 
-    /**
-     * Returns additional adapter-id compatibility aliases that should resolve
-     * to this adapter.
-     *
-     * <p>Aliases are compatibility labels only. They may describe historical
-     * protocol names such as {@code "ws"}, {@code "pull"}, or {@code "queue"},
-     * but they must not be treated as separate runtime capabilities.
-     */
-    default Set<String> aliases() {
-        return Set.of();
-    }
 }

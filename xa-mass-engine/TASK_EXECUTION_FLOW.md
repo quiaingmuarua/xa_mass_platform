@@ -36,7 +36,7 @@ Verified path:
 5. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`
 6. no match causes delayed retry, not orphaning
 7. if matching succeeds and task is still `READY`, task enters `RUNNING`
-8. `SimpleTaskMsgAssignListener` claims ready work through `TaskWorkRuntime.claimReady(...)`
+8. `SimpleTaskMsgAssignListener` resolves workload-aware claim options from `TaskRuntimeProfile` and claims ready work through `TaskWorkRuntime.claimReady(...)`
 9. each claimed item gets an active lease and updates `TaskMsg`
 10. dispatch channel sends the claimed work downstream
 
@@ -45,7 +45,9 @@ Key facts:
 - `batchSize` is a per-worker cap for each dispatch round
 - `minRequiredWorkerCount` is the start gate
 - `Task.workloadClass` is task-level orchestration intent; current engine classes are `INTERACTIVE` and `BULK`
-- `TaskRuntimeProfile` is the internal normalized runtime policy used by assignment, retry, and trace
+- `TaskRuntimeProfile` is the internal normalized runtime policy used by enqueue backpressure, assignment, ready-work claim, retry, and trace
+- `INTERACTIVE` currently resolves to a smaller per-worker claim window and shorter lease cap than `BULK`
+- `INTERACTIVE` also carries a dedicated ready-backlog cap so realtime-style tasks can fail fast before bulk-style queue growth semantics are applied
 - current lane split is an assignment-entry skeleton, not full fair scheduling or multi-executor throughput optimization
 - worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch
 - surplus matched workers used only for the start gate are unlocked immediately

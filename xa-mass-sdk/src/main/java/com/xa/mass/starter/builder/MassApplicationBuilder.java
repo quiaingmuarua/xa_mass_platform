@@ -117,7 +117,6 @@ public class MassApplicationBuilder {
         }
         return source + "(adapterId=" + descriptor.getAdapterId()
                 + ",transportHint=" + descriptor.getTransportHint()
-                + ",aliases=" + descriptor.getAliases()
                 + ")";
     }
 

@@ -49,6 +49,7 @@ behavior that cannot fit one of these concepts.
 `transport_runtime` owns runtime-only coordination:
 
 - adapter binding and registration resolution
+- canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - delivery service and delivery store
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work

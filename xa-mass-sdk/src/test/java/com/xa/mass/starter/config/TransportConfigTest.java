@@ -42,7 +42,7 @@ class TransportConfigTest {
 
         @Override
         public TransportAdapterDescriptor descriptor() {
-            return new TransportAdapterDescriptor(adapterId, transportHint, java.util.Set.of());
+            return new TransportAdapterDescriptor(adapterId, transportHint);
         }
 
         @Override

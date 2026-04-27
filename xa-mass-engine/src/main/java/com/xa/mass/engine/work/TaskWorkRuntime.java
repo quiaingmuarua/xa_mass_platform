@@ -10,8 +10,14 @@ public interface TaskWorkRuntime {
 
     List<ClaimedTaskWork> claimReady(String taskId,
                                      List<WorkerClaimTarget> workers,
-                                     int maxItems,
-                                     long leaseSeconds);
+                                     TaskWorkClaimOptions options);
+
+    default List<ClaimedTaskWork> claimReady(String taskId,
+                                             List<WorkerClaimTarget> workers,
+                                             int maxItems,
+                                             long leaseSeconds) {
+        return claimReady(taskId, workers, new TaskWorkClaimOptions(1, maxItems, leaseSeconds));
+    }
 
     ResultApplyOutcome applyResult(TaskWorkResult result);
 

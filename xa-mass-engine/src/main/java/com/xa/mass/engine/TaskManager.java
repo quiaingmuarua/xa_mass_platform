@@ -12,6 +12,7 @@ import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
+import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -51,6 +52,7 @@ public class TaskManager {
     private final TaskStateValidator stateValidator;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
+    private final TaskRuntimeEnqueueOptionsResolver taskRuntimeEnqueueOptionsResolver;
     private final Map<String, ReentrantLock> taskLocks = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
@@ -79,6 +81,7 @@ public class TaskManager {
         this.stateValidator = new TaskStateValidator(this);
         this.lifecycleService = new TaskLifecycleService(this, stateResolver);
         this.resultService = new TaskResultService(this, stateResolver);
+        this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }
 
     /**
@@ -574,6 +577,9 @@ public class TaskManager {
                 null,
                 java.time.Instant.now()
         );
-        return taskWorkRuntime.enqueue(item, WorkEnqueueOptions.DEFAULT);
+        return taskWorkRuntime.enqueue(
+                item,
+                taskRuntimeEnqueueOptionsResolver.resolve(task)
+        );
     }
 }

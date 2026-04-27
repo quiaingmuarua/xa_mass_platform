@@ -30,9 +30,6 @@ public final class TransportRegistrationResolver {
         this.descriptorsByTransportHint = new LinkedHashMap<>();
         for (TransportAdapterDescriptor descriptor : List.copyOf(descriptors)) {
             registerAdapterId(descriptor.getAdapterId(), descriptor);
-            for (String alias : descriptor.getAliases()) {
-                registerAdapterId(alias, descriptor);
-            }
             registerTransportHint(descriptor.getTransportHint(), descriptor);
         }
     }

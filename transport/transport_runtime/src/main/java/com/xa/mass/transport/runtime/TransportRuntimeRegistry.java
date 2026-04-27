@@ -49,9 +49,6 @@ public final class TransportRuntimeRegistry {
         this.bindingByAdapterId = new LinkedHashMap<>();
         for (TransportBinding binding : this.bindings) {
             registerAdapterId(binding.getAdapterId(), binding);
-            for (String alias : binding.getWorkerAdapter().aliases()) {
-                registerAdapterId(alias, binding);
-            }
         }
     }
 
