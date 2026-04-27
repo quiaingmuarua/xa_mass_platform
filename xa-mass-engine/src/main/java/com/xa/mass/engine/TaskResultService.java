@@ -75,6 +75,7 @@ class TaskResultService {
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
+                activeAttempt,
                 fromStatus,
                 taskMsg.getStatus(),
                 "EXPIRE_TASK_MESSAGE",
@@ -104,7 +105,7 @@ class TaskResultService {
                             : "task message lease expired");
         }
         if (!retryableExpiry && freshTask != null) {
-            publishMessageLogicallyFinal(freshTask, taskMsg,
+            publishMessageLogicallyFinal(freshTask, taskMsg, activeAttempt,
                     "EXPIRE_TASK_MESSAGE", "task message expired");
         }
         LogUtils.logOperationSuccess("task message expired", 0);
@@ -181,7 +182,10 @@ class TaskResultService {
                 return false;
             }
 
-            TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
+            TraceEventLogger.callbackAccepted(
+                    taskMsg,
+                    activeAttempt,
+                    success ? "success callback received" : "failure callback received");
 
             if (!TaskMessageAttemptSupport.advanceAttemptForCallback(
                     activeAttempt,
@@ -224,13 +228,14 @@ class TaskResultService {
                 logger.warn("Failed to mark task message {} as RUNNING before success completion", messageId);
                 return false;
             }
-            TraceEventLogger.taskMsgStatusTransition(
-                    taskMsg,
-                    beforeRunningStatus,
-                    taskMsg.getStatus(),
-                    "HANDLE_TASK_MESSAGE_RESULT",
-                    "TaskManager",
-                    "task message entered running from callback"
+        TraceEventLogger.taskMsgStatusTransition(
+                taskMsg,
+                activeAttempt,
+                beforeRunningStatus,
+                taskMsg.getStatus(),
+                "HANDLE_TASK_MESSAGE_RESULT",
+                "TaskManager",
+                "task message entered running from callback"
             );
         }
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
@@ -246,6 +251,7 @@ class TaskResultService {
         activeAttempt.setOutput(output);
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
+                activeAttempt,
                 beforeFinalStatus,
                 taskMsg.getStatus(),
                 "HANDLE_TASK_MESSAGE_RESULT",
@@ -261,7 +267,7 @@ class TaskResultService {
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message attempt succeeded");
-            publishMessageLogicallyFinal(updatedTask, taskMsg,
+            publishMessageLogicallyFinal(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable success");
         }
         taskManager.getScheduler().handleTaskMsgCompletion(taskMsg);
@@ -291,6 +297,7 @@ class TaskResultService {
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
+                activeAttempt,
                 beforeRetryFailureStatus,
                 taskMsg.getStatus(),
                 "HANDLE_TASK_MESSAGE_RESULT",
@@ -305,6 +312,7 @@ class TaskResultService {
         taskMsg.incrementRetryCount();
         taskMsg.resetForRetry();
         TraceEventLogger.taskMsgRetryReset(taskMsg,
+                activeAttempt,
                 "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
@@ -345,6 +353,7 @@ class TaskResultService {
         taskMsg.setErrorCode(errorCode);
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
+                activeAttempt,
                 beforeFinalStatus,
                 taskMsg.getStatus(),
                 "HANDLE_TASK_MESSAGE_RESULT",
@@ -360,7 +369,7 @@ class TaskResultService {
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "retry budget exhausted closed the current attempt");
-            publishMessageLogicallyFinal(updatedTask, taskMsg,
+            publishMessageLogicallyFinal(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable failure");
         }
 
@@ -413,9 +422,10 @@ class TaskResultService {
 
     private void publishMessageLogicallyFinal(Task task,
                                               TaskMsg taskMsg,
+                                              TaskMsgAttempt attempt,
                                               String trigger,
                                               String reason) {
-        TraceEventLogger.taskMessageLogicallyFinal(task, taskMsg, trigger, "TaskManager", reason);
+        TraceEventLogger.taskMessageLogicallyFinal(task, taskMsg, attempt, trigger, "TaskManager", reason);
         taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, taskMsg);
     }
 }

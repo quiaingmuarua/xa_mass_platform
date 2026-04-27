@@ -62,8 +62,18 @@ public interface TaskStorage {
 
     void addTaskMessage(String taskId, TaskMsg taskMsg);
 
+    /**
+     * Compatibility projection read for demo/tests and temporary internal
+     * cleanup flows. Production detail/audit sinks should not depend on
+     * materializing every message through the engine.
+     */
     List<TaskMsg> getTaskMessages(String taskId);
 
+    /**
+     * Compatibility-only bounded projection read. This exists to avoid
+     * full-task snapshots in transitional internal flows, not to define a
+     * future business query model.
+     */
     default List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
         if (limit <= 0) {
             return List.of();

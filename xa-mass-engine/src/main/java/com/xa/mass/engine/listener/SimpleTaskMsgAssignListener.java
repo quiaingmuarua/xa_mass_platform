@@ -302,6 +302,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
+                attempt,
                 beforeAssigned,
                 taskMsg.getStatus(),
                 "BIND_TASK_MESSAGE",

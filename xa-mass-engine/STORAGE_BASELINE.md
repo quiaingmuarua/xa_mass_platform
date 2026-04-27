@@ -16,8 +16,6 @@ These interfaces are used by:
 - `WorkerManager`
 - `RuleManager`
 
-The current repository snapshot keeps only the active mainline. Historical storage experiments are not part of this document.
-
 ## Current Factory Reality
 
 `TaskStorageFactory` is still the central creation point for storage implementations.
@@ -81,6 +79,8 @@ Important current usage notes:
 - task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
+- `getTaskMessages(...)` and `getTaskMessagesPage(...)` are compatibility/demo reads plus temporary internal cleanup helpers; they are not the future business-detail path
+- future task detail should bias toward logs or async write-behind sinks instead of engine-owned full-message query surfaces
 
 ## WorkerStorage
 
@@ -203,7 +203,7 @@ When extending storage behavior, keep these rules fixed unless the kernel itself
 
 - do not reintroduce `Device` / `Token` terminology in active storage docs
 - do not document unsupported Redis or Database paths as if they were production-ready
-- do not add compatibility APIs that collapse `WorkerContext` back to `0..1`
+- do not add APIs that collapse `WorkerContext` back to `0..1`
 - do not duplicate `workerId` ownership across method parameters when the `WorkerContext` already carries it
 - do not move online truth or lifecycle truth into `attributes`
 

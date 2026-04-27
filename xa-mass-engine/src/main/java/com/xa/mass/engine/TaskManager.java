@@ -294,12 +294,17 @@ public class TaskManager {
     }
 
     /**
-     * Returns all persisted task messages for a task.
+     * Compatibility read surface for demo/tests. Do not treat full task-message
+     * reads as a future business-detail path.
      */
     public List<TaskMsg> getTaskMessages(String taskId) {
         return taskStorage.getTaskMessages(taskId);
     }
 
+    /**
+     * Compatibility-only bounded read helper used by internal cleanup and demo
+     * shells. It is not the intended long-term task-detail surface.
+     */
     public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
         return taskStorage.getTaskMessagesPage(taskId, offset, limit);
     }

@@ -36,7 +36,7 @@ Verified path:
 5. no match causes delayed retry, not orphaning
 6. if matching succeeds and task is still `READY`, task enters `RUNNING`
 7. `SimpleTaskMsgAssignListener` claims ready work through `TaskWorkRuntime.claimReady(...)`
-8. each claimed item gets an active lease and updates the `TaskMsg` compatibility projection
+8. each claimed item gets an active lease and updates `TaskMsg`
 9. dispatch channel sends the claimed work downstream
 
 Key facts:
@@ -45,14 +45,13 @@ Key facts:
 - `minRequiredWorkerCount` is the start gate
 - surplus matched workers used only for the start gate are unlocked immediately
 - active lease truth is in `TaskWorkRuntime`
-- `TaskMsgAttempt` remains the compatibility audit/projection layer
+- `TaskMsgAttempt` is the attempt-level audit layer
 
 ## 3. Matching And Context
 
 - worker candidate lookup is bounded before rule evaluation
 - storage candidate lookup does not decide online, lock, context availability, or routing acceptance
 - public task APIs do not define a dedicated routing-code field
-- routing truth comes from explicit rules and worker-context signals, not `workerGroupId`
 - `WorkerMatchContext` exposes worker and worker-context attributes for rule evaluation
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only
 
@@ -79,7 +78,7 @@ Verified path:
 2. worker returns canonical task result
 3. `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`
 4. `TaskResultService` applies the result using the active runtime lease
-5. accepted results update `TaskMsgAttempt` and `TaskMsg` projection
+5. accepted results update `TaskMsgAttempt` and `TaskMsg`
 6. final runtime work items drive task convergence to `TERMINAL`
 
 Important guards:

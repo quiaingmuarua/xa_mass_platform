@@ -13,10 +13,9 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
-- starts runtime through `xa-mass-sdk` and exposes the current backend-hosted control console and JSON APIs through `xa-mass-web`
-- obtains task, worker, and rule management capability from the embedded SDK runtime instead of constructing a parallel engine assembly path in the app module
-- treats worker resource creation as SDK-first; mock JSON is a local/E2E fixture path, not the product resource entry
-- runtime composes the bundled transport adapters and engine through explicit SDK builder assembly
+- starts runtime through `xa-mass-sdk` and exposes the backend-hosted control console and JSON APIs through `xa-mass-web`
+- worker, task, and rule resources are created through the embedded SDK runtime
+- mock JSON is a local/E2E fixture input path
 - default `dev` startup auto-starts adapter-matching mock clients for registered dev workers
 - default `dev` startup also seeds demo SDK credentials for the external polling worker quickstart:
   - task submitter: `crawler-submitter-key`
@@ -81,7 +80,6 @@ Startup behavior:
 - only opens adapter-matching clients for workers whose concrete `adapterId` matches the starter
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
-- there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
 
 ## Worker Resource Fixtures
 
@@ -91,7 +89,7 @@ Current fixture behavior:
 
 - worker JSON entries are mapped to `WorkerRegistration`
 - worker-context JSON entries are mapped to `WorkerContextRegistration`
-- runtime state fields in historical JSON, such as `Worker.status=ONLINE`, are ignored; worker online state comes from transport connect/disconnect and transport-native liveness
+- runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
 - task JSON continues to map to `MassTaskCreateRequest`
 - rule JSON continues to replace default rules when non-empty
 
@@ -102,19 +100,21 @@ Default worker fixtures now carry a small executor profile:
 - worker attributes such as `runtime`, `workerType`, `region`, and `lane`
 - worker-context attributes such as `country` and `network`
 
-These labels are only dev/E2E signals for routing and observability. They must not become kernel truth; production-style resources should still be created through the SDK resource APIs.
+These labels are dev/E2E routing and observability signals. Production-style
+resources should still be created through the SDK resource APIs.
 
 ## Mock Worker Execution Behavior
 
-Auto-started mock WebSocket clients intentionally behave like lightweight executors rather than instant echo clients:
+Auto-started mock WebSocket clients behave like lightweight executors:
 
 - task responses use a deterministic small delay with stable jitter, so local runs exercise asynchronous result handling without random flakiness
 - `mock.delay.response` remains the explicit override for fault-injection tests
-- result payloads keep the legacy `status` and `mockData` fields for compatibility
+- result payloads include `status` and `mockData`
 - result payloads also include `execution` metadata with timing, retry count, task id, message id, project, `adapterId`, and `transportHint`
 - result payloads include `workerProfile` metadata with worker id and local mock runtime details
 
-The extra payload fields are observability data for dev-app realism. Existing lifecycle decisions still come from the task kernel, attempts, and result status.
+The extra payload fields are dev-app observability data. Lifecycle decisions
+still come from the task kernel, attempts, and result status.
 
 ## Mock Command Runtime
 

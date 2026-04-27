@@ -448,6 +448,7 @@ class TaskLifecycleService {
             }
             TraceEventLogger.taskMsgStatusTransition(
                     msg,
+                    null,
                     TaskMsgStatus.INIT,
                     msg.getStatus(),
                     "CANCEL_PENDING_MESSAGES",
@@ -459,6 +460,7 @@ class TaskLifecycleService {
             if (updated) {
                 TraceEventLogger.taskMsgStatusTransition(
                         msg,
+                        activeAttempt,
                         status,
                         msg.getStatus(),
                         "CANCEL_PENDING_MESSAGES",
@@ -486,6 +488,7 @@ class TaskLifecycleService {
         TraceEventLogger.taskMessageLogicallyFinal(
                 task,
                 msg,
+                activeAttempt,
                 "CANCEL_PENDING_MESSAGES",
                 "TaskManager",
                 "task termination finalized the logical message"

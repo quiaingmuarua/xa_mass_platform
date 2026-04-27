@@ -70,6 +70,16 @@ public final class TraceEventLogger {
                                                String trigger,
                                                String source,
                                                String reason) {
+        taskMsgStatusTransition(taskMsg, null, fromStatus, toStatus, trigger, source, reason);
+    }
+
+    public static void taskMsgStatusTransition(TaskMsg taskMsg,
+                                               TaskMsgAttempt attempt,
+                                               TaskMsgStatus fromStatus,
+                                               TaskMsgStatus toStatus,
+                                               String trigger,
+                                               String source,
+                                               String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -78,9 +88,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
-                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "fromStatus", enumName(fromStatus),
                 "toStatus", enumName(toStatus),
                 "finalReason", enumName(taskMsg.getFinalReason()),
@@ -121,6 +131,14 @@ public final class TraceEventLogger {
     }
 
     public static void taskMsgRetryReset(TaskMsg taskMsg, String trigger, String source, String reason) {
+        taskMsgRetryReset(taskMsg, null, trigger, source, reason);
+    }
+
+    public static void taskMsgRetryReset(TaskMsg taskMsg,
+                                         TaskMsgAttempt attempt,
+                                         String trigger,
+                                         String source,
+                                         String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -129,9 +147,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
-                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "fromStatus", "FAILED_OR_EXPIRED",
                 "toStatus", TaskMsgStatus.INIT.name(),
                 "retryCount", String.valueOf(taskMsg.getRetryCount()),
@@ -278,6 +296,10 @@ public final class TraceEventLogger {
     }
 
     public static void callbackAccepted(TaskMsg taskMsg, String reason) {
+        callbackAccepted(taskMsg, null, reason);
+    }
+
+    public static void callbackAccepted(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -286,8 +308,8 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "SUCCESS"
@@ -397,6 +419,15 @@ public final class TraceEventLogger {
                                                  String trigger,
                                                  String source,
                                                  String reason) {
+        taskMessageLogicallyFinal(task, taskMsg, null, trigger, source, reason);
+    }
+
+    public static void taskMessageLogicallyFinal(Task task,
+                                                 TaskMsg taskMsg,
+                                                 TaskMsgAttempt attempt,
+                                                 String trigger,
+                                                 String source,
+                                                 String reason) {
         if (task == null || taskMsg == null) {
             return;
         }
@@ -405,9 +436,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMessageId(),
                 "taskId", task.getTid(),
                 "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
-                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
-                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
                 "taskMsgStatus", enumName(taskMsg.getStatus()),
                 "taskMsgFinalReason", enumName(taskMsg.getFinalReason()),
                 "retryCount", String.valueOf(taskMsg.getRetryCount()),
@@ -664,5 +695,17 @@ public final class TraceEventLogger {
 
     private static String formatDouble(double value) {
         return String.format(java.util.Locale.ROOT, "%.1f", value);
+    }
+
+    private static String latestAttemptWorkerId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        return attempt != null ? attempt.getWorkerId() : taskMsg.getLatestAttemptWorkerId();
+    }
+
+    private static String latestAttemptWorkerContextId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        return attempt != null ? attempt.getWorkerContextId() : taskMsg.getLatestAttemptWorkerContextId();
+    }
+
+    private static String latestAttemptBatchId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        return attempt != null ? attempt.getBatchId() : taskMsg.getLatestAttemptBatchId();
     }
 }
