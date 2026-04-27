@@ -838,11 +838,11 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void resolveTaskStateFromMessagesReportsNotFinalizedWhileMessagesRemainOpen() {
+    void resolveTaskStateReportsNotFinalizedWhileMessagesRemainOpen() {
         Task task = taskManager.createTask(buildRequest("task-resolution-pending"));
         taskManager.approveTask(task.getTid());
 
-        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult result = taskManager.resolveTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, result.getOutcome());
         assertEquals(TaskStatus.READY, result.getStatus());
@@ -877,7 +877,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void resolveTaskStateFromMessagesFinalizesRunningTaskWhenAllMessagesAreFinal() {
+    void resolveTaskStateFinalizesRunningTaskWhenAllMessagesAreFinal() {
         Task task = taskManager.createTask(buildRequest("task-resolution-finalized"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -891,7 +891,7 @@ class TaskManagerLifecycleTest {
         task.setTerminalReason(null);
         taskManager.updateTask(task);
 
-        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult result = taskManager.resolveTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, result.getOutcome());
         assertEquals(TaskStatus.TERMINAL, result.getStatus());
@@ -901,7 +901,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void resolveTaskStateFromMessagesReportsAlreadyFinalForManuallyCancelledTask() {
+    void resolveTaskStateReportsAlreadyFinalForManuallyCancelledTask() {
         Task task = taskManager.createTask(buildRequest("task-resolution-already-final", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -911,7 +911,7 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.cancelTask(task.getTid()));
 
-        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult result = taskManager.resolveTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.ALREADY_FINAL, result.getOutcome());
         assertEquals(TaskStatus.TERMINAL, result.getStatus());
@@ -1411,7 +1411,7 @@ class TaskManagerLifecycleTest {
         task.setTerminalReason(null);
         policyAwareManager.updateTask(task);
 
-        TaskStateResolutionResult result = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult result = policyAwareManager.resolveTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, result.getOutcome());
         assertEquals(TaskStatus.RUNNING, policyAwareManager.getTask(task.getTid()).getStatus());
@@ -1432,7 +1432,7 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
         policyAwareManager.updateTask(task);
 
-        TaskStateResolutionResult result = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult result = policyAwareManager.resolveTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, result.getOutcome());
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, result.getTerminalReason());
@@ -1440,7 +1440,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, policyAwareManager.getTask(task.getTid()).getTerminalReason());
     }
 
-    // ---- Bug1: READY/RUNNING â†’ BLOCKED (blockTask) ----
+    // ---- Bug1: READY/RUNNING â†?BLOCKED (blockTask) ----
 
     // ---- Open intake terminal validation ----
 
@@ -1461,7 +1461,7 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
         policyAwareManager.updateTask(task);
 
-        TaskStateResolutionResult resolutionResult = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateResolutionResult resolutionResult = policyAwareManager.resolveTaskState(task.getTid());
         TaskStateValidationResult validationResult = policyAwareManager.validateTaskState(task.getTid());
 
         assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, resolutionResult.getOutcome());
@@ -1504,7 +1504,7 @@ class TaskManagerLifecycleTest {
     @Test
     void blockReadyTaskTransitionsToBlocked() {
         Task task = taskManager.createTask(buildRequest("block-ready"));
-        taskManager.approveTask(task.getTid()); // NEW â†’ READY
+        taskManager.approveTask(task.getTid()); // NEW â†?READY
 
         assertTrue(taskManager.blockTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
@@ -1538,11 +1538,11 @@ class TaskManagerLifecycleTest {
         assertFalse(taskManager.blockTask(newTask.getTid()), "NEW task cannot be blocked via blockTask");
 
         taskManager.approveTask(newTask.getTid());
-        taskManager.cancelTask(newTask.getTid()); // â†’ TERMINAL
+        taskManager.cancelTask(newTask.getTid()); // â†?TERMINAL
         assertFalse(taskManager.blockTask(newTask.getTid()), "TERMINAL task cannot be blocked");
     }
 
-    // ---- Bug2: TaskMsg.EXPIRED â€” expireTaskMessage ----
+    // ---- Bug2: TaskMsg.EXPIRED â€?expireTaskMessage ----
 
     @Test
     void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
@@ -1560,7 +1560,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.EXPIRED, updated.getStatus());
         assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, updated.getFinalReason());
 
-        // All messages now final â†’ task should auto-terminate
+        // All messages now final â†?task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, updatedTask.getTerminalReason());
@@ -1650,7 +1650,7 @@ class TaskManagerLifecycleTest {
         taskManager.approveTask(task.getTid());
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        // message is in INIT state â€” cannot be expired (never dispatched)
+        // message is in INIT state â€?cannot be expired (never dispatched)
         assertFalse(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
         assertEquals(TaskMsgStatus.INIT,
                 taskManager.getTaskMessage(task.getTid(), message.getMessageId()).getStatus());
@@ -1678,7 +1678,7 @@ class TaskManagerLifecycleTest {
         TaskMsg msg1 = taskManager.getTaskMessage(task.getTid(), messages.get(1).getMessageId());
         TaskMsg msg2 = taskManager.getTaskMessage(task.getTid(), messages.get(2).getMessageId());
 
-        // INIT â†’ FAILED; ASSIGNED â†’ EXPIRED
+        // INIT â†?FAILED; ASSIGNED â†?EXPIRED
         assertTrue(msg0.isCompleted(), "assigned message should be in final state after cancel");
         assertEquals(TaskMsgStatus.EXPIRED, msg0.getStatus());
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg0.getFinalReason());
@@ -1705,11 +1705,11 @@ class TaskManagerLifecycleTest {
         ready.setTaskSuccessNumber(ready.getTaskEligibleNumber()); // all "succeeded" in the counter
         taskManager.updateTask(ready);
 
-        // Status is READY, not TERMINAL â€” must still report not completed
+        // Status is READY, not TERMINAL â€?must still report not completed
         assertFalse(taskManager.getTask(task.getTid()).isCompleted(),
                 "Task with all messages 'succeeded' in counter but status=READY must not be completed");
 
-        // After cancellation the task is TERMINAL â€” must report completed
+        // After cancellation the task is TERMINAL â€?must report completed
         taskManager.cancelTask(task.getTid());
         assertTrue(taskManager.getTask(task.getTid()).isCompleted());
     }
@@ -1918,3 +1918,4 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+

@@ -1,7 +1,9 @@
 package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
@@ -106,6 +108,53 @@ class InMemoryTaskStorageTest {
         assertTrue(storage.pollExpiredMaxRuntimeTasks(now, 10).isEmpty());
     }
 
+    @Test
+    void nonFinalTaskMessagesUsesPendingIndexInsteadOfFullSnapshotFiltering() {
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
+
+        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
+        TaskMsg assigned = message("msg-assigned", TaskMsgStatus.ASSIGNED);
+        TaskMsg success = message("msg-success", TaskMsgStatus.SUCCESS);
+        success.setFinalReason(TaskMsgFinalReason.BUSINESS_SUCCESS);
+        TaskMsg failed = message("msg-failed", TaskMsgStatus.FAILED);
+        failed.setFinalReason(TaskMsgFinalReason.MANUAL_CANCELLED);
+
+        storage.addTaskMessage("task-1", init);
+        storage.addTaskMessage("task-1", assigned);
+        storage.addTaskMessage("task-1", success);
+        storage.addTaskMessage("task-1", failed);
+
+        assertEquals(java.util.Set.of("msg-init", "msg-assigned"),
+                storage.getNonFinalTaskMessages("task-1").stream()
+                        .map(TaskMsg::getMessageId)
+                        .collect(java.util.stream.Collectors.toSet()));
+
+        assertTrue(assigned.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED));
+        assertTrue(storage.updateTaskMessage("task-1", assigned));
+
+        assertEquals(java.util.Set.of("msg-init"),
+                storage.getNonFinalTaskMessages("task-1").stream()
+                        .map(TaskMsg::getMessageId)
+                        .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void deleteTaskReleasesMessageBucketsAttemptsAndPendingIndex() {
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
+
+        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
+        storage.addTaskMessage("task-1", init);
+        storage.addTaskMessageAttempt("task-1", "msg-init", attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING));
+
+        assertTrue(storage.deleteTask("task-1"));
+        assertTrue(storage.getTask("task-1").isEmpty());
+        assertTrue(storage.getTaskMessages("task-1").isEmpty());
+        assertTrue(storage.getNonFinalTaskMessages("task-1").isEmpty());
+        assertTrue(storage.getTaskMessageAttempts("task-1", "msg-init").isEmpty());
+    }
+
     private TaskMsgAttempt attempt(String attemptId, int attemptNo, TaskMsgAttemptStatus status) {
         TaskMsgAttempt attempt = new TaskMsgAttempt();
         attempt.setAttemptId(attemptId);
@@ -114,6 +163,14 @@ class InMemoryTaskStorageTest {
         attempt.setMessageId("msg-1");
         attempt.setStatus(status);
         return attempt;
+    }
+
+    private TaskMsg message(String messageId, TaskMsgStatus status) {
+        TaskMsg message = new TaskMsg();
+        message.setTaskId("task-1");
+        message.setMessageId(messageId);
+        message.setStatus(status);
+        return message;
     }
 
     private Task runningTask(String taskId, LocalDateTime startTime, int maxRuntimeSeconds) {

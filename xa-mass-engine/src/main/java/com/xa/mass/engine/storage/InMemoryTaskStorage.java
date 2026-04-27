@@ -137,6 +137,12 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
+    public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.snapshotNonFinal() : List.of();
+    }
+
+    @Override
     public long countTaskMessages(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.size() : 0;
@@ -282,6 +288,7 @@ public class InMemoryTaskStorage implements TaskStorage {
     private static final class MessageBucket {
         private final Map<String, TaskMsg> messagesById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
+        private final java.util.HashSet<String> nonFinalMessageIds = new java.util.HashSet<>();
         private final Map<String, TaskMsgStatus> statusByMessageId = new ConcurrentHashMap<>();
         private int successCount;
         private int failedCount;
@@ -324,6 +331,19 @@ public class InMemoryTaskStorage implements TaskStorage {
             return snapshot;
         }
 
+        private synchronized List<TaskMsg> snapshotNonFinal() {
+            List<TaskMsg> snapshot = new ArrayList<>(nonFinalMessageIds.size());
+            for (String messageId : nonFinalMessageIds) {
+                TaskMsg message = messagesById.get(messageId);
+                if (message != null
+                        && message.getStatus() != null
+                        && !message.getStatus().isFinal()) {
+                    snapshot.add(message);
+                }
+            }
+            return snapshot;
+        }
+
         private synchronized int size() {
             return messagesById.size();
         }
@@ -353,6 +373,11 @@ public class InMemoryTaskStorage implements TaskStorage {
                 statusByMessageId.remove(messageId);
             } else {
                 statusByMessageId.put(messageId, newStatus);
+            }
+            if (newStatus != null && !newStatus.isFinal()) {
+                nonFinalMessageIds.add(messageId);
+            } else {
+                nonFinalMessageIds.remove(messageId);
             }
         }
 

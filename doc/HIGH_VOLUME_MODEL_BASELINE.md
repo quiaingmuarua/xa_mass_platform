@@ -23,6 +23,7 @@ Already true in current code:
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
 - runtime owns active lease and expiry indexes
 - task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
+- task terminal cleanup can now read only non-final `TaskMsg` projections instead of materializing the full task-message snapshot
 
 Still too heavy on the hot path:
 

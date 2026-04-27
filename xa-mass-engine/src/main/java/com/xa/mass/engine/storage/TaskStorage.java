@@ -69,6 +69,19 @@ public interface TaskStorage {
      */
     List<TaskMsg> getTaskMessages(String taskId);
 
+    /**
+     * Internal cleanup/convergence helper for logical messages that are not yet
+     * final. Mainline runtime control flow should prefer this over full
+     * task-message snapshots when it only needs pending work.
+     */
+    default List<TaskMsg> getNonFinalTaskMessages(String taskId) {
+        return getTaskMessages(taskId).stream()
+                .filter(taskMsg -> taskMsg != null
+                        && taskMsg.getStatus() != null
+                        && !taskMsg.getStatus().isFinal())
+                .collect(java.util.stream.Collectors.toList());
+    }
+
     default long countTaskMessages(String taskId) {
         return getTaskMessageStats(taskId).getTotal();
     }

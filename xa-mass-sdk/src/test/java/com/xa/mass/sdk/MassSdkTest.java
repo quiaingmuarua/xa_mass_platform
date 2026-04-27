@@ -2370,7 +2370,7 @@ class MassSdkTest {
                 () -> app.getTaskMessage("task-1", "msg-1"),
                 () -> app.getTaskMessageAttempts("task-1", "msg-1"),
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
-                () -> app.resolveTaskStateFromMessages("task-1"),
+                () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
@@ -2640,3 +2640,4 @@ class MassSdkTest {
     }
 
 }
+

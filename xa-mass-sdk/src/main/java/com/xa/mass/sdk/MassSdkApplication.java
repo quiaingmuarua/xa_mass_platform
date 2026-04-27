@@ -249,8 +249,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return requireStartedTaskManager().countTaskMessages(taskId);
     }
 
-    public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
-        return requireStartedTaskManager().resolveTaskStateFromMessages(taskId);
+    public TaskStateResolutionResult resolveTaskState(String taskId) {
+        return requireStartedTaskManager().resolveTaskState(taskId);
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
@@ -1593,3 +1593,4 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return engine;
     }
 }
+

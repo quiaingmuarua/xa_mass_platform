@@ -400,8 +400,8 @@ public class TaskManager {
      * Resolves task state explicitly from runtime-owned work stats plus the
      * persisted task aggregate.
      */
-    public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
-        return withTaskLock(taskId, () -> stateResolver.resolveTaskStateFromMessages(taskId));
+    public TaskStateResolutionResult resolveTaskState(String taskId) {
+        return withTaskLock(taskId, () -> stateResolver.resolveTaskState(taskId));
     }
 
     /**
@@ -424,7 +424,7 @@ public class TaskManager {
         eventPublisher.addTaskAssignedListener(listener);
     }
 
-    /** Called by assignment listeners when a task transitions READY â†’ RUNNING. */
+    /** Called by assignment listeners when a task transitions READY â†?RUNNING. */
     public void publishTaskAssigned(Task task) {
         eventPublisher.publishTaskAssigned(task);
     }
@@ -609,3 +609,4 @@ public class TaskManager {
         );
     }
 }
+

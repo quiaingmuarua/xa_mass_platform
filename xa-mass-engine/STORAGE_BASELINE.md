@@ -80,6 +80,8 @@ Important current usage notes:
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
 - `getTaskMessages(...)` is a compatibility/demo snapshot plus temporary internal cleanup helper; it is not the future business-detail path
+- runtime cleanup paths that only need pending logical messages should use `getNonFinalTaskMessages(...)` instead of materializing the full task-message snapshot
+- the in-memory pending-message index updates on every `TaskMsg` status write, removes entries when a message becomes final, and is dropped wholesale when the owning task is deleted; it is a helper index, not a second lifecycle truth
 - future task detail should bias toward logs or async write-behind sinks instead of engine-owned full-message query surfaces
 
 ## WorkerStorage

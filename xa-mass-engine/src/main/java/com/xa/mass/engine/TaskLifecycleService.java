@@ -409,7 +409,7 @@ class TaskLifecycleService {
     private void cancelPendingMessages(Task task) {
         String taskId = task.getTid();
         Map<String, ActiveLeaseRecord> activeLeaseByMessageId = activeLeaseByMessageId(taskId);
-        for (TaskMsg msg : taskManager.getTaskMessages(taskId)) {
+        for (TaskMsg msg : taskManager.getTaskStorage().getNonFinalTaskMessages(taskId)) {
             cancelPendingMessage(task, msg, activeLeaseByMessageId.get(msg.getMessageId()));
         }
     }

@@ -4,7 +4,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
 /**
- * 显式表达“根据 TaskMsg 聚合结果重新计算任务状态”的结论。
+ * Result of explicitly resolving task convergence from runtime-owned work
+ * stats plus persisted task aggregate state.
  */
 public class TaskStateResolutionResult {
     public enum Outcome {
@@ -77,3 +78,4 @@ public class TaskStateResolutionResult {
         return failedMessages;
     }
 }
+
