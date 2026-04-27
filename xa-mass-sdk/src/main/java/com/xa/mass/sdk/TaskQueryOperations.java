@@ -33,7 +33,10 @@ public interface TaskQueryOperations {
 
     long countTaskMessages(String taskId);
 
-    /** Audit-only invariant validation; not a hot-path runtime query. */
+    /**
+     * Bounded runtime-state validation; does not deep-scan the full TaskMsg
+     * projection.
+     */
     Object validateTaskState(String taskId);
 
     /** Runtime-stats-driven task convergence probe; does not scan full TaskMsg snapshots. */

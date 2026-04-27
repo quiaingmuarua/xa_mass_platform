@@ -701,6 +701,7 @@ public final class TraceEventLogger {
                                                   String violations,
                                                   String trigger,
                                                   String source,
+                                                  String validationScope,
                                                   String reason,
                                                   String result) {
         long finalMessages = successMessages + failedMessages;
@@ -721,6 +722,7 @@ public final class TraceEventLogger {
                 "violations", violations,
                 "trigger", trigger,
                 "source", source,
+                "validationScope", validationScope,
                 "reason", reason,
                 "result", result
         ));

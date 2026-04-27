@@ -220,7 +220,7 @@ Minimum trace assertions:
 - `ASSIGNED -> RUNNING -> SUCCESS/FAILED`
 - `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - `ASSIGNMENT_SUMMARY` for at least one successful assignment attempt
-- `TASK_STATE_VALIDATION_SUMMARY` when validation reports `needsResolution=true` or invariant violations
+- `TASK_STATE_VALIDATION_SUMMARY` when validation reports `needsResolution=true` or invariant violations; use `validationScope=RUNTIME` for bounded runtime validation and `validationScope=PROJECTION_AUDIT` for explicit deep projection audit
 - `DISPATCH_BINDING_SUMMARY` for at least one successful binding round
 - `ASSIGNMENT_QUEUE_SNAPSHOT` for at least one submission and one retry path
 - `TASK_MSG_RETRY_RESET` when retry is exercised, including retryable failure and retryable lease expiry

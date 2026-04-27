@@ -144,7 +144,7 @@ class TaskConcurrencyAcceptanceTest {
         AtomicInteger terminalCount = new AtomicInteger();
         AtomicInteger dispatchRequestedCount = new AtomicInteger();
         registerCounts(task.getTid(), attemptClosedCount, logicallyFinalCount, terminalCount);
-        taskManager.addTaskDispatchListener(t -> {
+        taskManager.events().addTaskDispatchListener(t -> {
             if (task.getTid().equals(t.getTid())) {
                 dispatchRequestedCount.incrementAndGet();
             }
@@ -251,17 +251,17 @@ class TaskConcurrencyAcceptanceTest {
                                 AtomicInteger attemptClosedCount,
                                 AtomicInteger logicallyFinalCount,
                                 AtomicInteger terminalCount) {
-        taskManager.addTaskMessageAttemptClosedListener((task, taskMsg, attempt) -> {
+        taskManager.events().addTaskMessageAttemptClosedListener((task, taskMsg, attempt) -> {
             if (taskId.equals(task.getTid())) {
                 attemptClosedCount.incrementAndGet();
             }
         });
-        taskManager.addTaskMessageLogicallyFinalListener((task, taskMsg) -> {
+        taskManager.events().addTaskMessageLogicallyFinalListener((task, taskMsg) -> {
             if (taskId.equals(task.getTid())) {
                 logicallyFinalCount.incrementAndGet();
             }
         });
-        taskManager.addTaskTerminalListener(task -> {
+        taskManager.events().addTaskTerminalListener(task -> {
             if (taskId.equals(task.getTid())) {
                 terminalCount.incrementAndGet();
             }

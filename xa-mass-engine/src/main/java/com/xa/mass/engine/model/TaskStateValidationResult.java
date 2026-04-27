@@ -6,9 +6,15 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import java.util.List;
 
 /**
- * Result of validating the current Task + TaskMsg aggregate invariants.
+ * Result of validating the current task runtime state or running an explicit
+ * projection audit.
  */
 public class TaskStateValidationResult {
+    public enum Scope {
+        RUNTIME,
+        PROJECTION_AUDIT
+    }
+
     public enum ViolationCode {
         TASK_NOT_FOUND,
         NEGATIVE_ELIGIBLE_COUNT,
@@ -38,6 +44,7 @@ public class TaskStateValidationResult {
     private final long successMessages;
     private final long failedMessages;
     private final long processingMessages;
+    private final Scope scope;
     private final List<ViolationCode> violations;
 
     public TaskStateValidationResult(
@@ -51,6 +58,32 @@ public class TaskStateValidationResult {
             long processingMessages,
             List<ViolationCode> violations
     ) {
+        this(
+                valid,
+                needsResolution,
+                status,
+                terminalReason,
+                totalMessages,
+                successMessages,
+                failedMessages,
+                processingMessages,
+                Scope.RUNTIME,
+                violations
+        );
+    }
+
+    public TaskStateValidationResult(
+            boolean valid,
+            boolean needsResolution,
+            TaskStatus status,
+            TaskTerminalReason terminalReason,
+            long totalMessages,
+            long successMessages,
+            long failedMessages,
+            long processingMessages,
+            Scope scope,
+            List<ViolationCode> violations
+    ) {
         this.valid = valid;
         this.needsResolution = needsResolution;
         this.status = status;
@@ -59,6 +92,7 @@ public class TaskStateValidationResult {
         this.successMessages = successMessages;
         this.failedMessages = failedMessages;
         this.processingMessages = processingMessages;
+        this.scope = scope == null ? Scope.RUNTIME : scope;
         this.violations = violations;
     }
 
@@ -92,6 +126,10 @@ public class TaskStateValidationResult {
 
     public long getProcessingMessages() {
         return processingMessages;
+    }
+
+    public Scope getScope() {
+        return scope;
     }
 
     public List<ViolationCode> getViolations() {

@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -392,7 +391,7 @@ public class TaskManager {
      * Recomputes task-level convergence from runtime-owned work stats plus the
      * persisted task aggregate.
      */
-    public void updateTaskProgress(String taskId) {
+    void updateTaskProgress(String taskId) {
         withTaskLock(taskId, () -> stateResolver.updateTaskProgress(taskId));
     }
 
@@ -406,47 +405,33 @@ public class TaskManager {
 
     /**
      * Audit-only invariant validation. This path is intentionally bounded and
-     * should not be treated as a hot-path runtime query surface.
+     * should not be treated as a hot-path runtime query surface. This method
+     * validates task/runtime aggregates without scanning the full TaskMsg
+     * compatibility projection.
      */
     public TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
+    }
+
+    /**
+     * Explicit deep audit of the persisted TaskMsg projection plus attempt
+     * aggregates. This is diagnostic-only and may require a full task-message
+     * snapshot.
+     */
+    TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
     }
 
     public TaskScheduler getScheduler() {
         return this.taskScheduler;
     }
 
-    public void addTaskCreatedListener(Consumer<Task> listener) {
-        eventPublisher.addTaskCreatedListener(listener);
-    }
-
-    public void addTaskAssignedListener(Consumer<Task> listener) {
-        eventPublisher.addTaskAssignedListener(listener);
-    }
-
-    /** Called by assignment listeners when a task transitions READY â†?RUNNING. */
-    public void publishTaskAssigned(Task task) {
-        eventPublisher.publishTaskAssigned(task);
-    }
-
-    public void addTaskReadyListener(Consumer<Task> listener) {
-        eventPublisher.addTaskReadyListener(listener);
-    }
-
-    public void addTaskDispatchListener(Consumer<Task> listener) {
-        eventPublisher.addTaskDispatchListener(listener);
-    }
-
-    public void addTaskTerminalListener(Consumer<Task> listener) {
-        eventPublisher.addTaskTerminalListener(listener);
-    }
-
-    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
-        eventPublisher.addTaskMessageAttemptClosedListener(listener);
-    }
-
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
-        eventPublisher.addTaskMessageLogicallyFinalListener(listener);
+    /**
+     * Returns the in-process runtime event surface for synchronous engine
+     * reactions such as assignment submission and resource release.
+     */
+    public TaskEventPublisher events() {
+        return eventPublisher;
     }
 
     public void shutdown() {
@@ -609,4 +594,5 @@ public class TaskManager {
         );
     }
 }
+
 

@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  * Add listeners here when the reaction must happen inline; subscribe to the EventBus
  * when loose coupling or async delivery is required.
  */
-class TaskEventPublisher {
+public class TaskEventPublisher {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskEventPublisher.class);
 
@@ -31,49 +31,49 @@ class TaskEventPublisher {
     private final List<TaskMessageAttemptClosedListener> taskMessageAttemptClosedListeners = new CopyOnWriteArrayList<>();
     private final List<TaskMessageLogicallyFinalListener> taskMessageLogicallyFinalListeners = new CopyOnWriteArrayList<>();
 
-    void addTaskCreatedListener(Consumer<Task> listener) {
+    public void addTaskCreatedListener(Consumer<Task> listener) {
         if (listener != null) {
             taskCreatedListeners.add(listener);
         }
     }
 
-    void addTaskAssignedListener(Consumer<Task> listener) {
+    public void addTaskAssignedListener(Consumer<Task> listener) {
         if (listener != null) {
             taskAssignedListeners.add(listener);
         }
     }
 
-    void addTaskReadyListener(Consumer<Task> listener) {
+    public void addTaskReadyListener(Consumer<Task> listener) {
         if (listener != null) {
             taskReadyListeners.add(listener);
         }
     }
 
-    void addTaskDispatchListener(Consumer<Task> listener) {
+    public void addTaskDispatchListener(Consumer<Task> listener) {
         if (listener != null) {
             taskDispatchListeners.add(listener);
         }
     }
 
-    void addTaskTerminalListener(Consumer<Task> listener) {
+    public void addTaskTerminalListener(Consumer<Task> listener) {
         if (listener != null) {
             taskTerminalListeners.add(listener);
         }
     }
 
-    void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
         if (listener != null) {
             taskMessageAttemptClosedListeners.add(listener);
         }
     }
 
-    void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
         if (listener != null) {
             taskMessageLogicallyFinalListeners.add(listener);
         }
     }
 
-    void publishTaskCreated(Task task) {
+    public void publishTaskCreated(Task task) {
         for (Consumer<Task> listener : taskCreatedListeners) {
             try {
                 listener.accept(task);
@@ -83,7 +83,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskAssigned(Task task) {
+    public void publishTaskAssigned(Task task) {
         for (Consumer<Task> listener : taskAssignedListeners) {
             try {
                 listener.accept(task);
@@ -93,7 +93,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskReady(Task task) {
+    public void publishTaskReady(Task task) {
         for (Consumer<Task> listener : taskReadyListeners) {
             try {
                 listener.accept(task);
@@ -103,7 +103,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskDispatchRequested(Task task) {
+    public void publishTaskDispatchRequested(Task task) {
         for (Consumer<Task> listener : taskDispatchListeners) {
             try {
                 listener.accept(task);
@@ -113,7 +113,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskTerminal(Task task) {
+    public void publishTaskTerminal(Task task) {
         for (Consumer<Task> listener : taskTerminalListeners) {
             try {
                 listener.accept(task);
@@ -123,7 +123,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+    public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
         for (TaskMessageAttemptClosedListener listener : taskMessageAttemptClosedListeners) {
             try {
                 listener.onTaskMessageAttemptClosed(task, taskMsg, attempt);
@@ -134,7 +134,7 @@ class TaskEventPublisher {
         }
     }
 
-    void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
+    public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
         for (TaskMessageLogicallyFinalListener listener : taskMessageLogicallyFinalListeners) {
             try {
                 listener.onTaskMessageLogicallyFinal(task, taskMsg);

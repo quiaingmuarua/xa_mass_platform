@@ -25,7 +25,7 @@
 - do not reconstruct removed `v2` / archive code as current regression
 - do not assume scheduler stubs represent the current runtime path for `READY -> RUNNING`
 - prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
-- treat `validateTaskState(...)` as an audit/acceptance tool; keep it bounded and do not route hot-path runtime decisions through full task-message scans
+- treat `validateTaskState(...)` as a bounded runtime validation tool; deep `TaskMsg` projection audits belong on the explicit engine-side audit path, not on hot-path runtime decisions
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)

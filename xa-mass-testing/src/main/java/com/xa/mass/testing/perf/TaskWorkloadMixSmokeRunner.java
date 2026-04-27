@@ -97,15 +97,15 @@ public final class TaskWorkloadMixSmokeRunner {
                     new TaskWorkerAssignListener(matchingStrategy, workerManager, msgAssignListener, taskManager);
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(taskManager, workerManager, assignWorker::submit);
+                    new TaskResourceReleaseListener(taskManager, workerManager);
 
             try {
                 registerWorkers(workerManager, config.workerCount());
-                taskManager.addTaskReadyListener(assignWorker::submit);
-                taskManager.addTaskDispatchListener(assignWorker::submit);
-                taskManager.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
-                taskManager.addTaskTerminalListener(releaseListener::onTaskTerminal);
-                taskManager.addTaskTerminalListener(task -> {
+                taskManager.events().addTaskReadyListener(assignWorker::submit);
+                taskManager.events().addTaskDispatchListener(assignWorker::submit);
+                taskManager.events().addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
+                taskManager.events().addTaskTerminalListener(task -> {
                     if (TaskWorkloadClass.BULK == task.getWorkloadClass()) {
                         timing.onTerminal(task);
                         bulkTerminalLatch.countDown();

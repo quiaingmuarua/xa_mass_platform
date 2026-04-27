@@ -24,6 +24,7 @@ Already true in current code:
 - runtime owns active lease and expiry indexes
 - task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
 - task terminal cleanup can now read only non-final `TaskMsg` projections instead of materializing the full task-message snapshot
+- bounded `validateTaskState(...)` no longer needs full `TaskMsg` scans; deep projection checks are now an explicit audit path instead of the default validation meaning
 
 Still too heavy on the hot path:
 

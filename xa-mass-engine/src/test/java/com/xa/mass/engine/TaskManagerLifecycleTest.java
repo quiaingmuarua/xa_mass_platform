@@ -130,7 +130,7 @@ class TaskManagerLifecycleTest {
     void taskReadyListenersRunOnApproveAndResume() {
         Task task = taskManager.createTask(buildRequest("task-ready-hook"));
         AtomicInteger notifications = new AtomicInteger();
-        taskManager.addTaskReadyListener(t -> {
+        taskManager.events().addTaskReadyListener(t -> {
             if (task.getTid().equals(t.getTid())) {
                 notifications.incrementAndGet();
             }
@@ -273,7 +273,7 @@ class TaskManagerLifecycleTest {
 
         Task task = taskManager.createTask(dto);
         AtomicInteger dispatchRequests = new AtomicInteger();
-        taskManager.addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+        taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
 
         int added = taskManager.appendTaskItems(task.getTid(), List.of(
                 java.util.Map.<String, Object>of("target", "alpha"),
@@ -591,7 +591,7 @@ class TaskManagerLifecycleTest {
 
             AtomicInteger dispatchEvents = new AtomicInteger();
             CountDownLatch dispatchLatch = new CountDownLatch(1);
-            manager.addTaskDispatchListener(ignored -> {
+            manager.events().addTaskDispatchListener(ignored -> {
                 dispatchEvents.incrementAndGet();
                 dispatchLatch.countDown();
             });
@@ -631,7 +631,7 @@ class TaskManagerLifecycleTest {
 
             AtomicInteger dispatchEvents = new AtomicInteger();
             CountDownLatch dispatchLatch = new CountDownLatch(1);
-            manager.addTaskDispatchListener(ignored -> {
+            manager.events().addTaskDispatchListener(ignored -> {
                 if (task.getTid().equals(ignored.getTid())) {
                     dispatchEvents.incrementAndGet();
                     dispatchLatch.countDown();
@@ -788,11 +788,11 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
+        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
                 events.add("attempt-closed:" + attempt.getStatus()));
-        taskManager.addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
                 events.add("logical-final:" + currentMessage.getStatus()));
-        taskManager.addTaskDispatchListener(currentTask ->
+        taskManager.events().addTaskDispatchListener(currentTask ->
                 events.add("dispatch:" + currentTask.getStatus()));
 
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMessageId(), false, "boom-once"));
@@ -811,8 +811,8 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message);
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.addTaskMessageLogicallyFinalListener((currentTask, currentMessage) -> events.add("logical-final"));
-        taskManager.addTaskTerminalListener(currentTask -> events.add("terminal"));
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) -> events.add("logical-final"));
+        taskManager.events().addTaskTerminalListener(currentTask -> events.add("terminal"));
 
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMessageId(), true, "done"));
 
@@ -1023,7 +1023,7 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.pauseTask(task.getTid()));
 
         AtomicInteger dispatchRequests = new AtomicInteger();
-        taskManager.addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+        taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
 
         int added = taskManager.appendTaskItems(task.getTid(), List.of(
                 java.util.Map.<String, Object>of("target", "beta"),
@@ -1209,7 +1209,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void validateTaskStateRejectsCompletedMessageWithoutFinalReason() {
+    void auditTaskProjectionStateRejectsCompletedMessageWithoutFinalReason() {
         Task task = taskManager.createTask(buildRequest("task-validate-message-final-reason", List.of("alpha")));
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.markAsAssigned();
@@ -1218,15 +1218,16 @@ class TaskManagerLifecycleTest {
         message.setFinalReason(null);
         taskManager.updateTaskMessage(task.getTid(), message);
 
-        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+        TaskStateValidationResult result = taskManager.auditTaskProjectionState(task.getTid());
 
         assertFalse(result.isValid());
+        assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertTrue(result.getViolations().contains(
                 TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING));
     }
 
     @Test
-    void validateTaskStateFlagsActiveAttemptWithFinalMessage() {
+    void auditTaskProjectionStateFlagsActiveAttemptWithFinalMessage() {
         Task task = taskManager.createTask(buildRequest("task-validate-active-attempt-final-message", List.of("alpha")));
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.markAsAssigned();
@@ -1239,15 +1240,16 @@ class TaskManagerLifecycleTest {
         assertTrue(activeAttempt.markLeased(java.time.LocalDateTime.now().plusMinutes(1)));
         taskManager.addTaskMessageAttempt(task.getTid(), message.getMessageId(), activeAttempt);
 
-        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+        TaskStateValidationResult result = taskManager.auditTaskProjectionState(task.getTid());
 
         assertFalse(result.isValid());
+        assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertTrue(result.getViolations().contains(
                 TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE));
     }
 
     @Test
-    void validateTaskStateFlagsMultipleActiveAttemptsForMessage() {
+    void auditTaskProjectionStateFlagsMultipleActiveAttemptsForMessage() {
         Task task = taskManager.createTask(buildRequest("task-validate-multiple-active-attempts", List.of("alpha")));
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
@@ -1259,9 +1261,10 @@ class TaskManagerLifecycleTest {
         assertTrue(secondActiveAttempt.markLeased(LocalDateTime.now().plusMinutes(1)));
         taskManager.addTaskMessageAttempt(task.getTid(), message.getMessageId(), secondActiveAttempt);
 
-        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+        TaskStateValidationResult result = taskManager.auditTaskProjectionState(task.getTid());
 
         assertFalse(result.isValid());
+        assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertTrue(result.getViolations().contains(
                 TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE));
     }
@@ -1316,13 +1319,14 @@ class TaskManagerLifecycleTest {
                             && "RUNNING".equals(mdc.get("taskStatus"))
                             && "true".equals(mdc.get("valid"))
                             && "true".equals(mdc.get("needsResolution"))
+                            && "RUNTIME".equals(mdc.get("validationScope"))
                             && "0".equals(mdc.get("violationCount"))
                             && "ANOMALY".equals(mdc.get("result")));
         }
     }
 
     @Test
-    void validateTaskStateUsesAttemptStatsWithoutPerMessageAttemptSnapshots() {
+    void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
         TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
         Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
@@ -1338,9 +1342,33 @@ class TaskManagerLifecycleTest {
         TaskStateValidationResult result = pagingTaskManager.validateTaskState(task.getTid());
 
         assertTrue(result.isValid());
-        assertTrue(pagingStorage.fullSnapshotReadCount.get() > 0, "validation currently reads task message compatibility snapshots");
-        assertTrue(pagingStorage.attemptStatsReadCount.get() > 0, "validation should read attempt stats per message");
+        assertEquals(TaskStateValidationResult.Scope.RUNTIME, result.getScope());
+        assertEquals(0, pagingStorage.fullSnapshotReadCount.get(), "runtime validation should not read full task message snapshots");
+        assertEquals(0, pagingStorage.attemptStatsReadCount.get(), "runtime validation should not read per-message attempt stats");
         assertEquals(0, pagingStorage.attemptSnapshotReadCount.get(), "validation should not snapshot each message attempt list");
+    }
+
+    @Test
+    void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
+        PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
+        Task task = pagingTaskManager.createTask(buildRequest("audit-paged", List.of("a", "b", "c")));
+        pagingTaskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        pagingTaskManager.updateTask(task);
+
+        List<TaskMsg> messages = pagingTaskManager.getTaskMessages(task.getTid());
+        assignMessage(pagingTaskManager, task, messages.get(1));
+
+        pagingStorage.resetTraversalCounters();
+
+        TaskStateValidationResult result = pagingTaskManager.auditTaskProjectionState(task.getTid());
+
+        assertTrue(result.isValid());
+        assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
+        assertTrue(pagingStorage.fullSnapshotReadCount.get() > 0, "projection audit is allowed to read task message compatibility snapshots");
+        assertTrue(pagingStorage.attemptStatsReadCount.get() > 0, "projection audit should read attempt stats per message");
+        assertEquals(0, pagingStorage.attemptSnapshotReadCount.get(), "projection audit should not snapshot each message attempt list");
     }
 
     @Test
@@ -1440,7 +1468,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, policyAwareManager.getTask(task.getTid()).getTerminalReason());
     }
 
-    // ---- Bug1: READY/RUNNING â†?BLOCKED (blockTask) ----
+    // ---- Bug1: READY/RUNNING é–³?BLOCKED (blockTask) ----
 
     // ---- Open intake terminal validation ----
 
@@ -1504,7 +1532,7 @@ class TaskManagerLifecycleTest {
     @Test
     void blockReadyTaskTransitionsToBlocked() {
         Task task = taskManager.createTask(buildRequest("block-ready"));
-        taskManager.approveTask(task.getTid()); // NEW â†?READY
+        taskManager.approveTask(task.getTid()); // NEW é–³?READY
 
         assertTrue(taskManager.blockTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
@@ -1538,11 +1566,11 @@ class TaskManagerLifecycleTest {
         assertFalse(taskManager.blockTask(newTask.getTid()), "NEW task cannot be blocked via blockTask");
 
         taskManager.approveTask(newTask.getTid());
-        taskManager.cancelTask(newTask.getTid()); // â†?TERMINAL
+        taskManager.cancelTask(newTask.getTid()); // é–³?TERMINAL
         assertFalse(taskManager.blockTask(newTask.getTid()), "TERMINAL task cannot be blocked");
     }
 
-    // ---- Bug2: TaskMsg.EXPIRED â€?expireTaskMessage ----
+    // ---- Bug2: TaskMsg.EXPIRED é–³?expireTaskMessage ----
 
     @Test
     void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
@@ -1560,7 +1588,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.EXPIRED, updated.getStatus());
         assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, updated.getFinalReason());
 
-        // All messages now final â†?task should auto-terminate
+        // All messages now final é–³?task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, updatedTask.getTerminalReason());
@@ -1615,11 +1643,11 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
+        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
                 events.add("attempt-closed:" + attempt.getStatus()));
-        taskManager.addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
                 events.add("logical-final:" + currentMessage.getStatus()));
-        taskManager.addTaskDispatchListener(currentTask ->
+        taskManager.events().addTaskDispatchListener(currentTask ->
                 events.add("dispatch:" + currentTask.getStatus()));
 
         assertTrue(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
@@ -1650,7 +1678,7 @@ class TaskManagerLifecycleTest {
         taskManager.approveTask(task.getTid());
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        // message is in INIT state â€?cannot be expired (never dispatched)
+        // message is in INIT state é–³?cannot be expired (never dispatched)
         assertFalse(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
         assertEquals(TaskMsgStatus.INIT,
                 taskManager.getTaskMessage(task.getTid(), message.getMessageId()).getStatus());
@@ -1678,7 +1706,7 @@ class TaskManagerLifecycleTest {
         TaskMsg msg1 = taskManager.getTaskMessage(task.getTid(), messages.get(1).getMessageId());
         TaskMsg msg2 = taskManager.getTaskMessage(task.getTid(), messages.get(2).getMessageId());
 
-        // INIT â†?FAILED; ASSIGNED â†?EXPIRED
+        // INIT é–³?FAILED; ASSIGNED é–³?EXPIRED
         assertTrue(msg0.isCompleted(), "assigned message should be in final state after cancel");
         assertEquals(TaskMsgStatus.EXPIRED, msg0.getStatus());
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg0.getFinalReason());
@@ -1705,11 +1733,11 @@ class TaskManagerLifecycleTest {
         ready.setTaskSuccessNumber(ready.getTaskEligibleNumber()); // all "succeeded" in the counter
         taskManager.updateTask(ready);
 
-        // Status is READY, not TERMINAL â€?must still report not completed
+        // Status is READY, not TERMINAL é–³?must still report not completed
         assertFalse(taskManager.getTask(task.getTid()).isCompleted(),
                 "Task with all messages 'succeeded' in counter but status=READY must not be completed");
 
-        // After cancellation the task is TERMINAL â€?must report completed
+        // After cancellation the task is TERMINAL é–³?must report completed
         taskManager.cancelTask(task.getTid());
         assertTrue(taskManager.getTask(task.getTid()).isCompleted());
     }
@@ -1918,4 +1946,5 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+
 

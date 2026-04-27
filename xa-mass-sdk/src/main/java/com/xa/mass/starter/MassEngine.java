@@ -24,10 +24,10 @@ import java.util.List;
  *
  * <h3>Two-tier event model</h3>
  * <ul>
- *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskManager} exposes
- *       {@code addTask*Listener()} methods backed by
- *       {@link com.xa.mass.engine.TaskEventPublisher}. These fire inline on the calling
- *       thread and are used by the engine internals (assignment, resource release, etc.).</li>
+ *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskManager#events()}
+ *       returns a {@link com.xa.mass.engine.TaskEventPublisher}. Its listeners fire
+ *       inline on the calling thread and are used by the engine internals
+ *       (assignment, resource release, etc.).</li>
  *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a runtime
  *       {@link com.xa.mass.base.channel.eventbus.core.EventBusFacade} that bridges selected
  *       in-process events ({@code TaskCreated}, {@code TaskAssigned}, worker status changes)
@@ -90,10 +90,10 @@ public class MassEngine {
 
             TaskResourceReleaseListener resourceReleaseListener =
                     new TaskResourceReleaseListener(taskManager, workerManager);
-            taskManager.addTaskReadyListener(assignWorker::submit);
-            taskManager.addTaskDispatchListener(assignWorker::submit);
-            taskManager.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
-            taskManager.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
+            taskManager.events().addTaskReadyListener(assignWorker::submit);
+            taskManager.events().addTaskDispatchListener(assignWorker::submit);
+            taskManager.events().addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
+            taskManager.events().addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
 
             leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
@@ -102,8 +102,8 @@ public class MassEngine {
             eventBus = EventBusFactory.get("runtime");
             @SuppressWarnings("unchecked")
             EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
-            taskManager.addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
-            taskManager.addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
+            taskManager.events().addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
+            taskManager.events().addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
             workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
             running = true;
             logger.info("MassEngine started successfully");

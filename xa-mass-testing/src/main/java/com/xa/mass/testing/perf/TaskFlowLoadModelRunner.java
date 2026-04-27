@@ -155,16 +155,16 @@ public final class TaskFlowLoadModelRunner {
                     new TaskWorkerAssignListener(matchingStrategy, workerManager, msgAssignListener, taskManager);
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             MeasuredTaskResourceReleaseListener releaseListener =
-                    new MeasuredTaskResourceReleaseListener(taskManager, workerManager, assignWorker::submit, releaseMetrics);
+                    new MeasuredTaskResourceReleaseListener(taskManager, workerManager, releaseMetrics);
 
             try {
                 registerWorkers(workerManager, config);
 
-                taskManager.addTaskReadyListener(assignWorker::submit);
-                taskManager.addTaskDispatchListener(assignWorker::submit);
-                taskManager.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
-                taskManager.addTaskTerminalListener(releaseListener::onTaskTerminal);
-                taskManager.addTaskTerminalListener(task -> {
+                taskManager.events().addTaskReadyListener(assignWorker::submit);
+                taskManager.events().addTaskDispatchListener(assignWorker::submit);
+                taskManager.events().addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
+                taskManager.events().addTaskTerminalListener(task -> {
                     if (Objects.equals(taskIdRef.get(), task.getTid())) {
                         terminalTask.compareAndSet(null, task);
                         terminalLatch.countDown();
@@ -386,7 +386,7 @@ public final class TaskFlowLoadModelRunner {
                                                     WorkerManager workerManager,
                                                     java.util.function.Consumer<Task> dispatchRequester,
                                                     ReleaseMetrics metrics) {
-            super(taskManager, workerManager, dispatchRequester);
+            super(taskManager, workerManager);
             this.metrics = metrics;
         }
 

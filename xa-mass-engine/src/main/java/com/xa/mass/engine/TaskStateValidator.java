@@ -15,7 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Audits persisted task and task-message state for invariant violations and reconciliation needs.
+ * Validates runtime task state and, when requested explicitly, audits the
+ * persisted TaskMsg projection for deeper consistency issues.
  */
 class TaskStateValidator {
 
@@ -26,6 +27,14 @@ class TaskStateValidator {
     }
 
     TaskStateValidationResult validateTaskState(String taskId) {
+        return validateTaskState(taskId, false);
+    }
+
+    TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return validateTaskState(taskId, true);
+    }
+
+    private TaskStateValidationResult validateTaskState(String taskId, boolean projectionAudit) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             TaskStateValidationResult result = new TaskStateValidationResult(
@@ -37,9 +46,17 @@ class TaskStateValidator {
                     0,
                     0,
                     0,
+                    projectionAudit
+                            ? TaskStateValidationResult.Scope.PROJECTION_AUDIT
+                            : TaskStateValidationResult.Scope.RUNTIME,
                     List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND)
             );
-            emitTaskStateValidationSummary(taskId, result, "task not found");
+            emitTaskStateValidationSummary(
+                    taskId,
+                    result,
+                    "task not found",
+                    projectionAudit ? "AUDIT_TASK_PROJECTION_STATE" : "VALIDATE_TASK_STATE"
+            );
             return result;
         }
 
@@ -113,6 +130,40 @@ class TaskStateValidator {
             }
         }
 
+        boolean needsResolution = !finalStatus
+                && taskManager.getTaskTerminalPolicy().evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
+        if (projectionAudit) {
+            needsResolution = needsResolution || auditTaskMessageProjection(taskId, violations);
+        }
+        TaskStateValidationResult result = new TaskStateValidationResult(
+                violations.isEmpty(),
+                needsResolution,
+                task.getStatus(),
+                task.getTerminalReason(),
+                stats.totalCount(),
+                stats.successCount(),
+                stats.failedCount(),
+                stats.processingCount(),
+                projectionAudit
+                        ? TaskStateValidationResult.Scope.PROJECTION_AUDIT
+                        : TaskStateValidationResult.Scope.RUNTIME,
+                List.copyOf(violations)
+        );
+        if (!result.isValid() || result.isNeedsResolution()) {
+            emitTaskStateValidationSummary(
+                    taskId,
+                    result,
+                    result.isNeedsResolution()
+                            ? "task requires explicit terminal reconciliation"
+                            : "task validation found invariant violations",
+                    projectionAudit ? "AUDIT_TASK_PROJECTION_STATE" : "VALIDATE_TASK_STATE"
+            );
+        }
+        return result;
+    }
+
+    private boolean auditTaskMessageProjection(String taskId,
+                                               List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
         for (TaskMsg taskMsg : taskManager.getTaskMessages(taskId)) {
             if (taskMsg == null) {
@@ -142,33 +193,13 @@ class TaskStateValidator {
                 violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
             }
         }
-
-        boolean needsResolution = !finalStatus
-                && taskManager.getTaskTerminalPolicy().evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
-        needsResolution = needsResolution || attemptNeedsResolution;
-        TaskStateValidationResult result = new TaskStateValidationResult(
-                violations.isEmpty(),
-                needsResolution,
-                task.getStatus(),
-                task.getTerminalReason(),
-                stats.totalCount(),
-                stats.successCount(),
-                stats.failedCount(),
-                stats.processingCount(),
-                List.copyOf(violations)
-        );
-        if (!result.isValid() || result.isNeedsResolution()) {
-            emitTaskStateValidationSummary(taskId, result,
-                    result.isNeedsResolution()
-                            ? "task requires explicit terminal reconciliation"
-                            : "task validation found invariant violations");
-        }
-        return result;
+        return attemptNeedsResolution;
     }
 
     private void emitTaskStateValidationSummary(String taskId,
                                                 TaskStateValidationResult validationResult,
-                                                String reason) {
+                                                String reason,
+                                                String trigger) {
         String violationSummary = validationResult.getViolations().stream()
                 .map(Enum::name)
                 .reduce((left, right) -> left + "," + right)
@@ -185,8 +216,9 @@ class TaskStateValidator {
                 validationResult.isNeedsResolution(),
                 validationResult.getViolations().size(),
                 violationSummary,
-                "VALIDATE_TASK_STATE",
+                trigger,
                 "TaskManager",
+                validationResult.getScope().name(),
                 reason,
                 validationResult.isValid() && !validationResult.isNeedsResolution() ? "SUCCESS" : "ANOMALY"
         );
