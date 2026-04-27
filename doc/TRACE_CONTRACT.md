@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
@@ -104,6 +104,12 @@ Specialized fields when relevant:
 - `currentStatus`
 - `retryDelayMillis`
 - `taskStatus`
+- `workloadClass`
+- `dispatchLane`
+- `dispatchPriority`
+- `batchPolicy`
+- `leaseProfile`
+- `backpressureClass`
 - `taskTargetNumber`
 - `taskEligibleNumber`
 - `taskSuccessNumber`
@@ -172,13 +178,14 @@ Rules:
 5. retry reset must include `retryCount`
 6. match rejection must include explicit `reason`
 7. task progress snapshot must include task aggregate counters and engine work-runtime aggregate counters
-8. assignment summary must include requested/matched/dispatched worker or message counts
-9. dispatch binding summary must include per-worker batch limit and unique worker/context counts
-10. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted
-11. assignment queue snapshot must include queue depth and scheduled retry count
-12. task-message-attempt transitions must include `attemptId`, `attemptNo`, and `finalReason` when the attempt closes
-13. task-message projection traces must use `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
-14. attempt-history traces may still use `workerId`, `workerContextId`, and `batchId` because those fields belong to `TaskMsgAttempt`
+8. task-level dispatch traces must include the resolved workload/runtime profile fields when a task is present
+9. assignment summary must include requested/matched/dispatched worker or message counts
+10. dispatch binding summary must include per-worker batch limit and unique worker/context counts
+11. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted
+12. assignment queue snapshot must include queue depth, dispatch lane, and scheduled retry count
+13. task-message-attempt transitions must include `attemptId`, `attemptNo`, and `finalReason` when the attempt closes
+14. task-message projection traces must use `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
+15. attempt-history traces may still use `workerId`, `workerContextId`, and `batchId` because those fields belong to `TaskMsgAttempt`
 
 ## 5. Replayability Requirement
 

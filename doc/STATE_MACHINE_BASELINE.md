@@ -26,6 +26,7 @@ Use with:
 6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
 7. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
 8. `TaskWorkRuntime` is the current engine hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes; `TaskMsg` and `TaskMsgAttempt` remain compatibility projection/audit models until the compression migration continues.
+9. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 
 ## 2. TaskStatus
 

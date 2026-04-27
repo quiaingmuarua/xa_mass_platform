@@ -6,6 +6,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.*;
+import com.xa.mass.engine.runtime.TaskRuntimeProfile;
+import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.work.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +23,7 @@ import java.util.Map;
 public final class TraceEventLogger {
 
     private static final Logger TRACE_LOGGER = LoggerFactory.getLogger(TraceEventLogger.class);
+    private static final TaskRuntimeProfileResolver TASK_RUNTIME_PROFILE_RESOLVER = new TaskRuntimeProfileResolver();
 
     private TraceEventLogger() {
     }
@@ -276,6 +279,29 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void dispatchSkipped(Task task,
+                                       String trigger,
+                                       String source,
+                                       String reason,
+                                       Integer requiredMinWorkerCount) {
+        if (task == null) {
+            return;
+        }
+        Map<String, String> traceFields = fields(
+                "entityType", "Task",
+                "entityId", task.getTid(),
+                "taskId", task.getTid(),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "requiredMinWorkerCount",
+                requiredMinWorkerCount != null ? String.valueOf(requiredMinWorkerCount) : null,
+                "result", "SKIPPED"
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("DISPATCH_SKIPPED", traceFields);
+    }
+
     public static void assignmentRetryScheduled(String taskId,
                                                 TaskStatus currentStatus,
                                                 String trigger,
@@ -315,6 +341,26 @@ public final class TraceEventLogger {
                 "reason", reason,
                 "result", "SUCCESS"
         ));
+    }
+
+    public static void dispatchRequested(Task task,
+                                         String trigger,
+                                         String source,
+                                         String reason) {
+        if (task == null) {
+            return;
+        }
+        Map<String, String> traceFields = fields(
+                "entityType", "Task",
+                "entityId", task.getTid(),
+                "taskId", task.getTid(),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("DISPATCH_REQUESTED", traceFields);
     }
 
     public static void callbackIgnoredDuplicate(TaskMsg taskMsg, String reason) {
@@ -501,7 +547,7 @@ public final class TraceEventLogger {
         if (task == null || stats == null) {
             return;
         }
-        emit("TASK_PROGRESS_SNAPSHOT", fields(
+        Map<String, String> traceFields = fields(
                 "entityType", "Task",
                 "entityId", task.getTid(),
                 "taskId", task.getTid(),
@@ -533,10 +579,12 @@ public final class TraceEventLogger {
                 "source", source,
                 "reason", reason,
                 "result", "SUCCESS"
-        ));
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("TASK_PROGRESS_SNAPSHOT", traceFields);
     }
 
-    public static void assignmentSummary(String taskId,
+    public static void assignmentSummary(Task task,
                                          TaskStatus initialStatus,
                                          TaskStatus currentStatus,
                                          Integer pendingDispatchCount,
@@ -552,10 +600,13 @@ public final class TraceEventLogger {
                                          String source,
                                          String reason,
                                          String result) {
-        emit("ASSIGNMENT_SUMMARY", fields(
+        if (task == null) {
+            return;
+        }
+        Map<String, String> traceFields = fields(
                 "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
+                "entityId", task.getTid(),
+                "taskId", task.getTid(),
                 "initialStatus", enumName(initialStatus),
                 "currentStatus", enumName(currentStatus),
                 "pendingDispatchCount", stringValue(pendingDispatchCount),
@@ -571,10 +622,12 @@ public final class TraceEventLogger {
                 "source", source,
                 "reason", reason,
                 "result", result
-        ));
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("ASSIGNMENT_SUMMARY", traceFields);
     }
 
-    public static void dispatchBindingSummary(String taskId,
+    public static void dispatchBindingSummary(Task task,
                                               int pendingMessageCount,
                                               int matchedWorkerCount,
                                               int dispatchSlotCount,
@@ -586,10 +639,13 @@ public final class TraceEventLogger {
                                               String source,
                                               String reason,
                                               String result) {
-        emit("DISPATCH_BINDING_SUMMARY", fields(
+        if (task == null) {
+            return;
+        }
+        Map<String, String> traceFields = fields(
                 "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
+                "entityId", task.getTid(),
+                "taskId", task.getTid(),
                 "pendingMessageCount", String.valueOf(pendingMessageCount),
                 "matchedWorkerCount", String.valueOf(matchedWorkerCount),
                 "dispatchSlotCount", String.valueOf(dispatchSlotCount),
@@ -602,7 +658,9 @@ public final class TraceEventLogger {
                 "source", source,
                 "reason", reason,
                 "result", result
-        ));
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("DISPATCH_BINDING_SUMMARY", traceFields);
     }
 
     public static void taskStateValidationSummary(String taskId,
@@ -643,8 +701,9 @@ public final class TraceEventLogger {
         ));
     }
 
-    public static void assignmentQueueSnapshot(String taskId,
+    public static void assignmentQueueSnapshot(Task task,
                                                TaskStatus taskStatus,
+                                               String dispatchLane,
                                                int queueDepth,
                                                int trackedBatchPendingCount,
                                                int scheduledRetryCount,
@@ -654,11 +713,12 @@ public final class TraceEventLogger {
                                                String source,
                                                String reason,
                                                String result) {
-        emit("ASSIGNMENT_QUEUE_SNAPSHOT", fields(
+        Map<String, String> traceFields = fields(
                 "entityType", "AssignmentQueue",
-                "entityId", taskId != null && !taskId.isBlank() ? taskId : "task-assign-queue",
-                "taskId", taskId,
+                "entityId", task != null && task.getTid() != null && !task.getTid().isBlank() ? task.getTid() : "task-assign-queue",
+                "taskId", task != null ? task.getTid() : null,
                 "taskStatus", enumName(taskStatus),
+                "dispatchLane", dispatchLane,
                 "queueDepth", String.valueOf(queueDepth),
                 "trackedBatchPendingCount", String.valueOf(trackedBatchPendingCount),
                 "scheduledRetryCount", String.valueOf(scheduledRetryCount),
@@ -668,7 +728,9 @@ public final class TraceEventLogger {
                 "source", source,
                 "reason", reason,
                 "result", result
-        ));
+        );
+        putTaskRuntimeProfile(traceFields, task);
+        emit("ASSIGNMENT_QUEUE_SNAPSHOT", traceFields);
     }
 
     private static void emit(String event, Map<String, String> fields) {
@@ -723,5 +785,18 @@ public final class TraceEventLogger {
 
     private static String latestAttemptBatchId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
         return attempt != null ? attempt.getBatchId() : taskMsg.getLatestAttemptBatchId();
+    }
+
+    private static void putTaskRuntimeProfile(Map<String, String> fields, Task task) {
+        if (task == null) {
+            return;
+        }
+        TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
+        fields.put("workloadClass", enumName(task.getWorkloadClass()));
+        fields.put("dispatchLane", enumName(profile.dispatchLane()));
+        fields.put("dispatchPriority", enumName(profile.dispatchPriority()));
+        fields.put("batchPolicy", enumName(profile.batchPolicy()));
+        fields.put("leaseProfile", enumName(profile.leaseProfile()));
+        fields.put("backpressureClass", enumName(profile.backpressureClass()));
     }
 }

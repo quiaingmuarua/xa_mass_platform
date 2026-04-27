@@ -53,7 +53,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
             TraceEventLogger.dispatchBindingSummary(
-                    task.getTid(),
+                    task,
                     0,
                     0,
                     0,
@@ -73,7 +73,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
             TraceEventLogger.dispatchBindingSummary(
-                    task.getTid(),
+                    task,
                     0,
                     matchedWorkers.size(),
                     0,
@@ -174,7 +174,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 .distinct()
                 .count();
         TraceEventLogger.dispatchBindingSummary(
-                task.getTid(),
+                task,
                 totalMessages,
                 matchedWorkers.size(),
                 dispatchSlots.size(),

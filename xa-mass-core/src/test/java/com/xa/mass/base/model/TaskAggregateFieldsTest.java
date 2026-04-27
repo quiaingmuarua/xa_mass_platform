@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -75,5 +76,12 @@ class TaskAggregateFieldsTest {
         assertNotNull(task.getProjectRef());
         assertEquals("demoApp", task.getProjectRef().getCode());
         assertEquals("agent-1", task.getUser().getUserId());
+    }
+
+    @Test
+    void workloadClassDefaultsToBulk() {
+        Task task = new Task();
+
+        assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
     }
 }

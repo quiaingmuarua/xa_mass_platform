@@ -1,6 +1,7 @@
 package com.xa.mass.testing.perf;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -244,6 +245,7 @@ public final class TaskFlowLoadModelRunner {
             dto.setUserId("load-model");
             dto.setBatchSize(config.batchSize());
             dto.setDefaultMsgMaxRetryCount(config.maxRetryCount());
+            dto.setWorkloadClass(config.workloadClass());
             dto.setInputs(buildInputs(config.messageCount()));
             dto.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
             return dto;
@@ -296,7 +298,8 @@ public final class TaskFlowLoadModelRunner {
                     "status", task.getStatus().name(),
                     "terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : "",
                     "peakAssignedWorkerCount", task.getPeakAssignedWorkerCount(),
-                    "batchSize", task.getBatchSize()
+                    "batchSize", task.getBatchSize(),
+                    "workloadClass", task.getWorkloadClass() != null ? task.getWorkloadClass().name() : null
             ));
             report.put("wallClock", Map.of(
                     "totalMillis", nanosToMillis(totalWallNanos),
@@ -568,6 +571,7 @@ public final class TaskFlowLoadModelRunner {
                               int batchSize,
                               int callbackThreads,
                               int maxRetryCount,
+                              TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
                               long timeoutSeconds,
                               long assignmentRetryDelayMillis) {
@@ -580,6 +584,7 @@ public final class TaskFlowLoadModelRunner {
                     intProperty("mass.load.batchSize", 4),
                     intProperty("mass.load.callbackThreads", 8),
                     maxRetryCount,
+                    workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
                     longProperty("mass.load.timeoutSeconds", 60L),
                     longProperty("mass.load.assignmentRetryDelayMillis", 25L)
@@ -593,6 +598,7 @@ public final class TaskFlowLoadModelRunner {
             config.put("batchSize", batchSize);
             config.put("callbackThreads", callbackThreads);
             config.put("maxRetryCount", maxRetryCount);
+            config.put("workloadClass", workloadClass.name());
             config.put("retryFailureEveryNth", retryFailureEveryNth);
             config.put("timeoutSeconds", timeoutSeconds);
             config.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
@@ -696,6 +702,14 @@ public final class TaskFlowLoadModelRunner {
 
     private static long longProperty(String key, long defaultValue) {
         return Long.parseLong(System.getProperty(key, Long.toString(defaultValue)));
+    }
+
+    private static TaskWorkloadClass workloadClassProperty(String key, TaskWorkloadClass defaultValue) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        return TaskWorkloadClass.valueOf(raw.trim().toUpperCase(Locale.ROOT));
     }
 
     private static double nanosToMillis(long nanos) {

@@ -45,6 +45,7 @@ Canonical slots:
 
 - worker: `Worker`
 - worker context: `WorkerContext` and it is optional
+- task workload class: `Task.workloadClass`
 - work item: `TaskMsg`
 - per-item payload: `TaskMsg.input/output`
 - task-level dispatch config: `Task.sharedConfig`
@@ -65,6 +66,8 @@ Rules:
 - do not let the same class name mean different things across layers
 - `EventDefinition.code` is globally unique capability identity
 - SDK-first resource creation is the preferred path: `registerWorker(...)`, `registerWorkerContext(...)`, `registerProject(...)`, `registerEventDefinition(...)`
+- `Task.workloadClass` is the explicit task-level runtime optimization boundary; current mainline values are `INTERACTIVE` and `BULK`
+- task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig` keys
 - task orchestration and worker matching belong at the task or task-slice level; do not reintroduce per-`TaskMsg` rule matching on the hot path
 - `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the future business-detail query model
 - large-scale task detail analysis belongs in structured trace, audit sinks, or downstream storage, not engine-owned full-message query projections
@@ -105,10 +108,12 @@ Task and payload summary:
 - task creation has one HTTP route: `POST /status/api/tasks`
 - `project` and `userId` are required business bindings on create
 - `inputs` is the only supported create shape for work-item materialization
+- `workloadClass` is an explicit create-time field; it defaults to `BULK` when omitted
 - `PUT /status/api/tasks/{taskId}` is metadata-only and only valid while `NEW` or `BLOCKED`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
 - `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
+- engine runtime policy normalization goes through `TaskRuntimeProfile`; assignment, retry, and trace consume the resolved profile rather than reinterpreting `sharedConfig`
 - public create/update/read contracts do not define a dedicated routing-code field
 - engine-provided `TaskMsg` reads remain bounded compatibility helpers; production-scale detail should flow through structured trace or downstream audit storage
 - exact HTTP fields and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)

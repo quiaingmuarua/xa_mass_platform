@@ -9,6 +9,7 @@ Use with:
 
 - [../AGENTS.md](../AGENTS.md)
 - [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
+- [./engine/TASK_RUNTIME_PROFILE_DESIGN.md](./engine/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 
@@ -37,6 +38,7 @@ Still too heavy on the hot path:
 Keep these decisions stable:
 
 - `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, ingest state, aggregate counters, terminal reason
+- runtime workload selection should resolve once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
 - task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-`TaskMsg` rule matching as a scaling fallback
 - the default runnable unit is a queue-native envelope, not a full `TaskMsg` object graph
 - convergence is counter-driven, not full-message-scan-driven

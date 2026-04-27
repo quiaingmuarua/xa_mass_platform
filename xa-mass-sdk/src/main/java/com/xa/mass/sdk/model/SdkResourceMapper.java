@@ -28,6 +28,7 @@ public final class SdkResourceMapper {
         dto.setOpenEnded(request.isOpenEnded());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
         dto.setSourceType(request.getSourceType());
+        dto.setWorkloadClass(request.getWorkloadClass());
         dto.setSourceRef(request.getSourceRef());
         return dto;
     }

@@ -115,6 +115,7 @@ public class TaskManager {
                     user
             );
             task.setSourceType(sourceType);
+            task.setWorkloadClass(dto.getWorkloadClass());
             task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
             task.setIngestStatus(resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), initNumber));
             task.setBatchSize(dto.getBatchSize());

@@ -32,17 +32,21 @@ Verified path:
 1. task enters `READY` through `approveTask()` or `resumeTask()`
 2. `TaskManager` notifies READY listeners
 3. `MassEngine` hands a task-ready assignment signal to `TaskAssignWorker`
-4. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`
-5. no match causes delayed retry, not orphaning
-6. if matching succeeds and task is still `READY`, task enters `RUNNING`
-7. `SimpleTaskMsgAssignListener` claims ready work through `TaskWorkRuntime.claimReady(...)`
-8. each claimed item gets an active lease and updates `TaskMsg`
-9. dispatch channel sends the claimed work downstream
+4. `TaskAssignWorker` resolves `TaskRuntimeProfile` from `Task.workloadClass` and routes the signal into the `INTERACTIVE` or `BULK` assignment lane
+5. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`
+6. no match causes delayed retry, not orphaning
+7. if matching succeeds and task is still `READY`, task enters `RUNNING`
+8. `SimpleTaskMsgAssignListener` claims ready work through `TaskWorkRuntime.claimReady(...)`
+9. each claimed item gets an active lease and updates `TaskMsg`
+10. dispatch channel sends the claimed work downstream
 
 Key facts:
 
 - `batchSize` is a per-worker cap for each dispatch round
 - `minRequiredWorkerCount` is the start gate
+- `Task.workloadClass` is task-level orchestration intent; current engine classes are `INTERACTIVE` and `BULK`
+- `TaskRuntimeProfile` is the internal normalized runtime policy used by assignment, retry, and trace
+- current lane split is an assignment-entry skeleton, not full fair scheduling or multi-executor throughput optimization
 - worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch
 - surplus matched workers used only for the start gate are unlocked immediately
 - active lease truth is in `TaskWorkRuntime`

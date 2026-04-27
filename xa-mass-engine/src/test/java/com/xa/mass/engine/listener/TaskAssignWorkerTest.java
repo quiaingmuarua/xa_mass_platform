@@ -1,6 +1,7 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.AfterEach;
@@ -69,6 +70,7 @@ class TaskAssignWorkerTest {
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "t1".equals(mdc.get("taskId"))
                             && "SUBMITTED".equals(mdc.get("queueAction"))
+                            && "BULK".equals(mdc.get("dispatchLane"))
                             && "TaskAssignWorker".equals(mdc.get("source")));
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "t1".equals(mdc.get("taskId"))
@@ -283,6 +285,54 @@ class TaskAssignWorkerTest {
     }
 
     @Test
+    void interactiveLaneContinuesWhileBulkLaneIsBlocked() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch bulkStarted = new CountDownLatch(1);
+        CountDownLatch releaseBulk = new CountDownLatch(1);
+        CountDownLatch interactiveProcessed = new CountDownLatch(1);
+
+        TaskWorkerAssignListener laneAwareListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            if ("bulk-blocked".equals(task.getTid())) {
+                bulkStarted.countDown();
+                assertTrue(releaseBulk.await(3, TimeUnit.SECONDS));
+            }
+            task.transitionTo(TaskStatus.RUNNING);
+            if ("interactive-fast".equals(task.getTid())) {
+                interactiveProcessed.countDown();
+            }
+            return true;
+        }).when(laneAwareListener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(laneAwareListener, 50L, 1);
+        worker.start();
+
+        Task bulkTask = bulkTask("bulk-blocked");
+        Task interactiveTask = interactiveTask("interactive-fast");
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(worker.submit(bulkTask));
+            assertTrue(bulkStarted.await(3, TimeUnit.SECONDS), "bulk lane should start processing first");
+            assertTrue(worker.submit(interactiveTask));
+            assertTrue(interactiveProcessed.await(1, TimeUnit.SECONDS),
+                    "interactive lane should still make progress while bulk lane is blocked");
+
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "interactive-fast".equals(mdc.get("taskId"))
+                            && "INTERACTIVE".equals(mdc.get("dispatchLane"))
+                            && "SUBMITTED".equals(mdc.get("queueAction")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "bulk-blocked".equals(mdc.get("taskId"))
+                            && "BULK".equals(mdc.get("dispatchLane"))
+                            && "SUBMITTED".equals(mdc.get("queueAction")));
+        } finally {
+            releaseBulk.countDown();
+        }
+    }
+
+    @Test
     void submitAllDrainsEvenWhenOneTaskIsSkippedAsNonDispatchable() throws InterruptedException {
         CountDownLatch allDoneLatch = new CountDownLatch(1);
         worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
@@ -358,6 +408,18 @@ class TaskAssignWorkerTest {
         Task t = new Task();
         t.setTid(tid);
         t.setStatus(TaskStatus.READY);
+        return t;
+    }
+
+    private Task interactiveTask(String tid) {
+        Task t = readyTask(tid);
+        t.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        return t;
+    }
+
+    private Task bulkTask(String tid) {
+        Task t = readyTask(tid);
+        t.setWorkloadClass(TaskWorkloadClass.BULK);
         return t;
     }
 

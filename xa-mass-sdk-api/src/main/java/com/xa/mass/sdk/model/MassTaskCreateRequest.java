@@ -1,6 +1,7 @@
 package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.enums.task.TaskSourceType;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.*;
 
@@ -22,6 +23,7 @@ public final class MassTaskCreateRequest {
     private final boolean openEnded;
     private final int maxRuntimeSeconds;
     private final TaskSourceType sourceType;
+    private final TaskWorkloadClass workloadClass;
     private final String sourceRef;
 
     private MassTaskCreateRequest(Builder builder) {
@@ -35,6 +37,7 @@ public final class MassTaskCreateRequest {
         this.openEnded = builder.openEnded;
         this.maxRuntimeSeconds = builder.maxRuntimeSeconds;
         this.sourceType = builder.sourceType;
+        this.workloadClass = builder.workloadClass;
         this.sourceRef = normalizeString(builder.sourceRef);
     }
 
@@ -85,6 +88,10 @@ public final class MassTaskCreateRequest {
         return openEnded ? TaskSourceType.STREAM : TaskSourceType.BATCH;
     }
 
+    public TaskWorkloadClass getWorkloadClass() {
+        return workloadClass == null ? TaskWorkloadClass.BULK : workloadClass;
+    }
+
     public String getSourceRef() {
         return sourceRef;
     }
@@ -103,13 +110,14 @@ public final class MassTaskCreateRequest {
                 && Objects.equals(sharedConfig, that.sharedConfig)
                 && Objects.equals(inputs, that.inputs)
                 && getSourceType() == that.getSourceType()
+                && getWorkloadClass() == that.getWorkloadClass()
                 && Objects.equals(sourceRef, that.sourceRef);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(userId, project, taskName, sharedConfig, inputs,
-                batchSize, defaultMsgMaxRetryCount, openEnded, maxRuntimeSeconds, getSourceType(), sourceRef);
+                batchSize, defaultMsgMaxRetryCount, openEnded, maxRuntimeSeconds, getSourceType(), getWorkloadClass(), sourceRef);
     }
 
     @Override
@@ -125,6 +133,7 @@ public final class MassTaskCreateRequest {
                 ", openEnded=" + openEnded +
                 ", maxRuntimeSeconds=" + maxRuntimeSeconds +
                 ", sourceType=" + getSourceType() +
+                ", workloadClass=" + getWorkloadClass() +
                 ", sourceRef='" + sourceRef + '\'' +
                 '}';
     }
@@ -158,6 +167,7 @@ public final class MassTaskCreateRequest {
         private boolean openEnded;
         private int maxRuntimeSeconds;
         private TaskSourceType sourceType;
+        private TaskWorkloadClass workloadClass;
         private String sourceRef;
 
         private Builder() {
@@ -223,6 +233,11 @@ public final class MassTaskCreateRequest {
 
         public Builder sourceType(TaskSourceType sourceType) {
             this.sourceType = sourceType;
+            return this;
+        }
+
+        public Builder workloadClass(TaskWorkloadClass workloadClass) {
+            this.workloadClass = workloadClass;
             return this;
         }
 

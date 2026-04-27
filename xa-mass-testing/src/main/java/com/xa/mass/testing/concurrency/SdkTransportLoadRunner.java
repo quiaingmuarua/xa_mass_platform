@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -311,6 +312,7 @@ public final class SdkTransportLoadRunner {
                     .userId("sdk-load")
                     .project("demoApp")
                     .taskName("sdk-transport-load-" + taskIndex)
+                    .workloadClass(config.workloadClass())
                     .sharedConfig(Map.of(
                             "source", "SdkTransportLoadRunner",
                             "taskIndex", taskIndex,
@@ -1128,6 +1130,7 @@ public final class SdkTransportLoadRunner {
                               int pollBatchSize,
                               int workerProcessingThreads,
                               int processingDelayMillis,
+                              TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
                               int maxRetryCount,
                               int timeoutSeconds) {
@@ -1141,6 +1144,7 @@ public final class SdkTransportLoadRunner {
                     intProperty("mass.sdk.load.pollBatchSize", 4),
                     intProperty("mass.sdk.load.workerProcessingThreads", 2),
                     intProperty("mass.sdk.load.processingDelayMillis", 5),
+                    workloadClassProperty("mass.sdk.load.workloadClass", TaskWorkloadClass.BULK),
                     intProperty("mass.sdk.load.retryFailureEveryNth", 0),
                     intProperty("mass.sdk.load.maxRetryCount", 2),
                     intProperty("mass.sdk.load.timeoutSeconds", 60)
@@ -1170,6 +1174,7 @@ public final class SdkTransportLoadRunner {
             values.put("pollBatchSize", pollBatchSize);
             values.put("workerProcessingThreads", workerProcessingThreads);
             values.put("processingDelayMillis", processingDelayMillis);
+            values.put("workloadClass", workloadClass.name());
             values.put("retryFailureEveryNth", retryFailureEveryNth);
             values.put("maxRetryCount", maxRetryCount);
             values.put("timeoutSeconds", timeoutSeconds);
@@ -1342,6 +1347,14 @@ public final class SdkTransportLoadRunner {
             return defaultValue;
         }
         return Integer.parseInt(raw.trim());
+    }
+
+    private static TaskWorkloadClass workloadClassProperty(String key, TaskWorkloadClass defaultValue) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        return TaskWorkloadClass.valueOf(raw.trim().toUpperCase(Locale.ROOT));
     }
 
     private static boolean booleanProperty(String key, boolean defaultValue) {

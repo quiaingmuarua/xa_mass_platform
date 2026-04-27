@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
@@ -49,6 +50,7 @@ class TaskManagerLifecycleTest {
 
         assertEquals(TaskStatus.NEW, task.getStatus());
         assertEquals(TaskSourceType.BATCH, task.getSourceType());
+        assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
         assertEquals(TaskIngestStatus.SEALED, task.getIngestStatus());
         assertNotNull(task.getProjectRef());
         assertEquals("demoApp", task.getProjectRef().getCode());
@@ -63,6 +65,20 @@ class TaskManagerLifecycleTest {
         assertEquals(task.getTid(), messages.get(1).getTaskId());
         assertNotEquals(messages.get(0).getMessageId(), messages.get(1).getMessageId());
         assertEquals(2, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+    }
+
+    @Test
+    void createTaskPreservesExplicitInteractiveWorkloadIndependentlyFromSourceType() {
+        TaskCreateRequestDto dto = buildRequest("task-interactive");
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setOpenEnded(true);
+        dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+
+        Task task = taskManager.createTask(dto);
+
+        assertEquals(TaskSourceType.STREAM, task.getSourceType());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
+        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
     }
 
     @Test

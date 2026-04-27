@@ -391,6 +391,7 @@ public class TaskApiController {
         item.put("project", task.getProject());
         item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
+        item.put("workloadClass", task.getWorkloadClass() != null ? task.getWorkloadClass().name() : null);
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
         item.put("successCount", task.getTaskSuccessNumber());
         item.put("eligibleCount", task.getTaskEligibleNumber());
@@ -466,6 +467,7 @@ public class TaskApiController {
                 .openEnded(requestBody.isOpenEnded())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
                 .sourceType(resolveSourceType(requestBody))
+                .workloadClass(requestBody.getWorkloadClass())
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -504,6 +506,7 @@ public class TaskApiController {
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
                 .sourceType(resolveSourceType(requestBody))
+                .workloadClass(requestBody.getWorkloadClass())
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -538,6 +541,7 @@ public class TaskApiController {
                 && !requestBody.isOpenEnded()
                 && requestBody.getMaxRuntimeSeconds() == 0
                 && requestBody.getSourceType() == null
+                && requestBody.getWorkloadClass() == null
                 && requestBody.getSourceRef() == null;
     }
 

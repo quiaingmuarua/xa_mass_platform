@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -36,6 +37,7 @@ public class Task {
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
     private TaskSourceType sourceType;
+    private TaskWorkloadClass workloadClass;
     private TaskIngestStatus ingestStatus;
     private String sourceRef;
     private TaskIntakeStatus intakeStatus;
@@ -51,6 +53,7 @@ public class Task {
     public Task() {
         this.status = TaskStatus.NEW;
         this.sourceType = TaskSourceType.BATCH;
+        this.workloadClass = TaskWorkloadClass.BULK;
         this.ingestStatus = TaskIngestStatus.SEALED;
         this.intakeStatus = TaskIntakeStatus.SEALED;
         this.batchSize = 1;
@@ -223,6 +226,15 @@ public class Task {
 
     public void setSourceType(TaskSourceType sourceType) {
         this.sourceType = sourceType == null ? TaskSourceType.BATCH : sourceType;
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public TaskWorkloadClass getWorkloadClass() {
+        return workloadClass;
+    }
+
+    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+        this.workloadClass = workloadClass == null ? TaskWorkloadClass.BULK : workloadClass;
         this.updateTime = LocalDateTime.now();
     }
 
@@ -419,6 +431,7 @@ public class Task {
                 ", project='" + project + '\'' +
                 ", status=" + status +
                 ", sourceType=" + sourceType +
+                ", workloadClass=" + workloadClass +
                 ", ingestStatus=" + ingestStatus +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +

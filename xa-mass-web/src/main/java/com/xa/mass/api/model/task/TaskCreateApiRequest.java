@@ -3,6 +3,7 @@ package com.xa.mass.api.model.task;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 import com.xa.mass.base.enums.task.TaskSourceType;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
 
@@ -25,6 +26,7 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private boolean openEnded;
     private int maxRuntimeSeconds;
     private TaskSourceType sourceType;
+    private TaskWorkloadClass workloadClass;
     private String sourceRef;
 
     public String getUserId() {
@@ -129,6 +131,14 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setSourceType(TaskSourceType sourceType) {
         this.sourceType = sourceType;
+    }
+
+    public TaskWorkloadClass getWorkloadClass() {
+        return workloadClass;
+    }
+
+    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+        this.workloadClass = workloadClass;
     }
 
     public String getSourceRef() {

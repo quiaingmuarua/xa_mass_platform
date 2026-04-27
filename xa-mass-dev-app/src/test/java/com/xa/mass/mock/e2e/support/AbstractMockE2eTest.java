@@ -1,5 +1,6 @@
 package com.xa.mass.mock.e2e.support;
 
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -105,12 +106,23 @@ public abstract class AbstractMockE2eTest {
     }
 
     protected String createTaskId(String taskName, String textContent, List<String> targets, int batchSize) {
+        return createTaskId(taskName, textContent, targets, batchSize, null);
+    }
+
+    protected String createTaskId(String taskName,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  TaskWorkloadClass workloadClass) {
         String defaultRoutingCode = "us";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
         createBody.put("userId", "itest");
+        if (workloadClass != null) {
+            createBody.put("workloadClass", workloadClass.name());
+        }
         createBody.put("inputs", targets.stream()
                 .map(target -> Map.<String, Object>of("target", target))
                 .toList());

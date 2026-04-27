@@ -2,6 +2,7 @@ package com.xa.mass.engine.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.base.enums.task.TaskSourceType;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ public class TaskCreateRequestDto {
     private boolean openEnded = false;
     private int maxRuntimeSeconds = 0;
     private TaskSourceType sourceType;
+    private TaskWorkloadClass workloadClass;
     private String sourceRef;
 
     public TaskCreateRequestDto() {
@@ -126,6 +128,14 @@ public class TaskCreateRequestDto {
 
     public void setSourceType(TaskSourceType sourceType) {
         this.sourceType = sourceType;
+    }
+
+    public TaskWorkloadClass getWorkloadClass() {
+        return workloadClass;
+    }
+
+    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+        this.workloadClass = workloadClass;
     }
 
     public String getSourceRef() {

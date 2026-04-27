@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.SdkTaskResumeResult;
@@ -137,6 +138,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
+                                  "workloadClass":"INTERACTIVE",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "inputs":[{"target":"alpha"},{"target":"beta"}],
@@ -156,6 +158,7 @@ class TaskApiControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals("hello", request.getSharedConfig().get("textContent"));
         org.junit.jupiter.api.Assertions.assertEquals("agent", request.getUserId());
         org.junit.jupiter.api.Assertions.assertEquals(2, request.getBatchSize());
+        org.junit.jupiter.api.Assertions.assertEquals(TaskWorkloadClass.INTERACTIVE, request.getWorkloadClass());
         org.junit.jupiter.api.Assertions.assertEquals(List.of(
                 Map.of("target", "alpha"),
                 Map.of("target", "beta")
@@ -176,6 +179,7 @@ class TaskApiControllerTest {
                                   "taskName":"sdk-crawler",
                                   "project":"demoApp",
                                   "eventCode":"crawler.fetch-page",
+                                  "workloadClass":"BULK",
                                   "mode":"STREAMING",
                                   "payloadType":"JSON",
                                   "sharedConfig":{"site":"example"},
@@ -199,6 +203,7 @@ class TaskApiControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
         org.junit.jupiter.api.Assertions.assertEquals("example", request.getSharedConfig().get("site"));
         org.junit.jupiter.api.Assertions.assertTrue(request.isStreaming());
+        org.junit.jupiter.api.Assertions.assertEquals(TaskWorkloadClass.BULK, request.getWorkloadClass());
         org.junit.jupiter.api.Assertions.assertEquals(List.of(
                 Map.of("type", "json", "data", Map.of("url", "https://example.test"))
         ), request.toEngineInputs());

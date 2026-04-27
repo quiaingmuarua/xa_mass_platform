@@ -27,6 +27,7 @@ public final class MassTaskRequestMapper {
         dto.setOpenEnded(request.isStreaming());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
         dto.setSourceType(request.getSourceType());
+        dto.setWorkloadClass(request.getWorkloadClass());
         dto.setSourceRef(request.getSourceRef());
         return dto;
     }

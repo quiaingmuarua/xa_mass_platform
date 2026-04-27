@@ -34,6 +34,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
 - `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
+- `Task.workloadClass` is an explicit task-level create field; current values are `INTERACTIVE` and `BULK`, and omission defaults to `BULK`.
 - `TaskMsg.output` is the canonical logical success payload for one work item; `result` remains a summary/string read-model field.
 - `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
 - `target` is only a conventional key inside `TaskMsg.input`.
@@ -204,6 +205,9 @@ Supported request fields:
 - `defaultMsgMaxRetryCount`
 - `openEnded`
 - `maxRuntimeSeconds`
+- `sourceType`
+- `workloadClass`
+- `sourceRef`
 
 Contract rules:
 
@@ -212,6 +216,9 @@ Contract rules:
 - unsupported `project` values are rejected
 - unknown JSON fields are rejected
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
+- `workloadClass` controls engine runtime optimization intent only; it is not inferred from `sharedConfig`
+- current supported workload classes are `INTERACTIVE` and `BULK`
+- omitted `workloadClass` defaults to `BULK`
 - when `eventCode` is present, create uses the SDK mode/payload-aware path
 - when `eventCode` is present, `project` and `eventCode` must exist in the SDK metadata catalog and the project must declare support for that event
 - when `eventCode` is present, runtime worker capability is matched by worker-declared `supportedEventCodes`
@@ -235,13 +242,14 @@ Contract rules:
 Example request:
 
 ```json
-{
-  "userId": "agent",
-  "project": "demoApp",
-  "taskName": "smoke-lifecycle",
-  "sharedConfig": {
-    "textContent": "hello"
-  },
+  {
+    "userId": "agent",
+    "project": "demoApp",
+    "taskName": "smoke-lifecycle",
+    "workloadClass": "INTERACTIVE",
+    "sharedConfig": {
+      "textContent": "hello"
+    },
   "inputs": [
     {
       "target": "target-001"

@@ -50,6 +50,7 @@ Start here based on the change:
 - transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
 - websocket adapter/transport: [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- runtime workload profiles for low-latency interactive tasks vs high-throughput bulk tasks: [doc/engine/TASK_RUNTIME_PROFILE_DESIGN.md](doc/engine/TASK_RUNTIME_PROFILE_DESIGN.md)
 - high-volume transport worker-event delivery: [transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
