@@ -10,7 +10,7 @@ Use with:
 - [../AGENTS.md](../AGENTS.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
-- [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
+- [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
 
 ## 1. Global Rules
 

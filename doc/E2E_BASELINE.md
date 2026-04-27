@@ -19,9 +19,9 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 
 Current mainline note:
 
-- today the Boot-shell E2E path validates both the current realtime WebSocket adapter and the pull-style worker path
+- today the Boot-shell E2E path validates the stable polling external-worker path plus the current realtime adapter paths
 - pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, `NodePollingWorkerBlackBoxIntegrationTest`, and `TransportChannelWiringIntegrationTest`
-- WebSocket is still the current realtime adapter for push/callback WebSocket-adapter risks, but it is no longer the only accepted shell path and it is not the external worker mainline
+- realtime shell coverage currently includes WebSocket and socket adapter risks, but polling remains the stable public external-worker contract
 
 Fixture note:
 
@@ -100,4 +100,4 @@ then acceptance requires both:
 1. E2E coverage for the changed path
 2. trace coverage for the critical transition
 
-For policy interaction changes, also cover the touched pairwise interaction from [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md).
+For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).

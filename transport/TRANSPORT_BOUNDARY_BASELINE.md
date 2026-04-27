@@ -1,7 +1,7 @@
 # Transport Boundary Baseline
 
-This note freezes the current transport model boundary so future adapter work
-does not turn transport into a second task engine.
+This file freezes the current transport boundary so transport does not turn
+into a second task engine.
 
 Transport is now a production data plane, not an adapter experiment. Favor
 throughput, availability, bounded admission, and idempotent runtime behavior
@@ -26,24 +26,13 @@ Engine remains the owner of task lifecycle:
 
 ## Stable Concepts
 
-Transport should converge around these stable concepts only:
+Transport should stay centered on these concepts only:
 
-- `TaskDispatchChannel`
-  - adapter dispatch SPI used by runtime/engine integration
-  - returns `DispatchOutcome` for every dispatch item it accepts
-- `DispatchOutcome`
-  - adapter-neutral dispatch result
-  - may drive logging, tracing, delivery retry policy, and backpressure decisions
-  - must not directly mutate task lifecycle state
-- `TransportDelivery`
-  - runtime-owned delivery record
-  - may be backed by memory, Redis, JDBC, or another store
-  - must not become a `TaskMsg` replacement
-- `TaskResultIngestChannel`
-  - result ingress boundary from adapters/runtime back to engine lifecycle
-- `TransportResultEnvelope`
-  - transport metadata wrapper around `TaskResultReport`
-  - must not become a second worker result protocol
+- `TaskDispatchChannel`: adapter dispatch SPI returning `DispatchOutcome`
+- `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
+- `TransportDelivery`: runtime-owned delivery record, not a `TaskMsg` replacement
+- `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
+- `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -86,15 +75,8 @@ The internal attempt identity is intentionally exposed through `attemptId()`, no
 JavaBean convention. Do not add JavaBean getters for internal metadata unless
 the worker wire contract is intentionally changed.
 
-Longer term, split this hybrid only when the current contract becomes a real
-constraint:
-
-- `DispatchWorkItem` for worker payload
-- `DispatchContext` for adapter/runtime metadata
-- `TransportDelivery` containing both
-
-Do not perform that split opportunistically; it touches adapter codecs and
-external worker API shape.
+Do not split this hybrid opportunistically. That is a cross-adapter wire change
+touching adapter codecs and external worker API behavior.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
@@ -122,19 +104,6 @@ Do not add generic-looking transport models such as `TransportTask`,
 `TransportTaskMessage`, `WorkerDeliveryState`, or `TaskTransportSnapshot`
 without first proving why the existing five stable concepts cannot carry the
 behavior.
-
-## Security Staging
-
-Attempt identity and lease-token security should evolve in stages:
-
-1. Carry internal attempt identity through runtime metadata.
-2. Log-only validate envelope attempt identity against the active attempt.
-3. Add store-level active-attempt lookup that is O(1) for Redis/JDBC.
-4. Define lease token generation, expiry, and retry semantics.
-5. Only then reject mismatched or missing identities for workers/adapters that
-   have opted into the stricter contract.
-
-Until stage 5, mismatch handling must not change task lifecycle behavior.
 
 ## Hot-Path Rule
 

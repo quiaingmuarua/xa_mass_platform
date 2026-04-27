@@ -65,7 +65,7 @@ Policy interaction rule:
 - use existing stable events when a policy decision maps directly to a lifecycle event
 - add a new stable event only when the decision would otherwise be hidden
 - any new policy event must include `policyName`, `decision`, and `reason`
-- update [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) and tests in the same change
+- update [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md) and tests in the same change
 
 ## 3. Required Fields
 

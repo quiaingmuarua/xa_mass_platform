@@ -29,7 +29,8 @@
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
-  - [`../doc/engine/TASK_EXECUTION_FLOW.md`](../doc/engine/TASK_EXECUTION_FLOW.md)
+  - [`TASK_EXECUTION_FLOW.md`](./TASK_EXECUTION_FLOW.md)
+  - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md)
   - [`STORAGE_BASELINE.md`](STORAGE_BASELINE.md)
 
 ## Concurrency And Refill Risks

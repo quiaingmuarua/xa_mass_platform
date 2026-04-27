@@ -1,63 +1,50 @@
 # Documentation Index
 
-This directory holds the active, non-archived project documents.
+This directory holds active project-level docs only.
 
 Use [../AGENTS.md](../AGENTS.md) for the canonical repo-root handoff and read order.
-Use this page as the directory index and owner map once you are already inside `doc/`.
+Use this page only as an index once you are already inside `doc/`.
 
 ## 1. What Each File Is For
 
 - [../README.md](../README.md)
-  - The shortest product-positioning summary: what the platform is now.
+  - shortest project summary
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
-  - Single repo-level index of deprecated, compatibility, and legacy seams that still exist in active paths.
+  - repo-level deprecated and compatibility seams
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
-  - Stable project baseline for agents: platform definition, guardrails, active module truth, payload contract, and lifecycle baseline.
+  - mainline baseline and guardrails
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
-  - Top-level testing-system map: taxonomy, CI placement guidance, acceptance lanes, and agent fast path.
+  - cross-module testing policy and lane map
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
-  - Normative state vocabulary and invariants for `Task`, `TaskMsg`, `WorkerContext`, and `TaskTerminalReason`.
+  - lifecycle vocabulary and invariants
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-  - Minimum required structured trace surface for lifecycle debugging and replayability.
+  - required trace surface
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
-  - Short release-gate baseline for what must be covered by active-mainline E2E tests and which transport paths are validated through SDK integration versus Boot-shell E2E.
+  - release-gate E2E scope
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-  - Verified startup path, runtime checks, and current execution conclusions.
+  - verified startup and regression commands
 - [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-  - Current HTTP/API inventory, request contract, response shape, and implementation status.
-- [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
-  - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
-- [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
-  - Task execution flow through matching, dispatch, callback write-back, and resource release.
+  - current HTTP/API contracts
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
-  - Engine owner entry, including concurrency, release, and refill verification.
+  - engine owner README
+- [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
+  - engine policy interaction guardrails
+- [../xa-mass-engine/TASK_EXECUTION_FLOW.md](../xa-mass-engine/TASK_EXECUTION_FLOW.md)
+  - engine dispatch/result flow
 - [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
-  - Testing-module owner entry for perf, SDK embedded-runtime harnesses, and chaos probes.
+  - testing owner README
 - [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md)
-  - Dev-app owner entry, including Boot-shell E2E suite map and fixture rules.
+  - dev-app owner README
 - [../transport/AGENTS.md](../transport/AGENTS.md)
-  - Transport-local handoff, module split, naming truth, and verification fast path.
+  - transport owner entry
 - [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
-  - High-density contract for WebSocket-adapter ownership, transport-neutral SPI, worker-runtime execution ownership, unified lifecycle semantics, and forbidden drift.
+  - websocket adapter boundary
 - [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md)
-  - Stable transport model ownership, hot-path rule, and adapter/runtime split.
+  - transport boundary
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
-  - Reference design for transport throughput, backpressure, and HA-oriented delivery work.
+  - design-only transport throughput reference
 
-## 2. Reading Shortcuts
-
-- entering from repo root: start at [../AGENTS.md](../AGENTS.md)
-- checking legacy/compatibility/deprecation work: go to [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
-- changing WebSocket adapter or transport code: go to [../transport/AGENTS.md](../transport/AGENTS.md) and [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
-- changing lifecycle semantics: go to [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), and [E2E_BASELINE.md](./E2E_BASELINE.md)
-- changing testing strategy, CI lane placement, or acceptance scope: go to [TESTING_BASELINE.md](./TESTING_BASELINE.md)
-- analyzing one runtime risk quickly: start from the owning module README
-- changing HTTP/API contracts: go to [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-- changing startup or runtime verification: go to [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-- changing policy ownership/interactions: go to [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
-- tracing dispatch/result flow: go to [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
-
-## 3. Current Compression Rule
+## 2. Rules
 
 This directory should stay small and high-signal.
 
@@ -67,6 +54,7 @@ Module-local test and runner details should live under the owning module, not un
 Keep these rules:
 
 - Prefer one stable document per concern, not multiple near-duplicates.
+- Update the owning contract document in the same change when code changes a documented contract, ownership rule, or accepted workflow.
 - Prefer summary + pointers over long changelog-style repetition.
 - Do not reintroduce archive-style history dumps into `doc/`.
 - Historical notes belong in a short changelog only when they explain a current operational constraint; otherwise delete them.

@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-24
+Last updated: 2026-04-27
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -52,17 +52,19 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
 - Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
 
-## 1.2 External Worker Polling Notes
+## 1.2 External Worker Notes
 
-- Official third-party worker path is the polling HTTP surface under `/worker-api/*`.
+- Public repo-external worker data-plane contract is the polling HTTP surface under `/worker-api/*`.
+- Shared repo-external control-plane registration also begins at `/worker-api/workers/register`, including realtime adapter onboarding.
 - External worker capability must be declared through `eventBindings`; external worker registration does not define a second capability identity model.
-- External worker transport is polling-only. Do not treat adapter-internal frames as the public protocol for non-Java workers.
+- Realtime adapter frame shapes remain adapter-local compatibility seams. Do not treat them as the stable public non-Java worker protocol.
 - `/worker-api/*` is authenticated with SDK credentials, not operator user-mode headers.
 - required worker credential rules:
   - permission must include `worker:poll`
   - credential attributes must bind `workerId`
   - registration requests are still constrained by credential `eventScopes` and `projectScopes`
 - External workers receive `TaskDispatchItem` payloads, execute locally by `eventCode`, and submit `TaskResultReport`.
+- Realtime workers establish online presence through transport connection; polling workers do it through the worker API.
 - External workers do not receive direct business/control messages outside normal task lifecycle dispatch.
 - For a runnable local example, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
 
@@ -859,7 +861,7 @@ Response shape:
 
 ## 8. External Worker Transport API
 
-External polling workers remain the mainline integration path for non-Java runtimes such as Node, Python, or Go, but the shared registration API also supports realtime adapters when the embedded runtime assembles them.
+External polling workers remain the stable public integration path for non-Java runtimes such as Node, Python, or Go. The same registration API is also used by current realtime adapter validation paths when the embedded runtime assembles them.
 
 For a full local dev walkthrough, including demo credentials and a runnable Node worker, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
 

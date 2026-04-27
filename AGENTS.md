@@ -29,12 +29,8 @@ Everything else is on-demand through the task-type map below.
 Core acceptance fast path:
 
 - treat `perf`, `concurrency`, and Boot-shell `E2E` as the three core acceptance layers
-- current runnable `perf` surface lives in `xa-mass-testing`
-- current runnable `concurrency` surface lives in `xa-mass-engine`
-- current runnable `chaos` probes live in `xa-mass-testing`
-- current runnable `E2E` surface lives in `xa-mass-dev-app`
+- runnable surfaces: `xa-mass-testing` for `perf` and `chaos`, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell `E2E`
 - `chaos` belongs in scheduled or release-style verification until the suite is broad and stable enough for stricter gating
-- `xa-mass-testing` holds cross-cutting acceptance tooling and SDK embedded-runtime probes
 - SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane before full Boot-shell E2E
 - `concurrency` is a required acceptance lane for race-sensitive lifecycle work
 - all other tests are support coverage for bug localization, invariants, and fast regression checks
@@ -61,8 +57,8 @@ Start here based on the change:
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
 - integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-dev-app/README.md](xa-mass-dev-app/README.md)
-- policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
-- dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
+- policy ownership or interactions: [xa-mass-engine/POLICY_INTERACTION_BASELINE.md](xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
+- dispatch/result flow: [xa-mass-engine/TASK_EXECUTION_FLOW.md](xa-mass-engine/TASK_EXECUTION_FLOW.md)
 - legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 
 ## 3. Agent Behavior Contract
@@ -72,7 +68,9 @@ These rules are hard constraints for coding agents. Violating them is a regressi
 Compatibility and convergence:
 
 - Within this repository, there is no compatibility obligation for superseded internal paths. Update in-repo callers instead of preserving the old path.
+- If a surface is not yet a real repo-external contract, default to breaking the old internal path instead of preserving compatibility.
 - Agents must converge superseded internal paths by: (1) marking them deprecated, (2) migrating direct in-repo callers to the identified mainline/source of truth, and (3) removing the old path.
+- For staged breaking refactors, `@Deprecated` is only a temporary convergence marker. It is acceptable to introduce a new method or class as the replacement mainline, but that stage must immediately move into caller migration and removal. Do not leave deprecated and replacement paths in feature development as two live tracks.
 - Adapters, fallbacks, aliases, wrappers, or translation seams that preserve the old path as a second effective mainline are forbidden.
 - If callers outside this repository depend on the old path, surface that dependency to the user before proceeding.
 - This rule does not authorize broad redesign. If the replacement mainline/source of truth is not already clear from code and active docs, stop and ask.
@@ -91,11 +89,13 @@ Planning for multi-file or core changes:
 
 - Required fields: scope, out of scope, files and symbols, alternative considered, costs, test impact with classifications, risk, verification.
 - Approved plans are frozen. If reality materially diverges in scope, contract impact, or risk, stop and report before continuing.
+- If the change alters a documented contract, ownership rule, or mainline workflow assumption, update the owning contract doc in the same change.
 
 Deprecation and pushback:
 
 - Marking a symbol deprecated requires, in the same change, a `DEPRECATION_LEDGER.md` entry with symbol, replacement, in-repo call-site count, and removal condition.
 - Deprecation is not complete until migration of in-repo callers has started in the same change.
+- Deprecated seams are convergence work, not parking lots. After the staged replacement is in place, priority should shift to migration and removal rather than adding new feature work around both paths.
 - If a request conflicts with these guardrails or knowingly creates structural debt, object once in plain terms, then proceed only if the user confirms.
 
 ## 4. Highest-Priority Guardrails
@@ -122,6 +122,8 @@ Deprecation and pushback:
 - Prefer logs, traces, and bounded diagnostics over model-coupled realtime observability.
 - Prefer E2E or integration coverage for lifecycle changes.
 - When lifecycle semantics change, update [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) together.
+- Treat contract docs as code-owned surfaces. When behavior, ownership, or accepted workflow changes, update the relevant contract doc immediately in the same change.
 - Check [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md) before extending any compatibility or legacy seam.
 - Keep docs concise and current; delete stale notes instead of preserving parallel narratives.
+- Do not document target state as if it were already implemented. If a design or refactor target must be written down before code lands, keep it in a clearly labeled design/refactor document and keep mainline docs on current truth only.
 - Do not recreate removed archive/v2 code.

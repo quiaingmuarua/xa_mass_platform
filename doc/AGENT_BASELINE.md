@@ -1,15 +1,9 @@
 # XA Mass Platform Agent Baseline
 
-This document keeps only the stable baseline facts that coding agents need first:
+This file keeps the stable project baseline only: product definition, mainline
+truth, and hard guardrails.
 
-- platform definition and architectural guardrails
-- current module and boundary truth
-- current lifecycle and payload summary
-- what to trust when docs and runtime disagree
-
-It intentionally does not duplicate run commands, detailed endpoint inventories, or full protocol examples.
-
-For those, use:
+Use owner docs for commands, full API inventories, and transport-local detail:
 
 - [../AGENTS.md](../AGENTS.md)
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
@@ -20,22 +14,18 @@ For those, use:
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-- [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
-
-Design-only reference:
-
-- [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
 
 ## 1. Using This File
 
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
-This file is the stable project baseline, not a higher-priority source than code, verified runtime behavior, or narrower owner docs such as state machine, trace, E2E, and WebSocket adapter boundary baselines.
 
 Working rule:
 
 - verify old READMEs and architecture notes against current code before using them
+- update owning contract docs in the same change when code changes documented behavior, ownership, or workflow expectations
 - update active docs after confirming runtime truth
 - keep mainline docs current; delete stale history unless it explains a live operational constraint
+- keep target-state or staged-refactor writing out of mainline baseline docs; if it is not implemented yet, label it as design/refactor-only and keep current docs describing current truth
 
 ## 2. Platform Definition
 
@@ -43,39 +33,24 @@ Working rule:
 - The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
-- For queue-first high-volume compression work, use [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md). Do not treat that design doc as current runtime truth.
 - Adapter vocabulary note: current code still uses `Worker`, `WorkerContext`, and some WebSocket-named types for today's adapter surfaces. Read those names literally inside their current scope, but keep new cross-adapter boundaries transport-neutral.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
-- The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
+- Stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - The current runtime model is transport-agnostic: task dispatch, result ingest, and worker system events are explicit seams rather than one transport shape.
 - Observability belongs in logs, traces, counters, and bounded diagnostics. Do not push scan-heavy operational introspection back into hot-path domain models.
 - Favor idempotent dispatch, result, and retry-side operations so duplicate delivery or reconnect churn stays manageable.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - The runtime entry is library/SDK-first. Demo runtime surfaces validate the kernel; they do not redefine it.
 
-## 3. Platform Model
+Canonical slots:
 
-| Abstract concept | Concrete type | Notes |
-| --- | --- | --- |
-| Worker | `Worker` | Current worker adapter. Examples include phone, crawler, LLM agent, and IM bot. |
-| Worker context | `WorkerContext` | Optional capability or credential context. Stateless workers do not require one. |
-| Work item | `TaskMsg` | Mainline message unit with `input: Map<String,Object>` and `output: Map<String,Object>`. |
-| Shared config | `Task.sharedConfig` | Platform-level dispatch config merged into each downstream dispatch payload. |
+- worker: `Worker`
+- worker context: `WorkerContext` and it is optional
+- work item: `TaskMsg`
+- per-item payload: `TaskMsg.input/output`
+- task-level dispatch config: `Task.sharedConfig`
 
-Interpretation rules:
-
-- the abstract concepts are the stable architecture boundary
-- new worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
-- mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
-- SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
-- SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEventDefinition(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
-- `ResourceOperations` is the SDK project/event control-plane interface
-- `EventDefinition.code` is the globally unique capability identity for SDK/runtime dispatch, worker capability declarations, and permission checks
-- `EventDefinition.projectCodes` is scope metadata only; it constrains where an event may be invoked but is not part of the event identity
-- SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
-- SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
-
-## 4. Model Boundaries
+## 3. Model Boundaries
 
 Keep one canonical truth per boundary:
 
@@ -90,9 +65,10 @@ Rules:
 - do not let protocol fields become business or lifecycle truth
 - do not let the same class name mean different things across layers
 - `EventDefinition.code` is globally unique capability identity
+- SDK-first resource creation is the preferred path: `registerWorker(...)`, `registerWorkerContext(...)`, `registerProject(...)`, `registerEventDefinition(...)`
 - manual worker debug stays task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`
 
-## 5. Architectural Guardrails
+## 4. Architectural Guardrails
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
 - Prefer transport-neutral names and contracts for new cross-adapter boundaries.
@@ -109,9 +85,9 @@ Rules:
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug now enters through normal task creation with explicit worker targeting in `Task.sharedConfig`; do not reintroduce a direct worker-control side-channel.
 - Do not add full-table, full-task, or full-attempt scans to hot paths for observability convenience; use indexed lookups, traces, and counters.
-- new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
+- new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
-## 6. Mainline Reality
+## 5. Mainline Reality
 
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - Java baseline is JDK 21. The root reactor compiles with `maven.compiler.release=21`, Java worker samples use release 21, and CI is expected to run on Temurin 21.
@@ -119,19 +95,12 @@ Rules:
 - Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and adds the current HTTP/control-console shell
-- Transport module split:
-  - `transport/transport_api`: transport-neutral SPI
-  - `transport/transport_runtime`: shared transport runtime assembly
-  - `transport/polling-adapter`: pull/polling adapter
-  - `transport/websocket-adapter`: current WebSocket adapter
-  - `transport/socket-adapter`: current socket adapter
+- Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
 - Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - WebSocket adapter frame classification is a protocol compatibility seam only; it is not business or control capability identity
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell E2E
 
-Use [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) for startup/runtime commands and diagnostics, [./TESTING_BASELINE.md](./TESTING_BASELINE.md) for lane ownership, and [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
-
-## 7. Current Contract Summary
+## 6. Current Contract Summary
 
 Task and payload summary:
 
@@ -170,7 +139,7 @@ Important current rules:
   - review rejection uses `rejectTask` for `NEW -> BLOCKED`
   - runtime/manual blocking uses `blockTask` for `READY/RUNNING -> BLOCKED`
 
-## 8. WorkerContext And Matching Baseline
+## 7. WorkerContext And Matching Baseline
 
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
 - `WorkerContext.project` is the first-class project/resource binding for account-like contexts; do not hide project ownership only inside attributes
@@ -182,7 +151,7 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Entry Files
+## 8. Entry Files
 
 - startup/runtime:
   - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
@@ -197,7 +166,7 @@ Important current rules:
   - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
-## 10. Guardrails
+## 9. Guardrails
 
 Use these positive defaults:
 
