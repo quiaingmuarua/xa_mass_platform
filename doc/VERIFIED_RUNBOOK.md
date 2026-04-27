@@ -190,7 +190,7 @@ Current bundle contents:
 - `TaskWorkloadMixSmokeRunner`
 - `TaskInteractiveRetryWakeupSmokeRunner`
 
-Use the bundle when the goal is to validate current workspace runtime behavior after engine perf/concurrency changes. It builds the workspace classes and runs with a direct runtime classpath, so it does not depend on previously installed sibling artifacts.
+Use the bundle when the goal is to validate current workspace runtime behavior after engine perf/concurrency changes. It refreshes sibling artifacts for the active workspace and then runs with a direct runtime classpath, so the smoke results come from the current workspace state instead of whatever was last installed manually.
 
 SDK transport load harness:
 

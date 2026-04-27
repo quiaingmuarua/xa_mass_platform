@@ -37,7 +37,17 @@ Fastest current-workspace perf smoke bundle:
 xa-mass-testing/scripts/run-perf-smokes.sh
 ```
 
-This script builds the workspace classes and runs the smoke mains through a direct runtime classpath, so it avoids stale local-repository artifacts when `xa-mass-engine` changed in the current workspace.
+This script first refreshes sibling module artifacts with `-pl xa-mass-testing -am -Dmaven.test.skip=true install`, then runs the smoke mains through a direct runtime classpath. Use it when `xa-mass-engine` changed in the current workspace and you want one reliable perf-smoke entrypoint without being blocked by unrelated test-compilation drift in sibling modules.
+
+For the interactive retry wakeup smoke inside the bundle, the script also pins a more stable engine retry-delay JVM property by default:
+
+- `xa.mass.engine.interactiveWorkRetryDelayMillis=200`
+- `mass.retrywakeup.smoke.minRetryDispatchDelayMillis=80`
+
+Override them with environment variables:
+
+- `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
+- `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
 
 Perf load model:
 

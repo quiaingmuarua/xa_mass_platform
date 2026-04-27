@@ -7,7 +7,7 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/perf-smokes.classpath"
 
 cd "${REPO_ROOT}"
 
-./mvnw -q -pl xa-mass-testing -am compile
+./mvnw -q -pl xa-mass-testing -am -Dmaven.test.skip=true install
 ./mvnw -q -f xa-mass-testing/pom.xml \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \
@@ -49,5 +49,12 @@ RUNNERS=(
 
 for runner in "${RUNNERS[@]}"; do
   echo "== Running ${runner} =="
-  java "$@" -cp "${RUNTIME_CLASSPATH}" "${runner}"
+  JAVA_ARGS=("$@")
+  if [[ "${runner}" == "com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner" ]]; then
+    JAVA_ARGS+=(
+      "-Dxa.mass.engine.interactiveWorkRetryDelayMillis=${XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS:-200}"
+      "-Dmass.retrywakeup.smoke.minRetryDispatchDelayMillis=${MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS:-80}"
+    )
+  fi
+  java "${JAVA_ARGS[@]}" -cp "${RUNTIME_CLASSPATH}" "${runner}"
 done

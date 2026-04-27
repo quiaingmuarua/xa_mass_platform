@@ -11,6 +11,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
+import io.netty.util.Attribute;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -215,6 +217,7 @@ class WebSocketServerImplDisconnectTest {
         ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
+                10,
                 "/ws",
                 new WebSocketTransportFrameCodec(),
                 raw -> { },
@@ -223,9 +226,12 @@ class WebSocketServerImplDisconnectTest {
 
         Channel channel = mock(Channel.class);
         ChannelId channelId = mock(ChannelId.class);
+        @SuppressWarnings("unchecked")
+        Attribute<Boolean> countedAttribute = mock(Attribute.class);
         when(channelId.asShortText()).thenReturn("disconnect-ch");
         when(channel.id()).thenReturn(channelId);
         when(channel.isActive()).thenReturn(true);
+        when(channel.attr(any())).thenAnswer(invocation -> countedAttribute);
 
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
         when(ctx.channel()).thenReturn(channel);
@@ -250,11 +256,55 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void startFailsFastWhenRequiredWiringIsMissing() {
-        WebSocketServerImpl server = new WebSocketServerImpl(-1, null, null, null, null);
+        WebSocketServerImpl server = new WebSocketServerImpl(-1, 0, null, null, null, null);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, server::start);
 
         assertTrue(error.getMessage().contains("non-negative port"));
+    }
+
+    @Test
+    void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
+        WebSocketServerImpl server = new WebSocketServerImpl(
+                18088,
+                1,
+                "/ws",
+                new WebSocketTransportFrameCodec(),
+                raw -> { },
+                sessionManager
+        );
+
+        Channel countedChannel = mock(Channel.class);
+        ChannelId countedChannelId = mock(ChannelId.class);
+        @SuppressWarnings("unchecked")
+        Attribute<Boolean> countedAttribute = mock(Attribute.class);
+        when(countedChannel.id()).thenReturn(countedChannelId);
+        when(countedChannelId.asShortText()).thenReturn("counted-ch");
+        when(countedChannel.attr(any())).thenAnswer(invocation -> countedAttribute);
+
+        ChannelHandlerContext countedCtx = mock(ChannelHandlerContext.class);
+        when(countedCtx.channel()).thenReturn(countedChannel);
+        when(countedCtx.fireChannelActive()).thenReturn(countedCtx);
+
+        Channel rejectedChannel = mock(Channel.class);
+        ChannelId rejectedChannelId = mock(ChannelId.class);
+        @SuppressWarnings("unchecked")
+        Attribute<Boolean> rejectedAttribute = mock(Attribute.class);
+        when(rejectedChannel.id()).thenReturn(rejectedChannelId);
+        when(rejectedChannelId.asShortText()).thenReturn("rejected-ch");
+        when(rejectedChannel.attr(any())).thenAnswer(invocation -> rejectedAttribute);
+
+        ChannelHandlerContext rejectedCtx = mock(ChannelHandlerContext.class);
+        when(rejectedCtx.channel()).thenReturn(rejectedChannel);
+
+        ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
+        handler.channelActive(countedCtx);
+        handler.channelActive(rejectedCtx);
+
+        assertEquals(1L, server.getActiveConnectionCount());
+        verify(rejectedCtx).close();
+        verify(sessionManager, never()).removeSession(rejectedChannel);
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {

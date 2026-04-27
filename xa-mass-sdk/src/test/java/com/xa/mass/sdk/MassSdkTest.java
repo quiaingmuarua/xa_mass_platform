@@ -454,6 +454,7 @@ class MassSdkTest {
                 IllegalStateException.class,
                 () -> WebSocketEmbeddedRuntimeSupport.createTransportServer(
                         config.getBundledWebSocketAdapterConfig().getServerPort(),
+                        config.getBundledWebSocketAdapterConfig().getMaxConnections(),
                         config.getBundledWebSocketAdapterConfig().getEndpointPath(),
                         dispatcherContext,
                         endpointRegistry

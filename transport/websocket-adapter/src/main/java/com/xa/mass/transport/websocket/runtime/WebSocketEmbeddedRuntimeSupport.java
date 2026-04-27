@@ -59,12 +59,14 @@ public final class WebSocketEmbeddedRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(int port,
+                                                        int maxConnections,
                                                         String endpointPath,
                                                         WebSocketDispatchRuntimeContext dispatcherContext,
                                                         WorkerEndpointRegistry endpointRegistry) {
         WebSocketInputProcessor inputProcessor = new WebSocketInputProcessor(dispatcherContext);
         return createTransportServer(
                 port,
+                maxConnections,
                 endpointPath,
                 dispatcherContext.getFrameCodec(),
                 inputProcessor::process,
@@ -95,6 +97,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
         if (transportServerFactory == null) {
             return createTransportServer(
                     port,
+                    config.getMaxConnections(),
                     config.getEndpointPath(),
                     dispatcherContext,
                     endpointRegistry
@@ -109,6 +112,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(int port,
+                                                        int maxConnections,
                                                         String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
                                                         WebSocketInboundMessageSink inboundMessageSink,
@@ -118,6 +122,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
         }
         return createTransportServer(
                 port,
+                maxConnections,
                 endpointPath,
                 frameCodec,
                 inboundMessageSink,
@@ -126,12 +131,14 @@ public final class WebSocketEmbeddedRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(int port,
+                                                        int maxConnections,
                                                         String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
                                                         WebSocketInboundMessageSink inboundMessageSink,
                                                         ServerSessionManager sessionManager) {
         return new WebSocketServerImpl(
                 port,
+                maxConnections,
                 endpointPath,
                 frameCodec,
                 inboundMessageSink,

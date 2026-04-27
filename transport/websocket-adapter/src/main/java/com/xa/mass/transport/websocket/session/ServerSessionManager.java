@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
 
@@ -27,6 +28,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     // Reverse index: Channel -> workerId
     private final Map<Channel, String> channelIndex = new ConcurrentHashMap<>();
+    private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
 
     public synchronized void addSession(String workerId, Channel channel, ChannelHandlerContext ctx) {
@@ -44,9 +46,15 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         workerChannelMap.put(workerId, channel);
         workerChannelCtxMap.put(workerId, ctx);
         channelIndex.put(channel, workerId);
+        if (existingChannel == null || existingChannel != channel) {
+            activeConnectionCount.incrementAndGet();
+            if (existingChannel != null) {
+                activeConnectionCount.decrementAndGet();
+            }
+        }
 
         logger.info("Connected: workerId={} channelId={} totalWorkers={}",
-                workerId, channel.id().asShortText(), workerChannelMap.size());
+                workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (!wasWorkerOnline && hasActiveChannel(workerId)) {
             systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
         }
@@ -59,6 +67,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             if (channel.equals(workerChannelMap.get(workerId))) {
                 workerChannelMap.remove(workerId);
                 workerChannelCtxMap.remove(workerId);
+                activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
             }
 
             logger.info("Disconnected: workerId={} channelId={}",
@@ -89,7 +98,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public int getWorkerConnectionCount() {
-        return (int) channelIndex.keySet().stream().filter(Channel::isActive).count();
+        return activeConnectionCount.get();
     }
 
     @Override
@@ -120,6 +129,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         workerChannelMap.clear();
         workerChannelCtxMap.clear();
         channelIndex.clear();
+        activeConnectionCount.set(0);
         logger.info("Session manager shutdown complete.");
     }
 

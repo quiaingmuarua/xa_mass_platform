@@ -15,6 +15,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
+import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -35,9 +36,11 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WebSocketServerImpl implements MassWebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
+    private static final AttributeKey<Boolean> COUNTED_CONNECTION = AttributeKey.valueOf("mass.websocket.countedConnection");
 
     private final AtomicLong activeConnections = new AtomicLong(0);
     private final int port;
+    private final int maxConnections;
     private final String websocketPath;
     private final ServerSessionManager sessionManager;
     private final WebSocketTransportFrameCodec frameCodec;
@@ -47,11 +50,13 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private volatile boolean running = false;
 
     public WebSocketServerImpl(int port,
+                               int maxConnections,
                                String websocketPath,
                                WebSocketTransportFrameCodec frameCodec,
                                WebSocketInboundMessageSink inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.port = port;
+        this.maxConnections = maxConnections;
         this.websocketPath = websocketPath;
         this.frameCodec = frameCodec;
         this.inboundMessageSink = inboundMessageSink;
@@ -163,6 +168,9 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         if (port < 0) {
             throw new IllegalStateException("WebSocket server requires a non-negative port");
         }
+        if (maxConnections <= 0) {
+            throw new IllegalStateException("WebSocket server requires maxConnections > 0");
+        }
         if (websocketPath == null || websocketPath.isBlank()) {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }
@@ -175,13 +183,24 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             long count = activeConnections.incrementAndGet();
+            if (count > maxConnections) {
+                activeConnections.decrementAndGet();
+                logger.warn("Rejecting websocket client because maxConnections={} has been reached", maxConnections);
+                ctx.close();
+                return;
+            }
+            ctx.channel().attr(COUNTED_CONNECTION).set(Boolean.TRUE);
             logger.debug("Connection opened: {}, total={}", ctx.channel().remoteAddress(), count);
             super.channelActive(ctx);
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            long count = activeConnections.decrementAndGet();
+            Boolean counted = ctx.channel().attr(COUNTED_CONNECTION).getAndSet(null);
+            long count = activeConnections.get();
+            if (Boolean.TRUE.equals(counted)) {
+                count = activeConnections.decrementAndGet();
+            }
             logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
             // Remove the session before propagating channelInactive so worker offline state
             // and future dispatch decisions observe the closed channel consistently.

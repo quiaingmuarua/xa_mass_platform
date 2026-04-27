@@ -76,6 +76,28 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void replacingWorkerChannelKeepsConnectionCountStable() {
+        Channel firstChannel = mockActiveChannel("worker-1-old");
+        Channel secondChannel = mockActiveChannel("worker-1-new");
+        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("worker-1", firstChannel, firstCtx);
+        assertEquals(1, manager.getWorkerConnectionCount());
+
+        manager.addSession("worker-1", secondChannel, secondCtx);
+
+        assertEquals(1, manager.getWorkerConnectionCount());
+        assertEquals(secondChannel, manager.getChannel("worker-1"));
+
+        manager.removeSession(firstChannel);
+        assertEquals(1, manager.getWorkerConnectionCount());
+
+        manager.removeSession(secondChannel);
+        assertEquals(0, manager.getWorkerConnectionCount());
+    }
+
+    @Test
     void shutdownSkipsInactiveChannels() {
         Channel active = mockActiveChannel("active");
         Channel inactive = mock(Channel.class);
