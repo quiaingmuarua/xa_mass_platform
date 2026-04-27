@@ -21,11 +21,9 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.*;
 
 class TaskResourceReleaseListenerTest {
@@ -33,15 +31,12 @@ class TaskResourceReleaseListenerTest {
     private TaskManager taskManager;
     private WorkerManager workerManager;
     private TaskResourceReleaseListener listener;
-    private Consumer<Task> dispatchRequester;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         taskManager = mock(TaskManager.class);
         workerManager = mock(WorkerManager.class);
-        dispatchRequester = mock(Consumer.class);
-        listener = new TaskResourceReleaseListener(taskManager, workerManager, dispatchRequester);
+        listener = new TaskResourceReleaseListener(taskManager, workerManager);
     }
 
     @Test
@@ -146,7 +141,7 @@ class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
-        verify(dispatchRequester).accept(same(task));
+        verify(taskManager).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -181,7 +176,7 @@ class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
-        verify(dispatchRequester).accept(same(task));
+        verify(taskManager).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -207,7 +202,7 @@ class TaskResourceReleaseListenerTest {
         listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
 
         verify(workerManager, never()).unlockWorker("worker-1");
-        verify(dispatchRequester, never()).accept(same(task));
+        verify(taskManager, never()).requestTaskDispatch(any());
     }
 
     @Test

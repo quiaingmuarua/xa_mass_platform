@@ -89,7 +89,7 @@ public class MassEngine {
             assignWorker.start();
 
             TaskResourceReleaseListener resourceReleaseListener =
-                    new TaskResourceReleaseListener(taskManager, workerManager, assignWorker::submit);
+                    new TaskResourceReleaseListener(taskManager, workerManager);
             taskManager.addTaskReadyListener(assignWorker::submit);
             taskManager.addTaskDispatchListener(assignWorker::submit);
             taskManager.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);

@@ -571,7 +571,13 @@ public class TaskManager {
         return eventPublisher;
     }
 
-    void requestTaskDispatch(Task task) {
+    /**
+     * Engine-owned dispatch entry for task-ready and refill-style redispatch.
+     *
+     * <p>This is a runtime orchestration method, not a public business API
+     * contract.
+     */
+    public void requestTaskDispatch(Task task) {
         dispatchRequestService.requestImmediate(task);
     }
 

@@ -16,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 
 /**
  * Releases runtime-only resource occupancy when a task reaches TERMINAL.
@@ -27,14 +26,11 @@ public class TaskResourceReleaseListener {
 
     private final TaskManager taskManager;
     private final WorkerManager workerManager;
-    private final Consumer<Task> dispatchRequester;
 
     public TaskResourceReleaseListener(TaskManager taskManager,
-                                       WorkerManager workerManager,
-                                       Consumer<Task> dispatchRequester) {
+                                       WorkerManager workerManager) {
         this.taskManager = taskManager;
         this.workerManager = workerManager;
-        this.dispatchRequester = dispatchRequester;
     }
 
     public void onTaskTerminal(Task task) {
@@ -72,7 +68,7 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        if (hasOtherActiveAttempts(task.getTid(), workerId, taskMsg.getMessageId())) {
+        if (hasOtherActiveAttempts(task.getTid(), workerId)) {
             return;
         }
 
@@ -81,14 +77,13 @@ public class TaskResourceReleaseListener {
         TraceEventLogger.workerLockReleased(task.getTid(), workerId,
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
-        if (dispatchRequester != null
-                && task.getStatus() == TaskStatus.RUNNING
+        if (task.getStatus() == TaskStatus.RUNNING
                 && taskManager.hasPendingDispatchableMessages(task.getTid())) {
-            dispatchRequester.accept(task);
+            taskManager.requestTaskDispatch(task);
         }
     }
 
-    private boolean hasOtherActiveAttempts(String taskId, String workerId, String closedMessageId) {
+    private boolean hasOtherActiveAttempts(String taskId, String workerId) {
         return taskManager.hasProcessingMessagesForWorker(taskId, workerId);
     }
 

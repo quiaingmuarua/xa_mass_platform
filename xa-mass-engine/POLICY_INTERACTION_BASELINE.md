@@ -36,7 +36,7 @@ Rule:
 3. callback write-back resolves the active attempt before logical message finality
 4. retry decision happens after attempt close and before logical message finality
 5. resource release happens after attempt close or task terminal notification
-6. refill request happens only after resource release and only if the task/message state is still eligible
+6. refill request happens only after resource release and only if the task/message state is still eligible; it must re-enter through the engine-owned task dispatch path rather than an ad hoc external callback seam
 7. terminal policy evaluates after stable message/attempt reconciliation
 8. open-intake tasks do not close from normal all-messages-final convergence until sealed
 
