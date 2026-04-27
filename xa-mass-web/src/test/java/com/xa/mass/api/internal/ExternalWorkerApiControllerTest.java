@@ -114,6 +114,28 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
+    void registerWorkerRejectsTransportHintCompatibilityAlias() throws Exception {
+        mockMvc.perform(post("/worker-api/workers/register")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "workerId": "node-worker-1",
+                                  "transportHint": "pull",
+                                  "eventBindings": [
+                                    {
+                                      "eventCode": "crawler.fetch-page",
+                                      "projectCodes": ["crawlerApp"]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("External worker API supports only polling or realtime transport"));
+    }
+
+    @Test
     void workerApiRequiresCredential() throws Exception {
         mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
                         .contentType("application/json")

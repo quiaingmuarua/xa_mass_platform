@@ -47,7 +47,7 @@ class TransportRegistrationResolverTest {
 
         assertEquals("Unsupported worker adapterId 'ws'; available adapterIds=[websocket]",
                 error.getMessage());
-        assertEquals("websocket", resolver.resolveRegistrationAdapterId(" websocket ", " websocket "));
+        assertEquals("websocket", resolver.resolveRegistrationAdapterId(" websocket ", " realtime "));
     }
 
     @Test

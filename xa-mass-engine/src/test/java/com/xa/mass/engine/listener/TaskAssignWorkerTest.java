@@ -3,6 +3,8 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.TaskRuntimeAssignmentRetryOptionsResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -285,6 +288,35 @@ class TaskAssignWorkerTest {
     }
 
     @Test
+    void retryDelayUsesResolvedWorkloadPolicy() throws InterruptedException {
+        worker.stop();
+
+        TaskWorkerAssignListener retryingListener = mock(TaskWorkerAssignListener.class);
+        when(retryingListener.onTaskAssign(any())).thenReturn(false);
+
+        worker = new TaskAssignWorker(
+                retryingListener,
+                200L,
+                10,
+                new TaskRuntimeAssignmentRetryOptionsResolver(25L, new TaskRuntimeProfileResolver())
+        );
+        worker.start();
+
+        Task interactiveTask = interactiveTask("interactive-retry-delay");
+        Task bulkTask = bulkTask("bulk-retry-delay");
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(worker.submit(interactiveTask));
+            assertTrue(worker.submit(bulkTask));
+
+            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "interactive-retry-delay", "25")),
+                    "interactive retry should use the shorter resolved delay");
+            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "bulk-retry-delay", "200")),
+                    "bulk retry should keep the default delay");
+        }
+    }
+
+    @Test
     void interactiveLaneContinuesWhileBulkLaneIsBlocked() throws InterruptedException {
         worker.stop();
 
@@ -428,5 +460,24 @@ class TaskAssignWorkerTest {
         t.setTid(tid);
         t.setStatus(TaskStatus.RUNNING);
         return t;
+    }
+
+    private boolean awaitCondition(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            Thread.sleep(10);
+        }
+        return condition.getAsBoolean();
+    }
+
+    private boolean hasRetryDelayEvent(TraceEventLogCapture capture, String taskId, String retryDelayMillis) {
+        return capture.events("ASSIGNMENT_RETRY_SCHEDULED").stream()
+                .map(event -> event.getMDCPropertyMap())
+                .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
+                        && retryDelayMillis.equals(mdc.get("retryDelayMillis"))
+                        && "TaskAssignWorker".equals(mdc.get("source")));
     }
 }

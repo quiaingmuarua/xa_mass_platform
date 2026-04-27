@@ -42,6 +42,7 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - Routing and side-channel resolution must key off `adapterId`, not `transportHint`
 - Family-level matching is only for filtering, capability grouping, and the current polling family default
 - Adapter-id aliases are not a supported runtime identity path; use canonical concrete adapter ids
+- `transportHint` compatibility aliases are not supported; use canonical coarse families such as `polling` or `realtime`
 - Do not move transport-owned runtime classes back under `com.xa.mass.starter.*`
 - Do not treat SDK composition classes under `com.xa.mass.sdk.transport.*` as adapter/runtime ownership targets
 

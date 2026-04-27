@@ -47,6 +47,7 @@ Key facts:
 - `Task.workloadClass` is task-level orchestration intent; current engine classes are `INTERACTIVE` and `BULK`
 - `TaskRuntimeProfile` is the internal normalized runtime policy used by enqueue backpressure, assignment, ready-work claim, retry, and trace
 - `INTERACTIVE` currently resolves to a smaller per-worker claim window and shorter lease cap than `BULK`
+- `INTERACTIVE` also resolves to a shorter assignment retry delay than `BULK` when a `READY` or refill-style `RUNNING` task stays eligible but no dispatch happened in the current round
 - `INTERACTIVE` also carries a dedicated ready-backlog cap so realtime-style tasks can fail fast before bulk-style queue growth semantics are applied
 - current lane split is an assignment-entry skeleton, not full fair scheduling or multi-executor throughput optimization
 - worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch

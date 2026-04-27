@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.TaskRuntimeAssignmentRetryOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -33,6 +34,7 @@ public class TaskAssignWorker {
     private final TaskWorkerAssignListener workerAssignListener;
     private final long retryDelayMillis;
     private final int assignmentQueueCapacity;
+    private final TaskRuntimeAssignmentRetryOptionsResolver taskRuntimeAssignmentRetryOptionsResolver;
     private final Map<TaskRuntimeProfile.DispatchLane, LaneState> laneStates =
             new EnumMap<>(TaskRuntimeProfile.DispatchLane.class);
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
@@ -53,9 +55,20 @@ public class TaskAssignWorker {
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                             long retryDelayMillis,
                             int assignmentQueueCapacity) {
+        this(workerAssignListener,
+                retryDelayMillis,
+                assignmentQueueCapacity,
+                new TaskRuntimeAssignmentRetryOptionsResolver());
+    }
+
+    TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                     long retryDelayMillis,
+                     int assignmentQueueCapacity,
+                     TaskRuntimeAssignmentRetryOptionsResolver taskRuntimeAssignmentRetryOptionsResolver) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
+        this.taskRuntimeAssignmentRetryOptionsResolver = taskRuntimeAssignmentRetryOptionsResolver;
     }
 
     public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
@@ -282,6 +295,7 @@ public class TaskAssignWorker {
         if (laneState == null || laneState.retryExecutor == null) {
             return;
         }
+        long resolvedRetryDelayMillis = taskRuntimeAssignmentRetryOptionsResolver.resolve(task, retryDelayMillis);
         laneState.scheduledRetryCount.incrementAndGet();
         TraceEventLogger.assignmentRetryScheduled(
                 task.getTid(),
@@ -289,27 +303,27 @@ public class TaskAssignWorker {
                 "NO_ASSIGNMENT_RESULT",
                 "TaskAssignWorker",
                 "task remained eligible after assignment attempt",
-                retryDelayMillis
+                resolvedRetryDelayMillis
         );
-        emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_SCHEDULED", retryDelayMillis,
+        emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_SCHEDULED", resolvedRetryDelayMillis,
                 "task remained eligible after assignment attempt", "SCHEDULED");
         laneState.retryExecutor.schedule(() -> {
             laneState.scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
             if (running && task.getStatus() == expectedStatus) {
                 if (enqueueSignal(task, AssignmentSignalReason.RETRY, laneState)) {
-                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_ENQUEUED", retryDelayMillis,
+                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_ENQUEUED", resolvedRetryDelayMillis,
                             "delayed retry enqueued task back into assignment signal queue", "SUCCESS");
                 } else {
-                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_QUEUE_FULL", retryDelayMillis,
+                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_QUEUE_FULL", resolvedRetryDelayMillis,
                             "assignment signal queue is full; retry will be rescheduled", "DEFERRED");
                     scheduleRetry(task, expectedStatus, laneState);
                 }
                 return;
             }
             releaseTrackedTask(task.getTid());
-            emitQueueSnapshot(task, task.getStatus(), laneState, "RETRY_DROPPED", retryDelayMillis,
+            emitQueueSnapshot(task, task.getStatus(), laneState, "RETRY_DROPPED", resolvedRetryDelayMillis,
                     "delayed retry was dropped because task is no longer eligible", "SKIPPED");
-        }, retryDelayMillis, TimeUnit.MILLISECONDS);
+        }, resolvedRetryDelayMillis, TimeUnit.MILLISECONDS);
     }
 
     private void notifyAssignmentProcessed(Task task, LaneState laneState) {

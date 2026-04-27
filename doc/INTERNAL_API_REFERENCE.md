@@ -157,6 +157,7 @@ Response notes:
 - `supportedProjects` remains a separate coarse worker scope hint and is not used as capability identity
 - `adapterId` is the concrete runtime adapter identity (`polling`, `websocket`, `socket`, ...)
 - `transportHint` is the coarse transport family (`polling`, `realtime`, ...)
+- adapter labels and old compatibility names (`websocket`, `ws`, `push`, `pull`, `queue`, ...) are not `transportHint` aliases
 - capability views expose both fields; runtime routing keys off `adapterId`, not `transportHint`
 - `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
 
@@ -884,6 +885,7 @@ Request notes:
 - `transportHint` is optional; when omitted it defaults to `polling`
 - `adapterId` is optional for polling and required for realtime
 - `transportHint` remains a coarse family; runtime routing resolves the concrete adapter through `adapterId`
+- `transportHint` must use canonical family values such as `polling` or `realtime`; adapter names like `websocket` are not accepted as aliases
 - when `transportHint=realtime`, `adapterId` must be explicit even if the runtime currently assembles only one realtime adapter
 - caller must authenticate with an SDK credential that includes `worker:poll` and `attributes.workerId == workerId`
 

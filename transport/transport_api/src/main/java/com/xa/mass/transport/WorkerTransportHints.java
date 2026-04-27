@@ -7,11 +7,10 @@ import java.util.Locale;
  * worker. These values describe canonical delivery style rather than a specific
  * implementation detail.
  *
- * <p>Compatibility labels such as {@code websocket}, {@code ws},
- * {@code push}, {@code pull}, and {@code queue} are normalized into the
- * stable transport families exposed by this class. These values are coarse
- * transport hints only; concrete runtime routing and worker identity must use
- * adapter-owned {@code adapterId}.
+ * <p>These values are coarse transport hints only; concrete runtime routing
+ * and worker identity must use adapter-owned {@code adapterId}. Adapter labels
+ * such as {@code websocket}, {@code socket}, or {@code queue-consumer} are not
+ * transport-hint aliases.
  */
 public final class WorkerTransportHints {
 
@@ -27,8 +26,8 @@ public final class WorkerTransportHints {
         }
         String normalized = strategy.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case REALTIME, "websocket", "ws", "push", "websocket_push" -> REALTIME;
-            case POLLING, "pull", "queue" -> POLLING;
+            case REALTIME -> REALTIME;
+            case POLLING -> POLLING;
             default -> normalized;
         };
     }

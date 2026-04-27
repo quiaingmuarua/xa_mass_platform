@@ -41,10 +41,8 @@ public interface WorkerAdapter extends TaskDispatchChannel {
      * Returns the coarse worker transport family exposed by this adapter.
      *
      * <p>By default the adapter label is normalized through
-     * {@link WorkerTransportHints}, which maps compatibility names such as
-     * {@code websocket} or {@code pull} into stable runtime identities such as
-     * {@code realtime} and {@code polling}. Adapters may override this when
-     * their implementation label differs from the platform transport identity.
+     * {@link WorkerTransportHints}. Adapters should override this when their
+     * implementation label differs from the platform transport identity.
      */
     default String transportHint() {
         return WorkerTransportHints.normalize(protocol());

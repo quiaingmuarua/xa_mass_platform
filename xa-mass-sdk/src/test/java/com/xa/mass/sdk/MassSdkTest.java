@@ -1747,7 +1747,7 @@ class MassSdkTest {
     }
 
     @Test
-    void registerWorkerNormalizesCompatibilityTransportAliasToCanonicalIdentity() {
+    void registerWorkerRejectsAdapterLabelAsTransportHint() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
@@ -1760,28 +1760,31 @@ class MassSdkTest {
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerWorker(WorkerRegistration.builder()
-                .workerId("worker-with-websocket-alias")
-                .adapterId("websocket")
-                .transportHint("websocket")
-                .build());
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> app.registerWorker(WorkerRegistration.builder()
+                        .workerId("worker-with-websocket-label")
+                        .adapterId("websocket")
+                        .transportHint("websocket")
+                        .build())
+        );
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(captor.capture());
-        Assertions.assertEquals("websocket", captor.getValue().getAdapterId());
-        Assertions.assertEquals("realtime", captor.getValue().getOnlineStrategy());
+        Assertions.assertEquals("Worker adapterId 'websocket' belongs to transportHint 'realtime', not 'websocket'",
+                error.getMessage());
     }
 
     @Test
-    void workerTransportHintsNormalizeCompatibilityLabelsToCanonicalIdentities() {
-        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("websocket"));
-        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("ws"));
-        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("push"));
-        Assertions.assertEquals(WorkerTransportHints.POLLING, WorkerTransportHints.normalize("pull"));
-        Assertions.assertEquals(WorkerTransportHints.POLLING, WorkerTransportHints.normalize("queue"));
+    void workerTransportHintsNormalizeOnlyCanonicalFamiliesAndPreserveCustomLabels() {
+        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize(" REALTIME "));
+        Assertions.assertEquals(WorkerTransportHints.POLLING, WorkerTransportHints.normalize(" POLLING "));
+        Assertions.assertEquals("websocket", WorkerTransportHints.normalize("websocket"));
+        Assertions.assertEquals("ws", WorkerTransportHints.normalize("ws"));
+        Assertions.assertEquals("push", WorkerTransportHints.normalize("push"));
+        Assertions.assertEquals("pull", WorkerTransportHints.normalize("pull"));
+        Assertions.assertEquals("queue", WorkerTransportHints.normalize("queue"));
         Assertions.assertEquals("grpc", WorkerTransportHints.normalize("grpc"));
-        Assertions.assertTrue(WorkerTransportHints.isRealtime("websocket_push"));
-        Assertions.assertTrue(WorkerTransportHints.isPolling("pull"));
+        Assertions.assertFalse(WorkerTransportHints.isRealtime("websocket_push"));
+        Assertions.assertFalse(WorkerTransportHints.isPolling("pull"));
     }
 
     @Test

@@ -50,6 +50,8 @@ behavior that cannot fit one of these concepts.
 
 - adapter binding and registration resolution
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
+- canonical transport-hint resolution; adapter labels such as `websocket`,
+  `ws`, `push`, `pull`, or `queue` are not family aliases
 - delivery service and delivery store
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
