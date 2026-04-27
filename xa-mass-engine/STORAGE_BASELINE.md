@@ -79,7 +79,7 @@ Important current usage notes:
 - task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
-- `getTaskMessages(...)` and `getTaskMessagesPage(...)` are compatibility/demo reads plus temporary internal cleanup helpers; they are not the future business-detail path
+- `getTaskMessages(...)` is a compatibility/demo snapshot plus temporary internal cleanup helper; it is not the future business-detail path
 - future task detail should bias toward logs or async write-behind sinks instead of engine-owned full-message query surfaces
 
 ## WorkerStorage

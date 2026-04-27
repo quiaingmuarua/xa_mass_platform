@@ -19,9 +19,6 @@ import java.util.List;
  */
 class TaskStateValidator {
 
-    private static final int VALIDATION_MESSAGE_PAGE_SIZE =
-            Integer.getInteger("xa.mass.engine.validationMessagePageSize", 512);
-
     private final TaskManager taskManager;
 
     TaskStateValidator(TaskManager taskManager) {
@@ -117,41 +114,33 @@ class TaskStateValidator {
         }
 
         boolean attemptNeedsResolution = false;
-        int offset = 0;
-        while (true) {
-            List<TaskMsg> page = taskManager.getTaskMessagesPage(taskId, offset, VALIDATION_MESSAGE_PAGE_SIZE);
-            if (page.isEmpty()) {
-                break;
+        for (TaskMsg taskMsg : taskManager.getTaskMessages(taskId)) {
+            if (taskMsg == null) {
+                continue;
             }
-            for (TaskMsg taskMsg : page) {
-                if (taskMsg == null) {
-                    continue;
-                }
-                if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
-                    violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
-                }
-                if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
-                    violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
-                }
-                TaskStorage.TaskMessageAttemptStats attemptStats =
-                        taskManager.getTaskStorage().getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
-                long activeAttemptCount = attemptStats.getActiveAttempts();
-                boolean hasActiveAttempt = activeAttemptCount > 0;
-                if (activeAttemptCount > 1) {
-                    violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
-                }
-                if (hasActiveAttempt && taskMsg.isCompleted()) {
-                    violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
-                }
-                boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
-                if (allAttemptsFinal
-                        && !taskMsg.isCompleted()
-                        && taskMsg.getStatus() != TaskMsgStatus.INIT) {
-                    attemptNeedsResolution = true;
-                    violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
-                }
+            if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
+                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
             }
-            offset += page.size();
+            if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
+                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
+            }
+            TaskStorage.TaskMessageAttemptStats attemptStats =
+                    taskManager.getTaskStorage().getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
+            long activeAttemptCount = attemptStats.getActiveAttempts();
+            boolean hasActiveAttempt = activeAttemptCount > 0;
+            if (activeAttemptCount > 1) {
+                violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
+            }
+            if (hasActiveAttempt && taskMsg.isCompleted()) {
+                violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
+            }
+            boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
+            if (allAttemptsFinal
+                    && !taskMsg.isCompleted()
+                    && taskMsg.getStatus() != TaskMsgStatus.INIT) {
+                attemptNeedsResolution = true;
+                violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
+            }
         }
 
         boolean needsResolution = !finalStatus

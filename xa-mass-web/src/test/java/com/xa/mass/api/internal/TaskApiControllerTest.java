@@ -516,26 +516,22 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void getTaskMessagesReturnsPagedMessages() throws Exception {
+    void getTaskMessagesReturnsCompatibilitySnapshot() throws Exception {
         TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
         first.setOutput(Map.of("result", "ok"));
         TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
-        when(taskQueries.getTaskMessagesPage(TASK_ID, 0, 1)).thenReturn(List.of(first));
+        when(taskQueries.getTaskMessages(TASK_ID)).thenReturn(List.of(first, second));
 
-        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
-                        .param("page", "1")
-                        .param("size", "1"))
+        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(2))
                 .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
-                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
+                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"))
+                .andExpect(jsonPath("$.data.messages[1].messageId").value("msg-2"));
 
-        verify(taskQueries).countTaskMessages(TASK_ID);
-        verify(taskQueries).getTaskMessagesPage(TASK_ID, 0, 1);
-        verify(taskQueries, never()).getTaskMessages(TASK_ID);
+        verify(taskQueries).getTaskMessages(TASK_ID);
     }
 
     @Test

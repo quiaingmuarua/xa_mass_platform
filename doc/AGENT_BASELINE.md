@@ -114,6 +114,7 @@ Task and payload summary:
 - per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
 - `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
 - engine runtime policy normalization goes through `TaskRuntimeProfile`; enqueue backpressure, assignment, ready-work claim, and trace consume the resolved profile, while assignment retry delay plus runtime retry visibility delay are unified under engine-internal `TaskRuntimeRetryPolicy` instead of reinterpreting `sharedConfig`
+- create-time `defaultMsgMaxRetryCount` seeds runtime retry budget inside `TaskWorkRuntime`; retry-scheduled vs retry-exhausted branching now follows runtime result application instead of re-reading persisted `TaskMsg.maxRetryCount`
 - delayed runtime retry wakeups are task-level dispatch signals; the engine coalesces them per task instead of spawning one sleeping redispatch wakeup per retrying `TaskMsg`
 - public create/update/read contracts do not define a dedicated routing-code field
 - engine-provided `TaskMsg` reads remain bounded compatibility helpers; production-scale detail should flow through structured trace or downstream audit storage

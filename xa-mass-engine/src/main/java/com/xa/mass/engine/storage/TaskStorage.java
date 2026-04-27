@@ -69,27 +69,6 @@ public interface TaskStorage {
      */
     List<TaskMsg> getTaskMessages(String taskId);
 
-    /**
-     * Compatibility-only bounded projection read. This exists to avoid
-     * full-task snapshots in transitional internal flows, not to define a
-     * future business query model.
-     */
-    default List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
-        if (limit <= 0) {
-            return List.of();
-        }
-        List<TaskMsg> messages = getTaskMessages(taskId);
-        if (messages.isEmpty()) {
-            return List.of();
-        }
-        int from = Math.max(0, offset);
-        if (from >= messages.size()) {
-            return List.of();
-        }
-        int to = Math.min(messages.size(), from + limit);
-        return messages.subList(from, to);
-    }
-
     default long countTaskMessages(String taskId) {
         return getTaskMessageStats(taskId).getTotal();
     }

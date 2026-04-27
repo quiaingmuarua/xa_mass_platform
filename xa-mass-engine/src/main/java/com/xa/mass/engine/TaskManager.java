@@ -318,14 +318,6 @@ public class TaskManager {
         return taskStorage.getTaskMessages(taskId);
     }
 
-    /**
-     * Compatibility-only bounded read helper used by internal cleanup and demo
-     * shells. It is not the intended long-term task-detail surface.
-     */
-    public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
-        return taskStorage.getTaskMessagesPage(taskId, offset, limit);
-    }
-
     public long countTaskMessages(String taskId) {
         return taskStorage.countTaskMessages(taskId);
     }

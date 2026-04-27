@@ -31,9 +31,6 @@ public interface TaskQueryOperations {
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 
-    /** Compatibility/demo bounded read; not a future detail contract. */
-    List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit);
-
     long countTaskMessages(String taskId);
 
     Object validateTaskState(String taskId);

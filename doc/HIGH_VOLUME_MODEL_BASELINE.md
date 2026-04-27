@@ -30,7 +30,7 @@ Still too heavy on the hot path:
 - dispatch and result flow still write thick compatibility projections
 - read models still assume one task can cheaply expose all messages
 - full attempt history is still too expensive as default hot-path truth
-- some persistence surfaces still expose full-message reads that are acceptable for audit and pagination only, not runtime readiness truth
+- some persistence surfaces still expose full-message reads that are acceptable for audit only, not runtime readiness truth
 - task orchestration is not fully separated from downstream detail-analysis needs yet
 
 ## 2. Frozen Design

@@ -61,23 +61,6 @@ class InMemoryTaskStorageTest {
     }
 
     @Test
-    void getTaskMessagesPageReadsOnlyRequestedWindowInOrder() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
-        Task task = new Task();
-        task.setTid("task-1");
-        storage.saveTask(task);
-        storage.addTaskMessage("task-1", new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "alpha")));
-        storage.addTaskMessage("task-1", new TaskMsg("msg-2", "task-1", java.util.Map.of("target", "beta")));
-        storage.addTaskMessage("task-1", new TaskMsg("msg-3", "task-1", java.util.Map.of("target", "gamma")));
-
-        List<TaskMsg> page = storage.getTaskMessagesPage("task-1", 1, 1);
-
-        assertEquals(3L, storage.countTaskMessages("task-1"));
-        assertEquals(1, page.size());
-        assertEquals("msg-2", page.get(0).getMessageId());
-    }
-
-    @Test
     void pollExpiredMaxRuntimeTasksUsesDeadlineIndex() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         LocalDateTime now = LocalDateTime.now();

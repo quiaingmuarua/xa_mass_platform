@@ -57,6 +57,7 @@ Key facts:
 - worker matching and routing decisions happen before message claim; the engine must not fall back to per-`TaskMsg` rule matching during dispatch
 - surplus matched workers used only for the start gate are unlocked immediately
 - active lease truth is in `TaskWorkRuntime`
+- runtime retry budget and retry/finalize outcome are also decided in `TaskWorkRuntime`; create-time `defaultMsgMaxRetryCount` seeds that runtime envelope, while persisted `TaskMsg.maxRetryCount` is only a compatibility projection after ingest
 - `TaskMsgAttempt` is the attempt-level audit layer
 
 ## 3. Matching And Context
@@ -89,9 +90,11 @@ Verified path:
 1. worker receives canonical task dispatch
 2. worker returns canonical task result
 3. `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`
-4. `TaskResultService` applies the result using the active runtime lease
-5. accepted results update `TaskMsgAttempt` and `TaskMsg`
-6. final runtime work items drive task convergence to `TERMINAL`
+4. `TaskResultService` requires an active runtime lease before applying the result
+5. if runtime lease truth exists but `TaskMsgAttempt` or latest-attempt projection is missing, engine repairs that compatibility state from the lease
+6. runtime `ResultApplyOutcome` decides success, retry-scheduled, or retry-exhausted before compatibility projection write-back
+7. accepted results update `TaskMsgAttempt` and `TaskMsg`
+8. final runtime work items drive task convergence to `TERMINAL`
 
 Important guards:
 
@@ -99,6 +102,8 @@ Important guards:
 - duplicate final callbacks are idempotent replays only
 - `TaskMsgStatus` stays the logical lifecycle
 - per-dispatch lease and retry history lives in `TaskMsgAttempt`
+- callback acceptance is gated by runtime active lease truth; persisted `TaskMsg` status and latest-attempt projection may be repaired from that lease but must not override it
+- retryable failure and retryable lease expiry must branch from runtime `ResultApplyOutcome`, not from re-reading persisted `TaskMsg.maxRetryCount`
 - worker-visible `leaseToken` is not yet part of the current result contract
 - production-scale task detail should come from structured trace or audit sinks, not engine-owned full-message query expansion
 

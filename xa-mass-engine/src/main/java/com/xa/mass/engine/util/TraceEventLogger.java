@@ -425,6 +425,29 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void callbackRejectedNoActiveLease(TaskMsg taskMsg, String reason) {
+        callbackRejectedNoActiveLease(taskMsg, null, reason);
+    }
+
+    public static void callbackRejectedNoActiveLease(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
+        if (taskMsg == null) {
+            return;
+        }
+        emit("CALLBACK_REJECTED_NO_ACTIVE_LEASE", fields(
+                "entityType", "TaskMsg",
+                "entityId", taskMsg.getMessageId(),
+                "taskId", taskMsg.getTaskId(),
+                "messageId", taskMsg.getMessageId(),
+                "taskMsgStatus", enumName(taskMsg.getStatus()),
+                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
+                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
+                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
+                "source", "TaskManager",
+                "reason", reason,
+                "result", "REJECTED"
+        ));
+    }
+
     public static void callbackRejectedInvalidState(TaskMsg taskMsg, String reason) {
         callbackRejectedInvalidState(taskMsg, null, reason);
     }

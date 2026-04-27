@@ -54,6 +54,7 @@ Required event names:
 - `CALLBACK_ACCEPTED`
 - `CALLBACK_IGNORED_DUPLICATE`
 - `CALLBACK_IGNORED_LATE`
+- `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
 - `RESOURCE_RELEASED`
 - `RESOURCE_RELEASE_FAILED`
@@ -168,7 +169,8 @@ Must be traceable:
 - assignment retry scheduling after a skipped dispatch when a `READY` or `RUNNING` task remains eligible
 - callback ignored because duplicate
 - callback ignored because task already terminal
-- callback rejected because no active attempt exists
+- callback rejected because no active runtime lease exists
+- callback rejected because no recoverable active attempt exists after runtime-lease validation
 
 Rules:
 
@@ -228,4 +230,5 @@ Minimum trace assertions:
 - `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised
 - `CALLBACK_IGNORED_LATE` when late callback is exercised
-- `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT` when a callback arrives without a unique active attempt
+- `CALLBACK_REJECTED_NO_ACTIVE_LEASE` when a callback arrives without an active runtime lease
+- `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT` only when a callback has a runtime lease but the engine still cannot recover an active attempt projection

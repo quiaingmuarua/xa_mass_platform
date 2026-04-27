@@ -340,25 +340,12 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/messages")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId,
-                                                                            @RequestParam(defaultValue = "1") int page,
-                                                                            @RequestParam(defaultValue = "20") int size) {
-        if (page < 1) {
-            page = 1;
-        }
-        if (size > 500) {
-            size = 500;
-        }
-        if (size < 1) {
-            size = 1;
-        }
-        int from = (page - 1) * size;
-        long total = taskQueries.countTaskMessages(taskId);
-        List<TaskMsg> pageList = taskQueries.getTaskMessagesPage(taskId, from, size);
-        List<Map<String, Object>> messages = pageList.stream()
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId) {
+        List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId);
+        List<Map<String, Object>> messages = taskMessages.stream()
                 .map(this::toTaskMessageView)
                 .collect(Collectors.toList());
-        return ok(Map.of("total", total, "page", page, "size", size, "messages", messages));
+        return ok(Map.of("total", messages.size(), "messages", messages));
     }
 
     private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {

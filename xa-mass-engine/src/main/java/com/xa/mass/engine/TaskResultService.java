@@ -54,7 +54,17 @@ class TaskResultService {
                     messageId, taskId, taskMsg.getStatus());
             return false;
         }
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        ActiveLeaseRecord activeLease = taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
+        if (activeLease == null) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
+            return false;
+        }
+        TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
+        if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(taskManager, taskId, taskMsg, activeAttempt, activeLease,
+                "EXPIRE_TASK_MESSAGE", "runtime active lease synchronized compatibility projection")) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message projection synchronization failed", 0);
+            return false;
+        }
         if (activeAttempt != null) {
             if (!TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
@@ -66,15 +76,16 @@ class TaskResultService {
         TaskMsgStatus fromStatus = taskMsg.getStatus();
         // Once a worker has started executing the message, lease expiry must
         // converge to one final outcome instead of re-queueing the same work.
-        boolean retryableExpiry = fromStatus == TaskMsgStatus.ASSIGNED
-                && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount();
-        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryableExpiry);
-        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, false, "task message expired",
-                null, null, retryableExpiry, true);
-        if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
-            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "stale work lease", 0);
+        boolean retryRequestedByPolicy = fromStatus == TaskMsgStatus.ASSIGNED;
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryRequestedByPolicy);
+        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
+                false, "task message expired", null, null, retryRequestedByPolicy, true);
+        if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
+                || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime lease rejected expiry result: " + workOutcome.status(), 0);
             return false;
         }
+        boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
         boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
@@ -96,7 +107,7 @@ class TaskResultService {
             return false;
         }
         Task freshTask = taskManager.getTask(taskId);
-        if (retryableExpiry) {
+        if (retryScheduled) {
             taskMsg.incrementRetryCount();
             taskMsg.resetForRetry();
             TraceEventLogger.taskMsgRetryReset(taskMsg,
@@ -110,17 +121,17 @@ class TaskResultService {
         }
         if (freshTask != null && activeAttempt != null) {
             publishAttemptClosed(freshTask, taskMsg, activeAttempt,
-                    "EXPIRE_TASK_MESSAGE", retryableExpiry
+                    "EXPIRE_TASK_MESSAGE", retryScheduled
                             ? "lease expiry closed the current attempt before re-dispatch"
                             : "task message lease expired");
         }
-        if (!retryableExpiry && freshTask != null) {
+        if (!retryScheduled && freshTask != null) {
             publishMessageLogicallyFinal(freshTask, taskMsg, activeAttempt,
                     "EXPIRE_TASK_MESSAGE", "task message expired");
         }
         LogUtils.logOperationSuccess("task message expired", 0);
         stateResolver.updateTaskProgress(taskId);
-        if (retryableExpiry) {
+        if (retryScheduled) {
             Task updatedTask = taskManager.getTask(taskId);
             if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
                 requestRetryDispatch(updatedTask, workRetryDelayMillis);
@@ -177,15 +188,31 @@ class TaskResultService {
                 return true;
             }
 
-            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+            ActiveLeaseRecord activeLease = taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
+            if (activeLease == null) {
+                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+                TraceEventLogger.callbackRejectedNoActiveLease(
+                        taskMsg,
+                        latestAttempt,
+                        "callback arrived without any active runtime lease"
+                );
+                logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
+                return false;
+            }
+            TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
             if (activeAttempt == null) {
                 TraceEventLogger.callbackRejectedNoActiveAttempt(
                         taskId,
                         messageId,
                         taskMsg.getStatus(),
-                        "callback arrived without any active attempt"
+                        "callback arrived without any recoverable active attempt"
                 );
-                logger.error("Cannot handle task message result because msg {} in task {} has no active attempt", messageId, taskId);
+                logger.error("Cannot handle task message result because msg {} in task {} has no recoverable active attempt", messageId, taskId);
+                return false;
+            }
+            if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(taskManager, taskId, taskMsg, activeAttempt, activeLease,
+                    "HANDLE_TASK_MESSAGE_RESULT", "runtime active lease synchronized compatibility projection")) {
+                logger.warn("Failed to synchronize task message {} projection from runtime active lease", messageId);
                 return false;
             }
             if (!isCallbackAcceptableMessageState(taskMsg)) {
@@ -214,17 +241,19 @@ class TaskResultService {
                 return false;
             }
 
-            ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, success, detail, errorCode, output,
-                    !success && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount(), false);
-            if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
-                logger.warn("Rejecting result for task message {} because work lease is stale", messageId);
+            ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
+                    success, detail, errorCode, output, !success, false);
+            if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
+                    || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
+                logger.warn("Rejecting result for task message {} because runtime lease rejected the result with {}",
+                        messageId, workOutcome.status());
                 return false;
             }
 
             if (success) {
                 return handleSuccess(taskId, taskMsg, activeAttempt, detail, output);
             }
-            if (taskMsg.getRetryCount() < taskMsg.getMaxRetryCount()) {
+            if (workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED) {
                 return handleRetryableFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
             }
             return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
@@ -403,16 +432,13 @@ class TaskResultService {
     private ResultApplyOutcome applyWorkResult(Task task,
                                                String taskId,
                                                String messageId,
+                                               String leaseToken,
                                                boolean success,
                                                String detail,
                                                String errorCode,
                                                Map<String, Object> output,
                                                boolean retryable,
                                                boolean expired) {
-        String leaseToken = taskManager.getTaskWorkRuntime()
-                .getActiveLease(taskId, messageId)
-                .map(ActiveLeaseRecord::leaseToken)
-                .orElse(null);
         TaskWorkResult result;
         if (success) {
             result = TaskWorkResult.success(taskId, messageId, leaseToken, detail, output);
@@ -427,12 +453,7 @@ class TaskResultService {
                 result = result.withRetryVisibleAt(result.completedAt().plusMillis(workRetryDelayMillis));
             }
         }
-        ResultApplyOutcome outcome = taskManager.getTaskWorkRuntime().applyResult(result);
-        if (outcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
-            logger.debug("No active work-runtime lease for task {}, msg {}; continuing through compatibility attempt path",
-                    taskId, messageId);
-        }
-        return outcome;
+        return taskManager.getTaskWorkRuntime().applyResult(result);
     }
 
     private long resolveWorkRetryDelayMillis(Task task, boolean retryable) {

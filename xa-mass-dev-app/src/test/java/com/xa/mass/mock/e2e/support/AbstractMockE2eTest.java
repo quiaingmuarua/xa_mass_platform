@@ -232,7 +232,7 @@ public abstract class AbstractMockE2eTest {
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
         Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> messagesResponse = exchange(
-                "/status/api/tasks/" + taskId + "/messages?page=1&size=20",
+                "/status/api/tasks/" + taskId + "/messages",
                 HttpMethod.GET,
                 null
         );

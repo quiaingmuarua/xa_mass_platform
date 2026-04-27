@@ -16,11 +16,14 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
 import com.xa.mass.engine.work.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Owns task-level lifecycle transitions that are not callback-result specific.
@@ -28,8 +31,6 @@ import java.util.List;
 class TaskLifecycleService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
-    private static final int TERMINATION_MESSAGE_PAGE_SIZE =
-            Integer.getInteger("xa.mass.engine.terminationMessagePageSize", 512);
 
     private final TaskManager taskManager;
     private final TaskStateResolver stateResolver;
@@ -407,20 +408,13 @@ class TaskLifecycleService {
 
     private void cancelPendingMessages(Task task) {
         String taskId = task.getTid();
-        int offset = 0;
-        while (true) {
-            List<TaskMsg> page = taskManager.getTaskMessagesPage(taskId, offset, TERMINATION_MESSAGE_PAGE_SIZE);
-            if (page.isEmpty()) {
-                return;
-            }
-            for (TaskMsg msg : page) {
-                cancelPendingMessage(task, msg);
-            }
-            offset += page.size();
+        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = activeLeaseByMessageId(taskId);
+        for (TaskMsg msg : taskManager.getTaskMessages(taskId)) {
+            cancelPendingMessage(task, msg, activeLeaseByMessageId.get(msg.getMessageId()));
         }
     }
 
-    private void cancelPendingMessage(Task task, TaskMsg msg) {
+    private void cancelPendingMessage(Task task, TaskMsg msg, ActiveLeaseRecord activeLease) {
         if (msg == null || msg.isCompleted()) {
             return;
         }
@@ -428,8 +422,24 @@ class TaskLifecycleService {
         TaskMsgStatus status = msg.getStatus();
         TaskMsgAttempt activeAttempt = null;
         boolean attemptClosed = false;
-        if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
+        if (activeLease != null) {
+            activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, msg, activeLease);
+            if (activeAttempt != null
+                    && !RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(
+                    taskManager,
+                    task.getTid(),
+                    msg,
+                    activeAttempt,
+                    activeLease,
+                    "CANCEL_PENDING_MESSAGES",
+                    "runtime active lease synchronized compatibility projection before terminal cleanup")) {
+                return;
+            }
+            status = msg.getStatus();
+        } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
             activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
+        }
+        if (activeAttempt != null) {
             if (activeAttempt != null
                     && TaskMessageAttemptSupport.expireAttempt(
                     activeAttempt,
@@ -441,7 +451,7 @@ class TaskLifecycleService {
         }
 
         boolean updated = false;
-        if (status == TaskMsgStatus.INIT) {
+        if (activeLease == null && status == TaskMsgStatus.INIT) {
             updated = msg.cancelBeforeDispatch("task cancelled");
             if (!updated) {
                 return;
@@ -455,7 +465,7 @@ class TaskLifecycleService {
                     "TaskManager",
                     "task cancelled before dispatch"
             );
-        } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
+        } else if (activeLease != null || activeAttempt != null) {
             updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
             if (updated) {
                 TraceEventLogger.taskMsgStatusTransition(
@@ -468,6 +478,18 @@ class TaskLifecycleService {
                         "task cancelled after assignment"
                 );
             }
+        } else {
+            msg.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.MANUAL_CANCELLED, "task cancelled");
+            updated = true;
+            TraceEventLogger.taskMsgStatusTransition(
+                    msg,
+                    null,
+                    status,
+                    msg.getStatus(),
+                    "CANCEL_PENDING_MESSAGES",
+                    "TaskManager",
+                    "task cancelled without active runtime lease"
+            );
         }
         if (!updated) {
             return;
@@ -494,5 +516,16 @@ class TaskLifecycleService {
                 "task termination finalized the logical message"
         );
         taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, msg);
+    }
+
+    private Map<String, ActiveLeaseRecord> activeLeaseByMessageId(String taskId) {
+        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new HashMap<>();
+        for (ActiveLeaseRecord lease : taskManager.getTaskWorkRuntime().activeLeases(taskId)) {
+            if (lease == null || lease.messageId() == null || lease.messageId().isBlank()) {
+                continue;
+            }
+            activeLeaseByMessageId.put(lease.messageId(), lease);
+        }
+        return activeLeaseByMessageId;
     }
 }

@@ -135,10 +135,8 @@ class TaskConcurrencyAcceptanceTest {
 
     @Test
     void concurrentRetryableFailureAndSuccessDoNotDoubleFinalize() throws Exception {
-        Task task = createRunningSingleMessageTask("concurrent-retry-success");
+        Task task = createRunningSingleMessageTask("concurrent-retry-success", 1);
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.setMaxRetryCount(1);
-        taskManager.updateTaskMessage(task.getTid(), message);
         assignMessage(task, message);
 
         AtomicInteger attemptClosedCount = new AtomicInteger();
@@ -232,11 +230,21 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private Task createRunningSingleMessageTask(String taskName) {
-        Task task = taskManager.createTask(buildRequest(taskName));
+        return createRunningSingleMessageTask(taskName, 3);
+    }
+
+    private Task createRunningSingleMessageTask(String taskName, int defaultMsgMaxRetryCount) {
+        Task task = taskManager.createTask(buildRequest(taskName, defaultMsgMaxRetryCount));
         assertTrue(taskManager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
         assertTrue(taskManager.updateTask(task));
         return task;
+    }
+
+    private TaskCreateRequestDto buildRequest(String taskName, int defaultMsgMaxRetryCount) {
+        TaskCreateRequestDto dto = buildRequest(taskName);
+        dto.setDefaultMsgMaxRetryCount(defaultMsgMaxRetryCount);
+        return dto;
     }
 
     private void registerCounts(String taskId,
