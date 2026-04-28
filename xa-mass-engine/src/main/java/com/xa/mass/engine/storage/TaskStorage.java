@@ -70,6 +70,19 @@ public interface TaskStorage {
     List<TaskMsg> getTaskMessages(String taskId);
 
     /**
+     * Bounded compatibility projection read. This is not pagination and should
+     * not become a high-volume detail API.
+     */
+    default List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return getTaskMessages(taskId).stream()
+                .limit(limit)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
      * Internal cleanup/convergence helper for logical messages that are not yet
      * final. Mainline runtime control flow should prefer this over full
      * task-message snapshots when it only needs pending work.

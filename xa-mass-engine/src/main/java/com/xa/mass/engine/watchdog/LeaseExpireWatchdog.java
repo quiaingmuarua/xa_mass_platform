@@ -82,8 +82,7 @@ public class LeaseExpireWatchdog {
     }
 
     private void scanExpiredLeases(java.time.Instant now) {
-        List<ActiveLeaseRecord> expiredLeases = maintenancePort.getTaskWorkRuntime()
-                .pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
+        List<ActiveLeaseRecord> expiredLeases = maintenancePort.pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
         for (ActiveLeaseRecord lease : expiredLeases) {
             log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
                     lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());

@@ -136,8 +136,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 Math.max(dispatchSlots.size(), 1),
                 assignmentRuntime.getTaskMessageLeaseSeconds()
         );
-        List<ClaimedTaskWork> claimed = assignmentRuntime.getTaskWorkRuntime()
-                .claimReady(task.getTid(), claimTargets, claimOptions);
+        List<ClaimedTaskWork> claimed = assignmentRuntime.claimReady(task.getTid(), claimTargets, claimOptions);
 
         for (ClaimedTaskWork work : claimed) {
             DispatchSlot slot = findSlot(dispatchSlots, work.workerId(), work.batchId());

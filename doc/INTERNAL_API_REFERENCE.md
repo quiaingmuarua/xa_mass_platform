@@ -312,7 +312,10 @@ Example response:
 Response notes:
 
 - returns `task`
-- returns `items` derived from persisted `TaskMsg.input`
+- returns a bounded `items` snapshot derived from persisted `TaskMsg.input`
+- optional `limit` controls the snapshot size; default `100`, hard-capped at `500`
+- `itemsTotal` reports the total task-message count and `itemsTruncated` reports
+  whether the bounded snapshot omitted items
 - returns `stateValidation`
 - `task.project` is serialized as the canonical project code
 - `task.user` is serialized as the current business-user binding object
@@ -520,14 +523,17 @@ Behavior:
 
 Query params:
 
-- `page`: default `1`
-- `size`: default `20`, hard-capped at `500`
+- optional `limit`: default `100`, hard-capped at `500`
+- no `page`, `offset`, or cursor contract is exposed; this endpoint is a
+  bounded compatibility/debug snapshot, not a high-volume detail API
 
 Response shape:
 
 - primary per-item payload truth is `messages[*].input` and `messages[*].output`
 - `target` is only a conventional key inside `messages[*].input`
 - raw top-level target projections are not part of the message read model
+- `total` reports the task-message count; `truncated=true` means the bounded
+  snapshot omitted messages
 
 ```json
 {
@@ -535,8 +541,8 @@ Response shape:
   "msg": "ok",
   "data": {
     "total": 2,
-    "page": 1,
-    "size": 20,
+    "limit": 100,
+    "truncated": false,
     "messages": [
       {
         "messageId": "msg-1",

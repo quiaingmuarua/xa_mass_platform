@@ -3,7 +3,11 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.work.TaskWorkRuntime;
+import com.xa.mass.engine.work.ClaimedTaskWork;
+import com.xa.mass.engine.work.TaskWorkClaimOptions;
+import com.xa.mass.engine.work.WorkerClaimTarget;
+
+import java.util.List;
 
 /**
  * Narrow engine-internal port for task assignment and message claim flows.
@@ -24,5 +28,7 @@ public interface TaskAssignmentRuntimePort {
 
     boolean updateTask(Task task);
 
-    TaskWorkRuntime getTaskWorkRuntime();
+    List<ClaimedTaskWork> claimReady(String taskId,
+                                     List<WorkerClaimTarget> claimTargets,
+                                     TaskWorkClaimOptions claimOptions);
 }

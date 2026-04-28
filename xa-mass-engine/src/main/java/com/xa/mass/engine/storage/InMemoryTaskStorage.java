@@ -137,6 +137,15 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
+    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.snapshot(limit) : List.of();
+    }
+
+    @Override
     public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.snapshotNonFinal() : List.of();
@@ -323,6 +332,20 @@ public class InMemoryTaskStorage implements TaskStorage {
         private synchronized List<TaskMsg> snapshot() {
             List<TaskMsg> snapshot = new ArrayList<>(messagesById.size());
             for (String messageId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(messageId);
+                if (message != null) {
+                    snapshot.add(message);
+                }
+            }
+            return snapshot;
+        }
+
+        private synchronized List<TaskMsg> snapshot(int limit) {
+            List<TaskMsg> snapshot = new ArrayList<>(Math.min(messagesById.size(), limit));
+            for (String messageId : orderedMsgIds) {
+                if (snapshot.size() >= limit) {
+                    break;
+                }
                 TaskMsg message = messagesById.get(messageId);
                 if (message != null) {
                     snapshot.add(message);

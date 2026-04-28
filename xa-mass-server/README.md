@@ -186,6 +186,10 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
+| `mass.storage.mode` | `memory` | server storage mode; set to `h2` for focused H2-backed task, worker, and rule storage |
+| `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | H2 JDBC URL used when `mass.storage.mode=h2` |
+| `mass.storage.jdbc.username` | `sa` | H2 JDBC username |
+| `mass.storage.jdbc.password` | empty | H2 JDBC password |
 | `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
@@ -193,6 +197,18 @@ Observability:
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
+
+H2 storage scope:
+
+- H2 is a local/CI JDBC storage adapter for development and verification, not
+  the production storage decision
+- default runtime stays `memory`; opt into H2 explicitly with
+  `mass.storage.mode=h2`
+- H2 message and attempt status columns are bounded per-task runtime indexes for
+  convergence, cleanup, and compatibility reads
+- do not use H2 as a cross-task message-status analytics surface; large-scale
+  message history and failure analysis should flow through trace, audit sinks,
+  or downstream analytical storage
 
 Mock-data loading order:
 

@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.*;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -44,7 +45,7 @@ class SimpleTaskMsgAssignListenerTest {
         recordService = mock(AssignmentRecordService.class);
         TaskStorage taskStorage = new InMemoryTaskStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage);
-        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        listener = newAssignmentListener(taskManager);
     }
 
     @Test
@@ -55,7 +56,12 @@ class SimpleTaskMsgAssignListenerTest {
                 .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
-        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, bindings) -> dispatched.set(bindings));
+        listener = new SimpleTaskMsgAssignListener(
+                new TaskManagerAssignmentRuntimePort(taskManager),
+                workerManager,
+                recordService,
+                (t, bindings) -> dispatched.set(bindings)
+        );
 
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -195,7 +201,7 @@ class SimpleTaskMsgAssignListenerTest {
     void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage);
-        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
         task.setBatchSize(2);
@@ -421,6 +427,14 @@ class SimpleTaskMsgAssignListenerTest {
 
     private MatchedWorkerContext matched(Worker worker, WorkerContext workerContext) {
         return new MatchedWorkerContext(worker, workerContext);
+    }
+
+    private SimpleTaskMsgAssignListener newAssignmentListener(TaskManager manager) {
+        return new SimpleTaskMsgAssignListener(
+                new TaskManagerAssignmentRuntimePort(manager),
+                workerManager,
+                recordService
+        );
     }
 
     private static class NoopTaskScheduler implements TaskScheduler {

@@ -7,7 +7,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
@@ -28,15 +28,15 @@ import static org.mockito.Mockito.*;
 
 class TaskResourceReleaseListenerTest {
 
-    private TaskManager taskManager;
+    private TaskRuntimeMaintenancePort maintenancePort;
     private WorkerManager workerManager;
     private TaskResourceReleaseListener listener;
 
     @BeforeEach
     void setUp() {
-        taskManager = mock(TaskManager.class);
+        maintenancePort = mock(TaskRuntimeMaintenancePort.class);
         workerManager = mock(WorkerManager.class);
-        listener = new TaskResourceReleaseListener(taskManager, workerManager);
+        listener = new TaskResourceReleaseListener(maintenancePort, workerManager);
     }
 
     @Test
@@ -52,7 +52,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -75,7 +75,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -106,7 +106,7 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("other-task");
         wctx.startOccupying();
 
-        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
 
         listener.onTaskTerminal(task);
@@ -131,9 +131,8 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg));
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(null);
-        when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
+        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(false);
+        when(maintenancePort.hasPendingDispatchableMessages("task-1")).thenReturn(true);
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -141,7 +140,7 @@ class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
-        verify(taskManager).requestTaskDispatch(same(task));
+        verify(maintenancePort).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -165,10 +164,8 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg, retriedMsg));
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(null);
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-2")).thenReturn(null);
-        when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
+        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(false);
+        when(maintenancePort.hasPendingDispatchableMessages("task-1")).thenReturn(true);
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -176,7 +173,7 @@ class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
-        verify(taskManager).requestTaskDispatch(same(task));
+        verify(maintenancePort).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -197,12 +194,12 @@ class TaskResourceReleaseListenerTest {
         runningMsg.setStatus(TaskMsgStatus.RUNNING);
         TaskMsgAttempt activeAttempt = activeAttempt("task-1", "msg-2", "attempt-2", "worker-1", "wctx-1");
 
-        when(taskManager.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
+        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
         listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
 
         verify(workerManager, never()).unlockWorker("worker-1");
-        verify(taskManager, never()).requestTaskDispatch(any());
+        verify(maintenancePort, never()).requestTaskDispatch(any());
     }
 
     @Test
@@ -219,7 +216,7 @@ class TaskResourceReleaseListenerTest {
         wctx.startOccupying();
         wctx.block();
 
-        when(taskManager.getTaskWorkRuntime()).thenReturn(runtimeWithActiveLease("task-1", "msg-1", "worker-1", "wctx-1"));
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
@@ -264,10 +261,10 @@ class TaskResourceReleaseListenerTest {
         return attempt;
     }
 
-    private InMemoryTaskWorkRuntime runtimeWithActiveLease(String taskId,
-                                                           String messageId,
-                                                           String workerId,
-                                                           String workerContextId) {
+    private List<com.xa.mass.engine.work.ActiveLeaseRecord> activeLeases(String taskId,
+                                                                         String messageId,
+                                                                         String workerId,
+                                                                         String workerContextId) {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(new TaskWorkEnvelope(taskId, messageId, "demo.event",
                         Map.of("target", messageId), null, 0, 3, null, null, Instant.now()),
@@ -276,6 +273,6 @@ class TaskResourceReleaseListenerTest {
                 List.of(new WorkerClaimTarget(workerId, workerContextId, "batch-1", 1)),
                 1,
                 30);
-        return runtime;
+        return runtime.activeLeases(taskId);
     }
 }

@@ -25,6 +25,17 @@ public interface TaskQueryOperations {
     /** Compatibility/demo task-message snapshot; not a future detail contract. */
     List<TaskMsg> getTaskMessages(String taskId);
 
+    /**
+     * Bounded compatibility/demo task-message snapshot. This is not pagination;
+     * callers that need large-scale message detail should use trace/audit sinks.
+     */
+    default List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return getTaskMessages(taskId).stream().limit(limit).toList();
+    }
+
     TaskMsg getTaskMessage(String taskId, String messageId);
 
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);

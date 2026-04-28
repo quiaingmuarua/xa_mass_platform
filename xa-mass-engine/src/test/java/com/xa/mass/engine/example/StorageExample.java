@@ -6,6 +6,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
@@ -125,13 +126,14 @@ public class StorageExample {
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
-        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,
                 workerManager,
                 msgAssignListener,
                 recordService,
-                taskManager,
+                assignmentRuntimePort,
                 taskManager.events()
         );
 
@@ -242,13 +244,14 @@ public class StorageExample {
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
-        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,
                 workerManager,
                 msgAssignListener,
                 recordService,
-                taskManager,
+                assignmentRuntimePort,
                 taskManager.events()
         );
 

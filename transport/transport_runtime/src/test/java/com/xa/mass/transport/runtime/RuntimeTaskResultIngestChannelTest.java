@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -34,7 +35,7 @@ class RuntimeTaskResultIngestChannelTest {
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskManager = new TaskManager(scheduler, new InMemoryTaskStorage());
-        channel = new RuntimeTaskResultIngestChannel(taskManager);
+        channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
 
     @Test

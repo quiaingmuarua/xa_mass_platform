@@ -7,6 +7,7 @@ import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -208,7 +209,8 @@ public class MassApplication {
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskManager();
+                TaskResultIngestFacade taskResultIngestFacade =
+                        new TaskManagerResultIngestFacade(engineConfig.getTaskManager());
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(taskResultIngestFacade);
                 logger.info("Task result ingest channel initialized");
             }

@@ -253,6 +253,8 @@ Coverage: lifecycle happy path, failure convergence, callback replay, worker/con
 ## 7. Known Mainline Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub.
-- Redis and database storage remain fail-fast placeholders.
+- Redis storage remains a fail-fast placeholder.
+- Engine `DATABASE` factory methods remain fail-fast, but `xa-mass-server` has
+  a focused H2 storage path behind `mass.storage.mode=h2`.
 - Redis-backed EventBus behavior is not part of the verified runtime path.
 - API integration coverage is improved but still not exhaustive for every cancel/terminate variant.

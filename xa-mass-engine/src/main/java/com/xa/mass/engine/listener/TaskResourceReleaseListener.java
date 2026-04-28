@@ -38,7 +38,7 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        List<ActiveLeaseRecord> leases = maintenancePort.getTaskWorkRuntime().activeLeases(task.getTid());
+        List<ActiveLeaseRecord> leases = maintenancePort.getActiveLeases(task.getTid());
         Set<String> workerIds = new LinkedHashSet<>();
 
         for (ActiveLeaseRecord lease : leases) {

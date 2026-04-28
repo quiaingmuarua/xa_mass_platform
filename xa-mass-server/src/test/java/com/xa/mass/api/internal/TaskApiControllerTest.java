@@ -448,7 +448,8 @@ class TaskApiControllerTest {
         task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.getTaskMessages(TASK_ID)).thenReturn(List.of(
+        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
+        when(taskQueries.getTaskMessages(eq(TASK_ID), anyInt())).thenReturn(List.of(
                 new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha")),
                 new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"))
         ));
@@ -468,6 +469,9 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.user.userId").value("agent-1"))
                 .andExpect(jsonPath("$.data.items[0].target").value("alpha"))
                 .andExpect(jsonPath("$.data.items[1].target").value("beta"))
+                .andExpect(jsonPath("$.data.itemsTotal").value(2))
+                .andExpect(jsonPath("$.data.itemsLimit").value(100))
+                .andExpect(jsonPath("$.data.itemsTruncated").value(false))
                 .andExpect(jsonPath("$.data.compatTargetList").doesNotExist())
                 .andExpect(jsonPath("$.data.stateValidation.valid").value(true))
                 .andExpect(jsonPath("$.data.stateValidation.needsResolution").value(false))
@@ -520,18 +524,40 @@ class TaskApiControllerTest {
         TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
         first.setOutput(Map.of("result", "ok"));
         TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskQueries.getTaskMessages(TASK_ID)).thenReturn(List.of(first, second));
+        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
+        when(taskQueries.getTaskMessages(TASK_ID, 100)).thenReturn(List.of(first, second));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.limit").value(100))
+                .andExpect(jsonPath("$.data.truncated").value(false))
                 .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
                 .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"))
                 .andExpect(jsonPath("$.data.messages[1].messageId").value("msg-2"));
 
-        verify(taskQueries).getTaskMessages(TASK_ID);
+        verify(taskQueries).getTaskMessages(TASK_ID, 100);
+        verify(taskQueries).countTaskMessages(TASK_ID);
+    }
+
+    @Test
+    void getTaskMessagesCapsRequestedLimitWithoutPagination() throws Exception {
+        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(1_000L);
+        when(taskQueries.getTaskMessages(TASK_ID, 500))
+                .thenReturn(List.of(new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"))));
+
+        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
+                        .param("limit", "1000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1000))
+                .andExpect(jsonPath("$.data.limit").value(500))
+                .andExpect(jsonPath("$.data.truncated").value(true))
+                .andExpect(jsonPath("$.data.page").doesNotExist())
+                .andExpect(jsonPath("$.data.size").doesNotExist());
+
+        verify(taskQueries).getTaskMessages(TASK_ID, 500);
     }
 
     @Test

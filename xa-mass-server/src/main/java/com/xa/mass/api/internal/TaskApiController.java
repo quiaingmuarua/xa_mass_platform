@@ -34,6 +34,8 @@ public class TaskApiController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
+    private static final int DEFAULT_TASK_MESSAGE_SNAPSHOT_LIMIT = 100;
+    private static final int MAX_TASK_MESSAGE_SNAPSHOT_LIMIT = 500;
 
     private final TaskQueryOperations taskQueries;
     private final TaskAdminOperations taskAdmin;
@@ -118,19 +120,25 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(@PathVariable String taskId) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(@PathVariable String taskId,
+                                                                    @RequestParam(required = false) Integer limit) {
         try {
+            int boundedLimit = resolveTaskMessageLimit(limit);
             Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId).stream()
+            long itemTotal = taskQueries.countTaskMessages(taskId);
+            List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId, boundedLimit).stream()
                     .map(TaskMsg::getInput)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", task);
             response.put("items", items);
+            response.put("itemsTotal", itemTotal);
+            response.put("itemsLimit", boundedLimit);
+            response.put("itemsTruncated", itemTotal > items.size());
             response.put("stateValidation", taskQueries.validateTaskState(taskId));
             return ok(response);
         } catch (Exception e) {
@@ -340,12 +348,34 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/messages")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId) {
-        List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId);
-        List<Map<String, Object>> messages = taskMessages.stream()
-                .map(this::toTaskMessageView)
-                .collect(Collectors.toList());
-        return ok(Map.of("total", messages.size(), "messages", messages));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId,
+                                                                            @RequestParam(required = false) Integer limit) {
+        try {
+            int boundedLimit = resolveTaskMessageLimit(limit);
+            long total = taskQueries.countTaskMessages(taskId);
+            List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId, boundedLimit);
+            List<Map<String, Object>> messages = taskMessages.stream()
+                    .map(this::toTaskMessageView)
+                    .collect(Collectors.toList());
+            return ok(Map.of(
+                    "total", total,
+                    "limit", boundedLimit,
+                    "truncated", total > messages.size(),
+                    "messages", messages
+            ));
+        } catch (Exception e) {
+            return badRequest("Task message lookup failed: " + e.getMessage());
+        }
+    }
+
+    private int resolveTaskMessageLimit(Integer requestedLimit) {
+        if (requestedLimit == null) {
+            return DEFAULT_TASK_MESSAGE_SNAPSHOT_LIMIT;
+        }
+        if (requestedLimit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than 0");
+        }
+        return Math.min(requestedLimit, MAX_TASK_MESSAGE_SNAPSHOT_LIMIT);
     }
 
     private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {

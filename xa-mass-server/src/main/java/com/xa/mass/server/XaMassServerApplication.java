@@ -1,7 +1,16 @@
 package com.xa.mass.server;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.rules.RuleConfig;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.server.storage.H2RuleStorage;
+import com.xa.mass.server.storage.H2TaskStorage;
+import com.xa.mass.server.storage.H2WorkerStorage;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
@@ -55,6 +64,18 @@ public class XaMassServerApplication {
     @Value("${mass.runtime.event-max-pending-tasks:10000}")
     private int eventRuntimeMaxPendingTasks;
 
+    @Value("${mass.storage.mode:memory}")
+    private String storageMode;
+
+    @Value("${mass.storage.jdbc.url:jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false}")
+    private String storageJdbcUrl;
+
+    @Value("${mass.storage.jdbc.username:sa}")
+    private String storageJdbcUsername;
+
+    @Value("${mass.storage.jdbc.password:}")
+    private String storageJdbcPassword;
+
     public static void main(String[] args) {
         String profile = System.getProperty("spring.profiles.active");
         if (profile == null || profile.isBlank()) {
@@ -106,6 +127,18 @@ public class XaMassServerApplication {
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> {
                     engine.enabled(true).workerThreads(workerThreads);
+                    if (isH2StorageMode()) {
+                        TaskScheduler scheduler = new SimpleTaskScheduler();
+                        engine.scheduler(scheduler)
+                                .taskManager(new TaskManager(
+                                        scheduler,
+                                        new H2TaskStorage(storageJdbcUrl, storageJdbcUsername, storageJdbcPassword)))
+                                .workerManager(new WorkerManager(new H2WorkerStorage(
+                                        storageJdbcUrl,
+                                        storageJdbcUsername,
+                                        storageJdbcPassword)))
+                                .ruleManager(h2RuleManager());
+                    }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {
                         engine.bootstrapDataProvider(provider);
@@ -181,5 +214,16 @@ public class XaMassServerApplication {
         adapters.add("socket(enabled=" + socketEnabled + ", address=" + socketAddress + ")");
         adapters.add("websocket(enabled=" + webSocketEnabled + ", address=" + webSocketUri + ")");
         return adapters;
+    }
+
+    private boolean isH2StorageMode() {
+        return "h2".equalsIgnoreCase(storageMode) || "jdbc-h2".equalsIgnoreCase(storageMode);
+    }
+
+    private RuleManager<java.util.Map<String, Object>> h2RuleManager() {
+        RuleManager<java.util.Map<String, Object>> manager = new RuleManager<>(
+                new H2RuleStorage(storageJdbcUrl, storageJdbcUsername, storageJdbcPassword));
+        manager.addDefaultRules(RuleConfig.getDefaultWorkerMatchRules());
+        return manager;
     }
 }

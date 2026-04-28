@@ -8,7 +8,11 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskManagerRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.*;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -49,6 +53,7 @@ public class MassEngine {
 
     private TaskManager taskManager;
     private TaskRuntimeRecoveryPort runtimeRecoveryPort;
+    private TaskRuntimeMaintenancePort runtimeMaintenancePort;
     private TaskEventListenerRegistrar eventListeners;
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
@@ -78,33 +83,35 @@ public class MassEngine {
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
             taskManager = config.getTaskManager();
-            runtimeRecoveryPort = taskManager;
+            runtimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(taskManager);
+            runtimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(taskManager);
+            var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
             taskManager.setTaskMessageLeaseSeconds(config.getTaskMessageLeaseSeconds());
             eventListeners = taskManager.events();
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             var msgAssignListener = new SimpleTaskMsgAssignListener(
-                    taskManager,
+                    assignmentRuntimePort,
                     workerManager,
                     recordService,
                     taskMsgDispatchListener);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, taskManager, taskManager.events())
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager, taskManager.events());
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskManager.events())
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskManager.events());
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis());
             assignWorker.start();
 
             TaskResourceReleaseListener resourceReleaseListener =
-                    new TaskResourceReleaseListener(taskManager, workerManager);
+                    new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager);
             eventListeners.addTaskReadyListener(assignWorker::submit);
             eventListeners.addTaskDispatchListener(assignWorker::submit);
             eventListeners.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
             eventListeners.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             recoverRuntimeReadyTasks();
 
-            leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
+            leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
 
             eventBus = EventBusFactory.get("runtime");
@@ -151,6 +158,7 @@ public class MassEngine {
                 taskManager.shutdown();
             }
             runtimeRecoveryPort = null;
+            runtimeMaintenancePort = null;
             eventListeners = null;
             eventBus = null;
             running = false;

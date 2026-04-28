@@ -45,13 +45,7 @@ import java.util.function.Supplier;
 /**
  * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
  */
-public class TaskManager implements TaskResultIngestFacade,
-        TaskAssignmentRuntimePort,
-        TaskRuntimeMaintenancePort,
-        TaskRuntimeRecoveryPort,
-        TaskResultRuntimePort,
-        TaskStateRuntimePort,
-        TaskLeaseProjectionPort {
+public class TaskManager {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -95,8 +89,8 @@ public class TaskManager implements TaskResultIngestFacade,
         this.taskWorkRuntime = taskWorkRuntime == null ? new InMemoryTaskWorkRuntime() : taskWorkRuntime;
         this.taskTerminalPolicy = taskTerminalPolicy;
         this.eventPublisher = new TaskEventPublisher();
-        this.stateResolver = new TaskStateResolver(this);
-        this.stateValidator = new TaskStateValidator(this);
+        this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this));
+        this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this));
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
@@ -109,7 +103,10 @@ public class TaskManager implements TaskResultIngestFacade,
                 new TaskManagerLifecycleRuntimePort(this),
                 stateResolver
         );
-        this.resultService = new TaskResultService(this, new TaskRuntimeRetryPolicyResolver());
+        this.resultService = new TaskResultService(
+                new TaskManagerResultRuntimePort(this),
+                new TaskRuntimeRetryPolicyResolver()
+        );
         this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }
 
@@ -227,8 +224,7 @@ public class TaskManager implements TaskResultIngestFacade,
         return tasks;
     }
 
-    @Override
-    public List<Task> getRuntimeDispatchableTasks(int limit) {
+    List<Task> getRuntimeDispatchableTasks(int limit) {
         if (limit <= 0) {
             return List.of();
         }
@@ -262,7 +258,7 @@ public class TaskManager implements TaskResultIngestFacade,
         return tasks;
     }
 
-    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
@@ -345,6 +341,14 @@ public class TaskManager implements TaskResultIngestFacade,
         return taskStorage.getTaskMessages(taskId);
     }
 
+    /**
+     * Bounded compatibility read for UI/debug snapshots. Not a pagination or
+     * analysis contract.
+     */
+    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        return taskStorage.getTaskMessages(taskId, limit);
+    }
+
     public long countTaskMessages(String taskId) {
         return taskStorage.countTaskMessages(taskId);
     }
@@ -369,7 +373,6 @@ public class TaskManager implements TaskResultIngestFacade,
         return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
@@ -408,35 +411,31 @@ public class TaskManager implements TaskResultIngestFacade,
         return taskStorage.getTaskMessageStats(taskId);
     }
 
-    public int countPendingDispatchableMessages(String taskId) {
+    int countPendingDispatchableMessages(String taskId) {
         long readyCount = taskWorkRuntime.stats(taskId).readyCount();
         return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
-    public boolean hasPendingDispatchableMessages(String taskId) {
+    boolean hasPendingDispatchableMessages(String taskId) {
         return countPendingDispatchableMessages(taskId) > 0;
     }
 
-    public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
+    boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
         return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
     }
 
-    @Override
-    public TaskWorkStats getTaskWorkStats(String taskId) {
+    TaskWorkStats getTaskWorkStats(String taskId) {
         return taskWorkRuntime.stats(taskId);
     }
 
-    @Override
-    public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
+    TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
         return taskTerminalPolicy.evaluate(task, stats);
     }
 
-    @Override
-    public void publishTaskTerminal(Task task) {
+    void publishTaskTerminal(Task task) {
         eventPublisher.publishTaskTerminal(task);
     }
 
-    @Override
     public TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return taskStorage.getTaskMessageAttemptStats(taskId, messageId);
     }
@@ -517,7 +516,6 @@ public class TaskManager implements TaskResultIngestFacade,
         return outcome.accepted();
     }
 
-    @Override
     public boolean handleTaskMessageResult(String taskId,
                                            String messageId,
                                            boolean success,
@@ -746,42 +744,35 @@ public class TaskManager implements TaskResultIngestFacade,
      * <p>This is a runtime orchestration method, not a public business API
      * contract.
      */
-    public void requestTaskDispatch(Task task) {
+    void requestTaskDispatch(Task task) {
         dispatchRequestService.requestImmediate(task);
     }
 
-    @Override
-    public void requestTaskRetryDispatch(Task task, long delayMillis) {
+    void requestTaskRetryDispatch(Task task, long delayMillis) {
         dispatchRequestService.requestDelayed(task, delayMillis);
     }
 
-    @Override
-    public java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
+    java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
         return taskWorkRuntime.getActiveLease(taskId, messageId);
     }
 
-    @Override
-    public ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
+    ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskWorkRuntime.applyResult(result);
     }
 
-    @Override
-    public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+    void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
         eventPublisher.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
     }
 
-    @Override
-    public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
+    void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
         eventPublisher.publishTaskMessageLogicallyFinal(task, taskMsg);
     }
 
-    @Override
-    public void handleTaskMsgCompletion(TaskMsg taskMsg) {
+    void handleTaskMsgCompletion(TaskMsg taskMsg) {
         taskScheduler.handleTaskMsgCompletion(taskMsg);
     }
 
-    @Override
-    public void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
+    void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
         taskScheduler.handleTaskMsgFailure(taskMsg, detail);
     }
 

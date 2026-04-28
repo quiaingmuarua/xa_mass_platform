@@ -29,6 +29,10 @@
   `TaskResultIngestFacade`, `TaskAssignmentRuntimePort`, `TaskRuntimeMaintenancePort`,
   `TaskRuntimeRecoveryPort`, and `TaskEventListenerRegistrar`
   instead of taking the full `TaskManager` facade by default
+- transport/runtime result ingress should be wired through a dedicated `TaskResultIngestFacade`
+  adapter, not by treating `TaskManager` itself as the transport-facing contract
+- assignment-side runtime ports should expose claim/write operations directly; do not leak the full
+  `TaskWorkRuntime` object into listeners just to claim ready work
 - core runtime services such as lifecycle transitions and delayed redispatch request handling should also prefer package-local
   narrow ports/adapters instead of reaching through `TaskManager` for storage, scheduler, runtime, and event operations
 - treat `validateTaskState(...)` as a bounded runtime validation tool; deep `TaskMsg` projection audits belong on the explicit engine-side audit path, not on hot-path runtime decisions

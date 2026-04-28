@@ -230,6 +230,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
+    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        return requireStartedTaskManager().getTaskMessages(taskId, limit);
+    }
+
+    @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
         return requireStartedTaskManager().getTaskMessage(taskId, messageId);
     }
