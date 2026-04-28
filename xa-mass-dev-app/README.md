@@ -5,7 +5,7 @@
 Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
-- the embedded transport adapters and mock worker clients
+- the embedded transport adapters, backend-hosted control console, and frontend shell
 - SDK-created worker resources, fixture bootstrap inputs, and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
@@ -13,13 +13,20 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
-- starts runtime through `xa-mass-sdk` and exposes the backend-hosted control console and JSON APIs through `xa-mass-web`
+- starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
 - worker, task, and rule resources are created through the embedded SDK runtime
 - default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
 - mock JSON remains a test/fixture input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from it
 - default `dev` startup does not auto-start embedded mock clients; worker presence is expected to come from external sample or real worker processes
 - default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
   protected by `X-Sample-Bootstrap-Key`
+
+Controller/console ownership now includes:
+
+- REST controller layer
+- DTO / request-response boundary
+- backend-hosted control console shell
+- frontend route serving from built `frontend/dist`
 
 ## Port Model
 
@@ -45,7 +52,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 

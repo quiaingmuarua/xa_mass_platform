@@ -5,7 +5,6 @@ set -e
 
 MODULES=(
   "."
-  "xa-mass-web"
   "xa-mass-core"
   "transport/transport_api"
   "transport/polling-adapter"

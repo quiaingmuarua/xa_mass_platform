@@ -24,7 +24,7 @@
                 <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>ban-direct-engine-dependency</id>
+                        <id>ban-direct-engine-and-websocket-adapter-dependency</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>
@@ -35,6 +35,7 @@
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
+                                        <exclude>com.xa.mass:xa-mass-transport-websocket</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>
@@ -53,11 +54,6 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-web</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
         </dependency>
@@ -68,6 +64,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+            <version>4.4.0</version>
         </dependency>
         <dependency>
             <groupId>net.logstash.logback</groupId>

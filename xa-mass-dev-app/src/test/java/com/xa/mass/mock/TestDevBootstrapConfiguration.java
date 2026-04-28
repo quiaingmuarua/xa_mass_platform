@@ -78,6 +78,14 @@ public class TestDevBootstrapConfiguration {
     }
 
     @Bean
+    @Order(10)
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true")
+    public CommandLineRunner testFixtureLoadRunner(MassSdkApplication app,
+                                                   MassBootstrapDataProvider bootstrapDataProvider) {
+        return args -> bootstrapDataProvider.loadInto(app);
+    }
+
+    @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
     @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-catalog", havingValue = "true")
     public CommandLineRunner testCatalogBootstrapRunner(MassSdkApplication app) {

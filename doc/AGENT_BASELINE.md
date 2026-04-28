@@ -96,9 +96,9 @@ Rules:
 - Java 21 virtual threads are the runtime baseline for blocking concurrency boundaries when routed through explicit runtime abstractions. They reduce concurrency complexity, but they must not redefine engine lifecycle correctness, worker lock ownership, or `TaskMsgAttempt` state semantics.
 - Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
-- Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and adds the current HTTP/control-console shell
+- Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and owns the current HTTP/control-console/frontend shell
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell E2E
 
 ## 6. Current Contract Summary
@@ -160,7 +160,7 @@ Important current rules:
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 - lifecycle/API:
-  - `xa-mass-web/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
+  - `xa-mass-dev-app/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
   - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 - payload/matching:

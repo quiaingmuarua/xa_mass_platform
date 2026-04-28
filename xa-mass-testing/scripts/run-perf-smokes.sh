@@ -19,7 +19,6 @@ MODULE_CLASSES=(
   "xa-mass-sdk-api/target/classes"
   "xa-mass-engine/target/classes"
   "xa-mass-core/target/classes"
-  "xa-mass-web/target/classes"
   "transport/transport_runtime/target/classes"
   "transport/transport_api/target/classes"
   "transport/polling-adapter/target/classes"

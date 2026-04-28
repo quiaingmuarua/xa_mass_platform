@@ -226,8 +226,7 @@ class WebSocketServerImplDisconnectTest {
 
         Channel channel = mock(Channel.class);
         ChannelId channelId = mock(ChannelId.class);
-        @SuppressWarnings("unchecked")
-        Attribute<Boolean> countedAttribute = mock(Attribute.class);
+        Attribute<Boolean> countedAttribute = mockBooleanAttribute();
         when(channelId.asShortText()).thenReturn("disconnect-ch");
         when(channel.id()).thenReturn(channelId);
         when(channel.isActive()).thenReturn(true);
@@ -277,8 +276,7 @@ class WebSocketServerImplDisconnectTest {
 
         Channel countedChannel = mock(Channel.class);
         ChannelId countedChannelId = mock(ChannelId.class);
-        @SuppressWarnings("unchecked")
-        Attribute<Boolean> countedAttribute = mock(Attribute.class);
+        Attribute<Boolean> countedAttribute = mockBooleanAttribute();
         when(countedChannel.id()).thenReturn(countedChannelId);
         when(countedChannelId.asShortText()).thenReturn("counted-ch");
         when(countedChannel.attr(any())).thenAnswer(invocation -> countedAttribute);
@@ -289,8 +287,7 @@ class WebSocketServerImplDisconnectTest {
 
         Channel rejectedChannel = mock(Channel.class);
         ChannelId rejectedChannelId = mock(ChannelId.class);
-        @SuppressWarnings("unchecked")
-        Attribute<Boolean> rejectedAttribute = mock(Attribute.class);
+        Attribute<Boolean> rejectedAttribute = mockBooleanAttribute();
         when(rejectedChannel.id()).thenReturn(rejectedChannelId);
         when(rejectedChannelId.asShortText()).thenReturn("rejected-ch");
         when(rejectedChannel.attr(any())).thenAnswer(invocation -> rejectedAttribute);
@@ -315,5 +312,18 @@ class WebSocketServerImplDisconnectTest {
         Constructor<?> constructor = handlerClass.getDeclaredConstructor(WebSocketServerImpl.class);
         constructor.setAccessible(true);
         return (ChannelInboundHandlerAdapter) constructor.newInstance(server);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Attribute<Boolean> mockBooleanAttribute() {
+        Attribute<Boolean> attribute = mock(Attribute.class);
+        AtomicReference<Boolean> value = new AtomicReference<>();
+        doAnswer(invocation -> {
+            value.set(invocation.getArgument(0));
+            return null;
+        }).when(attribute).set(any());
+        when(attribute.getAndSet(any())).thenAnswer(invocation -> value.getAndSet(invocation.getArgument(0)));
+        when(attribute.get()).thenAnswer(invocation -> value.get());
+        return attribute;
     }
 }

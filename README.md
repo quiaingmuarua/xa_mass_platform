@@ -47,12 +47,11 @@ The shared kernel is:
 
 ## Module Map
 
-- `xa-mass-dev-app`: Boot validation shell
+- `xa-mass-dev-app`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
 - `xa-mass-sdk` + `xa-mass-sdk-api`: embedding entry, runtime composition, and public SDK types
 - `transport/transport_api` + `transport/transport_runtime`: transport-neutral SPI and shared transport runtime assembly
 - `transport/polling-adapter` + `transport/websocket-adapter` + `transport/socket-adapter`: concrete transport adapters
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
-- `xa-mass-web`: HTTP controllers and backend-hosted console shell
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
 - `xa-mass-core`: shared models and infrastructure
 

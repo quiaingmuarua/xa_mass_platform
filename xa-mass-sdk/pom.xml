@@ -136,7 +136,6 @@
                                 <bannedDependencies>
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
-                                        <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-dev-app</exclude>
                                     </excludes>
                                 </bannedDependencies>

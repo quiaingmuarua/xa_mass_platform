@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
+import org.springframework.core.annotation.Order;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -115,6 +116,7 @@ public class MockApplicationSpringBootApp {
 
     @Bean
     @Profile("dev")
+    @Order(0)
     public CommandLineRunner fullStackStarter(MassSdkApplication app) {
         return args -> {
             log.info("Starting embedded transport runtime + engine");

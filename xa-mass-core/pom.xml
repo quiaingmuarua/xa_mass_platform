@@ -86,7 +86,6 @@
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
                                         <exclude>com.xa.mass:xa-mass-transport-websocket</exclude>
-                                        <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk-api</exclude>
                                         <exclude>com.xa.mass:xa-mass-dev-app</exclude>
