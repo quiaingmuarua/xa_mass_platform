@@ -28,7 +28,7 @@ class VirtualThreadRuntimeTaskExecutorTest {
             assertTrue(handled.await(1, TimeUnit.SECONDS));
             assertTrue(virtualThread.get());
             assertEquals(1, executor.getStatistics().getSubmittedTasks());
-            assertEquals(1, executor.getStatistics().getCompletedTasks());
+            assertTrue(waitForCompletedTasks(executor, 1, 1, TimeUnit.SECONDS));
         } finally {
             executor.shutdown();
         }
@@ -67,5 +67,19 @@ class VirtualThreadRuntimeTaskExecutorTest {
 
         assertThrows(RejectedExecutionException.class, () -> executor.submit(() -> {}));
         assertEquals(1, executor.getStatistics().getRejectedTasks());
+    }
+
+    private boolean waitForCompletedTasks(VirtualThreadRuntimeTaskExecutor executor,
+                                          long expectedCompletedTasks,
+                                          long timeout,
+                                          TimeUnit unit) throws InterruptedException {
+        long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+        while (System.nanoTime() < deadlineNanos) {
+            if (executor.getStatistics().getCompletedTasks() >= expectedCompletedTasks) {
+                return true;
+            }
+            Thread.sleep(10L);
+        }
+        return executor.getStatistics().getCompletedTasks() >= expectedCompletedTasks;
     }
 }
