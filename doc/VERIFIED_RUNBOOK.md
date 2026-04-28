@@ -10,7 +10,7 @@ Use this file when you need to boot the app, run a smoke flow, or choose a focus
 
 Current runtime entry:
 
-- Spring Boot app: `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+- Spring Boot app: `xa-mass-server/src/main/java/com/xa/mass/mock/XaMassServerApplication.java`
 - SDK entry: `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
 - Embedded runtime composition: `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
 - Java baseline: JDK 21 / `maven.compiler.release=21`
@@ -26,7 +26,7 @@ Current module set from the root reactor:
 - `xa-mass-sdk-api`
 - `xa-mass-sdk`
 - `xa-mass-testing`
-- `xa-mass-dev-app`
+- `xa-mass-server`
 
 The WebSocket adapter artifact is `xa-mass-transport-websocket`; its sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
 
@@ -38,8 +38,8 @@ Run from repo root:
 java -version
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
-  com.xa.mass.mock.MockApplicationSpringBootApp
+java -cp "xa-mass-server/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+  com.xa.mass.server.XaMassServerApplication
 ```
 
 Windows guidance:
@@ -52,10 +52,10 @@ Default runtime facts:
 - `server.port=8088` serves the backend-hosted control console and JSON APIs.
 - `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - `mass.socket.port=18089` serves the current socket transport adapter endpoint when `mass.socket.enabled=true`.
-- Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
+- Default local/dev startup auto-starts mock worker clients when `sample.client.auto-start=true`.
 - Mock adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
-- `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
+- `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
 ## 3. Smoke Checks
 
@@ -103,7 +103,7 @@ curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}/messages
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode mock clients
-- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `mock.client.task-result-status=FAILED`
+- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
 - task detail response includes `items` from persisted `TaskMsg.input` and `stateValidation`
 - message read model exposes `input`, `output`, `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
@@ -157,7 +157,7 @@ Open-ended and targeted worker debug:
 Boot-shell E2E:
 
 ```bash
-./mvnw -pl xa-mass-dev-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest test
 ```
 
 Cross-language external worker samples:
@@ -243,7 +243,7 @@ Artifacts:
 Focused command used for current high-signal runtime coverage:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Coverage: lifecycle happy path, failure convergence, callback replay, worker/context routing, stateless workers, worker reuse, minimum-worker gate, refill, targeted worker debug, and control-console routing.

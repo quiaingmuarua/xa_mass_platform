@@ -26,7 +26,7 @@ echo "[external-worker-samples] repo root: ${REPO_ROOT}"
 echo "[external-worker-samples] tests: ${TEST_ARG}"
 
 cd "${REPO_ROOT}"
-"${MVN_CMD[@]}" -pl xa-mass-dev-app -am \
+"${MVN_CMD[@]}" -pl xa-mass-server -am \
   -Dsurefire.failIfNoSpecifiedTests=false \
   "-Dtest=${TEST_ARG}" \
   test

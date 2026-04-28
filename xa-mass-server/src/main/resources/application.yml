@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: mass_server
+  threads:
+    virtual:
+      enabled: true
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+  profiles:
+    active: local
+
+server:
+  port: 8088
+
+sample:
+  client:
+    auto-start: false
+    uri: ws://localhost:${mass.websocket.port:18088}/ws
+    count: 5
+    task:
+      interval: 30000
+
+mass:
+  runtime:
+    event-handler-timeout-ms: 5000
+    transport-max-pending-tasks: 10000
+    event-max-pending-tasks: 2000
+  websocket:
+    port: 18088
+  queue:
+    input:
+      stream-key: mass_server_input_stream
+      group-name: mass_server_input_group
+      consumer-name: mass_server_input_consumer_instance_1
+    output:
+      stream-key: mass_server_output_stream
+      group-name: mass_server_output_group
+      consumer-name: mass_server_output_consumer_instance_1
+
+logging:
+  level:
+    root: INFO
+
+knife4j:
+  enable: true

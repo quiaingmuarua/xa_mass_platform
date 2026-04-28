@@ -192,10 +192,10 @@ Use this module when:
 Do not treat this module as:
 
 - the Spring Boot runnable entry
-- a replacement for `xa-mass-dev-app`
+- a replacement for `xa-mass-server`
 - the HTTP/demo control surface
 
-Current runnable Boot entry remains `xa-mass-dev-app`.
+Current runnable Boot entry remains `xa-mass-server`.
 
 ## Internal Runtime Surface
 

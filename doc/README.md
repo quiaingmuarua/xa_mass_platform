@@ -33,7 +33,7 @@ Use this page only as an index once you are already inside `doc/`.
   - engine dispatch/result flow
 - [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
   - testing owner README
-- [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md)
+- [../xa-mass-server/README.md](../xa-mass-server/README.md)
   - dev-app owner README
 - [../transport/AGENTS.md](../transport/AGENTS.md)
   - transport owner entry

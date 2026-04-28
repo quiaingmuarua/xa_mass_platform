@@ -31,7 +31,7 @@ For the dev Spring Boot shell there is now a sample supervisor script at
 - it registers the curated sample worker set through `/worker-api/*`
 - it creates curated sample tasks through `POST /status/api/tasks`
 - it starts the external sample worker processes
-- `MockApplicationSpringBootApp` can launch it automatically in `dev` profile
+- `XaMassServerApplication` can launch it automatically in `dev` profile
   when `sample.worker.auto-start=true`
 - worker and task seed definitions live under `samples/dev/*.json`
 
@@ -51,7 +51,7 @@ Every sample should remain provable through an external-process black-box test:
 
 - start with [doc/EXTERNAL_WORKER_QUICKSTART.md](../doc/EXTERNAL_WORKER_QUICKSTART.md)
 - then use the per-sample README under each subdirectory for local commands
-- use `xa-mass-dev-app` black-box tests as the executable acceptance truth
+- use `xa-mass-server` black-box tests as the executable acceptance truth
 
 ## Addition Rule
 

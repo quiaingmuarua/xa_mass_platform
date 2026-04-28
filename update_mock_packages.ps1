@@ -1,4 +1,4 @@
-$files = Get-ChildItem -Path "mass_mock/src/main/java/com/xa/mass/mock" -Recurse -Filter "*.java"
+$files = Get-ChildItem -Path "mass_server/src/main/java/com/xa/mass/mock" -Recurse -Filter "*.java"
 
 foreach ($file in $files)
 {

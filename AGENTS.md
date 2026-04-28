@@ -12,7 +12,7 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - Observability is logs, trace, and bounded diagnostics; do not add scan-heavy hot-path state.
 - Prefer idempotent operations and bounded queues over richer but expensive control-plane projections.
 - Official Java baseline is Java 21 with virtual threads used through explicit runtime abstractions.
-- Real Boot entry is `xa-mass-dev-app`; embedded runtime composition lives in `xa-mass-sdk`.
+- Real Boot entry is `xa-mass-server`; embedded runtime composition lives in `xa-mass-sdk`.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
 
 ## 1. Required Reading
@@ -28,7 +28,7 @@ Everything else is on-demand through the task-type map below.
 Core acceptance fast path:
 
 - treat `perf`, `concurrency`, and Boot-shell `E2E` as the three core acceptance layers
-- runnable surfaces: `xa-mass-testing` for `perf` and `chaos`, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell `E2E`
+- runnable surfaces: `xa-mass-testing` for `perf` and `chaos`, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell `E2E`
 - `chaos` belongs in scheduled or release-style verification until the suite is broad and stable enough for stricter gating
 - SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane before full Boot-shell E2E
 - `concurrency` is a required acceptance lane for race-sensitive lifecycle work
@@ -56,7 +56,7 @@ Start here based on the change:
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
-- integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-dev-app/README.md](xa-mass-dev-app/README.md)
+- integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-server/README.md](xa-mass-server/README.md)
 - policy ownership or interactions: [xa-mass-engine/POLICY_INTERACTION_BASELINE.md](xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [xa-mass-engine/TASK_EXECUTION_FLOW.md](xa-mass-engine/TASK_EXECUTION_FLOW.md)
 - legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)

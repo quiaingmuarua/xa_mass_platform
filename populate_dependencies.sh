@@ -14,7 +14,7 @@ MODULES=(
   "xa-mass-sdk-api"
   "xa-mass-sdk"
   "xa-mass-testing"
-  "xa-mass-dev-app"
+  "xa-mass-server"
 )
 
 for module in "${MODULES[@]}"; do

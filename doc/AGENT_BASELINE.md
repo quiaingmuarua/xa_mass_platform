@@ -91,15 +91,15 @@ Rules:
 
 ## 5. Mainline Reality
 
-- The real Spring Boot entry is `xa-mass-dev-app`.
+- The real Spring Boot entry is `xa-mass-server`.
 - Java baseline is JDK 21. The root reactor compiles with `maven.compiler.release=21`, Java worker samples use release 21, and CI is expected to run on Temurin 21.
 - Java 21 virtual threads are the runtime baseline for blocking concurrency boundaries when routed through explicit runtime abstractions. They reduce concurrency complexity, but they must not redefine engine lifecycle correctness, worker lock ownership, or `TaskMsgAttempt` state semantics.
 - Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
-- Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-dev-app` consumes it and owns the current HTTP/control-console/frontend shell
+- Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-server` consumes it and owns the current HTTP/control-console/frontend shell
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
-- Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-dev-app` for Boot-shell E2E
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-server`
+- Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell E2E
 
 ## 6. Current Contract Summary
 
@@ -156,11 +156,11 @@ Important current rules:
 ## 8. Entry Files
 
 - startup/runtime:
-  - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+  - `xa-mass-server/src/main/java/com/xa/mass/mock/XaMassServerApplication.java`
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 - lifecycle/API:
-  - `xa-mass-dev-app/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
+  - `xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
   - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 - payload/matching:

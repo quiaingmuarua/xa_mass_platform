@@ -39,7 +39,7 @@ cursor.rules
 /log/
 /catalina.base_IS_UNDEFINED/
 /logs/
-/xa-mass-dev-app/logs/
+/xa-mass-server/logs/
 .DS_Store
 **/.DS_Store
 /.claude/

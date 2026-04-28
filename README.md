@@ -34,7 +34,7 @@ The shared kernel is:
 
 ## Current Facts
 
-- Boot entry: `xa-mass-dev-app`
+- Boot entry: `xa-mass-server`
 - SDK entry: `xa-mass-sdk` / `MassSdk`
 - Java baseline: JDK 21 with virtual threads used through explicit runtime abstractions
 - Runtime model: task dispatch, result ingest, and system events are explicit transport seams
@@ -47,7 +47,7 @@ The shared kernel is:
 
 ## Module Map
 
-- `xa-mass-dev-app`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
+- `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
 - `xa-mass-sdk` + `xa-mass-sdk-api`: embedding entry, runtime composition, and public SDK types
 - `transport/transport_api` + `transport/transport_runtime`: transport-neutral SPI and shared transport runtime assembly
 - `transport/polling-adapter` + `transport/websocket-adapter` + `transport/socket-adapter`: concrete transport adapters

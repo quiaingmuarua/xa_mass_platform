@@ -3,14 +3,14 @@
 Last updated: 2026-04-27
 
 This is the short release-gate baseline for active-mainline E2E coverage.
-Detailed suite inventory stays in [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md).
+Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
 
 ## 1. What Counts As Real E2E
 
 An active-mainline E2E test must, unless explicitly scoped lower:
 
-1. start the real `xa-mass-dev-app` Spring Boot entry
+1. start the real `xa-mass-server` Spring Boot entry
 2. use real HTTP for the lifecycle path under test
 3. use the real active transport adapter when runtime dispatch/result write-back is part of the risk
 4. assert real task/message state, not only mocks or listener calls

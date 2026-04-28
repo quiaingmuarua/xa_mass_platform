@@ -86,7 +86,7 @@ Use this reading order for transport work:
 2. [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md) for transport model ownership and stable concept questions
 3. [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) for adapter boundary questions
 4. [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) for current repo/module truth
-5. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md), and [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md) for verification surfaces
+5. [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md), and [../xa-mass-server/README.md](../xa-mass-server/README.md) for verification surfaces
 
 When adding or changing an adapter:
 
@@ -104,7 +104,7 @@ Prefer these checks after transport changes:
 ./mvnw -q test-compile
 ./mvnw -q -pl transport/transport_runtime -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,RuntimeTaskResultIngestChannelTest,TransportRoutingTaskMsgDispatchListenerTest
 ./mvnw -q -pl xa-mass-sdk -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=MassSdkTest
-./mvnw -q -pl xa-mass-dev-app -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportChannelWiringIntegrationTest,PollingWorkerTaskFlowIntegrationTest,ExternalWorkerPollingApiIntegrationTest,ExternalWorkerRealtimeRegistrationIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest
+./mvnw -q -pl xa-mass-server -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportChannelWiringIntegrationTest,PollingWorkerTaskFlowIntegrationTest,ExternalWorkerPollingApiIntegrationTest,ExternalWorkerRealtimeRegistrationIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest
 ```
 
 Focus acceptance on:

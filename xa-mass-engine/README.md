@@ -50,7 +50,7 @@ Commands:
 
 ```bash
 ./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskConcurrencyAcceptanceTest,TaskManagerLifecycleTest,TaskResourceReleaseListenerTest test
-./mvnw -pl xa-mass-dev-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiDelayedWorkerAvailabilityIntegrationTest test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiDelayedWorkerAvailabilityIntegrationTest test
 ```
 
 Engine-side invariants to keep:

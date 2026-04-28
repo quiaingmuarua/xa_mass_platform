@@ -12,7 +12,7 @@ Use with:
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
-- [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md)
+- [../xa-mass-server/README.md](../xa-mass-server/README.md)
 
 ## 1. Core Rule
 
@@ -28,8 +28,8 @@ Use with:
 | `invariant` | prove one local rule or state transition | owning module tests | support |
 | `module` | guard one module boundary or helper contract | owning module tests | support |
 | `SDK embedded harness` | exercise real SDK registration/runtime composition without Boot shell | `xa-mass-testing` | support |
-| `Boot-shell E2E` | prove the real runtime path through `xa-mass-dev-app` | `xa-mass-dev-app` | core |
-| `cross-language sample black-box` | prove external worker references stay runnable and scheduler-correct | `xa-mass-dev-app` | core |
+| `Boot-shell E2E` | prove the real runtime path through `xa-mass-server` | `xa-mass-server` | core |
+| `cross-language sample black-box` | prove external worker references stay runnable and scheduler-correct | `xa-mass-server` | core |
 | `concurrency` | prove race-heavy paths converge to an allowed stable state | `xa-mass-engine` | core |
 | `perf` | expose hot-path cost, storage pressure, and throughput regressions | `xa-mass-testing` | core |
 | `chaos` | prove degraded/recovery behavior under disruption | `xa-mass-testing` | scheduled robustness |
@@ -39,7 +39,7 @@ Use with:
 - startup, smoke, and focused regression commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - engine race/refill/release coverage: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - perf, SDK harness, and chaos: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
-- Boot-shell E2E suite map: [../xa-mass-dev-app/README.md](../xa-mass-dev-app/README.md)
+- Boot-shell E2E suite map: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - external worker sample lane: `./scripts/run-external-worker-samples.sh`
 
 ## 4. CI Placement
@@ -58,7 +58,7 @@ Use with:
 Current workflow labels from [../.github/workflows/maven.yml](../.github/workflows/maven.yml), [../.github/workflows/external-worker-samples.yml](../.github/workflows/external-worker-samples.yml), and [../.github/workflows/perf-smokes.yml](../.github/workflows/perf-smokes.yml):
 
 - `build`: broad `./mvnw -B test`
-- `lifecycle-integration`: focused `xa-mass-dev-app` lifecycle integration subset
+- `lifecycle-integration`: focused `xa-mass-server` lifecycle integration subset
 - `cross-language-blackbox`: external worker sample regression on PR/push plus scheduled daily run
 - `perf-smokes`: scheduled/manual perf smoke bundle with artifact upload
 
@@ -81,7 +81,7 @@ When analyzing one risk:
 1. identify the owning module
 2. use `xa-mass-engine` for races and refill
 3. use `xa-mass-testing` for perf, SDK harness, and chaos
-4. use `xa-mass-dev-app` for Boot-shell E2E suite detail
+4. use `xa-mass-server` for Boot-shell E2E suite detail
 5. only then fan out into broader trace or project-level docs
 
 ## 7. Documentation Rule
