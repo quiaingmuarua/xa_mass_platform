@@ -384,7 +384,6 @@ public final class TaskFlowLoadModelRunner {
 
         private MeasuredTaskResourceReleaseListener(TaskManager taskManager,
                                                     WorkerManager workerManager,
-                                                    java.util.function.Consumer<Task> dispatchRequester,
                                                     ReleaseMetrics metrics) {
             super(taskManager, workerManager);
             this.metrics = metrics;
