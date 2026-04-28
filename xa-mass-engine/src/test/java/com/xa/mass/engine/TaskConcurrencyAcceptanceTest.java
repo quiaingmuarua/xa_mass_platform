@@ -342,6 +342,72 @@ class TaskConcurrencyAcceptanceTest {
         assertEquals(1, countingTaskManager.progressUpdateCount(task.getTid()));
     }
 
+    @Test
+    void concurrentSuccessBurstCoalescesTaskProgressRecompute() throws Exception {
+        int messageCount = 8;
+        RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
+        BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(messageCount);
+        CoalescingCountingTaskManager coalescingTaskManager = new CoalescingCountingTaskManager(
+                localScheduler,
+                new InMemoryTaskStorage(),
+                blockingRuntime,
+                messageCount
+        );
+
+        Task task = createRunningTask(coalescingTaskManager, "coalesced-progress-burst", messageCount, 3);
+        List<TaskMsg> messages = coalescingTaskManager.getTaskMessages(task.getTid());
+        for (TaskMsg message : messages) {
+            assignMessage(coalescingTaskManager, task, message);
+        }
+
+        ExecutorService executor = Executors.newFixedThreadPool(messageCount);
+        CountDownLatch ready = new CountDownLatch(messageCount);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            @SuppressWarnings("unchecked")
+            Future<Boolean>[] futures = new Future[messageCount];
+            for (int i = 0; i < messageCount; i++) {
+                TaskMsg message = messages.get(i);
+                futures[i] = executor.submit(() -> {
+                    ready.countDown();
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return coalescingTaskManager.handleTaskMessageResult(
+                            task.getTid(),
+                            message.getMessageId(),
+                            true,
+                            "done-" + message.getMessageId(),
+                            null,
+                            Map.of("messageId", message.getMessageId())
+                    );
+                });
+            }
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            assertTrue(blockingRuntime.awaitApplyResultCalls(5, TimeUnit.SECONDS));
+            blockingRuntime.releaseBlockedResults();
+            assertTrue(coalescingTaskManager.awaitFirstProgressResolve(5, TimeUnit.SECONDS));
+            assertTrue(coalescingTaskManager.awaitAllProgressRequests(5, TimeUnit.SECONDS));
+            coalescingTaskManager.releaseFirstProgressResolve();
+
+            for (Future<Boolean> future : futures) {
+                assertTrue(future.get(10, TimeUnit.SECONDS));
+            }
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        }
+
+        assertEquals(messageCount, coalescingTaskManager.progressRequestCount());
+        assertEquals(2, coalescingTaskManager.progressResolveCount(),
+                "burst progress convergence should collapse to a bounded number of task-level recomputes");
+
+        Task finalTask = coalescingTaskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
+        assertEquals(messageCount, finalTask.getTaskSuccessNumber());
+    }
+
     private Task createRunningSingleMessageTask(String taskName) {
         return createRunningSingleMessageTask(taskName, 3);
     }
@@ -654,6 +720,64 @@ class TaskConcurrencyAcceptanceTest {
         private int progressUpdateCount(String taskId) {
             AtomicInteger count = progressUpdateCounts.get(taskId);
             return count == null ? 0 : count.get();
+        }
+    }
+
+    private static final class CoalescingCountingTaskManager extends TaskManager {
+        private final AtomicInteger progressRequestCount = new AtomicInteger();
+        private final AtomicInteger progressResolveCount = new AtomicInteger();
+        private final CountDownLatch firstProgressResolveEntered = new CountDownLatch(1);
+        private final CountDownLatch releaseFirstProgressResolve = new CountDownLatch(1);
+        private final CountDownLatch allProgressRequestsReached;
+
+        private CoalescingCountingTaskManager(TaskScheduler taskScheduler,
+                                              InMemoryTaskStorage taskStorage,
+                                              TaskWorkRuntime taskWorkRuntime,
+                                              int expectedProgressRequests) {
+            super(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+            this.allProgressRequestsReached = new CountDownLatch(expectedProgressRequests);
+        }
+
+        @Override
+        void updateTaskProgress(String taskId) {
+            progressRequestCount.incrementAndGet();
+            allProgressRequestsReached.countDown();
+            super.updateTaskProgress(taskId);
+        }
+
+        @Override
+        void resolveTaskProgressUnderTaskLock(String taskId) {
+            int current = progressResolveCount.incrementAndGet();
+            if (current == 1) {
+                firstProgressResolveEntered.countDown();
+                try {
+                    assertTrue(releaseFirstProgressResolve.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+            }
+            super.resolveTaskProgressUnderTaskLock(taskId);
+        }
+
+        private boolean awaitFirstProgressResolve(long timeout, TimeUnit unit) throws InterruptedException {
+            return firstProgressResolveEntered.await(timeout, unit);
+        }
+
+        private boolean awaitAllProgressRequests(long timeout, TimeUnit unit) throws InterruptedException {
+            return allProgressRequestsReached.await(timeout, unit);
+        }
+
+        private void releaseFirstProgressResolve() {
+            releaseFirstProgressResolve.countDown();
+        }
+
+        private int progressRequestCount() {
+            return progressRequestCount.get();
+        }
+
+        private int progressResolveCount() {
+            return progressResolveCount.get();
         }
     }
 }

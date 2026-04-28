@@ -1,9 +1,7 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
@@ -20,10 +18,10 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
 
     private static final Logger logger = LoggerFactory.getLogger(RuntimeTaskResultIngestChannel.class);
 
-    private final TaskManager taskManager;
+    private final TaskResultIngestFacade taskResultIngestFacade;
 
-    public RuntimeTaskResultIngestChannel(TaskManager taskManager) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
+    public RuntimeTaskResultIngestChannel(TaskResultIngestFacade taskResultIngestFacade) {
+        this.taskResultIngestFacade = Objects.requireNonNull(taskResultIngestFacade, "taskResultIngestFacade");
     }
 
     @Override
@@ -31,10 +29,9 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         if (report == null) {
             return false;
         }
-        String eventCode = resolveEventCode(report.getTaskId());
-        logger.debug("Ingest task result via runtime channel: taskId={}, messageId={}, eventCode={}, success={}",
-                report.getTaskId(), report.getMessageId(), eventCode, report.isSuccess());
-        return taskManager.handleTaskMessageResult(
+        logger.debug("Ingest task result via runtime channel: taskId={}, messageId={}, success={}",
+                report.getTaskId(), report.getMessageId(), report.isSuccess());
+        return taskResultIngestFacade.handleTaskMessageResult(
                 report.getTaskId(),
                 report.getMessageId(),
                 report.isSuccess(),
@@ -62,7 +59,7 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         if (attemptId == null) {
             return;
         }
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(report.getTaskId(), report.getMessageId());
+        TaskMsgAttempt activeAttempt = taskResultIngestFacade.getLatestActiveTaskMessageAttempt(report.getTaskId(), report.getMessageId());
         if (activeAttempt == null) {
             logger.warn("Result envelope attempt identity could not be validated because no active attempt exists: taskId={}, messageId={}, envelopeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
                     report.getTaskId(), report.getMessageId(), attemptId, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
@@ -76,10 +73,5 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         }
         logger.debug("Result envelope attempt identity validated: taskId={}, messageId={}, attemptId={}, adapterId={}, workerId={}, endpointId={}",
                 report.getTaskId(), report.getMessageId(), attemptId, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
-    }
-
-    private String resolveEventCode(String taskId) {
-        Task task = taskManager.getTask(taskId);
-        return TaskSharedConfig.sdkEventCode(task);
     }
 }

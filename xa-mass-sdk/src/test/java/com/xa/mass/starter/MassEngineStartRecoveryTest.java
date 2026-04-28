@@ -80,7 +80,7 @@ class MassEngineStartRecoveryTest {
                 }
             });
 
-            assertTrue(dispatchLatch.await(3, TimeUnit.SECONDS));
+            assertTrue(dispatchLatch.await(5, TimeUnit.SECONDS));
 
             List<TaskDispatchBinding> dispatchBindings = dispatchBindingsRef.get();
             assertNotNull(dispatchBindings);

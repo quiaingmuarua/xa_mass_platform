@@ -6,6 +6,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -35,6 +36,7 @@ class TaskWorkerAssignListenerTest {
         workerManager = mock(WorkerManager.class);
         msgAssignListener = mock(TaskMsgAssignListener.class);
         taskManager = mock(TaskManager.class);
+        when(taskManager.events()).thenReturn(new TaskEventPublisher());
         listener = new TaskWorkerAssignListener(matchingStrategy, workerManager, msgAssignListener, taskManager);
     }
 
@@ -163,6 +165,22 @@ class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(taskManager).countPendingDispatchableMessages(task.getTid());
         verifyNoInteractions(msgAssignListener);
+    }
+
+    @Test
+    void onTaskAssignUnlocksDispatchCandidatesWhenNoBindingsAreProduced() {
+        Task task = createTask(1, 1, 1, TaskStatus.RUNNING);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(1);
+        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of());
+
+        assertFalse(listener.onTaskAssign(task));
+
+        verify(workerManager).unlockWorker("worker-1");
+        verify(taskManager, never()).updateTask(same(task));
     }
 
     @Test

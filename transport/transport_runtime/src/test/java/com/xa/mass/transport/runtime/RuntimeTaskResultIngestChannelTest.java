@@ -56,7 +56,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void failureResponseMarksTaskMessageFailed() {
+    void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleTaskMessageProjection() {
         Task task = createRunningTask("task-failure");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
         taskMsg.setMaxRetryCount(0);
@@ -66,13 +66,16 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(handled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
-        assertEquals(TaskMsgStatus.FAILED, updated.getStatus());
-        assertEquals("boom", updated.getErrorMessage());
-        assertEquals("RATE_LIMITED", updated.getErrorCode());
+        assertEquals(TaskMsgStatus.INIT, updated.getStatus());
+        assertEquals(1, updated.getRetryCount());
+        assertNull(updated.getErrorMessage());
+        assertNull(updated.getErrorCode());
         TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
         assertEquals("FAILED", attempt.getOutput().get("status"));
+        assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test

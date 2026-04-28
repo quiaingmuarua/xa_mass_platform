@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
@@ -39,7 +40,7 @@ import java.util.function.Supplier;
 /**
  * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
  */
-public class TaskManager {
+public class TaskManager implements TaskResultIngestFacade {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -59,6 +60,7 @@ public class TaskManager {
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private final Map<String, TaskLockHandle> taskLocks = new ConcurrentHashMap<>();
     private final Map<String, MessageLockHandle> taskMessageLocks = new ConcurrentHashMap<>();
+    private final Map<String, TaskProgressReconcileHandle> taskProgressReconcileHandles = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler) {
@@ -226,7 +228,7 @@ public class TaskManager {
     /**
      * Returns tasks that the scheduler currently considers schedulable.
      */
-    public List<Task> getSchedulableTasks() {
+    List<Task> getSchedulableTasks() {
         LogUtils.logOperationStart("GET_SCHEDULABLE_TASKS", "TaskManager");
 
         List<Task> tasks = taskStorage.getSchedulableTasks();
@@ -235,7 +237,7 @@ public class TaskManager {
         return tasks;
     }
 
-    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
@@ -342,6 +344,7 @@ public class TaskManager {
         return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
+    @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
@@ -376,7 +379,7 @@ public class TaskManager {
     /**
      * Returns the current persisted task-message aggregate for a task.
      */
-    public TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
+    TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
         return taskStorage.getTaskMessageStats(taskId);
     }
 
@@ -398,7 +401,11 @@ public class TaskManager {
      * persisted task aggregate.
      */
     void updateTaskProgress(String taskId) {
-        withTaskLock(taskId, () -> stateResolver.updateTaskProgress(taskId));
+        reconcileTaskProgress(taskId);
+    }
+
+    void resolveTaskProgressUnderTaskLock(String taskId) {
+        stateResolver.updateTaskProgress(taskId);
     }
 
     /**
@@ -465,6 +472,7 @@ public class TaskManager {
         return outcome.accepted();
     }
 
+    @Override
     public boolean handleTaskMessageResult(String taskId,
                                            String messageId,
                                            boolean success,
@@ -534,6 +542,89 @@ public class TaskManager {
         } finally {
             lockHandle.lock.unlock();
             releaseMessageLockHandle(lockKey, lockHandle);
+        }
+    }
+
+    private void reconcileTaskProgress(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            withTaskLock(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
+            return;
+        }
+        TaskProgressReconcileHandle handle = acquireTaskProgressReconcileHandle(taskId);
+        try {
+            long requestedVersion;
+            boolean leader;
+            handle.lock.lock();
+            try {
+                requestedVersion = ++handle.requestedVersion;
+                if (!handle.running) {
+                    handle.running = true;
+                    leader = true;
+                } else {
+                    leader = false;
+                }
+            } finally {
+                handle.lock.unlock();
+            }
+            if (!leader) {
+                awaitTaskProgressReconcile(handle, requestedVersion);
+                return;
+            }
+            runTaskProgressReconcileLoop(taskId, handle);
+        } finally {
+            releaseTaskProgressReconcileHandle(taskId, handle);
+        }
+    }
+
+    private void awaitTaskProgressReconcile(TaskProgressReconcileHandle handle, long requestedVersion) {
+        handle.lock.lock();
+        try {
+            while (handle.running && handle.completedVersion < requestedVersion) {
+                handle.idle.awaitUninterruptibly();
+            }
+        } finally {
+            handle.lock.unlock();
+        }
+    }
+
+    private void runTaskProgressReconcileLoop(String taskId, TaskProgressReconcileHandle handle) {
+        try {
+            while (true) {
+                long targetVersion;
+                handle.lock.lock();
+                try {
+                    targetVersion = handle.requestedVersion;
+                } finally {
+                    handle.lock.unlock();
+                }
+
+                withTaskLock(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
+
+                boolean done;
+                handle.lock.lock();
+                try {
+                    handle.completedVersion = Math.max(handle.completedVersion, targetVersion);
+                    done = handle.requestedVersion <= handle.completedVersion;
+                    if (done) {
+                        handle.running = false;
+                    }
+                    handle.idle.signalAll();
+                } finally {
+                    handle.lock.unlock();
+                }
+                if (done) {
+                    return;
+                }
+            }
+        } catch (RuntimeException | Error ex) {
+            handle.lock.lock();
+            try {
+                handle.running = false;
+                handle.idle.signalAll();
+            } finally {
+                handle.lock.unlock();
+            }
+            throw ex;
         }
     }
 
@@ -682,6 +773,14 @@ public class TaskManager {
         });
     }
 
+    private TaskProgressReconcileHandle acquireTaskProgressReconcileHandle(String taskId) {
+        return taskProgressReconcileHandles.compute(taskId, (ignored, existing) -> {
+            TaskProgressReconcileHandle handle = existing == null ? new TaskProgressReconcileHandle() : existing;
+            handle.referenceCount++;
+            return handle;
+        });
+    }
+
     private void releaseMessageLockHandle(String lockKey, MessageLockHandle lockHandle) {
         taskMessageLocks.computeIfPresent(lockKey, (ignored, existing) -> {
             if (existing != lockHandle) {
@@ -697,6 +796,21 @@ public class TaskManager {
         });
     }
 
+    private void releaseTaskProgressReconcileHandle(String taskId, TaskProgressReconcileHandle lockHandle) {
+        taskProgressReconcileHandles.computeIfPresent(taskId, (ignored, existing) -> {
+            if (existing != lockHandle) {
+                return existing;
+            }
+            existing.referenceCount--;
+            if (existing.referenceCount == 0
+                    && !existing.running
+                    && !existing.lock.hasQueuedThreads()) {
+                return null;
+            }
+            return existing;
+        });
+    }
+
     private static final class TaskLockHandle {
         private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
         private int referenceCount;
@@ -704,6 +818,15 @@ public class TaskManager {
 
     private static final class MessageLockHandle {
         private final ReentrantLock lock = new ReentrantLock(true);
+        private int referenceCount;
+    }
+
+    private static final class TaskProgressReconcileHandle {
+        private final ReentrantLock lock = new ReentrantLock(true);
+        private final Condition idle = lock.newCondition();
+        private long requestedVersion;
+        private long completedVersion;
+        private boolean running;
         private int referenceCount;
     }
 }

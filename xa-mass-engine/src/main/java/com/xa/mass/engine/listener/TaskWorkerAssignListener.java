@@ -136,6 +136,7 @@ public class TaskWorkerAssignListener {
         if (usedWorkerCount <= 0) {
             TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "matched candidates produced no bound task messages", requiredStartWorkerCount);
+            unlockWorkers(dispatchCandidates);
             emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), 0,
