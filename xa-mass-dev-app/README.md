@@ -15,11 +15,11 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
 - starts runtime through `xa-mass-sdk` and exposes the backend-hosted control console and JSON APIs through `xa-mass-web`
 - worker, task, and rule resources are created through the embedded SDK runtime
-- mock JSON is a local/E2E fixture input path
-- default `dev` startup auto-starts adapter-matching mock clients for registered dev workers
-- default `dev` startup also seeds demo SDK credentials for the external polling worker quickstart:
-  - task submitter: `crawler-submitter-key`
-  - polling worker: `node-worker-key`
+- default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
+- mock JSON remains a test/fixture input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from it
+- default `dev` startup does not auto-start embedded mock clients; worker presence is expected to come from external sample or real worker processes
+- default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
+  protected by `X-Sample-Bootstrap-Key`
 
 ## Port Model
 
@@ -65,7 +65,7 @@ Control-console routing note:
 
 ## Effective Mock Client Startup
 
-For the verified default `dev` path, mock clients are started by:
+For test or explicit fixture paths, embedded mock clients are started by:
 
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/AbstractMockWorkerClientStarter.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
@@ -73,7 +73,8 @@ For the verified default `dev` path, mock clients are started by:
 
 Startup behavior:
 
-- gated by `mock.client.auto-start=true`
+- disabled in default `dev`
+- gated by `mock.client.auto-start=true` only for tests or explicit local fixture runs
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
 - discovers mock clients from SDK-registered `Worker` resources
@@ -83,7 +84,7 @@ Startup behavior:
 
 ## Worker Resource Fixtures
 
-`MockRuntimeDataLoader` is a fixture loader for local and E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
 
 Current fixture behavior:
 
@@ -92,6 +93,7 @@ Current fixture behavior:
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
 - task JSON continues to map to `MassTaskCreateRequest`
 - rule JSON continues to replace default rules when non-empty
+- default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
 
 Default worker fixtures now carry a small executor profile:
 
@@ -177,15 +179,13 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
-| `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
+| `mock.client.auto-start` | `false` | auto-start embedded mock clients only for explicit fixture/test runs |
 | `mock.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `mock.client.socket-host` | `127.0.0.1` | target socket adapter host |
 | `mock.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
 | `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
-| `mass.mock.data.workers` | `mock/mock_workers.json` | mock worker data |
-| `mass.mock.data.worker-contexts` | `mock/mock_worker_contexts.json` | explicit mock worker-context data |
-| `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
-| `mass.mock.data.rules` | `mock/mock_rules.json` | explicit mock worker-match rules; non-empty config overrides the current defaults |
+| `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
+| `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
 
 Mock-data loading order:
 

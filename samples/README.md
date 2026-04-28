@@ -21,6 +21,20 @@ Rules:
 | `worker-socket/node` | Node.js | `socket` | `realtime` | `node samples/worker-socket/node/worker.mjs` | `NodeSocketWorkerBlackBoxIntegrationTest` |
 | `worker-socket/java` | Java | `socket` | `realtime` | `java -jar samples/worker-socket/java/target/worker-socket-java-sample.jar` | `JavaSocketWorkerBlackBoxIntegrationTest` |
 
+## Dev Launcher
+
+For the dev Spring Boot shell there is now a sample supervisor script at
+`samples/dev/launch-workers.mjs`.
+
+- it bootstraps sample project/event/submitter catalog through `/sample-api/bootstrap/catalog`
+- it replaces runtime default rules through `/sample-api/bootstrap/rules`
+- it registers the curated sample worker set through `/worker-api/*`
+- it creates curated sample tasks through `POST /status/api/tasks`
+- it starts the external sample worker processes
+- `MockApplicationSpringBootApp` can launch it automatically in `dev` profile
+  when `sample.worker.auto-start=true`
+- worker and task seed definitions live under `samples/dev/*.json`
+
 ## Acceptance Signals
 
 Every sample should remain provable through an external-process black-box test:

@@ -1,0 +1,172 @@
+{
+  "events": [
+    {
+      "code": "demo.dispatch",
+      "name": "Demo Dispatch",
+      "description": "Dispatch a generic demo work item to an online demo worker.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["demoApp", "testApp", "otherApp"]
+    },
+    {
+      "code": "demo.dispatch.gb",
+      "name": "Demo Dispatch (GB)",
+      "description": "Dispatch a generic demo work item to the GB demo lane.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["demoApp", "otherApp"]
+    },
+    {
+      "code": "crawler.fetch-page",
+      "name": "Crawler Fetch Page",
+      "description": "Dispatch a crawler fetch request to an SDK-created pull worker.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["crawlerApp"]
+    },
+    {
+      "code": "stock.quote.fetch",
+      "name": "Stock Quote Fetch",
+      "description": "Dispatch a stock quote fetch request to an external crawler worker.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["crawlerApp"]
+    },
+    {
+      "code": "mock.state.get",
+      "name": "Mock State Get",
+      "description": "Fetch the current mock fault-injection state from a targeted worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "mock.delay.response",
+      "name": "Mock Delay Response",
+      "description": "Update future mock task response delay on a targeted worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "mock.drop.outbound",
+      "name": "Mock Drop Outbound",
+      "description": "Update future mock outbound task-result drop mode on a targeted worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "mock.task.result.status",
+      "name": "Mock Task Result Status",
+      "description": "Override future mock task result status on a targeted worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "mock.disconnect",
+      "name": "Mock Disconnect",
+      "description": "Disconnect a targeted mock worker after its task result is returned.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "mock.reset",
+      "name": "Mock Reset",
+      "description": "Reset mock fault-injection state on a targeted worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    }
+  ],
+  "projects": [
+    {
+      "code": "demoApp",
+      "name": "Demo App",
+      "description": "Default demo project. Event catalog is registered through the SDK runtime.",
+      "eventCodes": [
+        "demo.dispatch",
+        "demo.dispatch.gb",
+        "mock.state.get",
+        "mock.delay.response",
+        "mock.drop.outbound",
+        "mock.task.result.status",
+        "mock.disconnect",
+        "mock.reset"
+      ]
+    },
+    {
+      "code": "testApp",
+      "name": "Test App",
+      "description": "Test project used by regression and E2E fixtures.",
+      "eventCodes": [
+        "demo.dispatch",
+        "mock.state.get",
+        "mock.delay.response",
+        "mock.drop.outbound",
+        "mock.task.result.status",
+        "mock.disconnect",
+        "mock.reset"
+      ]
+    },
+    {
+      "code": "otherApp",
+      "name": "Other App",
+      "description": "Secondary demo project used by the dev validation shell.",
+      "eventCodes": [
+        "demo.dispatch",
+        "demo.dispatch.gb"
+      ]
+    },
+    {
+      "code": "crawlerApp",
+      "name": "Crawler",
+      "description": "Crawler worker lab project for SDK-created pull worker scenarios.",
+      "eventCodes": [
+        "crawler.fetch-page",
+        "stock.quote.fetch"
+      ]
+    }
+  ],
+  "submitters": [
+    {
+      "principalId": "crawler-submitter",
+      "credential": "crawler-submitter-key",
+      "permissions": ["task:create"],
+      "projectScopes": ["crawlerApp"],
+      "eventScopes": ["crawler.fetch-page", "stock.quote.fetch"]
+    },
+    {
+      "principalId": "node-worker-api-001",
+      "credential": "node-worker-key",
+      "permissions": ["worker:poll"],
+      "projectScopes": ["crawlerApp"],
+      "eventScopes": ["crawler.fetch-page"],
+      "attributes": {
+        "workerId": "node-worker-api-001"
+      }
+    },
+    {
+      "principalId": "node-worker-realtime-001",
+      "credential": "node-worker-realtime-key",
+      "permissions": ["worker:poll"],
+      "projectScopes": ["crawlerApp"],
+      "eventScopes": ["crawler.fetch-page"],
+      "attributes": {
+        "workerId": "node-worker-realtime-001"
+      }
+    },
+    {
+      "principalId": "stock-ws-worker-001",
+      "credential": "stock-ws-worker-key",
+      "permissions": ["worker:poll"],
+      "projectScopes": ["crawlerApp"],
+      "eventScopes": ["stock.quote.fetch"],
+      "attributes": {
+        "workerId": "stock-ws-worker-001"
+      }
+    }
+  ]
+}

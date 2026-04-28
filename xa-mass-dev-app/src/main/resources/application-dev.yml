@@ -11,13 +11,6 @@ mass:
   engine:
     worker-threads: 8
     enabled: true
-  mock:
-    data:
-      workers: mock/mock_workers.json
-      worker-contexts: mock/mock_worker_contexts.json
-      tasks: mock/mock_tasks.json
-      rules: mock/mock_rules.json
-
 server:
   port: 8088
 
@@ -29,3 +22,9 @@ logging:
     com.xa.mass.engine: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+sample:
+  bootstrap:
+    api-key: dev-bootstrap-key
+  worker:
+    auto-start: true

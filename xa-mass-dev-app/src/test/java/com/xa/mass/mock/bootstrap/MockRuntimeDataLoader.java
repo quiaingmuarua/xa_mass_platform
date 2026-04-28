@@ -10,8 +10,8 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
@@ -28,15 +28,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Dev-app fixture data loader.
- *
- * <p>Reads plain JSON config files and registers workers, contexts, rules, and
- * tasks into the SDK runtime. No mock data generation - all definitions are
- * explicit in the config files.
- *
- * <p>JSON is only a fixture input format here. Worker and worker-context
- * resources are always created through SDK registration APIs; runtime state
- * fields in old fixture JSON are ignored.
+ * Test/fixture runtime data loader.
  */
 public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
@@ -49,15 +41,35 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     private final String workerContextConfigPath;
     private final String taskConfigPath;
     private final String ruleConfigPath;
+    private final boolean loadWorkers;
+    private final boolean loadWorkerContexts;
+    private final boolean loadTasks;
+    private final boolean loadRules;
 
     public MockRuntimeDataLoader(String workerConfigPath,
                                  String workerContextConfigPath,
                                  String taskConfigPath,
                                  String ruleConfigPath) {
+        this(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath,
+                true, true, true, true);
+    }
+
+    public MockRuntimeDataLoader(String workerConfigPath,
+                                 String workerContextConfigPath,
+                                 String taskConfigPath,
+                                 String ruleConfigPath,
+                                 boolean loadWorkers,
+                                 boolean loadWorkerContexts,
+                                 boolean loadTasks,
+                                 boolean loadRules) {
         this.workerConfigPath = workerConfigPath;
         this.workerContextConfigPath = workerContextConfigPath;
         this.taskConfigPath = taskConfigPath;
         this.ruleConfigPath = ruleConfigPath;
+        this.loadWorkers = loadWorkers;
+        this.loadWorkerContexts = loadWorkerContexts;
+        this.loadTasks = loadTasks;
+        this.loadRules = loadRules;
     }
 
     @Override
@@ -65,10 +77,26 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         Objects.requireNonNull(runtime, "runtime");
         logger.info("Loading bootstrap data [workers={}, contexts={}, rules={}, tasks={}]",
                 workerConfigPath, workerContextConfigPath, ruleConfigPath, taskConfigPath);
-        loadWorkers(runtime);
-        loadWorkerContexts(runtime);
-        loadRules(runtime);
-        loadTasks(runtime);
+        if (loadWorkers) {
+            loadWorkers(runtime);
+        } else {
+            logger.info("Worker bootstrap load disabled [path={}]", workerConfigPath);
+        }
+        if (loadWorkerContexts) {
+            loadWorkerContexts(runtime);
+        } else {
+            logger.info("Worker context bootstrap load disabled [path={}]", workerContextConfigPath);
+        }
+        if (loadRules) {
+            loadRules(runtime);
+        } else {
+            logger.info("Rule bootstrap load disabled [path={}]", ruleConfigPath);
+        }
+        if (loadTasks) {
+            loadTasks(runtime);
+        } else {
+            logger.info("Task bootstrap load disabled [path={}]", taskConfigPath);
+        }
         logger.info("Runtime data load completed");
     }
 

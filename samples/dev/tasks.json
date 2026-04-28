@@ -1,0 +1,46 @@
+[
+  {
+    "approve": true,
+    "body": {
+      "project": "crawlerApp",
+      "taskName": "sample-crawler-fetch-page",
+      "userId": "sample-launcher",
+      "eventCode": "crawler.fetch-page",
+      "payloadType": "JSON",
+      "sharedConfig": {
+        "routingCode": "us"
+      },
+      "inputs": [
+        {
+          "url": "https://example.test/dev-sample-crawler"
+        }
+      ],
+      "batchSize": 1
+    }
+  },
+  {
+    "approve": true,
+    "body": {
+      "project": "crawlerApp",
+      "taskName": "sample-stock-quote-stream",
+      "userId": "sample-launcher",
+      "eventCode": "stock.quote.fetch",
+      "mode": "STREAMING",
+      "payloadType": "JSON",
+      "openEnded": true,
+      "workloadClass": "INTERACTIVE",
+      "sharedConfig": {
+        "routingCode": "us",
+        "sourceUrl": "${MASS_BASE_URL}/sdk/meta/events/stock.quote.fetch"
+      },
+      "inputs": [
+        {
+          "requestId": "sample-stock-init-0001",
+          "symbol": "AAPL",
+          "market": "NASDAQ"
+        }
+      ],
+      "batchSize": 1
+    }
+  }
+]

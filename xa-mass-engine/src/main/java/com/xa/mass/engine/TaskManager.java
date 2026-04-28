@@ -237,7 +237,7 @@ public class TaskManager implements TaskResultIngestFacade {
         return tasks;
     }
 
-    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 

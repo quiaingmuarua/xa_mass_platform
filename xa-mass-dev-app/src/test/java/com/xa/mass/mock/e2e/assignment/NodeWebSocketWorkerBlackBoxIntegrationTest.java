@@ -6,8 +6,6 @@ import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.mock.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
+                "sample.worker.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
@@ -68,15 +67,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
-        app.registerSubmitter(SubmitterRegistration.builder()
-                .principalId("node-realtime-worker")
-                .credential(WORKER_KEY)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
-                .projectScopes(List.of("crawlerApp"))
-                .eventScopes(List.of("crawler.fetch-page"))
-                .attributes(Map.of("workerId", WORKER_ID))
-                .build());
-
         HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
@@ -89,6 +79,8 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 ))
         ), workerHeaders);
         assertApiOk(registerResponse);
+        Worker registeredWorker = app.getWorker(WORKER_ID);
+        assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
@@ -146,15 +138,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
-        app.registerSubmitter(SubmitterRegistration.builder()
-                .principalId("stock-websocket-worker")
-                .credential(STOCK_WORKER_KEY)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
-                .projectScopes(List.of("crawlerApp"))
-                .eventScopes(List.of("stock.quote.fetch"))
-                .attributes(Map.of("workerId", STOCK_WORKER_ID))
-                .build());
-
         HttpHeaders workerHeaders = sdkCredentialHeaders(STOCK_WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
@@ -167,6 +150,8 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 ))
         ), workerHeaders);
         assertApiOk(registerResponse);
+        Worker registeredWorker = app.getWorker(STOCK_WORKER_ID);
+        assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not mark realtime worker online");

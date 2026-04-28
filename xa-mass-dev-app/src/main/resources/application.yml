@@ -16,7 +16,7 @@ server:
 
 mock:
   client:
-    auto-start: true
+    auto-start: false
     uri: ws://localhost:${mass.websocket.port:18088}/ws
     count: 5
     task:
