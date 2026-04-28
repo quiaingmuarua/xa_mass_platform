@@ -68,7 +68,7 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
             return t;
         });
         this.taskResponseScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "mock-socket-task-response-scheduler-" + workerId);
+            Thread t = new Thread(r, "sample-socket-task-response-scheduler-" + workerId);
             t.setDaemon(true);
             return t;
         });
@@ -274,7 +274,7 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
                     scheduleReconnect();
                 }
             }
-        }, "mock-socket-reader-" + workerId);
+        }, "sample-socket-reader-" + workerId);
         thread.setDaemon(true);
         thread.start();
         this.readerThread = thread;

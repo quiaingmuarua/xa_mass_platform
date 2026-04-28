@@ -54,8 +54,8 @@ Default runtime facts:
 - `server.port=8088` serves the backend-hosted control console and JSON APIs.
 - `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - `mass.socket.port=18089` serves the current socket transport adapter endpoint when `mass.socket.enabled=true`.
-- Default local/dev startup auto-starts mock worker clients when `sample.client.auto-start=true`.
-- Mock adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
+- Embedded sample worker clients auto-start only when `sample.client.auto-start=true`, which is intended for explicit fixture or test runs rather than the default dev shell.
+- Sample adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
@@ -80,7 +80,7 @@ nc -zv 127.0.0.1 18088
 - Backend-hosted control console routes return successfully.
 - Legacy `/status*` and `/config` console aliases redirect locally to the primary SPA routes.
 - If the transport server is enabled, the current WebSocket adapter port is open.
-- Mock workers appear online when auto-start is enabled.
+- Sample workers appear online when auto-start is enabled.
 
 Create a sealed task:
 
@@ -104,7 +104,7 @@ curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}/messages
 ```
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`
-- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode mock clients
+- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
 - task detail response includes `items` from persisted `TaskMsg.input` and `stateValidation`

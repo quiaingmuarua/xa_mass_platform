@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Lightweight bootstrap for the dev-app sample client command runtime.
+ * Lightweight bootstrap for the worker-pack sample client command runtime.
  */
 public final class SampleCommandRuntime {
 

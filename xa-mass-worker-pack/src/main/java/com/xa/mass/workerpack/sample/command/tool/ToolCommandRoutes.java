@@ -138,7 +138,7 @@ public final class ToolCommandRoutes {
         data.put("currency", preset.currency());
         data.put("latitude", preset.latitude());
         data.put("longitude", preset.longitude());
-        data.put("provider", "mock-dev-app");
+        data.put("provider", "sample-worker-pack");
         data.put("simulated", true);
         return data;
     }
@@ -160,7 +160,7 @@ public final class ToolCommandRoutes {
         data.put("rate", rate);
         data.put("convertedAmount", convertedAmount);
         data.put("quotedAt", Instant.now().toString());
-        data.put("provider", "mock-dev-app");
+        data.put("provider", "sample-worker-pack");
         data.put("simulated", true);
         return data;
     }
@@ -182,7 +182,7 @@ public final class ToolCommandRoutes {
         data.put("capital", preset.capital());
         data.put("dialCode", preset.dialCode());
         data.put("timeZone", preset.timeZone());
-        data.put("provider", "mock-dev-app");
+        data.put("provider", "sample-worker-pack");
         data.put("simulated", false);
         return data;
     }
@@ -206,7 +206,7 @@ public final class ToolCommandRoutes {
         data.put("countryName", preset.countryName());
         data.put("dialCode", preset.dialCode());
         data.put("timeZone", preset.timeZone());
-        data.put("provider", "mock-dev-app");
+        data.put("provider", "sample-worker-pack");
         data.put("simulated", false);
         return data;
     }

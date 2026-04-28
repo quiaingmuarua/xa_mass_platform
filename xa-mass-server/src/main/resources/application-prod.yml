@@ -1,4 +1,4 @@
-# Production-like profile overrides for the verified mock runtime.
+# Production-like profile overrides for the verified server shell.
 mass:
   runtime:
     event-handler-timeout-ms: 5000
@@ -11,12 +11,6 @@ mass:
   engine:
     worker-threads: 16
     enabled: true
-  mock:
-    data:
-      workers: mock/mock_workers.json
-      worker-contexts: mock/mock_worker_contexts.json
-      tasks: mock/mock_tasks.json
-      rules: mock/mock_rules.json
 
 server:
   port: 8088

@@ -22,10 +22,10 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Launches the external sample-worker supervisor script for dev-app runs.
+ * Launches the external sample-worker supervisor script for dev-shell runs.
  *
- * <p>The dev app stays responsible only for submitter credentials and HTTP
- * shell availability. The sample launcher script owns worker registration plus
+ * <p>The server shell stays responsible only for submitter credentials and HTTP
+ * availability. The sample launcher script owns worker registration plus
  * child-process startup under {@code samples/}.
  */
 @Component

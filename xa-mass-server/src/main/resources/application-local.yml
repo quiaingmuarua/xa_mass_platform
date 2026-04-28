@@ -9,12 +9,6 @@ mass:
   engine:
     worker-threads: 4
     enabled: true
-  sample:
-    data:
-      workers: mock/mock_workers.json
-      worker-contexts: mock/mock_worker_contexts.json
-      tasks: mock/mock_tasks.json
-      rules: mock/mock_rules.json
 
 logging:
   level:

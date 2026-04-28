@@ -48,7 +48,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
             return t;
         });
         this.taskResponseScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "mock-task-response-scheduler-" + workerId);
+            Thread t = new Thread(r, "sample-task-response-scheduler-" + workerId);
             t.setDaemon(true);
             return t;
         });

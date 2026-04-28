@@ -16,7 +16,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
 - worker, task, and rule resources are created through the embedded SDK runtime
 - default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
-- mock JSON remains a test/fixture input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from it
+- JSON fixture bootstrap remains a test-only input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from packaged fixture files
 - default `dev` startup does not auto-start embedded sample clients; worker presence is expected to come from external sample or real worker processes
 - default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
   protected by `X-Sample-Bootstrap-Key`
@@ -118,9 +118,9 @@ Auto-started sample WebSocket clients behave like lightweight executors:
 
 - task responses use a deterministic small delay with stable jitter, so local runs exercise asynchronous result handling without random flakiness
 - `mock.delay.response` remains the explicit override for fault-injection tests
-- result payloads include `status` and `mockData`
+- result payloads include `status` and a sample execution detail field
 - result payloads also include `execution` metadata with timing, retry count, task id, message id, project, `adapterId`, and `transportHint`
-- result payloads include `workerProfile` metadata with worker id and local mock runtime details
+- result payloads include `workerProfile` metadata with worker id and local sample runtime details
 
 The extra payload fields are server observability data. Lifecycle decisions
 still come from the task kernel, attempts, and result status.
@@ -190,7 +190,7 @@ Observability:
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
 | `sample.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
-| `sample.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
+| `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
 

@@ -4,8 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Per-worker mock behavior state. This is the single source of truth for
- * client-side fault injection in the dev app.
+ * Per-worker sample behavior state. This is the single source of truth for
+ * client-side fault injection in the sample worker pack.
  */
 public class SampleClientState {
 

@@ -1,4 +1,4 @@
-# Development profile overrides for the verified mock runtime.
+# Development profile overrides for the verified server shell.
 mass:
   runtime:
     event-handler-timeout-ms: 5000
