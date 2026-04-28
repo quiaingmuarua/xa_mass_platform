@@ -145,7 +145,9 @@ Result write-back and closure:
 Worker and worker-context truth:
 
 - `Worker.status` is the runtime online truth.
-- worker lock truth lives in `WorkerStorage` and is read through `WorkerManager.isLocked(...)`.
+- worker lock truth lives in `WorkerStorage` and is read through `WorkerManager.isLocked(...)`; the
+  server JDBC adapter intentionally keeps lock churn process-local instead of
+  persisting it in the control-plane DB.
 - `WorkerContext` is optional; stateless workers are verified for tasks without context-specific routing.
 - `WorkerContext.workerId` is the owner truth for context attachment.
 

@@ -241,23 +241,6 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
                     assertJsonContains(rs.getString("json"), "\"terminalReason\":\"ALL_MESSAGES_SUCCEEDED\"");
                 }
             }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT status, final_state, json
-                    FROM xa_task_msg
-                    WHERE task_id = ? AND message_id = ?
-                    """)) {
-                ps.setString(1, taskId);
-                ps.setString(2, messageId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "task message row should exist");
-                    assertEquals("SUCCESS", rs.getString("status"));
-                    assertTrue(rs.getBoolean("final_state"));
-                    String json = rs.getString("json");
-                    assertJsonContains(json, "\"latestAttemptWorkerId\":\"" + workerId + "\"");
-                    assertJsonContains(json, "\"finalReason\":\"BUSINESS_SUCCESS\"");
-                }
-            }
         }
     }
 

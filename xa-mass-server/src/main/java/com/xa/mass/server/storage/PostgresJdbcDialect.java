@@ -17,30 +17,6 @@ final class PostgresJdbcDialect implements JdbcDialect {
     }
 
     @Override
-    public String taskMessageUpsertSql() {
-        return """
-                INSERT INTO xa_task_msg(task_id, message_id, status, final_state, json)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT (task_id, message_id) DO UPDATE SET
-                  status = EXCLUDED.status,
-                  final_state = EXCLUDED.final_state,
-                  json = EXCLUDED.json
-                """;
-    }
-
-    @Override
-    public String taskMessageAttemptUpsertSql() {
-        return """
-                INSERT INTO xa_task_msg_attempt(task_id, message_id, attempt_id, status, active_state, json)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT (task_id, message_id, attempt_id) DO UPDATE SET
-                  status = EXCLUDED.status,
-                  active_state = EXCLUDED.active_state,
-                  json = EXCLUDED.json
-                """;
-    }
-
-    @Override
     public String workerUpsertSql() {
         return """
                 INSERT INTO xa_worker(worker_id, worker_group_id, json)

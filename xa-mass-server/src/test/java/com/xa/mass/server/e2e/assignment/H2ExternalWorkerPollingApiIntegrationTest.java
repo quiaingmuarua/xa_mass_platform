@@ -248,41 +248,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
             }
 
             try (var ps = conn.prepareStatement("""
-                    SELECT status, final_state, json
-                    FROM xa_task_msg
-                    WHERE task_id = ? AND message_id = ?
-                    """)) {
-                ps.setString(1, taskId);
-                ps.setString(2, messageId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "task message row should exist");
-                    assertEquals("SUCCESS", rs.getString("status"));
-                    assertTrue(rs.getBoolean("final_state"));
-                    String json = rs.getString("json");
-                    assertJsonContains(json, "\"latestAttemptWorkerId\":\"" + workerId + "\"");
-                    assertJsonContains(json, "\"finalReason\":\"BUSINESS_SUCCESS\"");
-                    assertFalse(rs.next(), "task/message primary key should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT COUNT(*) total_count,
-                           SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END) succeeded_count,
-                           SUM(CASE WHEN active_state = TRUE THEN 1 ELSE 0 END) active_count
-                    FROM xa_task_msg_attempt
-                    WHERE task_id = ? AND message_id = ?
-                    """)) {
-                ps.setString(1, taskId);
-                ps.setString(2, messageId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "attempt aggregate should return one row");
-                    assertEquals(1, rs.getInt("total_count"));
-                    assertEquals(1, rs.getInt("succeeded_count"));
-                    assertEquals(0, rs.getInt("active_count"));
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
                     SELECT json
                     FROM xa_worker
                     WHERE worker_id = ?
@@ -308,18 +273,20 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 }
             }
 
-            try (var ps = conn.prepareStatement("SELECT COUNT(*) FROM xa_worker_lock WHERE worker_id = ?")) {
-                ps.setString(1, workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next());
-                    assertEquals(0, rs.getInt(1));
-                }
-            }
-
             try (var ps = conn.prepareStatement("SELECT COUNT(*) FROM xa_rule WHERE rule_type = 'QL_EXPRESS'")) {
                 try (var rs = ps.executeQuery()) {
                     assertTrue(rs.next());
                     assertEquals(2, rs.getInt(1));
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                    WHERE TABLE_NAME IN ('xa_task_msg', 'xa_task_msg_attempt', 'xa_worker_lock')
+                    """)) {
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next());
+                    assertEquals(0, rs.getInt(1));
                 }
             }
         }

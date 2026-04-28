@@ -214,11 +214,13 @@ JDBC storage scope:
   runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC message and attempt status columns are bounded per-task runtime indexes for
-  convergence, cleanup, and compatibility reads
-- do not use JDBC storage as a cross-task message-status analytics surface; large-scale
-  message history and failure analysis should flow through trace, audit sinks,
-  or downstream analytical storage
+- JDBC storage persists task truth, worker/context registration truth, and rule
+  definitions; `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and
+  context occupancy churn stay process-local runtime projection state
+- do not use JDBC storage as a cross-task message-status analytics surface;
+  large-scale message history, attempt history, heartbeat streams, and failure
+  analysis should flow through queues, trace, audit sinks, or downstream
+  analytical storage
 
 Mock-data loading order:
 

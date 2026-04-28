@@ -1,11 +1,10 @@
 package com.xa.mass.server.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 
 import javax.sql.DataSource;
@@ -18,16 +17,17 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Server-owned JDBC adapter for bounded control-plane task persistence.
+ * Server-owned JDBC adapter for durable task truth.
  *
- * <p>Status columns on message and attempt tables are bounded per-task runtime
- * indexes for convergence and cleanup. Do not expand this adapter into a
- * cross-task message analytics surface; high-volume detail belongs in trace or
+ * <p>High-frequency message and attempt detail stays in a process-local
+ * compatibility projection. Do not expand this adapter into a cross-task
+ * message analytics surface; high-volume detail belongs in queues, trace, or
  * audit sinks.</p>
  */
 public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
 
     private final JdbcDialect dialect;
+    private final InMemoryTaskStorage runtimeProjection = new InMemoryTaskStorage();
 
     public JdbcTaskStorage(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
@@ -42,6 +42,7 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
         try (var conn = connection(); var ps = conn.prepareStatement(dialect.taskUpsertSql())) {
             bindTask(ps, task);
             ps.executeUpdate();
+            upsertRuntimeTask(task);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to save task " + task.getTid(), e);
         }
@@ -67,7 +68,11 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
             setTimestamp(ps, 4, maxRuntimeDeadline(task));
             ps.setString(5, json(task));
             ps.setString(6, task.getTid());
-            return ps.executeUpdate() > 0;
+            boolean updated = ps.executeUpdate() > 0;
+            if (updated) {
+                upsertRuntimeTask(task);
+            }
+            return updated;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to update task " + task.getTid(), e);
         }
@@ -76,17 +81,11 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
     @Override
     public synchronized boolean deleteTask(String taskId) {
         try (var conn = connection()) {
-            conn.setAutoCommit(false);
-            try {
-                executeUpdate(conn, "DELETE FROM xa_task_msg_attempt WHERE task_id = ?", taskId);
-                executeUpdate(conn, "DELETE FROM xa_task_msg WHERE task_id = ?", taskId);
-                int deleted = executeUpdate(conn, "DELETE FROM xa_task WHERE task_id = ?", taskId);
-                conn.commit();
-                return deleted > 0;
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
+            boolean deleted = executeUpdate(conn, "DELETE FROM xa_task WHERE task_id = ?", taskId) > 0;
+            if (deleted) {
+                runtimeProjection.deleteTask(taskId);
             }
+            return deleted;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to delete task " + taskId, e);
         }
@@ -133,163 +132,77 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
 
     @Override
     public synchronized void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        if (taskMsg == null || taskMsg.getMessageId() == null) {
-            return;
-        }
-        try (var conn = connection(); var ps = conn.prepareStatement(dialect.taskMessageUpsertSql())) {
-            bindTaskMessage(ps, taskId, taskMsg);
-            ps.executeUpdate();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to save task message " + taskMsg.getMessageId(), e);
-        }
+        runtimeProjection.addTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId) {
-        return queryMessages("SELECT json FROM xa_task_msg WHERE task_id = ? ORDER BY seq", taskId);
+        return runtimeProjection.getTaskMessages(taskId);
     }
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        if (limit <= 0) {
-            return List.of();
-        }
-        return queryMessages(
-                "SELECT json FROM xa_task_msg WHERE task_id = ? ORDER BY seq LIMIT ?",
-                taskId,
-                String.valueOf(limit)
-        );
+        return runtimeProjection.getTaskMessages(taskId, limit);
     }
 
     @Override
     public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return queryMessages("SELECT json FROM xa_task_msg WHERE task_id = ? AND final_state = FALSE ORDER BY seq", taskId);
+        return runtimeProjection.getNonFinalTaskMessages(taskId);
     }
 
     @Override
     public long countTaskMessages(String taskId) {
-        return queryLong("SELECT COUNT(*) FROM xa_task_msg WHERE task_id = ?", taskId);
+        return runtimeProjection.countTaskMessages(taskId);
     }
 
     @Override
     public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-        List<TaskMsg> messages = queryMessages(
-                "SELECT json FROM xa_task_msg WHERE task_id = ? AND message_id = ?",
-                taskId,
-                messageId
-        );
-        return messages.stream().findFirst();
+        return runtimeProjection.getTaskMessage(taskId, messageId);
     }
 
     @Override
     public synchronized boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        if (taskMsg == null || taskMsg.getMessageId() == null) {
-            return false;
-        }
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                UPDATE xa_task_msg SET status = ?, final_state = ?, json = ?
-                WHERE task_id = ? AND message_id = ?
-                """)) {
-            TaskMsgStatus status = taskMsg.getStatus();
-            ps.setString(1, status == null ? null : status.name());
-            ps.setBoolean(2, status == null || status.isFinal());
-            ps.setString(3, json(taskMsg));
-            ps.setString(4, taskId);
-            ps.setString(5, taskMsg.getMessageId());
-            return ps.executeUpdate() > 0;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to update task message " + taskMsg.getMessageId(), e);
-        }
+        return runtimeProjection.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public synchronized void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        if (attempt == null || attempt.getAttemptId() == null) {
-            return;
-        }
-        try (var conn = connection(); var ps = conn.prepareStatement(dialect.taskMessageAttemptUpsertSql())) {
-            bindAttempt(ps, taskId, messageId, attempt);
-            ps.executeUpdate();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to save task-message attempt " + attempt.getAttemptId(), e);
-        }
+        runtimeProjection.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return queryAttempts("SELECT json FROM xa_task_msg_attempt WHERE task_id = ? AND message_id = ? ORDER BY seq", taskId, messageId);
+        return runtimeProjection.getTaskMessageAttempts(taskId, messageId);
     }
 
     @Override
     public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return queryAttempts(
-                "SELECT json FROM xa_task_msg_attempt WHERE task_id = ? AND message_id = ? ORDER BY seq DESC LIMIT 1",
-                taskId,
-                messageId
-        ).stream().findFirst();
+        return runtimeProjection.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return queryAttempts(
-                "SELECT json FROM xa_task_msg_attempt WHERE task_id = ? AND message_id = ? AND active_state = TRUE ORDER BY seq DESC LIMIT 1",
-                taskId,
-                messageId
-        ).stream().findFirst();
+        return runtimeProjection.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return attemptStats("WHERE task_id = ? AND message_id = ?", taskId, messageId);
+        return runtimeProjection.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     @Override
     public synchronized boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        if (attempt == null || attempt.getAttemptId() == null) {
-            return false;
-        }
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                UPDATE xa_task_msg_attempt SET status = ?, active_state = ?, json = ?
-                WHERE task_id = ? AND message_id = ? AND attempt_id = ?
-                """)) {
-            TaskMsgAttemptStatus status = attempt.getStatus();
-            ps.setString(1, status == null ? null : status.name());
-            ps.setBoolean(2, status != null && status.isActive());
-            ps.setString(3, json(attempt));
-            ps.setString(4, taskId);
-            ps.setString(5, messageId);
-            ps.setString(6, attempt.getAttemptId());
-            return ps.executeUpdate() > 0;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to update task-message attempt " + attempt.getAttemptId(), e);
-        }
+        return runtimeProjection.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public TaskMessageStats getTaskMessageStats(String taskId) {
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                SELECT COUNT(*) total,
-                       SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) success_count,
-                       SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) failed_count,
-                       SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) expired_count,
-                       SUM(CASE WHEN status IN ('INIT','ASSIGNED','RUNNING','PENDING_RETRY') THEN 1 ELSE 0 END) processing_count
-                FROM xa_task_msg WHERE task_id = ?
-                """)) {
-            ps.setString(1, taskId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return new TaskMessageStats(0, 0, 0, 0, 0);
-                }
-                return new TaskMessageStats(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5));
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to get task-message stats for task " + taskId, e);
-        }
+        return runtimeProjection.getTaskMessageStats(taskId);
     }
 
     @Override
     public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
-        return attemptStats("WHERE task_id = ?", taskId);
+        return runtimeProjection.getTaskMessageAttemptStats(taskId);
     }
 
     private Optional<Task> queryOneTask(String sql, String arg) {
@@ -316,68 +229,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
         return tasks;
     }
 
-    private List<TaskMsg> queryMessages(String sql, String... args) {
-        try (var conn = connection(); var ps = conn.prepareStatement(sql)) {
-            bindArgs(ps, args);
-            List<TaskMsg> messages = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    messages.add(readJson(rs.getString(1), TaskMsg.class));
-                }
-            }
-            return messages;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to query task messages", e);
-        }
-    }
-
-    private List<TaskMsgAttempt> queryAttempts(String sql, String... args) {
-        try (var conn = connection(); var ps = conn.prepareStatement(sql)) {
-            bindArgs(ps, args);
-            List<TaskMsgAttempt> attempts = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    attempts.add(readJson(rs.getString(1), TaskMsgAttempt.class));
-                }
-            }
-            return attempts;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to query task-message attempts", e);
-        }
-    }
-
-    private TaskMessageAttemptStats attemptStats(String whereClause, String... args) {
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                SELECT COUNT(*) total_count,
-                       SUM(CASE WHEN active_state = TRUE THEN 1 ELSE 0 END) active_count,
-                       SUM(CASE WHEN status = 'RUNNING' THEN 1 ELSE 0 END) running_count,
-                       SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) failed_count,
-                       SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END) expired_count
-                FROM xa_task_msg_attempt
-                """ + whereClause)) {
-            bindArgs(ps, args);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return new TaskMessageAttemptStats(0, 0, 0, 0, 0);
-                }
-                return new TaskMessageAttemptStats(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5));
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to get task-message attempt stats", e);
-        }
-    }
-
-    private long queryLong(String sql, String arg) {
-        try (var conn = connection(); var ps = conn.prepareStatement(sql)) {
-            ps.setString(1, arg);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : 0L;
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to query count", e);
-        }
-    }
-
     private void bindTask(PreparedStatement ps, Task task) throws Exception {
         ps.setString(1, task.getTid());
         ps.setString(2, task.getStatus() == null ? null : task.getStatus().name());
@@ -385,25 +236,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
         ps.setBoolean(4, task.isSchedulable());
         setTimestamp(ps, 5, maxRuntimeDeadline(task));
         ps.setString(6, json(task));
-    }
-
-    private void bindTaskMessage(PreparedStatement ps, String taskId, TaskMsg taskMsg) throws Exception {
-        TaskMsgStatus status = taskMsg.getStatus();
-        ps.setString(1, taskId);
-        ps.setString(2, taskMsg.getMessageId());
-        ps.setString(3, status == null ? null : status.name());
-        ps.setBoolean(4, status == null || status.isFinal());
-        ps.setString(5, json(taskMsg));
-    }
-
-    private void bindAttempt(PreparedStatement ps, String taskId, String messageId, TaskMsgAttempt attempt) throws Exception {
-        TaskMsgAttemptStatus status = attempt.getStatus();
-        ps.setString(1, taskId);
-        ps.setString(2, messageId);
-        ps.setString(3, attempt.getAttemptId());
-        ps.setString(4, status == null ? null : status.name());
-        ps.setBoolean(5, status != null && status.isActive());
-        ps.setString(6, json(attempt));
     }
 
     private void bindArgs(PreparedStatement ps, String... args) throws Exception {
@@ -433,5 +265,13 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
             return null;
         }
         return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
+    }
+
+    private void upsertRuntimeTask(Task task) {
+        if (runtimeProjection.getTask(task.getTid()).isPresent()) {
+            runtimeProjection.updateTask(task);
+        } else {
+            runtimeProjection.saveTask(task);
+        }
     }
 }

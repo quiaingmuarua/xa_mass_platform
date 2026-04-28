@@ -153,7 +153,9 @@ Important current rules:
 - `WorkerMatchContext` is the canonical rule-evaluation shape for matching
 - `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
-- worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
+- worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`;
+  the server JDBC adapter intentionally keeps lock churn process-local instead
+  of persisting it in the control-plane DB
 
 ## 8. Entry Files
 

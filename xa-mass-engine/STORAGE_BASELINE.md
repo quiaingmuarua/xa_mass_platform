@@ -46,8 +46,8 @@ Keep this boundary narrow:
 - dialect-specific behavior must stay behind server-owned adapter classes
 - upper layers should depend on storage interfaces and JDBC-style semantics, not
   dialect-specific SQL behavior
-- `TaskMsg.status`, `TaskMsgAttempt.status`, and helper flags such as
-  `final_state` or `active_state` are bounded per-task runtime indexes only
+- the server JDBC adapter persists `Task` truth only; `TaskMsg` and
+  `TaskMsgAttempt` remain process-local compatibility projection state
 - do not add cross-task message-status search, reporting, or failure-analysis
   queries to engine/server storage APIs
 - high-volume message history, status distribution, failure analysis, and
@@ -59,22 +59,24 @@ not a product dependency on one schema flavor's quirks.
 
 ## TaskStorage
 
-`TaskStorage` owns persisted task state, message projection state, and attempt history.
+`TaskStorage` owns task truth plus the compatibility APIs used by runtime
+message/attempt projection.
 
 Main responsibilities:
 
 - save and load `Task`
 - update and delete `Task`
 - query tasks by status
-- store and update `TaskMsg`
-- store and update `TaskMsgAttempt`
-- aggregate `TaskMsg` statistics for lifecycle convergence
+- expose `TaskMsg` projection APIs needed by runtime convergence
+- expose `TaskMsgAttempt` projection APIs needed by result handling
+- expose task-message statistics for lifecycle convergence
 
 What `TaskStorage` does not own anymore:
 
 - ready-work admission
 - in-flight lease ownership
 - per-worker active-dispatch truth
+- durable hot-path task-message or attempt history
 
 Those hot-path concerns belong to `TaskWorkRuntime`, not to `TaskStorage` scans.
 
@@ -109,6 +111,8 @@ Important current usage notes:
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
 - `getTaskMessages(...)` is a compatibility/demo snapshot plus temporary internal cleanup helper; it is not the production business-detail path
+- the server JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
+  process-local; after restart, only `Task` truth is recovered from DB
 - runtime cleanup paths that only need pending logical messages should use `getNonFinalTaskMessages(...)` instead of materializing the full task-message snapshot
 - bounded runtime validation should stay on task/runtime aggregates; explicit `TaskMsg` projection audits are diagnostic-only and may traverse compatibility snapshots
 - the in-memory pending-message index updates on every `TaskMsg` status write, removes entries when a message becomes final, and is dropped wholesale when the owning task is deleted; it is a helper index, not a second lifecycle truth
@@ -154,7 +158,9 @@ public interface WorkerStorage {
 Important current usage notes:
 
 - `Worker.status` is the single online truth; do not create a second online registry in storage docs or future APIs
-- worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
+- worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`; the
+  server JDBC adapter keeps that lock truth process-local instead of persisting
+  lock churn in the control-plane DB
 - active mainline is explicitly `0..n` for `WorkerContext`; do not document single-context helpers by `workerId`
 - `addWorkerContext(...)` accepts only the `WorkerContext` object; owner `workerId` is read from `workerContext.getWorkerId()`
 - ownership mutation is intentionally constrained; updating a context under a different worker is rejected by the in-memory implementation

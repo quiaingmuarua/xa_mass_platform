@@ -3,8 +3,6 @@ package com.xa.mass.server.storage;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
@@ -30,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class JdbcStoragePostgresTest {
 
     @Test
-    void taskStoragePersistsTasksMessagesAttemptsAndStats() {
+    void taskStoragePersistsTaskTruthButKeepsRuntimeMessageProjectionInProcess() {
         try (StorageFixture fixture = postgresFixture("task_storage")) {
             JdbcTaskStorage storage = new JdbcTaskStorage(fixture.dataSource(), new PostgresJdbcDialect());
             Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
@@ -41,11 +39,9 @@ class JdbcStoragePostgresTest {
             storage.saveTask(task);
 
             TaskMsg msg = new TaskMsg("msg-1", "task-1", Map.of("target", "x"));
-            msg.setStatus(TaskMsgStatus.RUNNING);
             storage.addTaskMessage("task-1", msg);
 
             TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-1", "task-1", "msg-1", 1);
-            attempt.setStatus(TaskMsgAttemptStatus.RUNNING);
             storage.addTaskMessageAttempt("task-1", "msg-1", attempt);
 
             assertThat(storage.getTask("task-1")).isPresent();
@@ -57,17 +53,13 @@ class JdbcStoragePostgresTest {
             assertThat(storage.getTaskMessages("task-1", 1)).hasSize(1);
             assertThat(storage.getNonFinalTaskMessages("task-1")).hasSize(1);
             assertThat(storage.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).isPresent();
-            assertThat(storage.getTaskMessageStats("task-1").getProcessing()).isEqualTo(1);
-            assertThat(storage.getTaskMessageAttemptStats("task-1").getRunningAttempts()).isEqualTo(1);
 
-            msg.setStatus(TaskMsgStatus.SUCCESS);
-            assertThat(storage.updateTaskMessage("task-1", msg)).isTrue();
-            attempt.setStatus(TaskMsgAttemptStatus.SUCCEEDED);
-            assertThat(storage.updateTaskMessageAttempt("task-1", "msg-1", attempt)).isTrue();
+            JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new PostgresJdbcDialect());
+            assertThat(restartedStorage.getTask("task-1")).isPresent();
+            assertThat(restartedStorage.countTaskMessages("task-1")).isZero();
+            assertThat(restartedStorage.getTaskMessages("task-1")).isEmpty();
+            assertThat(restartedStorage.getTaskMessageAttempts("task-1", "msg-1")).isEmpty();
 
-            assertThat(storage.getNonFinalTaskMessages("task-1")).isEmpty();
-            assertThat(storage.getTaskMessageStats("task-1").getSuccess()).isEqualTo(1);
-            assertThat(storage.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).isEmpty();
             assertThat(storage.deleteTask("task-1")).isTrue();
         }
     }

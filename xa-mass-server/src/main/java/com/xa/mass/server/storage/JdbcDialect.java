@@ -4,10 +4,6 @@ interface JdbcDialect {
 
     String taskUpsertSql();
 
-    String taskMessageUpsertSql();
-
-    String taskMessageAttemptUpsertSql();
-
     String workerUpsertSql();
 
     String workerContextUpsertSql();
