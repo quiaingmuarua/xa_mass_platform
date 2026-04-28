@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.results;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
@@ -108,7 +108,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
                 .orElse(null);
     }
 
-    private static final class ReplayWebSocketClient extends MockWorkerWebSocketClient {
+    private static final class ReplayWebSocketClient extends SampleWorkerWebSocketClient {
         private ReplayWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
         }
@@ -123,3 +123,4 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         }
     }
 }
+

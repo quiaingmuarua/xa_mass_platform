@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -66,8 +66,8 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         assertFalse(app.isWorkerOnline(secondWorkerId), "worker registration must not mark second worker online");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient firstClient = new MockWorkerWebSocketClient(uri, firstWorkerId);
-        MockWorkerWebSocketClient secondClient = new MockWorkerWebSocketClient(uri, secondWorkerId);
+        SampleWorkerWebSocketClient firstClient = new SampleWorkerWebSocketClient(uri, firstWorkerId);
+        SampleWorkerWebSocketClient secondClient = new SampleWorkerWebSocketClient(uri, secondWorkerId);
         try {
             assertClientConnects(firstClient, "first mock client failed to connect");
             waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must mark worker online");
@@ -106,3 +106,4 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }
+

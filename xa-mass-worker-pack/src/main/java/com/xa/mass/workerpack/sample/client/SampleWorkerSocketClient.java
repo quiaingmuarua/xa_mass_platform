@@ -2,9 +2,9 @@ package com.xa.mass.workerpack.sample.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientState;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +24,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class MockWorkerSocketClient implements MockWorkerClient {
+public class SampleWorkerSocketClient implements SampleWorkerClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(MockWorkerSocketClient.class);
+    private static final Logger logger = LoggerFactory.getLogger(SampleWorkerSocketClient.class);
     private static final Gson GSON = new Gson();
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
@@ -36,8 +36,8 @@ public class MockWorkerSocketClient implements MockWorkerClient {
     private final URI serverUri;
     private final String taskResultStatus;
     private final SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
-    private final MockWorkerTaskFrameHandler taskFrameHandler =
-            new MockWorkerTaskFrameHandler("socket", "realtime", "mock-socket-client");
+    private final SampleWorkerTaskFrameHandler taskFrameHandler =
+            new SampleWorkerTaskFrameHandler("socket", "realtime", "mock-socket-client");
     private final ScheduledExecutorService reconnectScheduler;
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
@@ -48,11 +48,11 @@ public class MockWorkerSocketClient implements MockWorkerClient {
     private volatile Thread readerThread;
     private volatile boolean intentionalClose = false;
 
-    public MockWorkerSocketClient(URI serverUri, String workerId) {
+    public SampleWorkerSocketClient(URI serverUri, String workerId) {
         this(serverUri, workerId, "SUCCESS");
     }
 
-    public MockWorkerSocketClient(URI serverUri, String workerId, String taskResultStatus) {
+    public SampleWorkerSocketClient(URI serverUri, String workerId, String taskResultStatus) {
         if (serverUri == null) {
             throw new IllegalArgumentException("serverUri must not be null");
         }
@@ -72,10 +72,10 @@ public class MockWorkerSocketClient implements MockWorkerClient {
             t.setDaemon(true);
             return t;
         });
-        MockCommandRuntime.initialize();
+        SampleCommandRuntime.initialize();
     }
 
-    public MockWorkerSocketClient(String workerId) {
+    public SampleWorkerSocketClient(String workerId) {
         this(URI.create("tcp://127.0.0.1:18089"), workerId, "SUCCESS");
     }
 
@@ -183,8 +183,8 @@ public class MockWorkerSocketClient implements MockWorkerClient {
     }
 
     private void handleTaskFrame(JsonObject taskFrame) {
-        MockClientState state = getMockClientState();
-        MockWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
+        SampleClientState state = getSampleClientState();
+        SampleWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
                 taskFrame,
                 workerId,
                 taskResultStatus,
@@ -237,13 +237,13 @@ public class MockWorkerSocketClient implements MockWorkerClient {
             closeConnection();
             return;
         }
-        ClientSessionManager clientSessionManager = MockCommandRuntime.getService(ClientSessionManager.class);
+        ClientSessionManager clientSessionManager = SampleCommandRuntime.getService(ClientSessionManager.class);
         if (clientSessionManager == null) {
             logger.warn("[{}] Cannot close target worker {} because ClientSessionManager is not registered",
                     workerId, targetWorkerId);
             return;
         }
-        MockWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
+        SampleWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
         if (targetClient == null) {
             logger.warn("[{}] Cannot close target worker {} because client is missing", workerId, targetWorkerId);
             return;
@@ -305,8 +305,8 @@ public class MockWorkerSocketClient implements MockWorkerClient {
         }, delay, TimeUnit.MILLISECONDS);
     }
 
-    private MockClientState getMockClientState() {
-        MockClientStateRegistry stateRegistry = MockCommandRuntime.getService(MockClientStateRegistry.class);
+    private SampleClientState getSampleClientState() {
+        SampleClientStateRegistry stateRegistry = SampleCommandRuntime.getService(SampleClientStateRegistry.class);
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
     }
 
@@ -386,3 +386,4 @@ public class MockWorkerSocketClient implements MockWorkerClient {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 }
+

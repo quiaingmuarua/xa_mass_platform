@@ -2,9 +2,9 @@ package com.xa.mass.workerpack.sample.starter;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
-import com.xa.mass.workerpack.sample.client.MockWorkerClient;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.sdk.MassSdkApplication;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -27,13 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Shared startup orchestration for adapter-specific dev-app mock worker clients.
  */
-public abstract class AbstractMockWorkerClientStarter {
+public abstract class AbstractSampleWorkerClientStarter {
 
     @Autowired
     protected ClientSessionManager clientSessionManager;
 
     @Autowired(required = false)
-    protected MockClientStateRegistry mockClientStateRegistry;
+    protected SampleClientStateRegistry SampleClientStateRegistry;
 
     @Autowired(required = false)
     protected MassSdkApplication runtimeApplication;
@@ -63,9 +63,9 @@ public abstract class AbstractMockWorkerClientStarter {
         log.info("Starting mock {} clients", adapterDisplayName());
 
         try {
-            MockCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
-            if (mockClientStateRegistry != null) {
-                MockCommandRuntime.registerService(MockClientStateRegistry.class, mockClientStateRegistry);
+            SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
+            if (SampleClientStateRegistry != null) {
+                SampleCommandRuntime.registerService(SampleClientStateRegistry.class, SampleClientStateRegistry);
             }
 
             String baseUri = resolveBaseUri();
@@ -154,7 +154,7 @@ public abstract class AbstractMockWorkerClientStarter {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
             try {
                 URI uri = new URI(baseUri);
-                MockWorkerClient client = createClient(uri, workerId, taskResultStatus);
+                SampleWorkerClient client = createClient(uri, workerId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
@@ -197,13 +197,13 @@ public abstract class AbstractMockWorkerClientStarter {
         log.info("Shutting down mock {} clients", adapterDisplayName());
         started.set(false);
 
-        Collection<MockWorkerClient> clients = clientSessionManager.getAllClients();
-        List<MockWorkerClient> ownedClients = clients.stream()
+        Collection<SampleWorkerClient> clients = clientSessionManager.getAllClients();
+        List<SampleWorkerClient> ownedClients = clients.stream()
                 .filter(client -> adapterId().equalsIgnoreCase(client.adapterId()))
                 .toList();
         log.info("Disconnecting {} mock clients", ownedClients.size());
 
-        for (MockWorkerClient client : ownedClients) {
+        for (SampleWorkerClient client : ownedClients) {
             try {
                 client.disconnect();
                 log.debug("Client {} ({}) disconnected", client.getWorkerId(), client.adapterId());
@@ -236,5 +236,6 @@ public abstract class AbstractMockWorkerClientStarter {
 
     protected abstract String resolveBaseUri();
 
-    protected abstract MockWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus);
+    protected abstract SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus);
 }
+

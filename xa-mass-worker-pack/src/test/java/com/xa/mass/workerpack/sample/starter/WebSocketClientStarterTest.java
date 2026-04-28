@@ -38,7 +38,7 @@ class WebSocketClientStarterTest {
         SampleConfig mockConfig = new SampleConfig();
         mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
         starter.setSampleConfig(mockConfig);
-        setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
+        setField(starter, AbstractSampleWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);
         starter.setConnectionTimeout(5);
         starter.setRetryAttempts(1);
@@ -59,7 +59,7 @@ class WebSocketClientStarterTest {
         SampleConfig mockConfig = new SampleConfig();
         mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
         starter.setSampleConfig(mockConfig);
-        setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
+        setField(starter, AbstractSampleWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);
         starter.setConnectionTimeout(5);
         starter.setRetryAttempts(1);
@@ -140,3 +140,4 @@ class WebSocketClientStarterTest {
         }
     }
 }
+

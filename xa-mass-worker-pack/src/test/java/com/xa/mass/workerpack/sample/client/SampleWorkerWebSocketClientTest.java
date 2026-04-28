@@ -1,9 +1,9 @@
 package com.xa.mass.workerpack.sample.client;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientState;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.workerpack.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,22 +18,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MockWorkerWebSocketClientTest {
+class SampleWorkerWebSocketClientTest {
 
-    private MockClientStateRegistry stateRegistry;
+    private SampleClientStateRegistry stateRegistry;
     private ClientSessionManager clientSessionManager;
 
     @BeforeEach
     void setUp() {
-        stateRegistry = new MockClientStateRegistry();
+        stateRegistry = new SampleClientStateRegistry();
         clientSessionManager = new ClientSessionManager();
-        MockCommandRuntime.registerService(MockClientStateRegistry.class, stateRegistry);
-        MockCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
+        SampleCommandRuntime.registerService(SampleClientStateRegistry.class, stateRegistry);
+        SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
     }
 
     @Test
     void taskRequestProducesSingleMockResponse() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
 
         client.onMessage(taskMessage(false));
 
@@ -68,14 +68,14 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void defaultConstructorUsesDefaultWebSocketPort() {
-        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient("worker-test");
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient("worker-test");
 
         assertEquals("ws://localhost:18088/ws?workerId=worker-test", client.getURI().toString());
     }
 
     @Test
     void taskResponseDoesNotTriggerAnotherMockResponse() {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
 
         client.onMessage(taskMessage(true));
 
@@ -84,7 +84,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void taskRequestCanProduceFailedMockResponseWhenConfigured() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test", "FAILED");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test", "FAILED");
 
         client.onMessage(taskMessage(false));
 
@@ -98,8 +98,8 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void taskRequestCanBeDroppedByMockState() {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
-        stateRegistry.getOrCreate("worker-test").setTaskResponseDropMode(MockClientState.DropMode.ALWAYS);
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setTaskResponseDropMode(SampleClientState.DropMode.ALWAYS);
 
         client.onMessage(taskMessage(false));
 
@@ -108,7 +108,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void taskRequestCanBeDelayedByMockState() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(150L);
 
         client.onMessage(taskMessage(false));
@@ -121,7 +121,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void msgIdOnlyTaskFrameIsIgnored() {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
         frame.addProperty("msgId", "legacy-1");
         frame.addProperty("workerId", "worker-test");
@@ -136,7 +136,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void legacyTupleTaskFrameIsIgnored() {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "legacy-1");
         frame.addProperty("workerId", "worker-test");
@@ -153,7 +153,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void mockStateGetTaskReturnsStateSnapshotInTaskOutput() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(275L);
 
         client.onMessage(taskMessage("mock.state.get", new JsonObject()));
@@ -171,7 +171,7 @@ class MockWorkerWebSocketClientTest {
 
     @Test
     void mockDisconnectTaskClosesClientAfterTaskResult() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         clientSessionManager.addClient(client);
 
         client.onMessage(taskMessage("mock.disconnect", new JsonObject()));
@@ -215,16 +215,16 @@ class MockWorkerWebSocketClientTest {
         return WsFrameTestSupport.buildTaskResult("msg-1", "demoApp", "worker-test", "task-1", "SUCCESS", "prebuilt");
     }
 
-    private static class CapturingMockWorkerClient extends MockWorkerWebSocketClient {
+    private static class CapturingSampleWorkerClient extends SampleWorkerWebSocketClient {
         private final List<String> sentMessages = new ArrayList<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
         private final AtomicBoolean closeInvoked = new AtomicBoolean(false);
 
-        private CapturingMockWorkerClient(String workerId) {
+        private CapturingSampleWorkerClient(String workerId) {
             this(workerId, "SUCCESS");
         }
 
-        private CapturingMockWorkerClient(String workerId, String taskResultStatus) {
+        private CapturingSampleWorkerClient(String workerId, String taskResultStatus) {
             super(URI.create("ws://127.0.0.1:65535/ws"), workerId, taskResultStatus);
         }
 
@@ -267,3 +267,4 @@ class MockWorkerWebSocketClientTest {
         }
     }
 }
+

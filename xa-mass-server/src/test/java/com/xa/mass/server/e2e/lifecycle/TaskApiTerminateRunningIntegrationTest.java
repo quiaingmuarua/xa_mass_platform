@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
@@ -115,7 +115,7 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private static final class HoldingWebSocketClient extends MockWorkerWebSocketClient {
+    private static final class HoldingWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
         private HoldingWebSocketClient(java.net.URI serverUri, String workerId) {
@@ -141,3 +141,4 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractMockE2eTest {
         }
     }
 }
+

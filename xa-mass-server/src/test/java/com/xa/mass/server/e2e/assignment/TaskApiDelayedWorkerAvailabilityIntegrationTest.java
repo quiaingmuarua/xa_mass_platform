@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -63,7 +63,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         assertFalse(app.isWorkerOnline(workerId), "SDK worker registration must not mark delayed worker online");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(uri, workerId);
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
         try {
             assertClientConnects(client, "late worker client failed to connect");
             waitUntil(() -> app.isWorkerOnline(workerId), "late worker connect must mark worker online");
@@ -101,3 +101,4 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
     }
 
 }
+

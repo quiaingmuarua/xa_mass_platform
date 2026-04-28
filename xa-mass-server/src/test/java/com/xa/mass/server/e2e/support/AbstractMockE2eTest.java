@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.workerpack.sample.client.MockWorkerClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -239,7 +239,7 @@ public abstract class AbstractMockE2eTest {
         return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
     }
 
-    protected void assertClientConnects(MockWorkerClient client, String failureMessage) throws Exception {
+    protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
         boolean connected = false;
         for (int i = 0; i < 3; i++) {
             if (client.connectBlocking(3, TimeUnit.SECONDS)) {
@@ -255,7 +255,7 @@ public abstract class AbstractMockE2eTest {
         return requireDelegate().getEngine().getConfig().getTaskManager().updateTask(task);
     }
 
-    protected <T extends MockWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
+    protected <T extends SampleWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
                                                                          String failureMessage) throws Exception {
         Exception lastError = null;
         for (int i = 0; i < 3; i++) {
@@ -412,3 +412,4 @@ public abstract class AbstractMockE2eTest {
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
 }
+

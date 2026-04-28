@@ -74,7 +74,7 @@ Control-console routing note:
 
 For test or explicit fixture paths, embedded mock clients are started by:
 
-- `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/AbstractMockWorkerClientStarter.java`
+- `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/AbstractSampleWorkerClientStarter.java`
 - `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/WebSocketClientStarter.java`
 - `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SocketClientStarter.java`
 
@@ -219,7 +219,7 @@ mvn --% -pl xa-mass-server -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegra
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-server -am -Dtest=MockWorkerSocketClientTest,SocketClientStarterTest,SocketTaskApiIntegrationTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,SocketTaskApiIntegrationTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-language sample black-box regression:
@@ -239,8 +239,8 @@ Covered areas:
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
 - `SocketTaskApiIntegrationTest`: auto-started socket mock workers go online, receive tasks, and return canonical results
-- `MockWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
-- `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
+- `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
+- `SampleWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
 
 ## Boot-Shell E2E Map
 
@@ -297,3 +297,4 @@ Current gaps:
 - stronger real-runtime `EXPIRED` message coverage
 - broader `batchSize > 1` multi-worker coverage
 - resume short-circuit where a paused task is already complete underneath
+

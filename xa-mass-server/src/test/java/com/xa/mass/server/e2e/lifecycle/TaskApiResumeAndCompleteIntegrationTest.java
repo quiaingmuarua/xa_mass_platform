@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,17 +18,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Verifies the PAUSED → READY → RUNNING → TERMINAL path via a real resume call
+ * Verifies the PAUSED 鈫?READY 鈫?RUNNING 鈫?TERMINAL path via a real resume call
  * followed by worker connection and mock callback.
  *
  * <p>Specifically:
  * <ol>
  *   <li>Task is approved while no workers are available -> stays READY, peakAssignedWorkerCount=0.</li>
- *   <li>Task is paused (READY → PAUSED).</li>
+ *   <li>Task is paused (READY 鈫?PAUSED).</li>
  *   <li>A matching worker is registered and a mock client connects.</li>
- *   <li>Task is resumed (PAUSED → READY); {@code notifyTaskReady} kicks the assign worker.</li>
- *   <li>TaskAssignWorker assigns the task to the new worker (READY → RUNNING).</li>
- *   <li>Mock client auto-sends a SUCCESS callback → task closes to TERMINAL.</li>
+ *   <li>Task is resumed (PAUSED 鈫?READY); {@code notifyTaskReady} kicks the assign worker.</li>
+ *   <li>TaskAssignWorker assigns the task to the new worker (READY 鈫?RUNNING).</li>
+ *   <li>Mock client auto-sends a SUCCESS callback 鈫?task closes to TERMINAL.</li>
  * </ol>
  *
  * <p>This path is distinct from {@link TaskApiPauseCompletionIntegrationTest}, which covers
@@ -58,7 +58,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void resumedPausedTaskCompletesAfterWorkerConnectsAndSendsCallback() throws Exception {
-        // 1. Create and approve a task — no workers online yet.
+        // 1. Create and approve a task 鈥?no workers online yet.
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
@@ -84,7 +84,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-        // Message is still INIT — no worker was ever assigned.
+        // Message is still INIT 鈥?no worker was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
         // 4. Register a matching worker and connect a mock client.
@@ -92,11 +92,11 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(wsUri, workerId);
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
         try {
             assertClientConnects(client, "Mock client failed to connect");
 
-            // 5. Resume the task: PAUSED → READY → assign worker picks it up → RUNNING → TERMINAL.
+            // 5. Resume the task: PAUSED 鈫?READY 鈫?assign worker picks it up 鈫?RUNNING 鈫?TERMINAL.
             Map<String, Object> resumeResponse = exchange(
                     "/status/api/tasks/" + taskId + "/resume",
                     HttpMethod.POST,
@@ -122,10 +122,11 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    // ─── helpers ────────────────────────────────────────────────────────────
+    // 鈹€鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
     private void registerWorker(String workerId) {
         registerSdkWorkerWithContext(workerId, "us");
     }
 
 }
+

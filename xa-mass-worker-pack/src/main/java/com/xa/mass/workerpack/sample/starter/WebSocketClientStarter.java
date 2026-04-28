@@ -1,8 +1,8 @@
 package com.xa.mass.workerpack.sample.starter;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.workerpack.sample.client.MockWorkerClient;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +18,7 @@ import java.net.URI;
  */
 @Component
 @ConditionalOnProperty(prefix = "sample.client", name = "auto-start", havingValue = "true")
-public class WebSocketClientStarter extends AbstractMockWorkerClientStarter {
+public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientStarter.class);
     protected SampleConfig mockConfig;
@@ -83,7 +83,8 @@ public class WebSocketClientStarter extends AbstractMockWorkerClientStarter {
     }
 
     @Override
-    protected MockWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus) {
-        return new MockWorkerWebSocketClient(baseUri, workerId, taskResultStatus);
+    protected SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus) {
+        return new SampleWorkerWebSocketClient(baseUri, workerId, taskResultStatus);
     }
 }
+

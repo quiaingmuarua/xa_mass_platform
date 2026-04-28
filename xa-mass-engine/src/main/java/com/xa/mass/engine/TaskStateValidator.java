@@ -20,10 +20,10 @@ import java.util.List;
  */
 class TaskStateValidator {
 
-    private final TaskManager taskManager;
+    private final TaskStateRuntimePort stateRuntime;
 
-    TaskStateValidator(TaskManager taskManager) {
-        this.taskManager = taskManager;
+    TaskStateValidator(TaskStateRuntimePort stateRuntime) {
+        this.stateRuntime = stateRuntime;
     }
 
     TaskStateValidationResult validateTaskState(String taskId) {
@@ -35,7 +35,7 @@ class TaskStateValidator {
     }
 
     private TaskStateValidationResult validateTaskState(String taskId, boolean projectionAudit) {
-        Task task = taskManager.getTask(taskId);
+        Task task = stateRuntime.getTask(taskId);
         if (task == null) {
             TaskStateValidationResult result = new TaskStateValidationResult(
                     false,
@@ -60,7 +60,7 @@ class TaskStateValidator {
             return result;
         }
 
-        TaskWorkStats stats = taskManager.getTaskWorkRuntime().stats(taskId);
+        TaskWorkStats stats = stateRuntime.getTaskWorkStats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
 
         if (task.getTaskEligibleNumber() < 0) {
@@ -131,7 +131,7 @@ class TaskStateValidator {
         }
 
         boolean needsResolution = !finalStatus
-                && taskManager.getTaskTerminalPolicy().evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
+                && stateRuntime.evaluateTerminalPolicy(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
         if (projectionAudit) {
             needsResolution = needsResolution || auditTaskMessageProjection(taskId, violations);
         }
@@ -165,7 +165,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskMsg taskMsg : taskManager.getTaskMessages(taskId)) {
+        for (TaskMsg taskMsg : stateRuntime.getTaskMessages(taskId)) {
             if (taskMsg == null) {
                 continue;
             }
@@ -176,7 +176,7 @@ class TaskStateValidator {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskStorage.TaskMessageAttemptStats attemptStats =
-                    taskManager.getTaskStorage().getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
+                    stateRuntime.getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {

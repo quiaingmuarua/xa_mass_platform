@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,7 +45,7 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
         registerSdkStatelessWorker("stateless-worker", "demoApp");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(uri, "stateless-worker");
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, "stateless-worker");
         try {
             assertClientConnects(client, "stateless worker client failed to connect");
 
@@ -83,3 +83,4 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
         }
     }
 }
+

@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,7 +46,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(wsUri, workerId);
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
         try {
             assertClientConnects(client, "Mock client failed to connect");
 
@@ -81,3 +81,4 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         registerSdkWorkerWithContext(workerId, "us");
     }
 }
+

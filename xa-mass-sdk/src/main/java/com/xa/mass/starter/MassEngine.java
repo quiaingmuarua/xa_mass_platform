@@ -6,7 +6,9 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.*;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -46,6 +48,8 @@ public class MassEngine {
     private boolean running = false;
 
     private TaskManager taskManager;
+    private TaskRuntimeRecoveryPort runtimeRecoveryPort;
+    private TaskEventListenerRegistrar eventListeners;
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
     private TaskAssignWorker assignWorker;
@@ -74,7 +78,9 @@ public class MassEngine {
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
             taskManager = config.getTaskManager();
+            runtimeRecoveryPort = taskManager;
             taskManager.setTaskMessageLeaseSeconds(config.getTaskMessageLeaseSeconds());
+            eventListeners = taskManager.events();
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
@@ -92,10 +98,10 @@ public class MassEngine {
 
             TaskResourceReleaseListener resourceReleaseListener =
                     new TaskResourceReleaseListener(taskManager, workerManager);
-            taskManager.events().addTaskReadyListener(assignWorker::submit);
-            taskManager.events().addTaskDispatchListener(assignWorker::submit);
-            taskManager.events().addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
-            taskManager.events().addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
+            eventListeners.addTaskReadyListener(assignWorker::submit);
+            eventListeners.addTaskDispatchListener(assignWorker::submit);
+            eventListeners.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
+            eventListeners.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             recoverRuntimeReadyTasks();
 
             leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
@@ -104,8 +110,8 @@ public class MassEngine {
             eventBus = EventBusFactory.get("runtime");
             @SuppressWarnings("unchecked")
             EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
-            taskManager.events().addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
-            taskManager.events().addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
+            eventListeners.addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
+            eventListeners.addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
             workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
             running = true;
             logger.info("MassEngine started successfully");
@@ -144,6 +150,8 @@ public class MassEngine {
             if (taskManager != null) {
                 taskManager.shutdown();
             }
+            runtimeRecoveryPort = null;
+            eventListeners = null;
             eventBus = null;
             running = false;
             logger.info("MassEngine stopped successfully");
@@ -172,7 +180,7 @@ public class MassEngine {
     public void publishTaskEvents() {
         if (taskManager != null && eventBus != null) {
             EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
-            List<Task> allTasks = taskManager.getAllTasks();
+            List<Task> allTasks = runtimeRecoveryPort != null ? runtimeRecoveryPort.getAllTasks() : List.of();
             for (Task task : allTasks) {
                 bus.post(new TaskCreatedEvent(task, null, null));
             }
@@ -188,11 +196,10 @@ public class MassEngine {
     }
 
     private void recoverRuntimeReadyTasks() {
-        for (String taskId : taskManager.getTaskWorkRuntime().readyTaskIds(STARTUP_READY_TASK_SCAN_LIMIT)) {
-            Task task = taskManager.getTask(taskId);
-            if (task == null) {
-                continue;
-            }
+        if (runtimeRecoveryPort == null) {
+            return;
+        }
+        for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
             TaskStatus status = task.getStatus();
             if (status == TaskStatus.READY || status == TaskStatus.RUNNING) {
                 assignWorker.submit(task);

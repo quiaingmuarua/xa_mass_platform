@@ -11,20 +11,25 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
 import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.work.ResultApplyOutcome;
 import com.xa.mass.engine.work.TaskWorkEnvelope;
+import com.xa.mass.engine.work.TaskWorkResult;
 import com.xa.mass.engine.work.TaskWorkRuntime;
+import com.xa.mass.engine.work.TaskWorkStats;
 import com.xa.mass.engine.work.WorkEnqueueOutcome;
 import com.xa.mass.engine.work.WorkEnqueueOptions;
 import com.xa.mass.engine.work.WorkEnqueueStatus;
-import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +45,13 @@ import java.util.function.Supplier;
 /**
  * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
  */
-public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort {
+public class TaskManager implements TaskResultIngestFacade,
+        TaskAssignmentRuntimePort,
+        TaskRuntimeMaintenancePort,
+        TaskRuntimeRecoveryPort,
+        TaskResultRuntimePort,
+        TaskStateRuntimePort,
+        TaskLeaseProjectionPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -92,10 +103,7 @@ public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntim
         );
         this.dispatchRequestService = new TaskDispatchRequestService(this, retryWakeupExecutor);
         this.lifecycleService = new TaskLifecycleService(this, stateResolver);
-        this.resultService = new TaskResultService(
-                this,
-                new TaskRuntimeRetryPolicyResolver()
-        );
+        this.resultService = new TaskResultService(this, new TaskRuntimeRetryPolicyResolver());
         this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }
 
@@ -211,6 +219,17 @@ public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntim
 
         LogUtils.logOperationSuccess("loaded all tasks: count=" + tasks.size(), 0);
         return tasks;
+    }
+
+    @Override
+    public List<Task> getRuntimeDispatchableTasks(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return taskWorkRuntime.readyTaskIds(limit).stream()
+                .map(this::getTask)
+                .filter(task -> task != null)
+                .toList();
     }
 
     /**
@@ -394,6 +413,26 @@ public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntim
 
     public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
         return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
+    }
+
+    @Override
+    public TaskWorkStats getTaskWorkStats(String taskId) {
+        return taskWorkRuntime.stats(taskId);
+    }
+
+    @Override
+    public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
+        return taskTerminalPolicy.evaluate(task, stats);
+    }
+
+    @Override
+    public void publishTaskTerminal(Task task) {
+        eventPublisher.publishTaskTerminal(task);
+    }
+
+    @Override
+    public TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        return taskStorage.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     /**
@@ -705,8 +744,39 @@ public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntim
         dispatchRequestService.requestImmediate(task);
     }
 
-    void requestTaskRetryDispatch(Task task, long delayMillis) {
+    @Override
+    public void requestTaskRetryDispatch(Task task, long delayMillis) {
         dispatchRequestService.requestDelayed(task, delayMillis);
+    }
+
+    @Override
+    public java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
+        return taskWorkRuntime.getActiveLease(taskId, messageId);
+    }
+
+    @Override
+    public ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
+        return taskWorkRuntime.applyResult(result);
+    }
+
+    @Override
+    public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        eventPublisher.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
+    }
+
+    @Override
+    public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
+        eventPublisher.publishTaskMessageLogicallyFinal(task, taskMsg);
+    }
+
+    @Override
+    public void handleTaskMsgCompletion(TaskMsg taskMsg) {
+        taskScheduler.handleTaskMsgCompletion(taskMsg);
+    }
+
+    @Override
+    public void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
+        taskScheduler.handleTaskMsgFailure(taskMsg, detail);
     }
 
     private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
@@ -830,4 +900,3 @@ public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntim
         private int referenceCount;
     }
 }
-

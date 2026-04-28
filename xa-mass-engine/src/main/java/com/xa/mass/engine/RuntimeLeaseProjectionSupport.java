@@ -19,17 +19,17 @@ final class RuntimeLeaseProjectionSupport {
     private RuntimeLeaseProjectionSupport() {
     }
 
-    static TaskMsgAttempt resolveOrRecoverActiveAttempt(TaskManager taskManager,
+    static TaskMsgAttempt resolveOrRecoverActiveAttempt(TaskLeaseProjectionPort projectionPort,
                                                         TaskMsg taskMsg,
                                                         ActiveLeaseRecord activeLease) {
-        if (taskManager == null || taskMsg == null || activeLease == null) {
+        if (projectionPort == null || taskMsg == null || activeLease == null) {
             return null;
         }
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        TaskMsgAttempt activeAttempt = projectionPort.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         if (activeAttempt != null) {
             return activeAttempt;
         }
-        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        TaskMsgAttempt latestAttempt = projectionPort.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         int nextAttemptNo = Math.max(activeLease.retryCount() + 1, latestAttempt != null ? latestAttempt.getAttemptNo() + 1 : 1);
         TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
                 "recovered-attempt-" + taskMsg.getMessageId() + "-" + nextAttemptNo + "-" + UUID.randomUUID(),
@@ -46,18 +46,18 @@ final class RuntimeLeaseProjectionSupport {
         if (!recoveredAttempt.markDispatched()) {
             return null;
         }
-        taskManager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
+        projectionPort.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
         return recoveredAttempt;
     }
 
-    static boolean synchronizeProjectionFromRuntimeLease(TaskManager taskManager,
+    static boolean synchronizeProjectionFromRuntimeLease(TaskLeaseProjectionPort projectionPort,
                                                          String taskId,
                                                          TaskMsg taskMsg,
                                                          TaskMsgAttempt activeAttempt,
                                                          ActiveLeaseRecord activeLease,
                                                          String trigger,
                                                          String reason) {
-        if (taskManager == null || taskMsg == null || activeLease == null) {
+        if (projectionPort == null || taskMsg == null || activeLease == null) {
             return false;
         }
         boolean projectionChanged = false;
@@ -92,6 +92,6 @@ final class RuntimeLeaseProjectionSupport {
         if (!projectionChanged) {
             return true;
         }
-        return taskManager.updateTaskMessage(taskId, taskMsg);
+        return projectionPort.updateTaskMessage(taskId, taskMsg);
     }
 }

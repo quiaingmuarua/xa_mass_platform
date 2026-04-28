@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Transport client contract for a dev-app mock worker.
  */
-public interface MockWorkerClient {
+public interface SampleWorkerClient {
     String adapterId();
 
     String getWorkerId();
@@ -21,3 +21,4 @@ public interface MockWorkerClient {
 
     boolean connectBlocking(long timeout, TimeUnit timeUnit) throws InterruptedException;
 }
+

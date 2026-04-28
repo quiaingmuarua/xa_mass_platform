@@ -6,12 +6,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-public class MockClientStateRegistry {
+public class SampleClientStateRegistry {
 
-    private final Map<String, MockClientState> states = new ConcurrentHashMap<>();
+    private final Map<String, SampleClientState> states = new ConcurrentHashMap<>();
 
-    public MockClientState getOrCreate(String workerId) {
-        return states.computeIfAbsent(workerId, ignored -> new MockClientState());
+    public SampleClientState getOrCreate(String workerId) {
+        return states.computeIfAbsent(workerId, ignored -> new SampleClientState());
     }
 
     public Map<String, Object> snapshot(String workerId) {
@@ -22,3 +22,4 @@ public class MockClientStateRegistry {
         getOrCreate(workerId).reset();
     }
 }
+

@@ -14,10 +14,10 @@ import com.xa.mass.engine.work.TaskWorkStats;
  */
 class TaskStateResolver {
 
-    private final TaskManager taskManager;
+    private final TaskStateRuntimePort stateRuntime;
 
-    TaskStateResolver(TaskManager taskManager) {
-        this.taskManager = taskManager;
+    TaskStateResolver(TaskStateRuntimePort stateRuntime) {
+        this.stateRuntime = stateRuntime;
     }
 
     void updateTaskProgress(String taskId) {
@@ -25,16 +25,16 @@ class TaskStateResolver {
     }
 
     TaskStateResolutionResult resolveTaskState(String taskId) {
-        Task task = taskManager.getTask(taskId);
+        Task task = stateRuntime.getTask(taskId);
         if (task == null) {
             return TaskStateResolutionResult.taskNotFound();
         }
 
-        TaskWorkStats stats = taskManager.getTaskWorkRuntime().stats(taskId);
+        TaskWorkStats stats = stateRuntime.getTaskWorkStats(taskId);
         task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
 
         if (task.getStatus().isFinal()) {
-            taskManager.updateTask(task);
+            stateRuntime.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "ALREADY_FINAL", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "task already final");
             return TaskStateResolutionResult.alreadyFinal(
@@ -46,9 +46,9 @@ class TaskStateResolver {
             );
         }
 
-        TaskTerminalPolicyDecision decision = taskManager.getTaskTerminalPolicy().evaluate(task, stats);
+        TaskTerminalPolicyDecision decision = stateRuntime.evaluateTerminalPolicy(task, stats);
         if (decision.getOutcome() != TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
-            taskManager.updateTask(task);
+            stateRuntime.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "NOT_FINALIZED", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "task remains non-final after progress evaluation");
             return TaskStateResolutionResult.notFinalized(
@@ -67,10 +67,10 @@ class TaskStateResolver {
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
             TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            taskManager.updateTask(task);
+            stateRuntime.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "FINALIZED_TO_TERMINAL", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            taskManager.getEventPublisher().publishTaskTerminal(task);
+            stateRuntime.publishTaskTerminal(task);
             return TaskStateResolutionResult.finalizedToTerminal(
                     reason,
                     stats.totalCount(),
@@ -79,7 +79,7 @@ class TaskStateResolver {
             );
         }
 
-        taskManager.updateTask(task);
+        stateRuntime.updateTask(task);
         emitTaskProgressSnapshot(task, stats, "FINALIZE_REJECTED", true,
                 "RESOLVE_TASK_STATE", "TaskManager", "task terminal transition was rejected");
         return TaskStateResolutionResult.notFinalized(

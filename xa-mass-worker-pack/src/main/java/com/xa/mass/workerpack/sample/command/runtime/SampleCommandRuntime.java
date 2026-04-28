@@ -6,7 +6,7 @@ import com.xa.mass.command.core.CoreCommandRoutes;
 import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.command.runtime.CommandLogger;
-import com.xa.mass.workerpack.sample.command.fixture.MockCommandRoutes;
+import com.xa.mass.workerpack.sample.command.fixture.SampleCommandRoutes;
 import com.xa.mass.workerpack.sample.command.tool.ToolCommandRoutes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,19 +16,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Lightweight bootstrap for the dev-app mock client command runtime.
  */
-public final class MockCommandRuntime {
+public final class SampleCommandRuntime {
 
-    private static final Logger log = LoggerFactory.getLogger(MockCommandRuntime.class);
+    private static final Logger log = LoggerFactory.getLogger(SampleCommandRuntime.class);
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
 
-    private MockCommandRuntime() {
+    private SampleCommandRuntime() {
     }
 
     public static void initialize() {
         if (!INITIALIZED.compareAndSet(false, true)) {
             return;
         }
-        ClassLoader classLoader = MockCommandRuntime.class.getClassLoader();
+        ClassLoader classLoader = SampleCommandRuntime.class.getClassLoader();
         CommandContext.init(
                 () -> classLoader,
                 classLoader,
@@ -52,7 +52,7 @@ public final class MockCommandRuntime {
                 }
         );
         CoreCommandRoutes.registerCommonRoutes();
-        MockCommandRoutes.registerMockRoutes();
+        SampleCommandRoutes.registerMockRoutes();
         ToolCommandRoutes.registerToolRoutes();
     }
 
@@ -71,3 +71,4 @@ public final class MockCommandRuntime {
         return CommandContext.getInstance().get(type);
     }
 }
+

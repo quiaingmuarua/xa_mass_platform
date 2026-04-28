@@ -3,7 +3,7 @@ package com.xa.mass.workerpack.sample.command.runtime;
 import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -15,8 +15,8 @@ class CommandRuntimeTest {
 
     @BeforeAll
     static void setUpRuntime() {
-        MockCommandRuntime.registerService(MockClientStateRegistry.class, new MockClientStateRegistry());
-        MockCommandRuntime.registerService(ClientSessionManager.class, new ClientSessionManager());
+        SampleCommandRuntime.registerService(SampleClientStateRegistry.class, new SampleClientStateRegistry());
+        SampleCommandRuntime.registerService(ClientSessionManager.class, new ClientSessionManager());
     }
 
     @Test
@@ -25,7 +25,7 @@ class CommandRuntimeTest {
         request.addProperty("event", "mock.state.get");
         request.addProperty("workerId", "worker-001");
 
-        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = SampleCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);
@@ -40,7 +40,7 @@ class CommandRuntimeTest {
         request.addProperty("event", "tool.time.now");
         request.addProperty("zoneId", "Asia/Shanghai");
 
-        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = SampleCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);
@@ -57,7 +57,7 @@ class CommandRuntimeTest {
         updateRequest.addProperty("workerId", "worker-001");
         updateRequest.addProperty("millis", 250);
 
-        CommandResponse<?> updateResponse = MockCommandRuntime.dispatch(updateRequest);
+        CommandResponse<?> updateResponse = SampleCommandRuntime.dispatch(updateRequest);
 
         assertTrue(updateResponse.isSuccess());
 
@@ -65,7 +65,7 @@ class CommandRuntimeTest {
         stateRequest.addProperty("event", "mock.state.get");
         stateRequest.addProperty("workerId", "worker-001");
 
-        CommandResponse<?> stateResponse = MockCommandRuntime.dispatch(stateRequest);
+        CommandResponse<?> stateResponse = SampleCommandRuntime.dispatch(stateRequest);
 
         assertTrue(stateResponse.isSuccess());
         assertTrue(stateResponse.getData() instanceof Map);
@@ -109,7 +109,7 @@ class CommandRuntimeTest {
         events.add(quoteStep);
         request.add("events", events);
 
-        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = SampleCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);
@@ -118,3 +118,4 @@ class CommandRuntimeTest {
         assertEquals("CNY", ((Map<?, ?>) data.get("context")).get("currency"));
     }
 }
+

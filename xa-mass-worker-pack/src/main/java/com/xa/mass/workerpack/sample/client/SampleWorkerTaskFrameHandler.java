@@ -4,8 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientState;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,9 +18,9 @@ import java.util.Objects;
  * Adapter-local helper that turns inbound WebSocket task frames into mock
  * worker result frames.
  */
-final class MockWorkerTaskFrameHandler {
+final class SampleWorkerTaskFrameHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(MockWorkerTaskFrameHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(SampleWorkerTaskFrameHandler.class);
     private static final Gson GSON = new Gson();
     private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
     private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
@@ -29,11 +29,11 @@ final class MockWorkerTaskFrameHandler {
     private final String transportHint;
     private final String runtimeName;
 
-    MockWorkerTaskFrameHandler() {
+    SampleWorkerTaskFrameHandler() {
         this("websocket", "realtime", "mock-websocket-client");
     }
 
-    MockWorkerTaskFrameHandler(String adapterId, String transportHint, String runtimeName) {
+    SampleWorkerTaskFrameHandler(String adapterId, String transportHint, String runtimeName) {
         this.adapterId = adapterId == null || adapterId.isBlank() ? "unknown" : adapterId;
         this.transportHint = transportHint == null || transportHint.isBlank() ? "unknown" : transportHint;
         this.runtimeName = runtimeName == null || runtimeName.isBlank() ? "mock-worker-client" : runtimeName;
@@ -42,7 +42,7 @@ final class MockWorkerTaskFrameHandler {
     TaskResponsePlan prepareResponse(JsonObject taskMessage,
                                      String workerId,
                                      String taskResultStatus,
-                                     MockClientState state) {
+                                     SampleClientState state) {
         if (taskMessage == null) {
             return null;
         }
@@ -193,7 +193,7 @@ final class MockWorkerTaskFrameHandler {
         for (Map.Entry<String, JsonElement> entry : input.entrySet()) {
             commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
         }
-        return MockCommandRuntime.dispatch(commandRequest);
+        return SampleCommandRuntime.dispatch(commandRequest);
     }
 
     private JsonObject extractCommandPayload(JsonObject taskMessage) {
@@ -260,7 +260,7 @@ final class MockWorkerTaskFrameHandler {
         return disconnectWorkerId == null ? null : String.valueOf(disconnectWorkerId);
     }
 
-    private String resolveTaskResultStatus(String taskResultStatus, MockClientState state) {
+    private String resolveTaskResultStatus(String taskResultStatus, SampleClientState state) {
         if (state == null) {
             return normalizeTaskResultStatus(taskResultStatus);
         }
@@ -270,7 +270,7 @@ final class MockWorkerTaskFrameHandler {
     private long resolveTaskResponseDelayMillis(JsonObject taskMessage,
                                                 String workerId,
                                                 int stepCount,
-                                                MockClientState state,
+                                                SampleClientState state,
                                                 String taskStatus) {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
@@ -396,3 +396,4 @@ final class MockWorkerTaskFrameHandler {
     record TaskResponsePlan(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
     }
 }
+

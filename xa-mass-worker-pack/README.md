@@ -15,5 +15,6 @@
 ## Start Here
 
 - `src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
-- `src/main/java/com/xa/mass/workerpack/sample/client/MockWorkerWebSocketClient.java`
-- `src/main/java/com/xa/mass/workerpack/sample/command/runtime/MockCommandRuntime.java`
+- `src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java`
+- `src/main/java/com/xa/mass/workerpack/sample/command/runtime/SampleCommandRuntime.java`
+

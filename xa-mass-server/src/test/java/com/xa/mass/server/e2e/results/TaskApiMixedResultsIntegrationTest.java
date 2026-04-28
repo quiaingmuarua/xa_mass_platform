@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.results;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
@@ -131,7 +131,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
+    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
         ManualAckWebSocketClient(URI uri, String workerId) {
@@ -168,3 +168,4 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         }
     }
 }
+

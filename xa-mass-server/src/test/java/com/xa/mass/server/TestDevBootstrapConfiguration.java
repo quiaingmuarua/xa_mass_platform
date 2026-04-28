@@ -1,7 +1,7 @@
 package com.xa.mass.server;
 
 import com.xa.mass.server.bootstrap.MockRuntimeDataLoader;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.workerpack.sample.command.tool.ToolCommandRoutes;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.model.CommandContext;
@@ -279,7 +279,7 @@ public class TestDevBootstrapConfiguration {
                 .taskModes(List.of())
                 .projectCodes(List.of())
                 .handler((request, principal) -> {
-                    MockCommandRuntime.initialize();
+                    SampleCommandRuntime.initialize();
                     JsonObject payloadJson = toJsonObject(request.getPayload());
                     Map<String, Object> result = definition.getHandler().handle(
                             definition.getResolver().apply(payloadJson),
@@ -305,3 +305,4 @@ public class TestDevBootstrapConfiguration {
         return String.join(" ", words);
     }
 }
+

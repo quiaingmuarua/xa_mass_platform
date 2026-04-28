@@ -7,7 +7,7 @@ import java.util.Map;
  * Per-worker mock behavior state. This is the single source of truth for
  * client-side fault injection in the dev app.
  */
-public class MockClientState {
+public class SampleClientState {
 
     public enum DropMode {
         OFF,
@@ -88,3 +88,4 @@ public class MockClientState {
         return snapshot;
     }
 }
+

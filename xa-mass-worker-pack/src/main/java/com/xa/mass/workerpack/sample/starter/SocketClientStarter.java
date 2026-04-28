@@ -1,7 +1,7 @@
 package com.xa.mass.workerpack.sample.starter;
 
-import com.xa.mass.workerpack.sample.client.MockWorkerClient;
-import com.xa.mass.workerpack.sample.client.MockWorkerSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerSocketClient;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
 import org.slf4j.Logger;
@@ -16,7 +16,7 @@ import java.net.URI;
 @ConditionalOnExpression(
         "'${sample.client.auto-start:false}' == 'true' and '${mass.socket.enabled:false}' == 'true'"
 )
-public class SocketClientStarter extends AbstractMockWorkerClientStarter {
+public class SocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(SocketClientStarter.class);
 
@@ -77,8 +77,8 @@ public class SocketClientStarter extends AbstractMockWorkerClientStarter {
     }
 
     @Override
-    protected MockWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus) {
-        return new MockWorkerSocketClient(baseUri, workerId, taskResultStatus);
+    protected SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus) {
+        return new SampleWorkerSocketClient(baseUri, workerId, taskResultStatus);
     }
 
     private int parsePort(String value, int fallbackPort) {
@@ -93,3 +93,4 @@ public class SocketClientStarter extends AbstractMockWorkerClientStarter {
         }
     }
 }
+

@@ -2,9 +2,9 @@ package com.xa.mass.workerpack.sample.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientState;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -18,8 +18,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class MockWorkerWebSocketClient extends WebSocketClient implements MockWorkerClient {
-    private static final Logger logger = LoggerFactory.getLogger(MockWorkerWebSocketClient.class);
+public class SampleWorkerWebSocketClient extends WebSocketClient implements SampleWorkerClient {
+    private static final Logger logger = LoggerFactory.getLogger(SampleWorkerWebSocketClient.class);
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
@@ -29,16 +29,16 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
-    private final MockWorkerTaskFrameHandler taskFrameHandler = new MockWorkerTaskFrameHandler();
+    private final SampleWorkerTaskFrameHandler taskFrameHandler = new SampleWorkerTaskFrameHandler();
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
 
-    public MockWorkerWebSocketClient(URI serverUri, String workerId) {
+    public SampleWorkerWebSocketClient(URI serverUri, String workerId) {
         this(serverUri, workerId, "SUCCESS");
     }
 
-    public MockWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
+    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
         super(withWorkerId(serverUri, workerId));
         this.workerId = workerId;
         this.taskResultStatus = normalizeConfiguredTaskResultStatus(taskResultStatus);
@@ -52,10 +52,10 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             t.setDaemon(true);
             return t;
         });
-        MockCommandRuntime.initialize();
+        SampleCommandRuntime.initialize();
     }
 
-    public MockWorkerWebSocketClient(String workerId) {
+    public SampleWorkerWebSocketClient(String workerId) {
         this(URI.create("ws://localhost:18088/ws"), workerId, "SUCCESS");
     }
 
@@ -95,8 +95,8 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     }
 
     private void handleTaskMessage(JsonObject taskMessage) {
-        MockClientState state = getMockClientState();
-        MockWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
+        SampleClientState state = getSampleClientState();
+        SampleWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
                 taskMessage,
                 workerId,
                 taskResultStatus,
@@ -179,8 +179,8 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         logger.info("[{}] {} shut down. Cancelled {} queued tasks.", workerId, name, cancelledTasks.size());
     }
 
-    private MockClientState getMockClientState() {
-        MockClientStateRegistry stateRegistry = MockCommandRuntime.getService(MockClientStateRegistry.class);
+    private SampleClientState getSampleClientState() {
+        SampleClientStateRegistry stateRegistry = SampleCommandRuntime.getService(SampleClientStateRegistry.class);
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
     }
 
@@ -221,13 +221,13 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             closeConnection();
             return;
         }
-        ClientSessionManager clientSessionManager = MockCommandRuntime.getService(ClientSessionManager.class);
+        ClientSessionManager clientSessionManager = SampleCommandRuntime.getService(ClientSessionManager.class);
         if (clientSessionManager == null) {
             logger.warn("[{}] Cannot close target worker {} after disconnect task result because ClientSessionManager is not registered",
                     workerId, targetWorkerId);
             return;
         }
-        MockWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
+        SampleWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
         if (targetClient == null) {
             logger.warn("[{}] Cannot close target worker {} after disconnect task result because client is missing",
                     workerId, targetWorkerId);
@@ -318,3 +318,4 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         }
     }
 }
+

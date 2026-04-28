@@ -1,9 +1,9 @@
 package com.xa.mass.workerpack.sample.client;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientState;
-import com.xa.mass.workerpack.sample.command.fixture.MockClientStateRegistry;
-import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.workerpack.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,22 +17,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MockWorkerSocketClientTest {
+class SampleWorkerSocketClientTest {
 
-    private MockClientStateRegistry stateRegistry;
+    private SampleClientStateRegistry stateRegistry;
     private ClientSessionManager clientSessionManager;
 
     @BeforeEach
     void setUp() {
-        stateRegistry = new MockClientStateRegistry();
+        stateRegistry = new SampleClientStateRegistry();
         clientSessionManager = new ClientSessionManager();
-        MockCommandRuntime.registerService(MockClientStateRegistry.class, stateRegistry);
-        MockCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
+        SampleCommandRuntime.registerService(SampleClientStateRegistry.class, stateRegistry);
+        SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
     }
 
     @Test
     void taskRequestProducesCanonicalSocketResponse() throws Exception {
-        CapturingMockWorkerSocketClient client = new CapturingMockWorkerSocketClient("worker-test");
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
 
         client.handleInboundFrame(taskMessage(false));
 
@@ -51,7 +51,7 @@ class MockWorkerSocketClientTest {
 
     @Test
     void taskResponseDoesNotTriggerAnotherSocketMockResponse() {
-        CapturingMockWorkerSocketClient client = new CapturingMockWorkerSocketClient("worker-test");
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
 
         client.handleInboundFrame(taskMessage(true));
 
@@ -60,8 +60,8 @@ class MockWorkerSocketClientTest {
 
     @Test
     void taskRequestCanBeDroppedByMockState() {
-        CapturingMockWorkerSocketClient client = new CapturingMockWorkerSocketClient("worker-test");
-        stateRegistry.getOrCreate("worker-test").setTaskResponseDropMode(MockClientState.DropMode.ALWAYS);
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setTaskResponseDropMode(SampleClientState.DropMode.ALWAYS);
 
         client.handleInboundFrame(taskMessage(false));
 
@@ -70,7 +70,7 @@ class MockWorkerSocketClientTest {
 
     @Test
     void mockDisconnectTaskClosesSocketClientAfterTaskResult() throws Exception {
-        CapturingMockWorkerSocketClient client = new CapturingMockWorkerSocketClient("worker-test");
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
         clientSessionManager.addClient(client);
 
         client.handleInboundFrame(taskMessage("mock.disconnect", new JsonObject()));
@@ -109,12 +109,12 @@ class MockWorkerSocketClientTest {
         return WsFrameTestSupport.buildTaskResult("msg-1", "demoApp", "worker-test", "task-1", "SUCCESS", "prebuilt");
     }
 
-    private static class CapturingMockWorkerSocketClient extends MockWorkerSocketClient {
+    private static class CapturingSampleWorkerSocketClient extends SampleWorkerSocketClient {
         private final List<String> sentMessages = new ArrayList<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
         private final AtomicBoolean closeInvoked = new AtomicBoolean(false);
 
-        private CapturingMockWorkerSocketClient(String workerId) {
+        private CapturingSampleWorkerSocketClient(String workerId) {
             super(URI.create("tcp://127.0.0.1:65535"), workerId, "SUCCESS");
         }
 
@@ -157,3 +157,4 @@ class MockWorkerSocketClientTest {
         }
     }
 }
+

@@ -5,7 +5,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
@@ -57,8 +57,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MockWorkerWebSocketClient client = connectClientWithRetries(
-                () -> new MockWorkerWebSocketClient(wsUri, workerId),
+        SampleWorkerWebSocketClient client = connectClientWithRetries(
+                () -> new SampleWorkerWebSocketClient(wsUri, workerId),
                 "Mock client failed to connect"
         );
         try {
@@ -188,7 +188,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         return "SUCCESS".equals(status) || "FAILED".equals(status) || "EXPIRED".equals(status);
     }
 
-    private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
+    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
@@ -225,3 +225,4 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         }
     }
 }
+
