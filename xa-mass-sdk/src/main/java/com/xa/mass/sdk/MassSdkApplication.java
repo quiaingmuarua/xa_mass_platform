@@ -14,6 +14,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -1529,6 +1530,25 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalArgumentException("SDK event " + eventCode
                     + " does not support task mode: " + request.getMode());
         }
+    }
+
+    /**
+     * Registers a listener that fires synchronously when a task message reaches its
+     * logically final state (success or exhausted retries). Safe to call before
+     * {@link #start()} — the listener is registered on the TaskManager's event
+     * publisher which exists independent of engine lifecycle.
+     */
+    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        MassEngine engine = delegate.getEngine();
+        if (engine == null) {
+            throw new IllegalStateException("Engine is unavailable for this SDK application");
+        }
+        TaskManager taskManager = engine.getConfig().getTaskManager();
+        if (taskManager == null) {
+            throw new IllegalStateException("TaskManager is unavailable; engine may not have started");
+        }
+        taskManager.events().addTaskMessageLogicallyFinalListener(listener);
     }
 
     private TaskManager requireStartedTaskManager() {

@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
+import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.model.task.TaskCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.base.enums.task.TaskSourceType;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @RestController
@@ -41,6 +43,9 @@ public class TaskApiController {
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final AuthProvider authProvider;
+
+    @Autowired(required = false)
+    private SyncTaskResultBridge syncBridge;
 
     public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
         this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
@@ -116,6 +121,71 @@ public class TaskApiController {
             return forbidden(e.getMessage());
         } catch (Exception e) {
             return badRequest("Task create failed: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/sync")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createTaskSync(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestParam(required = false) Long timeoutMs,
+            @RequestBody TaskCreateApiRequest requestBody) {
+        if (syncBridge == null) {
+            return badRequest("Sync task API is not available in this runtime profile");
+        }
+        try {
+            validateKnownFields(requestBody, "sync task create");
+            validateSyncRequest(requestBody);
+
+            long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
+            String correlationId = UUID.randomUUID().toString();
+
+            // Register future BEFORE task creation to close the timing gap.
+            CompletableFuture<TaskMsg> future = syncBridge.register(correlationId);
+
+            TaskSubmitterContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            Task task;
+            if (submitter != null) {
+                requireSubmitterPermission(submitter, TaskSubmitterContext.TASK_CREATE_PERMISSION);
+                String resolvedProject = resolveSubmitterProject(requestBody, submitter);
+                String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
+                requireSubmitterEventScope(requestBody, submitter);
+                task = taskAdmin.createTask(toMassTaskRequestWithSyncKey(requestBody, resolvedProject, resolvedUserId, correlationId));
+            } else {
+                task = hasEventCode(requestBody)
+                        ? taskAdmin.createTask(toMassTaskRequestWithSyncKey(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId))
+                        : taskAdmin.createTask(toTaskCreateRequestWithSyncKey(requestBody, correlationId));
+            }
+
+            String taskId = task.getTid();
+            List<TaskMsg> messages = taskQueries.getTaskMessages(taskId, 1);
+            String messageId = messages.isEmpty() ? "" : messages.get(0).getMessageId();
+
+            Optional<TaskMsg> result = syncBridge.await(correlationId, future, resolvedTimeoutMs);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("taskId", taskId);
+            data.put("messageId", messageId);
+            if (result.isPresent()) {
+                TaskMsg msg = result.get();
+                data.put("synced", true);
+                data.put("timedOut", false);
+                data.put("status", msg.getStatus() != null ? msg.getStatus().name() : "UNKNOWN");
+                data.put("output", msg.getOutput() != null ? msg.getOutput() : Map.of());
+                data.put("errorCode", msg.getErrorCode() != null ? msg.getErrorCode() : "");
+                data.put("errorMessage", msg.getErrorMessage() != null ? msg.getErrorMessage() : "");
+            } else {
+                data.put("synced", false);
+                data.put("timedOut", true);
+                data.put("timeoutMs", resolvedTimeoutMs);
+            }
+            return ok(data);
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest("Sync task create failed: " + e.getMessage());
         }
     }
 
@@ -772,6 +842,87 @@ public class TaskApiController {
             return requestBody.getSourceType();
         }
         return requestBody.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+    }
+
+    private void validateSyncRequest(TaskCreateApiRequest requestBody) {
+        if (requestBody.isOpenEnded()) {
+            throw new IllegalArgumentException("Sync task does not support open-ended mode");
+        }
+        if (requestBody.getMode() != null && requestBody.getMode() != TaskMode.SINGLE_RUN) {
+            throw new IllegalArgumentException("Sync task requires SINGLE_RUN mode, got: " + requestBody.getMode());
+        }
+        List<Object> inputs = requestBody.getInputs();
+        if (inputs == null || inputs.isEmpty()) {
+            throw new IllegalArgumentException("Sync task requires exactly one input item");
+        }
+        if (inputs.size() > 1) {
+            throw new IllegalArgumentException("Sync task requires exactly one input item; got " + inputs.size());
+        }
+    }
+
+    private long resolveTimeoutMs(Long requested) {
+        if (requested == null || requested <= 0) {
+            return SyncTaskResultBridge.DEFAULT_TIMEOUT_MS;
+        }
+        return Math.min(requested, SyncTaskResultBridge.MAX_TIMEOUT_MS);
+    }
+
+    private Map<String, Object> mergeSyncKey(Map<String, Object> existing, String syncKey) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (existing != null) {
+            merged.putAll(existing);
+        }
+        merged.put(SyncTaskResultBridge.SYNC_KEY, syncKey);
+        return Map.copyOf(merged);
+    }
+
+    private MassTaskRequest toMassTaskRequestWithSyncKey(TaskCreateApiRequest requestBody,
+                                                         String resolvedProject,
+                                                         String resolvedUserId,
+                                                         String syncKey) {
+        requireBusinessBindings(resolvedProject, resolvedUserId);
+        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
+            throw new IllegalArgumentException("taskName is required");
+        }
+        if (requestBody.getEventCode() == null || requestBody.getEventCode().isBlank()) {
+            throw new IllegalArgumentException("eventCode is required");
+        }
+        validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
+        PayloadType payloadType = requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON;
+        return MassTaskRequest.builder()
+                .userId(resolvedUserId)
+                .project(resolvedProject)
+                .taskName(requestBody.getTaskName())
+                .eventCode(requestBody.getEventCode())
+                .mode(TaskMode.SINGLE_RUN)
+                .payloadType(payloadType)
+                .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
+                .inputs(toMassInputs(requestBody.getInputs(), payloadType, TaskSourceType.BATCH))
+                .batchSize(requestBody.getBatchSize())
+                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
+                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .sourceType(TaskSourceType.BATCH)
+                .workloadClass(requestBody.getWorkloadClass())
+                .sourceRef(requestBody.getSourceRef())
+                .build();
+    }
+
+    private MassTaskCreateRequest toTaskCreateRequestWithSyncKey(TaskCreateApiRequest requestBody, String syncKey) {
+        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
+        return MassTaskCreateRequest.builder()
+                .userId(requestBody.getUserId())
+                .project(requestBody.getProject())
+                .taskName(requestBody.getTaskName())
+                .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
+                .inputs(toPlainJsonInputs(requestBody.getInputs()))
+                .batchSize(requestBody.getBatchSize())
+                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
+                .openEnded(false)
+                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .sourceType(TaskSourceType.BATCH)
+                .workloadClass(requestBody.getWorkloadClass())
+                .sourceRef(requestBody.getSourceRef())
+                .build();
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {
