@@ -8,6 +8,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
@@ -149,13 +151,30 @@ public final class TaskFlowLoadModelRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
+                    new TaskManagerAssignmentRuntimePort(taskManager);
             SimpleTaskMsgAssignListener msgAssignListener =
-                    new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, dispatchListener);
+                    new SimpleTaskMsgAssignListener(
+                            assignmentRuntimePort,
+                            workerManager,
+                            recordService,
+                            dispatchListener
+                    );
             TaskWorkerAssignListener workerAssignListener =
-                    new TaskWorkerAssignListener(matchingStrategy, workerManager, msgAssignListener, taskManager);
+                    new TaskWorkerAssignListener(
+                            matchingStrategy,
+                            workerManager,
+                            msgAssignListener,
+                            assignmentRuntimePort,
+                            taskManager.events()
+                    );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             MeasuredTaskResourceReleaseListener releaseListener =
-                    new MeasuredTaskResourceReleaseListener(taskManager, workerManager, releaseMetrics);
+                    new MeasuredTaskResourceReleaseListener(
+                            new TaskManagerRuntimeMaintenancePort(taskManager),
+                            workerManager,
+                            releaseMetrics
+                    );
 
             try {
                 registerWorkers(workerManager, config);
@@ -382,10 +401,10 @@ public final class TaskFlowLoadModelRunner {
     private static final class MeasuredTaskResourceReleaseListener extends TaskResourceReleaseListener {
         private final ReleaseMetrics metrics;
 
-        private MeasuredTaskResourceReleaseListener(TaskManager taskManager,
+        private MeasuredTaskResourceReleaseListener(TaskManagerRuntimeMaintenancePort maintenancePort,
                                                     WorkerManager workerManager,
                                                     ReleaseMetrics metrics) {
-            super(taskManager, workerManager);
+            super(maintenancePort, workerManager);
             this.metrics = metrics;
         }
 

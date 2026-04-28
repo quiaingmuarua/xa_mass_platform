@@ -8,6 +8,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -113,13 +115,26 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
+                    new TaskManagerAssignmentRuntimePort(taskManager);
             SimpleTaskMsgAssignListener msgAssignListener =
-                    new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, dispatchListener);
+                    new SimpleTaskMsgAssignListener(
+                            assignmentRuntimePort,
+                            workerManager,
+                            recordService,
+                            dispatchListener
+                    );
             TaskWorkerAssignListener workerAssignListener =
-                    new TaskWorkerAssignListener(matchingStrategy, workerManager, msgAssignListener, taskManager);
+                    new TaskWorkerAssignListener(
+                            matchingStrategy,
+                            workerManager,
+                            msgAssignListener,
+                            assignmentRuntimePort,
+                            taskManager.events()
+                    );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(taskManager, workerManager);
+                    new TaskResourceReleaseListener(new TaskManagerRuntimeMaintenancePort(taskManager), workerManager);
 
             try {
                 registerWorkers(workerManager, config.workerCount());
