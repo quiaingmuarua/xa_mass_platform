@@ -19,6 +19,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,22 @@ public abstract class AbstractSampleE2eTest {
     protected static void registerWebSocketPropertiesWithClientUri(DynamicPropertyRegistry registry, int websocketPort) {
         registerWebSocketProperties(registry, websocketPort);
         registry.add("sample.client.websocket-uri", () -> "ws://127.0.0.1:" + websocketPort + "/ws");
+    }
+
+    protected static void registerJdbcStorageProperties(DynamicPropertyRegistry registry,
+                                                        String mode,
+                                                        String jdbcUrl,
+                                                        String username,
+                                                        String password) {
+        registry.add("mass.storage.mode", () -> mode);
+        registry.add("mass.storage.jdbc.url", () -> jdbcUrl);
+        registry.add("mass.storage.jdbc.username", () -> username);
+        registry.add("mass.storage.jdbc.password", () -> password);
+    }
+
+    protected static String isolatedH2JdbcUrl(String testId) {
+        return "jdbc:h2:mem:" + testId + "_" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
     }
 
     protected static int findFreePort() {

@@ -1,5 +1,7 @@
 # Channel Package Baseline
 
+Status: current local package orientation note.
+
 This package contains shared communication primitives used by the current repository.
 
 Treat this README as a local orientation note, not as the system-level source of truth. For platform semantics, start from:

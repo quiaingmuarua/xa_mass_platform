@@ -2,7 +2,9 @@
 
 This inventory records the responsibilities that still exist inside the current WebSocket adapter. The module lives under `transport/websocket-adapter`; its artifact identity is `xa-mass-transport-websocket`, and its Java package identity is `com.xa.mass.transport.websocket.*`.
 
-It is a migration aid, not a compatibility promise.
+Status: refactor inventory, not current platform architecture truth or compatibility promise.
+
+Trust: code, [../AGENTS.md](../AGENTS.md), [../TRANSPORT_BOUNDARY_BASELINE.md](../TRANSPORT_BOUNDARY_BASELINE.md), and [../../doc/AGENT_BASELINE.md](../../doc/AGENT_BASELINE.md) override this inventory.
 
 ## Current Inventory
 

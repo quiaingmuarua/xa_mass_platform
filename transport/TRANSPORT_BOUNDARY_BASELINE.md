@@ -1,5 +1,7 @@
 # Transport Boundary Baseline
 
+Status: current transport boundary baseline.
+
 This file freezes the current transport boundary so transport does not turn
 into a second task engine.
 

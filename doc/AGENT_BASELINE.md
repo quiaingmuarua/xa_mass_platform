@@ -1,5 +1,7 @@
 # XA Mass Platform Agent Baseline
 
+Status: current global baseline.
+
 This file keeps the stable project baseline only: product definition, mainline
 truth, and hard guardrails.
 
@@ -69,7 +71,7 @@ Rules:
 - `Task.workloadClass` is the explicit task-level runtime optimization boundary; current mainline values are `INTERACTIVE` and `BULK`
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig` keys
 - task orchestration and worker matching belong at the task or task-slice level; do not reintroduce per-`TaskMsg` rule matching on the hot path
-- `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the future business-detail query model
+- `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the production business-detail query model
 - large-scale task detail analysis belongs in structured trace, audit sinks, or downstream storage, not engine-owned full-message query projections
 
 ## 4. Architectural Guardrails
@@ -98,7 +100,7 @@ Rules:
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-server` consumes it and owns the current HTTP/control-console/frontend shell
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-server`
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-transport-socket`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-worker-pack`, and `xa-mass-server`
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell E2E
 
 ## 6. Current Contract Summary
@@ -161,6 +163,7 @@ Important current rules:
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 - lifecycle/API:
   - `xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
+  - `xa-mass-server/src/main/java/com/xa/mass/api/internal/ExternalWorkerApiController.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
   - `xa-mass-base/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 - payload/matching:

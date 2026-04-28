@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current global trace contract.
+
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
 

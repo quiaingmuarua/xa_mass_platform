@@ -1,5 +1,7 @@
 # xa-mass-base
 
+Status: current base module owner README.
+
 ## Role
 
 - shared base models, enums, and infrastructure

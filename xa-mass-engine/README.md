@@ -1,5 +1,7 @@
 # xa-mass-engine
 
+Status: current engine owner README.
+
 ## Role
 
 - mainline business logic
@@ -41,6 +43,7 @@
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
   - [`TASK_EXECUTION_FLOW.md`](./TASK_EXECUTION_FLOW.md)
+  - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md) for engine-owned design/refactor notes only
   - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md)
   - [`STORAGE_BASELINE.md`](STORAGE_BASELINE.md)
 

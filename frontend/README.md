@@ -1,5 +1,7 @@
 # XA Mass Control Console
 
+Status: current frontend owner README.
+
 Lightweight Vue 3 + Vite frontend for the XA Mass worker orchestration platform.
 
 ## Principles

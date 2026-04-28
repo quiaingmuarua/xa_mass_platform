@@ -1,5 +1,7 @@
 # Frontend Agent Notes
 
+Status: current frontend owner handoff.
+
 This frontend is a lightweight control console for the orchestration platform. Keep it explicit, domain-shaped, and permission-aware.
 
 ## Rules

@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current WebSocket adapter boundary baseline.
+
 Use this file only for current adapter ownership and drift prevention.
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
 

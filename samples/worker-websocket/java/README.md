@@ -1,5 +1,7 @@
 # Java WebSocket Worker Sample
 
+Status: current runnable external worker sample.
+
 Build from repo root:
 
 ```bash

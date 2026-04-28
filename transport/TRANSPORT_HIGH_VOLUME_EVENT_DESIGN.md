@@ -2,13 +2,15 @@
 
 Last updated: 2026-04-27
 
+Status: design/refactor reference, not current runtime truth.
+
+Trust: code and verified behavior override this transport design/refactor reference.
+
 This document turns transport from an adapter experiment into a production
 data-plane design for high-volume worker events.
 
 The goal is not richer realtime introspection. The goal is a transport path
 that stays bounded, observable, and recoverable under load.
-
-Use it with:
 
 - [./AGENTS.md](./AGENTS.md)
 - [./TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md)

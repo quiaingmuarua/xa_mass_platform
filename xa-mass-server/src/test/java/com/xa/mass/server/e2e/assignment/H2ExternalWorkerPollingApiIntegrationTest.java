@@ -1,0 +1,331 @@
+package com.xa.mass.server.e2e.assignment;
+
+import com.xa.mass.api.internal.SdkCredentialAuthSupport;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.server.XaMassServerApplication;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.sql.DriverManager;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest(
+        classes = XaMassServerApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+                "sample.client.auto-start=false",
+                "mass.mock.data.workers=mock/test_mock_workers_empty.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
+                "mass.mock.data.tasks=mock/test_mock_tasks.json",
+                "mass.mock.data.rules=mock/test_mock_rules.json"
+        }
+)
+@ActiveProfiles("dev")
+@DirtiesContext
+class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
+
+    private static final int WEBSOCKET_PORT = findFreePort();
+    private static final String JDBC_URL = isolatedH2JdbcUrl("external_polling");
+
+    @DynamicPropertySource
+    static void registerProperties(DynamicPropertyRegistry registry) {
+        registerWebSocketProperties(registry, WEBSOCKET_PORT);
+        registerJdbcStorageProperties(registry, "h2", JDBC_URL, "sa", "");
+    }
+
+    @Autowired
+    private MassSdkApplication app;
+
+    @Test
+    void externalWorkerPollingApiCompletesTaskEndToEndAgainstJdbcStorage() throws Exception {
+        String workerId = "polling-h2-worker-001";
+        String workerCredential = "polling-h2-worker-key";
+        String submitterCredential = "polling-h2-submitter-key";
+
+        app.replaceDefaultRules(List.of(
+                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
+                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+        ));
+        registerExternalWorkerSubmitter(
+                "polling-h2-worker",
+                workerCredential,
+                workerId,
+                "crawlerApp",
+                "crawler.fetch-page"
+        );
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("polling-h2-submitter")
+                .credential(submitterCredential)
+                .userId("crawler-agent")
+                .permissions(List.of("task:create"))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build());
+
+        HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
+        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
+
+        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+                "workerId", workerId,
+                "workerGroupId", "polling-jdbc",
+                "attributes", Map.of("runtime", "jdbc-e2e"),
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders);
+        assertApiOk(registerResponse);
+        assertEquals("polling", responseData(registerResponse).get("transportHint"));
+
+        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
+                "workerContextId", "ctx-" + workerId,
+                "workerId", workerId,
+                "project", "crawlerApp",
+                "routingTags", Set.of("us"),
+                "attributes", Map.of("region", "us")
+        ), workerHeaders);
+        assertApiOk(contextResponse);
+
+        assertApiOk(exchange("/worker-api/workers/" + workerId + "/online", HttpMethod.POST, Map.of(
+                "reason", "jdbc-storage-online"
+        ), workerHeaders));
+        waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
+
+        Map<String, Object> createBody = new LinkedHashMap<>();
+        createBody.put("taskName", "crawler-fetch-page-h2");
+        createBody.put("project", "crawlerApp");
+        createBody.put("userId", "crawler-agent");
+        createBody.put("eventCode", "crawler.fetch-page");
+        createBody.put("sharedConfig", Map.of("routingCode", "us"));
+        createBody.put("inputs", List.of(Map.of("url", "https://example.test/h2-page")));
+        createBody.put("batchSize", 1);
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        Map<String, Object> createdDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(createdDetail);
+        assertEquals("NEW", task(createdDetail).get("status"));
+        assertEquals(Boolean.TRUE, stateValidation(createdDetail).get("valid"));
+
+        assertApiOk(exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=h2-jdbc-e2e",
+                HttpMethod.POST,
+                null
+        ));
+
+        List<Map<String, Object>> items = List.of();
+        for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
+            Map<String, Object> pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 1000
+            ), workerHeaders);
+            assertApiOk(pollResponse);
+            items = pollItems(pollResponse);
+        }
+        assertFalse(items.isEmpty(), "expected polling worker to receive a task item");
+
+        Map<String, Object> item = items.getFirst();
+        assertEquals(taskId, item.get("taskId"));
+        assertEquals(workerId, item.get("workerId"));
+
+        Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
+                "taskId", item.get("taskId"),
+                "messageId", item.get("messageId"),
+                "success", true,
+                "detail", "jdbc-storage-success",
+                "output", Map.of(
+                        "url", "https://example.test/h2-page",
+                        "statusCode", 200,
+                        "title", "H2 JDBC Page"
+                )
+        ), workerHeaders);
+        assertApiOk(resultResponse);
+        assertEquals(Boolean.TRUE, responseData(resultResponse).get("submitted"));
+
+        TaskSnapshot terminal = waitForTerminalTask(taskId);
+        assertEquals("TERMINAL", terminal.task().get("status"));
+        assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+        assertEquals("SUCCESS", terminal.messages().getFirst().get("status"));
+        assertEquals(workerId, terminal.messages().getFirst().get("latestAttemptWorkerId"));
+
+        Map<String, Object> terminalDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(terminalDetail);
+        assertEquals(Boolean.TRUE, stateValidation(terminalDetail).get("valid"));
+        assertEquals(Boolean.FALSE, stateValidation(terminalDetail).get("needsResolution"));
+
+        assertApiOk(exchange("/worker-api/workers/" + workerId + "/offline", HttpMethod.POST, Map.of(
+                "reason", "jdbc-storage-offline"
+        ), workerHeaders));
+        waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");
+
+        assertJdbcProjection(taskId, String.valueOf(item.get("messageId")), workerId);
+    }
+
+    private HttpHeaders sdkCredentialHeaders(String credential) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
+        return headers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> pollItems(Map<String, Object> response) {
+        Object items = responseData(response).get("items");
+        return items instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
+    }
+
+    private RuleDefinition rule(String id, String content) {
+        RuleDefinition rule = new RuleDefinition();
+        rule.setId(id);
+        rule.setName(id);
+        rule.setType(RuleType.QL_EXPRESS);
+        rule.setContent(content);
+        rule.setEnabled(true);
+        return rule;
+    }
+
+    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    private void registerExternalWorkerSubmitter(String principalId,
+                                                 String credential,
+                                                 String workerId,
+                                                 String projectCode,
+                                                 String eventCode) {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId(principalId)
+                .credential(credential)
+                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .projectScopes(List.of(projectCode))
+                .eventScopes(List.of(eventCode))
+                .attributes(Map.of("workerId", workerId))
+                .build());
+    }
+
+    private void assertJdbcProjection(String taskId, String messageId, String workerId) throws Exception {
+        try (var conn = DriverManager.getConnection(JDBC_URL, "sa", "")) {
+            try (var ps = conn.prepareStatement("""
+                    SELECT status, project, schedulable, json
+                    FROM xa_task
+                    WHERE task_id = ?
+                    """)) {
+                ps.setString(1, taskId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "task row should exist");
+                    assertEquals("TERMINAL", rs.getString("status"));
+                    assertEquals("crawlerApp", rs.getString("project"));
+                    assertFalse(rs.getBoolean("schedulable"));
+                    assertJsonContains(rs.getString("json"), "\"terminalReason\":\"ALL_MESSAGES_SUCCEEDED\"");
+                    assertFalse(rs.next(), "task_id should remain unique");
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT status, final_state, json
+                    FROM xa_task_msg
+                    WHERE task_id = ? AND message_id = ?
+                    """)) {
+                ps.setString(1, taskId);
+                ps.setString(2, messageId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "task message row should exist");
+                    assertEquals("SUCCESS", rs.getString("status"));
+                    assertTrue(rs.getBoolean("final_state"));
+                    String json = rs.getString("json");
+                    assertJsonContains(json, "\"latestAttemptWorkerId\":\"" + workerId + "\"");
+                    assertJsonContains(json, "\"finalReason\":\"BUSINESS_SUCCESS\"");
+                    assertFalse(rs.next(), "task/message primary key should remain unique");
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT COUNT(*) total_count,
+                           SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END) succeeded_count,
+                           SUM(CASE WHEN active_state = TRUE THEN 1 ELSE 0 END) active_count
+                    FROM xa_task_msg_attempt
+                    WHERE task_id = ? AND message_id = ?
+                    """)) {
+                ps.setString(1, taskId);
+                ps.setString(2, messageId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "attempt aggregate should return one row");
+                    assertEquals(1, rs.getInt("total_count"));
+                    assertEquals(1, rs.getInt("succeeded_count"));
+                    assertEquals(0, rs.getInt("active_count"));
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT json
+                    FROM xa_worker
+                    WHERE worker_id = ?
+                    """)) {
+                ps.setString(1, workerId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "worker row should exist");
+                    assertJsonContains(rs.getString("json"), "\"status\":\"OFFLINE\"");
+                    assertFalse(rs.next(), "worker_id should remain unique");
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT json
+                    FROM xa_worker_context
+                    WHERE worker_context_id = ?
+                    """)) {
+                ps.setString(1, "ctx-" + workerId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "worker context row should exist");
+                    assertJsonContains(rs.getString("json"), "\"status\":\"IDLE\"");
+                    assertFalse(rs.next(), "worker_context_id should remain unique");
+                }
+            }
+
+            try (var ps = conn.prepareStatement("SELECT COUNT(*) FROM xa_worker_lock WHERE worker_id = ?")) {
+                ps.setString(1, workerId);
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next());
+                    assertEquals(0, rs.getInt(1));
+                }
+            }
+
+            try (var ps = conn.prepareStatement("SELECT COUNT(*) FROM xa_rule WHERE rule_type = 'QL_EXPRESS'")) {
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next());
+                    assertEquals(2, rs.getInt(1));
+                }
+            }
+        }
+    }
+
+    private void assertJsonContains(String json, String expected) {
+        assertTrue(json != null && json.contains(expected), "expected JSON to contain " + expected + " but was: " + json);
+    }
+}

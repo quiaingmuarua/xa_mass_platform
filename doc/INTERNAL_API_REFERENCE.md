@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current global HTTP/API reference.
+
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
 Status labels used below:

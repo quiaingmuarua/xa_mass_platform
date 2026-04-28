@@ -1,5 +1,7 @@
 # xa-mass-server
 
+Status: current server owner README.
+
 `xa-mass-server` is the verified runnable entry module for the current repository mainline.
 
 Use this module for end-to-end validation of:
@@ -52,7 +54,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-server/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-server/target/classes:xa-mass-worker-pack/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.server.XaMassServerApplication
 ```
 
@@ -204,6 +206,11 @@ H2 storage scope:
   the production storage decision
 - default runtime stays `memory`; opt into H2 explicitly with
   `mass.storage.mode=h2`
+- server-local persistence can use the `h2` profile together with the runnable
+  server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
+  `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
+- integration tests should keep using isolated in-memory H2 JDBC URLs so DB
+  assertions are repeatable and do not depend on a developer's persisted data
 - H2 message and attempt status columns are bounded per-task runtime indexes for
   convergence, cleanup, and compatibility reads
 - do not use H2 as a cross-task message-status analytics surface; large-scale
@@ -306,6 +313,8 @@ Fixture rules:
 - direct `TaskManager` writes stay limited to focused white-box assertions or fault injection
 
 Current gaps:
+
+Project-level gap index: [`../doc/CURRENT_GAPS.md`](../doc/CURRENT_GAPS.md).
 
 - cancel from `RUNNING` via HTTP API
 - cancel from `READY` via HTTP API

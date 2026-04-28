@@ -2,15 +2,14 @@
 
 Last updated: 2026-04-27
 
-Design-only reference for the next engine convergence slice. This file does not
-describe current verified runtime truth yet.
+Status: design/refactor reference, not current runtime truth.
 
-Use with:
+Trust: code and verified behavior override this engine-owned design/refactor reference.
 
-- [../../AGENTS.md](../../AGENTS.md)
-- [../HIGH_VOLUME_MODEL_BASELINE.md](../HIGH_VOLUME_MODEL_BASELINE.md)
-- [../TESTING_BASELINE.md](../TESTING_BASELINE.md)
-- [../../xa-mass-engine/TASK_EXECUTION_FLOW.md](../../xa-mass-engine/TASK_EXECUTION_FLOW.md)
+- [../AGENTS.md](../AGENTS.md)
+- [../doc/HIGH_VOLUME_MODEL_BASELINE.md](../doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
+- [./TASK_EXECUTION_FLOW.md](./TASK_EXECUTION_FLOW.md)
 
 ## 1. Problem
 

@@ -1,5 +1,7 @@
 # Node Polling Worker Sample
 
+Status: current runnable external worker sample.
+
 Run from repo root:
 
 ```bash

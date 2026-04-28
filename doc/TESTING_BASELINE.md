@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current global testing baseline.
+
 System-level map of the testing lanes. Use module READMEs for concrete commands
 and suite inventories.
 
@@ -23,16 +25,15 @@ Use with:
 
 ## 2. Lane Map
 
-| Lane | Primary job | Owner / entry | Weight |
-| --- | --- | --- | --- |
-| `invariant` | prove one local rule or state transition | owning module tests | support |
-| `module` | guard one module boundary or helper contract | owning module tests | support |
-| `SDK embedded harness` | exercise real SDK registration/runtime composition without Boot shell | `xa-mass-testing` | support |
-| `Boot-shell E2E` | prove the real runtime path through `xa-mass-server` | `xa-mass-server` | core |
-| `cross-language sample black-box` | prove external worker references stay runnable and scheduler-correct | `xa-mass-server` | core |
-| `concurrency` | prove race-heavy paths converge to an allowed stable state | `xa-mass-engine` | core |
-| `perf` | expose hot-path cost, storage pressure, and throughput regressions | `xa-mass-testing` | core |
-| `chaos` | prove degraded/recovery behavior under disruption | `xa-mass-testing` | scheduled robustness |
+| Lane | Owner | Weight / placement |
+| --- | --- | --- |
+| `invariant` / `module` | owning module tests | PR support coverage |
+| `SDK embedded harness` | `xa-mass-testing` | support, fast transport-aware probe |
+| `Boot-shell E2E` | `xa-mass-server` | core, PR required focused subset |
+| `cross-language sample black-box` | `xa-mass-server` | core, PR + nightly |
+| `concurrency` | `xa-mass-engine` | core when race-sensitive; broader matrix nightly/release |
+| `perf` | `xa-mass-testing` | core signal; smoke optional/non-blocking, trend nightly/release |
+| `chaos` | `xa-mass-testing` | scheduled/manual/release robustness |
 
 ## 3. Command Ownership
 
@@ -42,47 +43,27 @@ Use with:
 - Boot-shell E2E suite map: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - external worker sample lane: `./scripts/run-external-worker-samples.sh`
 
-## 4. CI Placement
+## 4. Change-Type Matrix
 
-| Lane | Placement | Why |
-| --- | --- | --- |
-| `invariant` / `module` | PR required | cheap, deterministic, high signal |
-| focused `Boot-shell E2E` | PR required | mainline runtime acceptance must stay green |
-| `cross-language sample black-box` | PR required + nightly | guards public worker references against in-repo shortcuts |
-| deterministic `concurrency` subset | PR required when the touched path is race-sensitive | catches release/finalize/callback ordering regressions early |
-| `perf` smoke | PR optional or non-blocking | useful signal, but CI variance should not block every PR |
-| heavier `concurrency` matrix | nightly or release | broader race matrices cost more and are noisier |
-| heavier `perf` baseline/trend checks | nightly or release | throughput thresholds need steadier cadence |
-| `chaos` | nightly, manual, or release | valuable but usually too noisy for PR-required gates |
+| Change type | Read first | Owning surface | Minimum verification |
+| --- | --- | --- | --- |
+| task lifecycle or state transitions | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), [E2E_BASELINE.md](./E2E_BASELINE.md) | `xa-mass-engine`, then `xa-mass-server` E2E | `concurrency` + `Boot-shell E2E` |
+| callback/result handling | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | engine result ingest and transport result channels | `concurrency` + `Boot-shell E2E` |
+| retry / logical-message finality | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | `TaskWorkRuntime`, `TaskManager`, attempt/result services | `concurrency` + `Boot-shell E2E` |
+| worker release / worker-context release | [../xa-mass-engine/README.md](../xa-mass-engine/README.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | engine resource release listeners and worker manager | `concurrency` + `Boot-shell E2E` |
+| assignment refill / batching / gate semantics | [../xa-mass-engine/README.md](../xa-mass-engine/README.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | assignment listener, matching strategy, Boot-shell E2E | `Boot-shell E2E` + targeted `concurrency`; add `perf` if hot |
+| external polling worker API | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md), [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | `/worker-api/*`, SDK external worker operations | external worker black-box + `Boot-shell E2E` |
+| transport adapter/runtime boundary | [../transport/AGENTS.md](../transport/AGENTS.md), [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md) | `transport/*`, SDK transport composition | transport module tests + `Boot-shell E2E` |
+| hot-path storage or counters | [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md) | `TaskWorkRuntime`, storage ports, task convergence | `perf` + targeted `concurrency`; add one E2E smoke if external behavior can drift |
+| resilience under disconnect, delay, restart, drop | [CURRENT_GAPS.md](./CURRENT_GAPS.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | transport/runtime recovery and engine convergence | deterministic concurrency surrogate first; `chaos` for scheduled/manual proof |
 
-Current workflow labels from [../.github/workflows/maven.yml](../.github/workflows/maven.yml), [../.github/workflows/external-worker-samples.yml](../.github/workflows/external-worker-samples.yml), and [../.github/workflows/perf-smokes.yml](../.github/workflows/perf-smokes.yml):
+## 5. CI Labels
 
-- `build`: broad `./mvnw -B test`
-- `lifecycle-integration`: focused `xa-mass-server` lifecycle integration subset
-- `cross-language-blackbox`: external worker sample regression on PR/push plus scheduled daily run
-- `perf-smokes`: scheduled/manual perf smoke bundle with artifact upload
-
-## 5. Change-Type Matrix
-
-| Change type | Minimum lanes | Also verify |
-| --- | --- | --- |
-| callback/result handling | `concurrency` + `Boot-shell E2E` | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) |
-| retry / logical-message finality | `concurrency` + `Boot-shell E2E` | state-machine and trace coverage |
-| worker release / worker-context release | `concurrency` + `Boot-shell E2E` | engine README + trace coverage |
-| assignment refill / batching / gate semantics | `Boot-shell E2E` + targeted `concurrency` | `perf` if the path is hot |
-| hot-path storage or counters | `perf` + targeted `concurrency` | one E2E smoke if external behavior could drift |
-| lifecycle API/controller behavior | `Boot-shell E2E` | invariant/module tests at the controller edge |
-| resilience under disconnect, delay, restart, drop | `chaos` once available | at least one deterministic concurrency surrogate first |
+`build`, `lifecycle-integration`, `cross-language-blackbox`, `perf-smokes`.
 
 ## 6. Fast Path
 
-When analyzing one risk:
-
-1. identify the owning module
-2. use `xa-mass-engine` for races and refill
-3. use `xa-mass-testing` for perf, SDK harness, and chaos
-4. use `xa-mass-server` for Boot-shell E2E suite detail
-5. only then fan out into broader trace or project-level docs
+Identify owner module first: engine for races/refill, testing for perf/SDK/chaos, server for Boot-shell E2E. Fan out to broader trace/project docs only after the owner path is clear.
 
 ## 7. Documentation Rule
 

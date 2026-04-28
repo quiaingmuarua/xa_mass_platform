@@ -1,5 +1,7 @@
 # xa-mass-worker-pack
 
+Status: current worker-pack owner README.
+
 ## Role
 
 - official builtin, sample, and dev worker capabilities

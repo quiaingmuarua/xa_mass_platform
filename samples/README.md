@@ -1,5 +1,7 @@
 # Samples
 
+Status: current sample worker owner README.
+
 This directory holds runnable third-party worker references used by executable
 black-box acceptance.
 

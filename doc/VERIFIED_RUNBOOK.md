@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current verified runtime runbook.
+
 This runbook records verified runtime facts only. It is not an architecture essay, API reference, or changelog.
 
 Use this file when you need to boot the app, run a smoke flow, or choose a focused regression command. Use [TESTING_BASELINE.md](./TESTING_BASELINE.md) for test-lane placement, [../xa-mass-engine/README.md](../xa-mass-engine/README.md) and [../xa-mass-testing/README.md](../xa-mass-testing/README.md) for module-owned test detail, [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace semantics.
@@ -30,7 +32,7 @@ Current module set from the root reactor:
 - `xa-mass-worker-pack`
 - `xa-mass-server`
 
-The WebSocket adapter artifact is `xa-mass-transport-websocket`; its sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
+Adapter artifacts map to source modules by reactor path: `xa-mass-transport-polling` lives under `transport/polling-adapter`, `xa-mass-transport-websocket` under `transport/websocket-adapter`, and `xa-mass-transport-socket` under `transport/socket-adapter`.
 
 ## 2. Startup
 
@@ -108,7 +110,7 @@ curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}/messages
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
 - task detail response includes `items` from persisted `TaskMsg.input` and `stateValidation`
-- message read model exposes `input`, `output`, `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
+- message read model exposes `input`, `output`, and compatibility latest-attempt projections such as `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
 
 ## 4. Runtime Facts To Trust
 
@@ -129,7 +131,7 @@ Assignment and dispatch:
 - `batchSize` is a per-worker cap for each dispatch round.
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate.
 - unmatched `READY` tasks and refill `RUNNING` tasks are delayed-retried instead of being orphaned.
-- persisted `TaskMsg` rows are reused; dispatch creates `TaskMsgAttempt` history and updates latest-attempt projections.
+- persisted `TaskMsg` rows are reused; dispatch creates `TaskMsgAttempt` history and updates compatibility latest-attempt projections.
 
 Result write-back and closure:
 
@@ -251,6 +253,8 @@ mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTe
 Coverage: lifecycle happy path, failure convergence, callback replay, worker/context routing, stateless workers, worker reuse, minimum-worker gate, refill, targeted worker debug, and control-console routing.
 
 ## 7. Known Mainline Gaps
+
+Project-level gap index: [CURRENT_GAPS.md](./CURRENT_GAPS.md).
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub.
 - Redis storage remains a fail-fast placeholder.

@@ -1,5 +1,7 @@
 # External Worker Quickstart
 
+Status: current cross-module external-worker quickstart.
+
 Use this file for the shortest current truth about repo-external workers.
 Keep per-language startup and env details in `samples/*/README.md`.
 

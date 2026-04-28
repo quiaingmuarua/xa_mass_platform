@@ -1,5 +1,7 @@
 # XA Mass Platform
 
+Status: current project summary.
+
 Trust code and verified runtime behavior over historical documentation.
 
 ## Start Here

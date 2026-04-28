@@ -1,6 +1,8 @@
 # State Machine Baseline
 
-Last updated: 2026-04-27 (engine WorkRuntime ready/claim/lease/expiry hot path introduced; TaskMsg/TaskMsgAttempt remain compatibility projections)
+Last updated: 2026-04-28 (engine WorkRuntime owns hot-path ready/claim/lease/expiry state; TaskMsg remains the compatibility read projection, and TaskMsgAttempt remains the auditable execution history)
+
+Status: current global lifecycle baseline.
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
@@ -25,7 +27,7 @@ Use with:
 5. `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
 7. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-8. `TaskWorkRuntime` is the current engine hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes; `TaskMsg` and `TaskMsgAttempt` remain compatibility projection/audit models until the compression migration continues.
+8. `TaskWorkRuntime` is the current engine hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMsg` remains the compatibility read projection for logical work-item status and payload. `TaskMsgAttempt` remains the auditable execution history for concrete dispatch attempts.
 9. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 10. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted `TaskMsg.maxRetryCount` must not redefine retry scheduling or finalization.
 
@@ -123,7 +125,7 @@ Must hold:
 - `taskMessageAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
 - `taskMessageLogicallyFinal` must only fire when `TaskMsg` is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical `TaskMsg` to `INIT`; it must not publish logically-final semantics
-- worker/WebSocket-adapter callbacks must resolve an active runtime lease before result application; when the lease exists but `TaskMsgAttempt` or `TaskMsg` latest-attempt projection is missing, engine repairs that compatibility state from runtime before continuing
+- worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but `TaskMsgAttempt` or `TaskMsg` latest-attempt projection is missing, engine repairs that compatibility state from runtime before continuing
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - during the current WorkRuntime slice, result handling applies against the runtime active lease and runtime retry budget before mutating the compatibility projection
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts

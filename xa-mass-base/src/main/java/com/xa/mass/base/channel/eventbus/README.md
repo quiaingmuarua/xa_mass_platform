@@ -1,5 +1,7 @@
 # EventBus Package Baseline
 
+Status: current local package orientation note.
+
 This package contains the current lightweight event bus abstractions and platform event types used by the active runtime.
 
 ## Current Structure

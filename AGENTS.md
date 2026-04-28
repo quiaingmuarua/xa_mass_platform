@@ -1,6 +1,8 @@
 # XA Mass Platform Agent Handoff
 
-This is the fastest entry point for coding agents. Keep it short. Use the owner docs under `doc/`, `transport/`, and the owning module roots for details.
+Status: current repo-root agent handoff.
+
+Fast coding-agent entry. Use owner docs under `doc/`, `transport/`, and module roots for detail.
 
 ## 0. TL;DR
 
@@ -23,16 +25,7 @@ For a new session, read these before changing behavior:
 2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
 3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
 
-Everything else is on-demand through the task-type map below.
-
-Core acceptance fast path:
-
-- treat `perf`, `concurrency`, and Boot-shell `E2E` as the three core acceptance layers
-- runnable surfaces: `xa-mass-testing` for `perf` and `chaos`, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell `E2E`
-- `chaos` belongs in scheduled or release-style verification until the suite is broad and stable enough for stricter gating
-- SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane before full Boot-shell E2E
-- `concurrency` is a required acceptance lane for race-sensitive lifecycle work
-- all other tests are support coverage for bug localization, invariants, and fast regression checks
+Everything else is on-demand. Core acceptance surfaces: `xa-mass-testing` for `perf`/`chaos`/SDK probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell `E2E`. Treat `chaos` as scheduled/release-style until stable enough for stricter gating.
 
 Canonical trust order:
 
@@ -50,21 +43,24 @@ Start here based on the change:
 - transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
 - websocket adapter/transport: [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
-- runtime workload profiles for low-latency interactive tasks vs high-throughput bulk tasks: [doc/engine/TASK_RUNTIME_PROFILE_DESIGN.md](doc/engine/TASK_RUNTIME_PROFILE_DESIGN.md)
+- runtime workload profiles for low-latency interactive tasks vs high-throughput bulk tasks: [xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md)
 - high-volume transport worker-event delivery: [transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
 - integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-server/README.md](xa-mass-server/README.md)
+- known runtime or coverage gaps: [doc/CURRENT_GAPS.md](doc/CURRENT_GAPS.md)
 - sample/dev worker clients, launchers, or worker-side command runtime: [xa-mass-worker-pack/README.md](xa-mass-worker-pack/README.md)
 - policy ownership or interactions: [xa-mass-engine/POLICY_INTERACTION_BASELINE.md](xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [xa-mass-engine/TASK_EXECUTION_FLOW.md](xa-mass-engine/TASK_EXECUTION_FLOW.md)
 - legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 
+Naming: `sample` = runnable validation/reference worker assets; `mock.*` = sample command capabilities, not kernel semantics; `demoApp` = example project code; HTTP/control console = validation/operator shell, not runtime kernel.
+
 ## 3. Agent Behavior Contract
 
-These rules are hard constraints for coding agents. Violating them is a regression even if code compiles and tests pass.
+Hard constraints; violation is a regression even when code compiles.
 
 Compatibility and convergence:
 
@@ -121,5 +117,7 @@ Deprecation and pushback:
 - Treat contract docs as code-owned surfaces. When behavior, ownership, or accepted workflow changes, update the relevant contract doc immediately in the same change.
 - Check [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md) before extending any compatibility or legacy seam.
 - Keep docs concise and current; delete stale notes instead of preserving parallel narratives.
+- Keep module-owned docs inside the owning module. `doc/` is for global or cross-module introductions, constraints, indexes, and contracts.
+- Every active doc must make its status clear: current verified truth/baseline, global contract, gap index, design/refactor reference, or migration inventory.
 - Do not document target state as if it were already implemented. If a design or refactor target must be written down before code lands, keep it in a clearly labeled design/refactor document and keep mainline docs on current truth only.
 - Do not recreate removed archive/v2 code.

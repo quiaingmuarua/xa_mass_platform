@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current engine policy baseline.
+
 This file defines engine policy interaction guardrails only.
 
 Use with:

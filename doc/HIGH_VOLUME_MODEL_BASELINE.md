@@ -2,14 +2,13 @@
 
 Last updated: 2026-04-27
 
-Design-only reference for runtime compression work. It is not current runtime
-truth. If this file conflicts with code or verified behavior, code wins.
+Status: design/refactor reference, not current runtime truth.
 
-Use with:
+Trust: code and verified behavior override this design/refactor reference.
 
 - [../AGENTS.md](../AGENTS.md)
 - [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
-- [./engine/TASK_RUNTIME_PROFILE_DESIGN.md](./engine/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 

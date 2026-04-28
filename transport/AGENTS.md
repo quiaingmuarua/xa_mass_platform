@@ -1,5 +1,7 @@
 # Transport Agent Handoff
 
+Status: current transport owner handoff.
+
 This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](../AGENTS.md) first. Use this file to avoid transport-specific misreads.
 
 ## 0. TL;DR

@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current engine dispatch/result flow baseline.
+
 This file describes the verified engine mainline only.
 
 Use [POLICY_INTERACTION_BASELINE.md](./POLICY_INTERACTION_BASELINE.md) for policy ownership and precedence.

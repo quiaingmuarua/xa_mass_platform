@@ -1,5 +1,7 @@
 # Node Socket Worker Sample
 
+Status: current runnable external worker sample.
+
 Run:
 
 ```bash

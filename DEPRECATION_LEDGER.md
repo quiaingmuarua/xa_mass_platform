@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current repo-level deprecation and compatibility index.
+
 This is the single repo-level index for deprecated, compatibility, and legacy seams that still exist in active paths.
 
 Use it to answer three questions quickly:

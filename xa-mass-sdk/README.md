@@ -1,5 +1,7 @@
 # XA Mass SDK
 
+Status: current SDK owner README.
+
 `xa-mass-sdk` is the real Java embedding module for XA Mass Platform.
 
 It carries both:
@@ -161,7 +163,19 @@ The returned `MassSdkApplication` exposes:
 - pull-style worker entry after `start()`: `pullWorker(...)`
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
-`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/disconnect plus transport-native liveness own online state. `ResourceOperations` is the SDK control-plane interface for project/event/submitter resources. Project/event metadata registration remains the SDK discovery and control-plane catalog, and enabled project registration now also extends the core runtime project registry used by engine task creation and worker-context project binding. The library default catalog does not ship business task events; embedding applications or dev fixtures should register their own business event codes explicitly. Submitter registration is a minimal in-memory credential binding for API-key or service-account style task submission; it is not a complete user/security subsystem. Submitter queries return `SubmitterMetadata` so credentials stay on write/auth paths only. `validateTaskState(...)` is a bounded runtime-state probe; if a caller truly needs full `TaskMsg` projection auditing, that belongs on explicit engine-side diagnostics instead of the default SDK query path. Task-message read helpers such as `getTaskMessages(...)` remain compatibility/demo diagnostics; future production-grade task detail should prefer logs or async persistence rather than engine-owned full-message query APIs. Direct engine, manager, and runtime escape hatches have been removed so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into starter/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
+
+Current SDK contracts:
+
+| Area | Contract |
+| --- | --- |
+| task create | `MassTaskCreateRequest` is generic compatibility create; `MassTaskRequest` is SDK v1 for `single-run` / `streaming`, `text` / `json`, and event-aware creation |
+| worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
+| resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
+| business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
+| submitters | in-memory API-key/service-account binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
+| diagnostics/detail | `validateTaskState(...)` is bounded; `getTaskMessages(...)` is compatibility/demo detail; production detail belongs in logs, trace, audit sinks, or async persistence |
+| removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
+| startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
 ## Compatibility Policy
 

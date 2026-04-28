@@ -1,5 +1,7 @@
 # example 目录
 
+Status: current local package example note.
+
 ## 📖 说明
 
 本目录包含 channel 各子模块的典型用法和最佳实践示例，覆盖消息流、队列、事件总线、传输器等多种场景。
@@ -25,4 +27,4 @@
 
 - [messaging/README.md](../messaging/README.md)
 - [eventbus/README.md](../eventbus/README.md)
-- [tranporter/README.md](../tranporter/README.md) 
+- [tranporter/README.md](../tranporter/README.md)

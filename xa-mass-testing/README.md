@@ -1,5 +1,7 @@
 # xa-mass-testing
 
+Status: current testing owner README.
+
 `xa-mass-testing` owns perf, SDK embedded-runtime harnesses, and chaos probes.
 
 Use this module when the question is:

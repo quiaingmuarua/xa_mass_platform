@@ -1,5 +1,7 @@
 # messaging 子模块
 
+Status: current local package orientation note.
+
 ## 📖 定位
 
 messaging 子模块聚合了所有基础消息通信模型，包括队列（MessageQueue）、流（MessageStream）、Map（MessageMap）、Set（MessageSet）等，统一接口抽象，支持多种后端实现（内存、Redis等）。
@@ -60,4 +62,4 @@ MessageQueue<String> queue = MessageQueueFactory.create("redis", "my-queue", Str
 
 - [api/MessageStream.java](./api/MessageStream.java)
 - [memory/InMemoryMessageStream.java](./memory/InMemoryMessageStream.java)
-- [redis/LettuceRedisStream.java](./redis/LettuceRedisStream.java) 
+- [redis/LettuceRedisStream.java](./redis/LettuceRedisStream.java)

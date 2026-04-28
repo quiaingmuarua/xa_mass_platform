@@ -2,6 +2,8 @@
 
 Last updated: 2026-04-27
 
+Status: current global E2E baseline.
+
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).

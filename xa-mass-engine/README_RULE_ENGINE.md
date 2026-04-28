@@ -1,5 +1,7 @@
 # Rule Engine Notes
 
+Status: current engine rule-matching note.
+
 This file records the active rule-matching surface in `xa-mass-engine`.
 
 ## Current Role
