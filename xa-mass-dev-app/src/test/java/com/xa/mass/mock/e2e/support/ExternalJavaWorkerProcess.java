@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -180,7 +181,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
 
     private static void buildSample(String pomPath, String label) throws Exception {
         Path repoRoot = resolveRepoRoot();
-        String wrapper = Files.exists(repoRoot.resolve("mvnw")) ? "./mvnw" : "mvn";
+        String wrapper = resolveMavenCommand(repoRoot);
         ProcessBuilder processBuilder = new ProcessBuilder(
                 wrapper,
                 "-q",
@@ -204,6 +205,25 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         if (buildProcess.exitValue() != 0) {
             throw new IllegalStateException("Failed to build " + label + " sample. Output:\n" + output);
         }
+    }
+
+    private static String resolveMavenCommand(Path repoRoot) {
+        boolean windows = System.getProperty("os.name", "")
+                .toLowerCase(Locale.ROOT)
+                .contains("win");
+        if (windows) {
+            if (Files.exists(repoRoot.resolve("mvnw.cmd"))) {
+                return repoRoot.resolve("mvnw.cmd").toString();
+            }
+            if (Files.exists(repoRoot.resolve("mvnw"))) {
+                return repoRoot.resolve("mvnw").toString();
+            }
+            return "mvn.cmd";
+        }
+        if (Files.exists(repoRoot.resolve("mvnw"))) {
+            return repoRoot.resolve("mvnw").toString();
+        }
+        return "mvn";
     }
 
     private static ExternalJavaWorkerProcess startJar(Path jarPath,

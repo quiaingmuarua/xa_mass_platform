@@ -1,6 +1,7 @@
 package com.xa.mass.engine.work;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -18,7 +19,9 @@ public record TaskWorkResult(String taskId,
                              boolean retryable) {
 
     public TaskWorkResult {
-        output = output == null || output.isEmpty() ? Map.of() : Map.copyOf(new LinkedHashMap<>(output));
+        output = output == null || output.isEmpty()
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(output));
         completedAt = completedAt == null ? Instant.now() : completedAt;
     }
 

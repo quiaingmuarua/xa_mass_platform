@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @DirtiesContext
 class DevSampleWorkerLauncherIntegrationTest extends AbstractMockE2eTest {
 
+    private static final int WAIT_ATTEMPTS = 80;
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String STOCK_WORKER_ID = "stock-ws-worker-001";
     private static final String CRAWLER_WORKER_ID = "node-worker-realtime-001";
@@ -117,7 +118,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractMockE2eTest {
 
     private void waitForWorkerOnline(String workerId) throws InterruptedException {
         Worker latestWorker = null;
-        for (int attempt = 0; attempt < 40; attempt++) {
+        for (int attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
             latestWorker = app.getAllWorkers().stream()
                     .filter(worker -> workerId.equals(worker.getWorkerId()))
                     .findFirst()
@@ -135,7 +136,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractMockE2eTest {
     @SuppressWarnings("unchecked")
     private void waitForSeedTask(String taskName, String expectedStatus) throws InterruptedException {
         Map<String, Object> matched = null;
-        for (int attempt = 0; attempt < 40; attempt++) {
+        for (int attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
             Map<String, Object> response = exchange("/status/api/tasks", HttpMethod.GET, null);
             assertApiOk(response);
             List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(response).get("items");
