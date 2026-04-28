@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
+class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
@@ -56,8 +56,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         ManualAckWebSocketClient secondClient = new ManualAckWebSocketClient(wsUri, "it-worker-1");
 
         try {
-            assertClientConnects(firstClient, "First manual mock client failed to connect");
-            assertClientConnects(secondClient, "Second manual mock client failed to connect");
+            assertClientConnects(firstClient, "First manual sample client failed to connect");
+            assertClientConnects(secondClient, "Second manual sample client failed to connect");
 
             String firstTaskId = createTaskId("multi-task-a", "multi task assignment integration", "target-a");
             String secondTaskId = createTaskId("multi-task-b", "multi task assignment integration", "target-b");

@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
+class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
@@ -60,11 +60,11 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient firstClient = connectClientWithRetries(
                 () -> new ManualAckWebSocketClient(wsUri, "it-worker-0"),
-                "First mock worker failed to connect"
+                "First sample worker failed to connect"
         );
         ManualAckWebSocketClient secondClient = connectClientWithRetries(
                 () -> new ManualAckWebSocketClient(wsUri, "it-worker-1"),
-                "Second mock worker failed to connect"
+                "Second sample worker failed to connect"
         );
         try {
             java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();

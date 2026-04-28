@@ -6,7 +6,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
+class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
@@ -59,7 +59,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = connectClientWithRetries(
                 () -> new SampleWorkerWebSocketClient(wsUri, workerId),
-                "Mock client failed to connect"
+                "Sample client failed to connect"
         );
         try {
             String taskId = createTaskId(
@@ -103,7 +103,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient client = connectClientWithRetries(
                 () -> new ManualAckWebSocketClient(wsUri, workerId),
-                "Manual mock client failed to connect"
+                "Manual sample client failed to connect"
         );
         try {
             String taskId = createTaskId(

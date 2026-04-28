@@ -46,7 +46,7 @@ class SampleWorkerSocketClientTest {
         JsonObject execution = payload.getAsJsonObject("execution");
         assertEquals("socket", execution.get("adapterId").getAsString());
         assertEquals("realtime", execution.get("transportHint").getAsString());
-        assertEquals("mock-socket-client", payload.getAsJsonObject("workerProfile").get("runtime").getAsString());
+        assertEquals("sample-socket-client", payload.getAsJsonObject("workerProfile").get("runtime").getAsString());
     }
 
     @Test
@@ -69,7 +69,7 @@ class SampleWorkerSocketClientTest {
     }
 
     @Test
-    void mockDisconnectTaskClosesSocketClientAfterTaskResult() throws Exception {
+    void sampleDisconnectTaskClosesSocketClientAfterTaskResult() throws Exception {
         CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
         clientSessionManager.addClient(client);
 

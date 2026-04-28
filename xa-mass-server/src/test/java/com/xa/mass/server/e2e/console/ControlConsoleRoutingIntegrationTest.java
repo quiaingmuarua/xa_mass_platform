@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.console;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class ControlConsoleRoutingIntegrationTest extends AbstractMockE2eTest {
+class ControlConsoleRoutingIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String TEST_DIST_PATH = resolveTestFrontendDistPath();

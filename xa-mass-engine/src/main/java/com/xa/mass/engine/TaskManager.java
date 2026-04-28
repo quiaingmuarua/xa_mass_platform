@@ -101,8 +101,14 @@ public class TaskManager implements TaskResultIngestFacade,
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
         );
-        this.dispatchRequestService = new TaskDispatchRequestService(this, retryWakeupExecutor);
-        this.lifecycleService = new TaskLifecycleService(this, stateResolver);
+        this.dispatchRequestService = new TaskDispatchRequestService(
+                new TaskManagerDispatchRequestRuntimePort(this),
+                retryWakeupExecutor
+        );
+        this.lifecycleService = new TaskLifecycleService(
+                new TaskManagerLifecycleRuntimePort(this),
+                stateResolver
+        );
         this.resultService = new TaskResultService(this, new TaskRuntimeRetryPolicyResolver());
         this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }

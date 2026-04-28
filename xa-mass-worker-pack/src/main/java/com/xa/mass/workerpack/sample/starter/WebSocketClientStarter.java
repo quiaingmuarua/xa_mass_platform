@@ -14,14 +14,14 @@ import java.util.List;
 import java.net.URI;
 
 /**
- * Starts mock WebSocket clients after the full dev stack is ready.
+ * Starts sample WebSocket clients after the full dev stack is ready.
  */
 @Component
 @ConditionalOnProperty(prefix = "sample.client", name = "auto-start", havingValue = "true")
 public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientStarter.class);
-    protected SampleConfig mockConfig;
+    protected SampleConfig sampleConfig;
 
     @Value("${sample.client.connection-timeout:10}")
     public void setConnectionTimeout(int connectionTimeout) {
@@ -49,8 +49,8 @@ public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public void setSampleConfig(SampleConfig mockConfig) {
-        this.mockConfig = mockConfig;
+    public void setSampleConfig(SampleConfig sampleConfig) {
+        this.sampleConfig = sampleConfig;
     }
 
     @Override
@@ -79,7 +79,7 @@ public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     @Override
     protected String resolveBaseUri() {
-        return mockConfig.getClient().getWebsocketUri();
+        return sampleConfig.getClient().getWebsocketUri();
     }
 
     @Override

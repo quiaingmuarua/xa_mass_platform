@@ -44,10 +44,10 @@ class SampleWorkerWebSocketClientTest {
         assertEquals("worker-test", WsFrameTestSupport.workerId(response));
         assertEquals("task-1", WsFrameTestSupport.taskId(response));
         assertTrue(response.get("success").getAsBoolean());
-        assertEquals("Executed by mock client worker-test", response.get("detail").getAsString());
+        assertEquals("Executed by sample client worker-test", response.get("detail").getAsString());
         JsonObject payload = WsFrameTestSupport.payload(response);
         assertEquals("SUCCESS", payload.get("status").getAsString());
-        assertEquals("Executed by mock client worker-test", payload.get("mockData").getAsString());
+        assertEquals("Executed by sample client worker-test", payload.get("mockData").getAsString());
         assertTrue(payload.has("execution"));
         assertTrue(payload.has("workerProfile"));
         JsonObject execution = payload.getAsJsonObject("execution");
@@ -152,7 +152,7 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
-    void mockStateGetTaskReturnsStateSnapshotInTaskOutput() throws Exception {
+    void sampleStateGetTaskReturnsStateSnapshotInTaskOutput() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(275L);
 
@@ -170,7 +170,7 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
-    void mockDisconnectTaskClosesClientAfterTaskResult() throws Exception {
+    void sampleDisconnectTaskClosesClientAfterTaskResult() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         clientSessionManager.addClient(client);
 

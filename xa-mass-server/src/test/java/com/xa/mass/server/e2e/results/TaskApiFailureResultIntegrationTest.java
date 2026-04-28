@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.results;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
+class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -69,7 +69,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
         assertNotNull(message.get("latestAttemptWorkerId"));
         assertNotNull(message.get("latestAttemptWorkerContextId"));
         assertNotNull(message.get("latestAttemptBatchId"));
-        assertEquals("Executed by mock client " + message.get("latestAttemptWorkerId"), message.get("errorMessage"));
+        assertEquals("Executed by sample client " + message.get("latestAttemptWorkerId"), message.get("errorMessage"));
         }
     }
 }

@@ -35,9 +35,9 @@ class WebSocketClientStarterTest {
     @Test
     void onApplicationReadyStartsClientsOnlyOnce() {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("worker-1")));
-        SampleConfig mockConfig = new SampleConfig();
-        mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
-        starter.setSampleConfig(mockConfig);
+        SampleConfig sampleConfig = new SampleConfig();
+        sampleConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
+        starter.setSampleConfig(sampleConfig);
         setField(starter, AbstractSampleWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);
         starter.setConnectionTimeout(5);
@@ -56,9 +56,9 @@ class WebSocketClientStarterTest {
     @Test
     void onApplicationReadySkipsPingAndConnectWhenNoDevicesExist() {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of());
-        SampleConfig mockConfig = new SampleConfig();
-        mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
-        starter.setSampleConfig(mockConfig);
+        SampleConfig sampleConfig = new SampleConfig();
+        sampleConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
+        starter.setSampleConfig(sampleConfig);
         setField(starter, AbstractSampleWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);
         starter.setConnectionTimeout(5);
@@ -130,7 +130,7 @@ class WebSocketClientStarterTest {
     @Import(WebSocketClientStarter.class)
     static class TestConfig {
         @Bean
-        SampleConfig mockConfig() {
+        SampleConfig sampleConfig() {
             return new SampleConfig();
         }
 

@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -25,10 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <ol>
  *   <li>Task is approved while no workers are available -> stays READY, peakAssignedWorkerCount=0.</li>
  *   <li>Task is paused (READY 鈫?PAUSED).</li>
- *   <li>A matching worker is registered and a mock client connects.</li>
+ *   <li>A matching worker is registered and a sample client connects.</li>
  *   <li>Task is resumed (PAUSED 鈫?READY); {@code notifyTaskReady} kicks the assign worker.</li>
  *   <li>TaskAssignWorker assigns the task to the new worker (READY 鈫?RUNNING).</li>
- *   <li>Mock client auto-sends a SUCCESS callback 鈫?task closes to TERMINAL.</li>
+ *   <li>Sample client auto-sends a SUCCESS callback 鈫?task closes to TERMINAL.</li>
  * </ol>
  *
  * <p>This path is distinct from {@link TaskApiPauseCompletionIntegrationTest}, which covers
@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
+class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -87,14 +87,14 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         // Message is still INIT 鈥?no worker was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
-        // 4. Register a matching worker and connect a mock client.
+        // 4. Register a matching worker and connect a sample client.
         String workerId = "resume-worker-0";
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
         try {
-            assertClientConnects(client, "Mock client failed to connect");
+            assertClientConnects(client, "Sample client failed to connect");
 
             // 5. Resume the task: PAUSED 鈫?READY 鈫?assign worker picks it up 鈫?RUNNING 鈫?TERMINAL.
             Map<String, Object> resumeResponse = exchange(

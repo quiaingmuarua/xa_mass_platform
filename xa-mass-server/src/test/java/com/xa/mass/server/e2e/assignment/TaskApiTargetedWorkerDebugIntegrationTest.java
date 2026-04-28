@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractMockE2eTest {
+class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String STATE_WORKER_ID = "it-worker-0";

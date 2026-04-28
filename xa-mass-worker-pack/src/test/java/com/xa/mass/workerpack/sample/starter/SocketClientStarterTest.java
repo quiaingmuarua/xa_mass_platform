@@ -47,10 +47,10 @@ class SocketClientStarterTest {
     @Test
     void resolveBaseUriUsesPublishedBoundPortWhenAvailable() {
         TestSocketClientStarter starter = new TestSocketClientStarter(List.of());
-        SampleConfig mockConfig = new SampleConfig();
-        mockConfig.getClient().setSocketHost("127.0.0.1");
-        mockConfig.getClient().setSocketPort(19089);
-        starter.setSampleConfig(mockConfig);
+        SampleConfig sampleConfig = new SampleConfig();
+        sampleConfig.getClient().setSocketHost("127.0.0.1");
+        sampleConfig.getClient().setSocketPort(19089);
+        starter.setSampleConfig(sampleConfig);
 
         String previous = System.getProperty("mass.socket.bound-port");
         System.setProperty("mass.socket.bound-port", "28089");
@@ -90,7 +90,7 @@ class SocketClientStarterTest {
     @Import(SocketClientStarter.class)
     static class TestConfig {
         @Bean
-        SampleConfig mockConfig() {
+        SampleConfig sampleConfig() {
             return new SampleConfig();
         }
 

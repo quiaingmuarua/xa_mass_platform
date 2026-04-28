@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
+class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String SOCKET_WORKER_ID = "java-worker-socket-001";

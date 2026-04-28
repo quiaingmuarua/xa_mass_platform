@@ -35,6 +35,8 @@ Use this page only as an index once you are already inside `doc/`.
   - testing owner README
 - [../xa-mass-server/README.md](../xa-mass-server/README.md)
   - server owner README
+- [../xa-mass-worker-pack/README.md](../xa-mass-worker-pack/README.md)
+  - sample/dev worker capability owner README
 - [../transport/AGENTS.md](../transport/AGENTS.md)
   - transport owner entry
 - [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)

@@ -17,9 +17,9 @@ public final class SampleCommandRoutes {
     private SampleCommandRoutes() {
     }
 
-    public static void registerMockRoutes() {
+    public static void registerSampleRoutes() {
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.state.get")
-                .handler(SampleCommandRoutes::mockStateGet)
+                .handler(SampleCommandRoutes::sampleStateGet)
                 .resolver(json -> json)
                 .summary("Return the current mock fault-injection state for a worker.")
                 .suggestedPhases("prepare", "verify")
@@ -27,7 +27,7 @@ public final class SampleCommandRoutes {
                 .build());
 
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.delay.response")
-                .handler(SampleCommandRoutes::mockDelayResponse)
+                .handler(SampleCommandRoutes::sampleDelayResponse)
                 .resolver(json -> json)
                 .summary("Delay future TASK result responses from the worker by a bounded number of milliseconds.")
                 .suggestedPhases("prepare", "trigger", "verify")
@@ -35,7 +35,7 @@ public final class SampleCommandRoutes {
                 .build());
 
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.drop.outbound")
-                .handler(SampleCommandRoutes::mockDropOutbound)
+                .handler(SampleCommandRoutes::sampleDropOutbound)
                 .resolver(json -> json)
                 .summary("Drop future TASK result responses using mode off/once/always.")
                 .suggestedPhases("prepare", "trigger", "verify")
@@ -43,7 +43,7 @@ public final class SampleCommandRoutes {
                 .build());
 
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.task.result.status")
-                .handler(SampleCommandRoutes::mockTaskResultStatus)
+                .handler(SampleCommandRoutes::sampleTaskResultStatus)
                 .resolver(json -> json)
                 .summary("Override future TASK result status with SUCCESS/FAILED, or clear the override.")
                 .suggestedPhases("prepare", "trigger", "verify")
@@ -51,7 +51,7 @@ public final class SampleCommandRoutes {
                 .build());
 
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.disconnect")
-                .handler(SampleCommandRoutes::mockDisconnect)
+                .handler(SampleCommandRoutes::sampleDisconnect)
                 .resolver(json -> json)
                 .summary("Disconnect the target worker after the current disconnect task result is sent.")
                 .suggestedPhases("trigger", "verify")
@@ -59,7 +59,7 @@ public final class SampleCommandRoutes {
                 .build());
 
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.reset")
-                .handler(SampleCommandRoutes::mockReset)
+                .handler(SampleCommandRoutes::sampleReset)
                 .resolver(json -> json)
                 .summary("Reset all mock fault-injection state for the target worker.")
                 .suggestedPhases("prepare", "verify")
@@ -67,12 +67,12 @@ public final class SampleCommandRoutes {
                 .build());
     }
 
-    private static Map<String, Object> mockStateGet(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleStateGet(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         return buildStateResponse(workerId, stateRegistry(context).getOrCreate(workerId), "state");
     }
 
-    private static Map<String, Object> mockDelayResponse(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleDelayResponse(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         long millis = boundedLong(request, "millis", 0L, 30_000L);
         SampleClientState state = stateRegistry(context).getOrCreate(workerId);
@@ -80,7 +80,7 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "delay_updated");
     }
 
-    private static Map<String, Object> mockDropOutbound(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleDropOutbound(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         String modeValue = stringValue(request, "mode", "OFF");
         SampleClientState.DropMode dropMode;
@@ -94,13 +94,13 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "drop_mode_updated");
     }
 
-    private static Map<String, Object> mockTaskResultStatus(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleTaskResultStatus(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         String status = stringValue(request, "status", "");
         if (!status.isBlank()) {
             String normalized = status.trim().toUpperCase();
             if (!"SUCCESS".equals(normalized) && !"FAILED".equals(normalized)) {
-                throw new CommandException(ErrorCode.PARSE_ERROR, "mock task result status must be SUCCESS, FAILED, or blank");
+                throw new CommandException(ErrorCode.PARSE_ERROR, "sample task result status must be SUCCESS, FAILED, or blank");
             }
             status = normalized;
         }
@@ -109,11 +109,11 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "task_result_status_updated");
     }
 
-    private static Map<String, Object> mockDisconnect(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleDisconnect(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         SampleWorkerClient client = clientManager(context).getClient(workerId);
         if (client == null) {
-            throw new CommandException(ErrorCode.INIT_ERROR, "mock client not found: " + workerId);
+            throw new CommandException(ErrorCode.INIT_ERROR, "sample client not found: " + workerId);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workerId", workerId);
@@ -125,7 +125,7 @@ public final class SampleCommandRoutes {
         return result;
     }
 
-    private static Map<String, Object> mockReset(JsonObject request, CommandContext context) {
+    private static Map<String, Object> sampleReset(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         SampleClientState state = stateRegistry(context).getOrCreate(workerId);
         state.reset();

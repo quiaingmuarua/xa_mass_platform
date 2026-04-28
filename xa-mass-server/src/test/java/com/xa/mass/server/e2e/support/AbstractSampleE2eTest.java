@@ -29,7 +29,7 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public abstract class AbstractMockE2eTest {
+public abstract class AbstractSampleE2eTest {
 
     private static final AtomicInteger NEXT_WEBSOCKET_PORT = new AtomicInteger(initialPortSeed());
 
@@ -285,7 +285,7 @@ public abstract class AbstractMockE2eTest {
      * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
      *
      * <p>Call this before dispatching tasks that depend on mock realtime workers being ready.
-     * A failure here means SDK resource registration or adapter-specific mock client startup did not
+     * A failure here means SDK resource registration or adapter-specific sample client startup did not
      * produce the expected workers - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
      */

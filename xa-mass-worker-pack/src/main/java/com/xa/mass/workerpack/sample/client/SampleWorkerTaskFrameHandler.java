@@ -30,13 +30,13 @@ final class SampleWorkerTaskFrameHandler {
     private final String runtimeName;
 
     SampleWorkerTaskFrameHandler() {
-        this("websocket", "realtime", "mock-websocket-client");
+        this("websocket", "realtime", "sample-websocket-client");
     }
 
     SampleWorkerTaskFrameHandler(String adapterId, String transportHint, String runtimeName) {
         this.adapterId = adapterId == null || adapterId.isBlank() ? "unknown" : adapterId;
         this.transportHint = transportHint == null || transportHint.isBlank() ? "unknown" : transportHint;
-        this.runtimeName = runtimeName == null || runtimeName.isBlank() ? "mock-worker-client" : runtimeName;
+        this.runtimeName = runtimeName == null || runtimeName.isBlank() ? "sample-worker-client" : runtimeName;
     }
 
     TaskResponsePlan prepareResponse(JsonObject taskMessage,
@@ -83,14 +83,14 @@ final class SampleWorkerTaskFrameHandler {
             response.addProperty("retryCount", retryCount);
         }
         response.addProperty("success", "SUCCESS".equals(resolvedStatus));
-        response.addProperty("detail", "Executed by mock client " + workerId);
+        response.addProperty("detail", "Executed by sample client " + workerId);
         if ("FAILED".equals(resolvedStatus)) {
             response.addProperty("errorCode", "MOCK_TASK_FAILED");
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
         outputMap.put("stepId", resolveStepId(taskMessage));
-        outputMap.put("mockData", "Executed by mock client " + workerId);
+        outputMap.put("mockData", "Executed by sample client " + workerId);
         outputMap.put("status", resolvedStatus);
         outputMap.put("execution", buildExecutionSnapshot(
                 taskMessage,
@@ -104,7 +104,7 @@ final class SampleWorkerTaskFrameHandler {
         response.add("output", GSON.toJsonTree(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
-            logger.info("[{}] Dropped mock task response for messageId={} due to mock state {}",
+            logger.info("[{}] Dropped sample task response for messageId={} due to sample state {}",
                     workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
@@ -209,7 +209,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     private long resolveCommandTaskResponseDelayMillis(JsonObject taskMessage, String workerId) {
-        int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), "mock-command");
+        int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), "sample-command");
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter;
     }
@@ -218,7 +218,7 @@ final class SampleWorkerTaskFrameHandler {
         if (commandResult != null && commandResult.getMessage() != null && !commandResult.getMessage().isBlank()) {
             return commandResult.getMessage();
         }
-        return "mock command task executed: " + eventCode;
+        return "sample command task executed: " + eventCode;
     }
 
     private String resolveCommandTaskErrorCode(CommandResponse<?> commandResult) {
@@ -241,7 +241,7 @@ final class SampleWorkerTaskFrameHandler {
         snapshot.put("handled", commandResult != null);
         snapshot.put("status", commandResult == null ? "error" : commandResult.status);
         snapshot.put("code", commandResult == null ? 500 : commandResult.getCode());
-        snapshot.put("message", commandResult == null ? "mock command dispatch failed" : commandResult.getMessage());
+        snapshot.put("message", commandResult == null ? "sample command dispatch failed" : commandResult.getMessage());
         snapshot.put("duration", commandResult == null ? 0 : commandResult.duration);
         snapshot.put("env", commandResult == null ? Map.of() : commandResult.env);
         snapshot.put("forward", commandResult == null ? Map.of() : commandResult.forward);

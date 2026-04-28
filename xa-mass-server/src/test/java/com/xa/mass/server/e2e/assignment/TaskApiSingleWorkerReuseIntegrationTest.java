@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
+class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -48,7 +48,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
         try {
-            assertClientConnects(client, "Mock client failed to connect");
+            assertClientConnects(client, "Sample client failed to connect");
 
             String firstTaskId = createTaskId("reuse-first", "single worker reuse first", "target-a");
             Map<String, Object> firstApprove = exchange(

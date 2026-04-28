@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
+class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -69,7 +69,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         SampleWorkerWebSocketClient firstClient = new SampleWorkerWebSocketClient(uri, firstWorkerId);
         SampleWorkerWebSocketClient secondClient = new SampleWorkerWebSocketClient(uri, secondWorkerId);
         try {
-            assertClientConnects(firstClient, "first mock client failed to connect");
+            assertClientConnects(firstClient, "first sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must mark worker online");
 
             TaskSnapshot stillReadyWithSingleOnlineWorker = waitForTaskSnapshot(taskId, "READY", 8, 250L);
@@ -77,7 +77,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
             assertEquals("INIT", stillReadyWithSingleOnlineWorker.messages().get(0).get("status"));
             assertEquals(null, stillReadyWithSingleOnlineWorker.messages().get(0).get("latestAttemptWorkerId"));
 
-            assertClientConnects(secondClient, "second mock client failed to connect");
+            assertClientConnects(secondClient, "second sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(secondWorkerId), "second worker connect must mark worker online");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);

@@ -187,12 +187,12 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     private void sendTaskResponse(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
         if (delayMillis <= 0L) {
             send(responseJson);
-            logger.debug("[{}] Sent mock task response for messageId: {}", workerId, messageId);
+            logger.debug("[{}] Sent sample task response for messageId: {}", workerId, messageId);
             disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             return;
         }
 
-        logger.info("[{}] Scheduling mock task response for messageId={} after {} ms", workerId, messageId, delayMillis);
+        logger.info("[{}] Scheduling sample task response for messageId={} after {} ms", workerId, messageId, delayMillis);
         taskResponseScheduler.schedule(() -> {
             if (!isOpen()) {
                 logger.warn("[{}] Skip delayed task response because client is disconnected. messageId={}", workerId, messageId);
@@ -200,10 +200,10 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
             }
             try {
                 send(responseJson);
-                logger.debug("[{}] Sent delayed mock task response for messageId: {}", workerId, messageId);
+                logger.debug("[{}] Sent delayed sample task response for messageId: {}", workerId, messageId);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
-                logger.warn("[{}] Failed to send delayed mock task response for messageId={}: {}", workerId, messageId, e.getMessage());
+                logger.warn("[{}] Failed to send delayed sample task response for messageId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
     }

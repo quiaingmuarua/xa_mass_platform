@@ -20,7 +20,7 @@ public class SocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(SocketClientStarter.class);
 
-    protected SampleConfig mockConfig;
+    protected SampleConfig sampleConfig;
 
     @Value("${sample.client.connection-timeout:10}")
     public void setConnectionTimeout(int connectionTimeout) {
@@ -48,8 +48,8 @@ public class SocketClientStarter extends AbstractSampleWorkerClientStarter {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public void setSampleConfig(SampleConfig mockConfig) {
-        this.mockConfig = mockConfig;
+    public void setSampleConfig(SampleConfig sampleConfig) {
+        this.sampleConfig = sampleConfig;
     }
 
     @Override
@@ -69,8 +69,8 @@ public class SocketClientStarter extends AbstractSampleWorkerClientStarter {
 
     @Override
     protected String resolveBaseUri() {
-        String host = mockConfig.getClient().getSocketHost();
-        int fallbackPort = mockConfig.getClient().getSocketPort();
+        String host = sampleConfig.getClient().getSocketHost();
+        int fallbackPort = sampleConfig.getClient().getSocketPort();
         String boundPortValue = System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
         int port = parsePort(boundPortValue, fallbackPort);
         return "tcp://" + host + ":" + port;

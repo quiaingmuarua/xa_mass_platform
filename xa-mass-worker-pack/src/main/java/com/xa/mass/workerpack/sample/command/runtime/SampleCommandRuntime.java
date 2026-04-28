@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Lightweight bootstrap for the dev-app mock client command runtime.
+ * Lightweight bootstrap for the dev-app sample client command runtime.
  */
 public final class SampleCommandRuntime {
 
@@ -35,24 +35,24 @@ public final class SampleCommandRuntime {
                 new CommandLogger() {
                     @Override
                     public void info(String message) {
-                        log.info("[mock-command] {}", message);
+                        log.info("[sample-command] {}", message);
                     }
 
                     @Override
                     public void error(String message) {
-                        log.error("[mock-command] {}", message);
+                        log.error("[sample-command] {}", message);
                     }
 
                     @Override
                     public void error(String message, Throwable throwable) {
-                        log.error("[mock-command] {}", message, throwable);
+                        log.error("[sample-command] {}", message, throwable);
                     }
                 },
                 (response, targetApp, request) -> {
                 }
         );
         CoreCommandRoutes.registerCommonRoutes();
-        SampleCommandRoutes.registerMockRoutes();
+        SampleCommandRoutes.registerSampleRoutes();
         ToolCommandRoutes.registerToolRoutes();
     }
 

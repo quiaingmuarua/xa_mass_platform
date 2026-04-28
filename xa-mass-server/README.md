@@ -17,7 +17,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - worker, task, and rule resources are created through the embedded SDK runtime
 - default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
 - mock JSON remains a test/fixture input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from it
-- default `dev` startup does not auto-start embedded mock clients; worker presence is expected to come from external sample or real worker processes
+- default `dev` startup does not auto-start embedded sample clients; worker presence is expected to come from external sample or real worker processes
 - default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
   protected by `X-Sample-Bootstrap-Key`
 
@@ -38,7 +38,7 @@ The default dev shell uses one HTTP port plus adapter-specific transport ports:
 | `mass.websocket.port` | `18088` | internal WebSocket adapter server port |
 | `mass.socket.port` | `18089` | socket adapter server port when `mass.socket.enabled=true` |
 
-Mock clients connect through:
+Sample clients connect through:
 
 | Property | Default |
 | --- | --- |
@@ -70,9 +70,9 @@ Control-console routing note:
 - `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
 
-## Effective Mock Client Startup
+## Effective Sample Client Startup
 
-For test or explicit fixture paths, embedded mock clients are started by:
+For test or explicit fixture paths, embedded sample clients are owned by `xa-mass-worker-pack` and started by:
 
 - `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/AbstractSampleWorkerClientStarter.java`
 - `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/WebSocketClientStarter.java`
@@ -84,7 +84,7 @@ Startup behavior:
 - gated by `sample.client.auto-start=true` only for tests or explicit local fixture runs
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
-- discovers mock clients from SDK-registered `Worker` resources
+- discovers sample clients from SDK-registered `Worker` resources
 - only opens adapter-matching clients for workers whose concrete `adapterId` matches the starter
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
@@ -112,9 +112,9 @@ Default worker fixtures now carry a small executor profile:
 These labels are dev/E2E routing and observability signals. Production-style
 resources should still be created through the SDK resource APIs.
 
-## Mock Worker Execution Behavior
+## Sample Worker Execution Behavior
 
-Auto-started mock WebSocket clients behave like lightweight executors:
+Auto-started sample WebSocket clients behave like lightweight executors:
 
 - task responses use a deterministic small delay with stable jitter, so local runs exercise asynchronous result handling without random flakiness
 - `mock.delay.response` remains the explicit override for fault-injection tests
@@ -125,13 +125,13 @@ Auto-started mock WebSocket clients behave like lightweight executors:
 The extra payload fields are server observability data. Lifecycle decisions
 still come from the task kernel, attempts, and result status.
 
-## Mock Command Runtime
+## Sample Command Runtime
 
-`xa-mass-server` now exposes a lightweight in-process mock command runtime for workers through normal task execution.
+`xa-mass-server` exposes the worker-pack sample command runtime through normal task execution.
 
 Current command groups:
 
-- `mock.*`: mutate mock worker behavior without changing task-kernel semantics
+- `mock.*`: mutate sample worker behavior without changing task-kernel semantics
   - `mock.state.get`
   - `mock.delay.response`
   - `mock.drop.outbound`
@@ -186,7 +186,7 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
-| `sample.client.auto-start` | `false` | auto-start embedded mock clients only for explicit fixture/test runs |
+| `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
 | `sample.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
@@ -208,7 +208,7 @@ Mainline stance:
 - end-to-end integration coverage is the primary acceptance gate for runtime behavior
 - unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
-- shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/server/e2e/support/AbstractMockE2eTest`
+- shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/server/e2e/support/AbstractSampleE2eTest`
 
 Focused verified regression command:
 
@@ -233,12 +233,12 @@ Covered areas:
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
-- `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without mock worker JSON
+- `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
-- `SocketTaskApiIntegrationTest`: auto-started socket mock workers go online, receive tasks, and return canonical results
+- `SocketTaskApiIntegrationTest`: auto-started socket sample workers go online, receive tasks, and return canonical results
 - `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
 - `SampleWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
 

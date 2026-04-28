@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Shared startup orchestration for adapter-specific dev-app mock worker clients.
+ * Shared startup orchestration for adapter-specific dev-app sample worker clients.
  */
 public abstract class AbstractSampleWorkerClientStarter {
 
@@ -56,7 +56,7 @@ public abstract class AbstractSampleWorkerClientStarter {
         Logger log = logger();
         MDC.clear();
         if (!started.compareAndSet(false, true)) {
-            log.info("Mock {} clients already started, skipping duplicate startup", adapterDisplayName());
+            log.info("Sample {} clients already started, skipping duplicate startup", adapterDisplayName());
             return;
         }
 
@@ -73,19 +73,19 @@ public abstract class AbstractSampleWorkerClientStarter {
 
             List<Worker> workers = loadWorkers();
             if (workers == null || workers.isEmpty()) {
-                log.warn("No SDK-registered {} mock workers found, skipping client startup", adapterId());
+                log.warn("No SDK-registered {} sample workers found, skipping client startup", adapterId());
                 started.set(false);
                 return;
             }
 
-            log.info("Found {} SDK-registered {} mock workers, establishing connections",
+            log.info("Found {} SDK-registered {} sample workers, establishing connections",
                     workers.size(),
                     adapterId());
 
             clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
             establishConnections(workers, baseUri);
 
-            log.info("Mock {} clients started, active connections: {}",
+            log.info("Sample {} clients started, active connections: {}",
                     adapterDisplayName(),
                     clientSessionManager.getClientCount());
         } catch (RuntimeException e) {
@@ -98,7 +98,7 @@ public abstract class AbstractSampleWorkerClientStarter {
     }
 
     /**
-     * Discovers dev mock clients from SDK-registered worker resources.
+     * Discovers dev sample clients from SDK-registered worker resources.
      *
      * <p>Resource creation belongs to the SDK runtime. Concrete starters only
      * open transport clients for workers whose concrete adapter identity matches
@@ -106,7 +106,7 @@ public abstract class AbstractSampleWorkerClientStarter {
      */
     protected List<Worker> loadWorkers() {
         if (runtimeApplication == null) {
-            logger().warn("MassSdkApplication is not available; cannot discover mock clients");
+            logger().warn("MassSdkApplication is not available; cannot discover sample clients");
             return List.of();
         }
         return runtimeApplication.getAllWorkers().stream()
@@ -201,7 +201,7 @@ public abstract class AbstractSampleWorkerClientStarter {
         List<SampleWorkerClient> ownedClients = clients.stream()
                 .filter(client -> adapterId().equalsIgnoreCase(client.adapterId()))
                 .toList();
-        log.info("Disconnecting {} mock clients", ownedClients.size());
+        log.info("Disconnecting {} sample clients", ownedClients.size());
 
         for (SampleWorkerClient client : ownedClients) {
             try {
@@ -224,7 +224,7 @@ public abstract class AbstractSampleWorkerClientStarter {
             }
         }
 
-        log.info("Mock {} clients stopped", adapterDisplayName());
+        log.info("Sample {} clients stopped", adapterDisplayName());
         MDC.clear();
     }
 

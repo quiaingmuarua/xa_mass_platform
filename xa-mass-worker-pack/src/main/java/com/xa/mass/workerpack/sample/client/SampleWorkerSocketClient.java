@@ -37,7 +37,7 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
     private final String taskResultStatus;
     private final SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
     private final SampleWorkerTaskFrameHandler taskFrameHandler =
-            new SampleWorkerTaskFrameHandler("socket", "realtime", "mock-socket-client");
+            new SampleWorkerTaskFrameHandler("socket", "realtime", "sample-socket-client");
     private final ScheduledExecutorService reconnectScheduler;
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);

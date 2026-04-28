@@ -21,11 +21,13 @@ Current module set from the root reactor:
 - `xa-mass-transport-api`
 - `xa-mass-transport-polling`
 - `xa-mass-transport-runtime`
+- `xa-mass-transport-socket`
 - `xa-mass-engine`
 - `xa-mass-transport-websocket`
 - `xa-mass-sdk-api`
 - `xa-mass-sdk`
 - `xa-mass-testing`
+- `xa-mass-worker-pack`
 - `xa-mass-server`
 
 The WebSocket adapter artifact is `xa-mass-transport-websocket`; its sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
@@ -38,7 +40,7 @@ Run from repo root:
 java -version
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-server/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-server/target/classes:xa-mass-worker-pack/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.server.XaMassServerApplication
 ```
 

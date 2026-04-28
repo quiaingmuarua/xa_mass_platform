@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
+class SdkMetadataApiIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
