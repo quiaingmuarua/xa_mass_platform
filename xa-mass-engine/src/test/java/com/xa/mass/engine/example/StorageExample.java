@@ -126,7 +126,14 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
         var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
-        var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
+        var workerAssignListener = new TaskWorkerAssignListener(
+                ruleManager,
+                workerManager,
+                msgAssignListener,
+                recordService,
+                taskManager,
+                taskManager.events()
+        );
 
         for (TaskCreateRequestDto dto : taskDtos) {
             String routingCode = routingCode(dto);
@@ -236,7 +243,14 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
         var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
-        var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
+        var workerAssignListener = new TaskWorkerAssignListener(
+                ruleManager,
+                workerManager,
+                msgAssignListener,
+                recordService,
+                taskManager,
+                taskManager.events()
+        );
 
         String defaultConfig = MonkeyGenerator.exampleJsonDsl();
         List<Worker> workers = MonkeyGenerator.generateWorkers(defaultConfig);

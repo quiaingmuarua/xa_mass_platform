@@ -10,7 +10,7 @@ Use this file when you need to boot the app, run a smoke flow, or choose a focus
 
 Current runtime entry:
 
-- Spring Boot app: `xa-mass-server/src/main/java/com/xa/mass/mock/XaMassServerApplication.java`
+- Spring Boot app: `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java`
 - SDK entry: `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
 - Embedded runtime composition: `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
 - Java baseline: JDK 21 / `maven.compiler.release=21`

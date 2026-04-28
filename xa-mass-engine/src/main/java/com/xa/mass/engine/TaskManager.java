@@ -40,7 +40,7 @@ import java.util.function.Supplier;
 /**
  * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
  */
-public class TaskManager implements TaskResultIngestFacade {
+public class TaskManager implements TaskResultIngestFacade, TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -830,5 +830,4 @@ public class TaskManager implements TaskResultIngestFacade {
         private int referenceCount;
     }
 }
-
 

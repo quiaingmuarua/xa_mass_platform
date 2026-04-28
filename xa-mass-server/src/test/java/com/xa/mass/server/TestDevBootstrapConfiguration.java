@@ -1,8 +1,8 @@
 package com.xa.mass.server;
 
 import com.xa.mass.server.bootstrap.MockRuntimeDataLoader;
-import com.xa.mass.server.sample.command.runtime.MockCommandRuntime;
-import com.xa.mass.server.sample.command.tool.ToolCommandRoutes;
+import com.xa.mass.workerpack.sample.command.runtime.MockCommandRuntime;
+import com.xa.mass.workerpack.sample.command.tool.ToolCommandRoutes;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.model.CommandContext;
 import com.google.gson.Gson;

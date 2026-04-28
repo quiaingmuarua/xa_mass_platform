@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;

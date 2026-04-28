@@ -61,7 +61,7 @@ jobs:
           java-version: "21"
           distribution: "temurin"
           cache: maven
-      - name: Run focused dev-app lifecycle integration checks
+      - name: Run focused server lifecycle integration checks
         run: >-
           ./mvnw -q -pl xa-mass-server -am
           -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest

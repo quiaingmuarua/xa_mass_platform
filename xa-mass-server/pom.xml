@@ -54,12 +54,13 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-worker-pack</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

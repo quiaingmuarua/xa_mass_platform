@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.server.sample.client.MockWorkerClient;
+import com.xa.mass.workerpack.sample.client.MockWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;

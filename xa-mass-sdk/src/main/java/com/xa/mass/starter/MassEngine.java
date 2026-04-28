@@ -85,8 +85,8 @@ public class MassEngine {
                     taskMsgDispatchListener);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, taskManager)
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, taskManager, taskManager.events())
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager, taskManager.events());
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis());
             assignWorker.start();
 

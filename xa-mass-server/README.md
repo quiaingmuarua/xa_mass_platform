@@ -74,9 +74,9 @@ Control-console routing note:
 
 For test or explicit fixture paths, embedded mock clients are started by:
 
-- `xa-mass-server/src/main/java/com/xa/mass/mock/starter/AbstractMockWorkerClientStarter.java`
-- `xa-mass-server/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
-- `xa-mass-server/src/main/java/com/xa/mass/mock/starter/SocketClientStarter.java`
+- `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/AbstractMockWorkerClientStarter.java`
+- `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/WebSocketClientStarter.java`
+- `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SocketClientStarter.java`
 
 Startup behavior:
 
@@ -122,7 +122,7 @@ Auto-started mock WebSocket clients behave like lightweight executors:
 - result payloads also include `execution` metadata with timing, retry count, task id, message id, project, `adapterId`, and `transportHint`
 - result payloads include `workerProfile` metadata with worker id and local mock runtime details
 
-The extra payload fields are dev-app observability data. Lifecycle decisions
+The extra payload fields are server observability data. Lifecycle decisions
 still come from the task kernel, attempts, and result status.
 
 ## Mock Command Runtime
@@ -207,8 +207,8 @@ Mainline stance:
 
 - end-to-end integration coverage is the primary acceptance gate for runtime behavior
 - unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
-- integration suites are grouped by domain under `src/test/java/com/xa/mass/mock/e2e`
-- shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest`
+- integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
+- shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/server/e2e/support/AbstractMockE2eTest`
 
 Focused verified regression command:
 

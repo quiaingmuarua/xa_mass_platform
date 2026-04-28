@@ -156,7 +156,7 @@ Important current rules:
 ## 8. Entry Files
 
 - startup/runtime:
-  - `xa-mass-server/src/main/java/com/xa/mass/mock/XaMassServerApplication.java`
+  - `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java`
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
   - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 - lifecycle/API:

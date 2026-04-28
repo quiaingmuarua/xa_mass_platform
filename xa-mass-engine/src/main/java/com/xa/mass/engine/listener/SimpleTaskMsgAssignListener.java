@@ -5,7 +5,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.*;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
@@ -31,22 +31,22 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private static final TaskRuntimeClaimOptionsResolver TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER =
             new TaskRuntimeClaimOptionsResolver();
 
-    private final TaskManager taskManager;
+    private final TaskAssignmentRuntimePort assignmentRuntime;
     private final WorkerManager workerManager;
     private final AssignmentRecordService recordService;
     private final TaskMsgDispatchListener dispatchListener;
 
-    public SimpleTaskMsgAssignListener(TaskManager taskManager,
+    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService) {
-        this(taskManager, workerManager, recordService, null);
+        this(assignmentRuntime, workerManager, recordService, null);
     }
 
-    public SimpleTaskMsgAssignListener(TaskManager taskManager,
+    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService,
                                        TaskMsgDispatchListener dispatchListener) {
-        this.taskManager = taskManager;
+        this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
@@ -73,7 +73,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             return List.of();
         }
 
-        int totalMessages = taskManager.countPendingDispatchableMessages(task.getTid());
+        int totalMessages = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
             TraceEventLogger.dispatchBindingSummary(
@@ -97,7 +97,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         TaskWorkClaimOptions claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
                 resolvedWorkerCount,
-                taskManager.getTaskMessageLeaseSeconds()
+                assignmentRuntime.getTaskMessageLeaseSeconds()
         );
         int perWorkerBatchLimit = claimOptions.perWorkerCapacity();
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
@@ -134,9 +134,9 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
                 Math.max(dispatchSlots.size(), 1),
-                taskManager.getTaskMessageLeaseSeconds()
+                assignmentRuntime.getTaskMessageLeaseSeconds()
         );
-        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime()
+        List<ClaimedTaskWork> claimed = assignmentRuntime.getTaskWorkRuntime()
                 .claimReady(task.getTid(), claimTargets, claimOptions);
 
         for (ClaimedTaskWork work : claimed) {
@@ -145,7 +145,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 log.warn("[MsgAssign] Skip claimed work {} because dispatch slot was not found", work.messageId());
                 continue;
             }
-            TaskMsg msg = taskManager.getTaskMessage(task.getTid(), work.messageId());
+            TaskMsg msg = assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
             if (msg == null) {
                 log.warn("[MsgAssign] Skip claimed work {} because task message was not found", work.messageId());
                 continue;
@@ -156,7 +156,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         msg.getMessageId(), msg.getStatus());
                 continue;
             }
-            taskManager.updateTaskMessage(task.getTid(), msg);
+            assignmentRuntime.updateTaskMessage(task.getTid(), msg);
             dispatchBindings.add(dispatchBinding);
             slot.incrementAssigned();
 
@@ -263,7 +263,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private TaskDispatchBinding bindTaskMessage(TaskMsg taskMsg, ClaimedTaskWork work) {
-        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        TaskMsgAttempt latestAttempt = assignmentRuntime.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
                 taskMsg.getTaskId(),
@@ -299,7 +299,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "attempt dispatched"
         );
-        taskManager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
+        assignmentRuntime.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
 
         TaskMsgStatus beforeAssigned = taskMsg.getStatus();
         if (!taskMsg.markAsAssigned()) {

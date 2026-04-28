@@ -6,7 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.work.ActiveLeaseRecord;
@@ -24,12 +24,12 @@ public class TaskResourceReleaseListener {
 
     private static final Logger log = LoggerFactory.getLogger(TaskResourceReleaseListener.class);
 
-    private final TaskManager taskManager;
+    private final TaskRuntimeMaintenancePort maintenancePort;
     private final WorkerManager workerManager;
 
-    public TaskResourceReleaseListener(TaskManager taskManager,
+    public TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
                                        WorkerManager workerManager) {
-        this.taskManager = taskManager;
+        this.maintenancePort = maintenancePort;
         this.workerManager = workerManager;
     }
 
@@ -38,7 +38,7 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        List<ActiveLeaseRecord> leases = taskManager.getTaskWorkRuntime().activeLeases(task.getTid());
+        List<ActiveLeaseRecord> leases = maintenancePort.getTaskWorkRuntime().activeLeases(task.getTid());
         Set<String> workerIds = new LinkedHashSet<>();
 
         for (ActiveLeaseRecord lease : leases) {
@@ -78,13 +78,13 @@ public class TaskResourceReleaseListener {
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         if (task.getStatus() == TaskStatus.RUNNING
-                && taskManager.hasPendingDispatchableMessages(task.getTid())) {
-            taskManager.requestTaskDispatch(task);
+                && maintenancePort.hasPendingDispatchableMessages(task.getTid())) {
+            maintenancePort.requestTaskDispatch(task);
         }
     }
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId) {
-        return taskManager.hasProcessingMessagesForWorker(taskId, workerId);
+        return maintenancePort.hasProcessingMessagesForWorker(taskId, workerId);
     }
 
     private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {

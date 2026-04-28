@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.sample.client.MockWorkerWebSocketClient;
+import com.xa.mass.workerpack.sample.client.MockWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

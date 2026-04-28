@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  * Add listeners here when the reaction must happen inline; subscribe to the EventBus
  * when loose coupling or async delivery is required.
  */
-public class TaskEventPublisher {
+public class TaskEventPublisher implements TaskAssignmentEventSink {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskEventPublisher.class);
 

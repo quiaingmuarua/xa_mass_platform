@@ -27,7 +27,7 @@ import java.util.List;
 /**
  * Verified mainline Spring Boot entry for the server runtime shell.
  */
-@SpringBootApplication(scanBasePackages = {"com.xa.mass.server", "com.xa.mass.api"})
+@SpringBootApplication(scanBasePackages = {"com.xa.mass.server", "com.xa.mass.api", "com.xa.mass.workerpack"})
 public class XaMassServerApplication {
 
     private static final Logger log = LoggerFactory.getLogger(XaMassServerApplication.class);

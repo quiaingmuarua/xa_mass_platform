@@ -3,7 +3,8 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskAssignmentEventSink;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.rules.RuleManager;
@@ -27,25 +28,29 @@ public class TaskWorkerAssignListener {
     private final TaskWorkerMatchingStrategy matchingStrategy;
     private final WorkerManager workerManager;
     private final TaskMsgAssignListener msgAssignListener;
-    private final TaskManager taskManager;
+    private final TaskAssignmentRuntimePort assignmentRuntime;
+    private final TaskAssignmentEventSink assignmentEventSink;
 
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
                                     TaskMsgAssignListener msgAssignListener,
                                     AssignmentRecordService recordService,
-                                    TaskManager taskManager) {
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink) {
         this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService),
-                workerManager, msgAssignListener, taskManager);
+                workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink);
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
                                     WorkerManager workerManager,
                                     TaskMsgAssignListener msgAssignListener,
-                                    TaskManager taskManager) {
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink) {
         this.matchingStrategy = matchingStrategy;
         this.workerManager = workerManager;
         this.msgAssignListener = msgAssignListener;
-        this.taskManager = taskManager;
+        this.assignmentRuntime = assignmentRuntime;
+        this.assignmentEventSink = assignmentEventSink;
     }
 
     /**
@@ -62,7 +67,7 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        int pendingDispatchCount = taskManager.countPendingDispatchableMessages(task.getTid());
+        int pendingDispatchCount = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
         if (pendingDispatchCount <= 0) {
             TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "no pending INIT task messages", null);
@@ -171,8 +176,8 @@ public class TaskWorkerAssignListener {
                 requiredStartWorkerCount, matchRequestCount,
                 matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
-        taskManager.updateTask(task);
-        taskManager.events().publishTaskAssigned(task);
+        assignmentRuntime.updateTask(task);
+        assignmentEventSink.publishTaskAssigned(task);
         return true;
     }
 
