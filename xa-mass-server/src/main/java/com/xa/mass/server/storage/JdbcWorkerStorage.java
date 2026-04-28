@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.WorkerStorage;
 
+import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -12,39 +13,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-public class H2WorkerStorage extends JdbcStorageSupport implements WorkerStorage {
+public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStorage {
 
-    public H2WorkerStorage(String jdbcUrl, String username, String password) {
-        super(jdbcUrl, username, password);
-        initialize();
-    }
+    private final JdbcDialect dialect;
 
-    private void initialize() {
-        try (var conn = connection(); var stmt = conn.createStatement()) {
-            stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS xa_worker (
-                      worker_id VARCHAR(128) PRIMARY KEY,
-                      worker_group_id VARCHAR(128),
-                      json CLOB NOT NULL
-                    )
-                    """);
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_xa_worker_group ON xa_worker(worker_group_id)");
-            stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS xa_worker_context (
-                      worker_context_id VARCHAR(128) PRIMARY KEY,
-                      worker_id VARCHAR(128) NOT NULL,
-                      json CLOB NOT NULL
-                    )
-                    """);
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_xa_worker_context_worker ON xa_worker_context(worker_id)");
-            stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS xa_worker_lock (
-                      worker_id VARCHAR(128) PRIMARY KEY
-                    )
-                    """);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to initialize H2 worker storage", e);
-        }
+    public JdbcWorkerStorage(DataSource dataSource, JdbcDialect dialect) {
+        super(dataSource);
+        this.dialect = dialect;
     }
 
     @Override
@@ -52,10 +27,7 @@ public class H2WorkerStorage extends JdbcStorageSupport implements WorkerStorage
         if (worker == null || worker.getWorkerId() == null) {
             throw new IllegalArgumentException("worker and workerId are required");
         }
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                MERGE INTO xa_worker KEY(worker_id)
-                VALUES (?, ?, ?)
-                """)) {
+        try (var conn = connection(); var ps = conn.prepareStatement(dialect.workerUpsertSql())) {
             ps.setString(1, worker.getWorkerId());
             ps.setString(2, worker.getWorkerGroupId());
             ps.setString(3, json(worker));
@@ -143,10 +115,7 @@ public class H2WorkerStorage extends JdbcStorageSupport implements WorkerStorage
         if (workerContext == null || workerContext.getWorkerId() == null || workerContext.getWorkerContextId() == null) {
             throw new IllegalArgumentException("workerContext, workerId, and workerContextId are required");
         }
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                MERGE INTO xa_worker_context KEY(worker_context_id)
-                VALUES (?, ?, ?)
-                """)) {
+        try (var conn = connection(); var ps = conn.prepareStatement(dialect.workerContextUpsertSql())) {
             ps.setString(1, workerContext.getWorkerContextId());
             ps.setString(2, workerContext.getWorkerId());
             ps.setString(3, json(workerContext));

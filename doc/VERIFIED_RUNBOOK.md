@@ -259,6 +259,7 @@ Project-level gap index: [CURRENT_GAPS.md](./CURRENT_GAPS.md).
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub.
 - Redis storage remains a fail-fast placeholder.
 - Engine `DATABASE` factory methods remain fail-fast, but `xa-mass-server` has
-  a focused H2 storage path behind `mass.storage.mode=h2`.
+  a focused JDBC control-plane storage path behind `mass.storage.mode=jdbc-h2`
+  or `mass.storage.mode=jdbc-postgres`.
 - Redis-backed EventBus behavior is not part of the verified runtime path.
 - API integration coverage is improved but still not exhaustive for every cancel/terminate variant.

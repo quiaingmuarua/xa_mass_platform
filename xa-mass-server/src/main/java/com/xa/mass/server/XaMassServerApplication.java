@@ -3,14 +3,11 @@ package com.xa.mass.server;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleConfig;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.server.storage.H2RuleStorage;
-import com.xa.mass.server.storage.H2TaskStorage;
-import com.xa.mass.server.storage.H2WorkerStorage;
+import com.xa.mass.server.storage.JdbcStorageMode;
+import com.xa.mass.server.storage.JdbcStorageRuntime;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
@@ -105,9 +102,21 @@ public class XaMassServerApplication {
         log.info("==============================");
     }
 
+    @Bean(destroyMethod = "close")
+    @Profile("dev")
+    public JdbcStorageRuntime jdbcStorageRuntime() {
+        return JdbcStorageRuntime.create(
+                JdbcStorageMode.parse(storageMode),
+                storageJdbcUrl,
+                storageJdbcUsername,
+                storageJdbcPassword
+        );
+    }
+
     @Bean(destroyMethod = "stop")
     @Profile("dev")
-    public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider) {
+    public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
+                                                          JdbcStorageRuntime jdbcStorageRuntime) {
         return MassSdk.builder()
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .transport(transport -> transport
@@ -127,17 +136,14 @@ public class XaMassServerApplication {
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> {
                     engine.enabled(true).workerThreads(workerThreads);
-                    if (isH2StorageMode()) {
+                    if (jdbcStorageRuntime.isEnabled()) {
                         TaskScheduler scheduler = new SimpleTaskScheduler();
                         engine.scheduler(scheduler)
                                 .taskManager(new TaskManager(
                                         scheduler,
-                                        new H2TaskStorage(storageJdbcUrl, storageJdbcUsername, storageJdbcPassword)))
-                                .workerManager(new WorkerManager(new H2WorkerStorage(
-                                        storageJdbcUrl,
-                                        storageJdbcUsername,
-                                        storageJdbcPassword)))
-                                .ruleManager(h2RuleManager());
+                                        jdbcStorageRuntime.taskStorage()))
+                                .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
+                                .ruleManager(jdbcStorageRuntime.ruleManager());
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {
@@ -150,10 +156,13 @@ public class XaMassServerApplication {
     @Bean
     @Profile("dev")
     @Order(0)
-    public CommandLineRunner fullStackStarter(MassSdkApplication app) {
+    public CommandLineRunner fullStackStarter(MassSdkApplication app, JdbcStorageRuntime jdbcStorageRuntime) {
         return args -> {
             log.info("Starting embedded transport runtime + engine");
             try {
+                if (jdbcStorageRuntime.isEnabled()) {
+                    jdbcStorageRuntime.recoverRuntimeResidue();
+                }
                 app.start();
                 if (!app.isRunning()) {
                     throw new IllegalStateException("MassApplication failed to start properly");
@@ -216,14 +225,4 @@ public class XaMassServerApplication {
         return adapters;
     }
 
-    private boolean isH2StorageMode() {
-        return "h2".equalsIgnoreCase(storageMode) || "jdbc-h2".equalsIgnoreCase(storageMode);
-    }
-
-    private RuleManager<java.util.Map<String, Object>> h2RuleManager() {
-        RuleManager<java.util.Map<String, Object>> manager = new RuleManager<>(
-                new H2RuleStorage(storageJdbcUrl, storageJdbcUsername, storageJdbcPassword));
-        manager.addDefaultRules(RuleConfig.getDefaultWorkerMatchRules());
-        return manager;
-    }
 }

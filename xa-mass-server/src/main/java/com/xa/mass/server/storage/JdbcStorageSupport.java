@@ -4,31 +4,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 
 abstract class JdbcStorageSupport {
 
-    protected final String jdbcUrl;
-    protected final String username;
-    protected final String password;
+    protected final DataSource dataSource;
     protected final ObjectMapper mapper;
 
-    JdbcStorageSupport(String jdbcUrl, String username, String password) {
-        if (jdbcUrl == null || jdbcUrl.isBlank()) {
-            throw new IllegalArgumentException("jdbcUrl must not be blank");
+    JdbcStorageSupport(DataSource dataSource) {
+        if (dataSource == null) {
+            throw new IllegalArgumentException("dataSource must not be null");
         }
-        this.jdbcUrl = jdbcUrl;
-        this.username = username == null ? "" : username;
-        this.password = password == null ? "" : password;
+        this.dataSource = dataSource;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     protected Connection connection() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, username, password);
+        return dataSource.getConnection();
     }
 
     protected String json(Object value) {

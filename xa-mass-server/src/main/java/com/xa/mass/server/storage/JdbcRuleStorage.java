@@ -6,6 +6,7 @@ import com.xa.mass.engine.rules.RuleEvaluator;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.storage.RuleStorage;
 
+import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -14,29 +15,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class H2RuleStorage extends JdbcStorageSupport implements RuleStorage {
+public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
 
+    private final JdbcDialect dialect;
     private final Map<RuleType, RuleEvaluator> evaluatorMap = new ConcurrentHashMap<>();
 
-    public H2RuleStorage(String jdbcUrl, String username, String password) {
-        super(jdbcUrl, username, password);
-        initialize();
+    public JdbcRuleStorage(DataSource dataSource, JdbcDialect dialect) {
+        super(dataSource);
+        this.dialect = dialect;
         registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
-    }
-
-    private void initialize() {
-        try (var conn = connection(); var stmt = conn.createStatement()) {
-            stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS xa_rule (
-                      rule_id VARCHAR(128) PRIMARY KEY,
-                      rule_type VARCHAR(64),
-                      json CLOB NOT NULL
-                    )
-                    """);
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_xa_rule_type ON xa_rule(rule_type)");
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to initialize H2 rule storage", e);
-        }
     }
 
     @Override
@@ -44,10 +31,7 @@ public class H2RuleStorage extends JdbcStorageSupport implements RuleStorage {
         if (rule == null || rule.getId() == null) {
             throw new IllegalArgumentException("rule and rule id are required");
         }
-        try (var conn = connection(); var ps = conn.prepareStatement("""
-                MERGE INTO xa_rule KEY(rule_id)
-                VALUES (?, ?, ?)
-                """)) {
+        try (var conn = connection(); var ps = conn.prepareStatement(dialect.ruleUpsertSql())) {
             ps.setString(1, rule.getId());
             ps.setString(2, rule.getType() == null ? null : rule.getType().name());
             ps.setString(3, json(rule));

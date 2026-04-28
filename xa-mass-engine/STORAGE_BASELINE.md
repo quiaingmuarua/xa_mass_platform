@@ -25,8 +25,8 @@ These interfaces are used by:
 Current behavior:
 
 - `MEMORY` is the default implemented runtime path
-- `xa-mass-server` can opt into H2-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
-  with `mass.storage.mode=h2`; this is a server-owned JDBC adapter path, not a
+- `xa-mass-server` can opt into JDBC-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
+  with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a server-owned JDBC adapter path, not a
   `TaskStorageFactory` default
 - `REDIS` exists as a type, but factory methods fail fast with `UnsupportedOperationException`
 - `DATABASE` exists as a type, but engine factory methods still fail fast with
@@ -35,17 +35,17 @@ Current behavior:
 That means the SDK/engine default mainline is memory-backed storage, while the
 server shell has a focused H2 path for local and CI persistence verification.
 
-## H2 Server Adapter Boundary
+## JDBC Server Adapter Boundary
 
-The H2 path is for development and CI convenience. It is a JDBC adapter proving
-that the server can run against durable storage, not a production database
-choice and not a task-message analytics backend.
+The server-owned JDBC path is for durable control-plane truth. H2 is the
+local/CI verification dialect; PostgreSQL is the intended durable mainline. It
+is not a task-message analytics backend.
 
 Keep this boundary narrow:
 
-- H2-specific behavior must stay behind server-owned adapter classes
+- dialect-specific behavior must stay behind server-owned adapter classes
 - upper layers should depend on storage interfaces and JDBC-style semantics, not
-  H2-specific SQL behavior
+  dialect-specific SQL behavior
 - `TaskMsg.status`, `TaskMsgAttempt.status`, and helper flags such as
   `final_state` or `active_state` are bounded per-task runtime indexes only
 - do not add cross-task message-status search, reporting, or failure-analysis
@@ -54,8 +54,8 @@ Keep this boundary narrow:
   attempt timelines belong in trace, audit sinks, or downstream analytical
   storage
 
-The future migration target should be low-cost replacement of the JDBC adapter,
-not a product dependency on H2 schema details.
+The migration target should remain low-cost replacement of the JDBC dialect,
+not a product dependency on one schema flavor's quirks.
 
 ## TaskStorage
 

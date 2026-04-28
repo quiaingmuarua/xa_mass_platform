@@ -6,7 +6,7 @@
 # Tests should keep using isolated in-memory H2 URLs through DynamicPropertySource.
 mass:
   storage:
-    mode: h2
+    mode: jdbc-h2
     jdbc:
       url: jdbc:h2:file:./data/xa-mass-h2/xa_mass;MODE=PostgreSQL;DATABASE_TO_UPPER=false
       username: sa

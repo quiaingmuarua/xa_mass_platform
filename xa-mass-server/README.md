@@ -188,10 +188,10 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
-| `mass.storage.mode` | `memory` | server storage mode; set to `h2` for focused H2-backed task, worker, and rule storage |
-| `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | H2 JDBC URL used when `mass.storage.mode=h2` |
-| `mass.storage.jdbc.username` | `sa` | H2 JDBC username |
-| `mass.storage.jdbc.password` | empty | H2 JDBC password |
+| `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` for durable control-plane storage |
+| `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
+| `mass.storage.jdbc.username` | `sa` | JDBC username |
+| `mass.storage.jdbc.password` | empty | JDBC password |
 | `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
@@ -200,20 +200,23 @@ Observability:
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
 
-H2 storage scope:
+JDBC storage scope:
 
-- H2 is a local/CI JDBC storage adapter for development and verification, not
-  the production storage decision
+- PostgreSQL is the intended control-plane truth store; H2 remains a local/CI
+  verification dialect for the same JDBC storage path
 - default runtime stays `memory`; opt into H2 explicitly with
-  `mass.storage.mode=h2`
+  `mass.storage.mode=jdbc-h2`
+- opt into PostgreSQL with `mass.storage.mode=jdbc-postgres`
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
+- local PostgreSQL verification can use the `postgres` profile together with the
+  runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- H2 message and attempt status columns are bounded per-task runtime indexes for
+- JDBC message and attempt status columns are bounded per-task runtime indexes for
   convergence, cleanup, and compatibility reads
-- do not use H2 as a cross-task message-status analytics surface; large-scale
+- do not use JDBC storage as a cross-task message-status analytics surface; large-scale
   message history and failure analysis should flow through trace, audit sinks,
   or downstream analytical storage
 
@@ -322,4 +325,3 @@ Project-level gap index: [`../doc/CURRENT_GAPS.md`](../doc/CURRENT_GAPS.md).
 - stronger real-runtime `EXPIRED` message coverage
 - broader `batchSize > 1` multi-worker coverage
 - resume short-circuit where a paused task is already complete underneath
-
