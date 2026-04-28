@@ -14,7 +14,7 @@
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-core</artifactId>
+            <artifactId>xa-mass-base</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

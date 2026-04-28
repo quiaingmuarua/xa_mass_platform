@@ -6,9 +6,10 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>xa-mass-core</artifactId>
+    <artifactId>xa-mass-base</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-core</name>
+    <name>xa-mass-base</name>
+    <description>shared base models, enums, and infrastructure</description>
     <dependencies>
 
         <dependency>

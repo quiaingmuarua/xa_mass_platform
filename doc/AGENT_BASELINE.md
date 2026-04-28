@@ -98,7 +98,7 @@ Rules:
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-server` consumes it and owns the current HTTP/control-console/frontend shell
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-server`
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-server`
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell E2E
 
 ## 6. Current Contract Summary
@@ -162,10 +162,10 @@ Important current rules:
 - lifecycle/API:
   - `xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
-  - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
+  - `xa-mass-base/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 - payload/matching:
-  - `xa-mass-core/src/main/java/com/xa/mass/base/model/Task.java`
-  - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
+  - `xa-mass-base/src/main/java/com/xa/mass/base/model/Task.java`
+  - `xa-mass-base/src/main/java/com/xa/mass/base/model/TaskMsg.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
 ## 9. Guardrails

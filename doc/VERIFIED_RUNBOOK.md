@@ -17,7 +17,7 @@ Current runtime entry:
 
 Current module set from the root reactor:
 
-- `xa-mass-core`
+- `xa-mass-base`
 - `xa-mass-transport-api`
 - `xa-mass-transport-polling`
 - `xa-mass-transport-runtime`
@@ -38,7 +38,7 @@ Run from repo root:
 java -version
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-server/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-server/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.server.XaMassServerApplication
 ```
 

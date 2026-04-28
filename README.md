@@ -53,7 +53,7 @@ The shared kernel is:
 - `transport/polling-adapter` + `transport/websocket-adapter` + `transport/socket-adapter`: concrete transport adapters
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
-- `xa-mass-core`: shared models and infrastructure
+- `xa-mass-base`: shared base models, enums, and infrastructure
 
 Module truth comes from the root `pom.xml`. Do not treat removed historical modules or top-level directories outside the reactor as current mainline.
 

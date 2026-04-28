@@ -21,7 +21,7 @@
         <developer/>
     </developers>
     <modules>
-        <module>xa-mass-core</module>
+        <module>xa-mass-base</module>
         <module>transport/transport_api</module>
         <module>transport/polling-adapter</module>
         <module>transport/transport_runtime</module>

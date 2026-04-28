@@ -1,11 +1,11 @@
-# xa-mass-core
+# xa-mass-base
 
 ## Role
 
-- shared models, enums, and core abstractions
+- shared base models, enums, and infrastructure
 - messaging and event bus infrastructure
 - JSON DSL and related support code
-- Maven module name is `xa-mass-core`; Java packages remain under `com.xa.mass.base` for compatibility
+- Maven module name is `xa-mass-base`; Java packages remain under `com.xa.mass.base` for compatibility
 
 ## Current Status
 
