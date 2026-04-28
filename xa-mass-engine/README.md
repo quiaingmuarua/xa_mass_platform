@@ -29,6 +29,8 @@
   `TaskResultIngestFacade`, `TaskAssignmentRuntimePort`, `TaskRuntimeMaintenancePort`,
   `TaskRuntimeRecoveryPort`, and `TaskEventListenerRegistrar`
   instead of taking the full `TaskManager` facade by default
+- core runtime services such as lifecycle transitions and delayed redispatch request handling should also prefer package-local
+  narrow ports/adapters instead of reaching through `TaskManager` for storage, scheduler, runtime, and event operations
 - treat `validateTaskState(...)` as a bounded runtime validation tool; deep `TaskMsg` projection audits belong on the explicit engine-side audit path, not on hot-path runtime decisions
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)

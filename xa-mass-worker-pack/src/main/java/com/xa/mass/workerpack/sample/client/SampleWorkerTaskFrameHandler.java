@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Adapter-local helper that turns inbound WebSocket task frames into mock
+ * Adapter-local helper that turns inbound WebSocket task frames into sample
  * worker result frames.
  */
 final class SampleWorkerTaskFrameHandler {
@@ -60,8 +60,8 @@ final class SampleWorkerTaskFrameHandler {
             return null;
         }
         String eventCode = readString(taskMessage, "eventCode");
-        if (isMockCommandTask(eventCode)) {
-            return prepareMockCommandTaskResponse(taskMessage, workerId, eventCode);
+        if (isSampleCommandTask(eventCode)) {
+            return prepareSampleCommandTaskResponse(taskMessage, workerId, eventCode);
         }
 
         String resolvedStatus = resolveTaskResultStatus(taskResultStatus, state);
@@ -111,10 +111,10 @@ final class SampleWorkerTaskFrameHandler {
         return new TaskResponsePlan(GSON.toJson(response), extractMessageId(taskMessage), delayMillis, null);
     }
 
-    private TaskResponsePlan prepareMockCommandTaskResponse(JsonObject taskMessage,
-                                                            String workerId,
-                                                            String eventCode) {
-        CommandResponse<?> commandResult = dispatchMockCommandTask(taskMessage, workerId, eventCode);
+    private TaskResponsePlan prepareSampleCommandTaskResponse(JsonObject taskMessage,
+                                                              String workerId,
+                                                              String eventCode) {
+        CommandResponse<?> commandResult = dispatchSampleCommandTask(taskMessage, workerId, eventCode);
         boolean success = commandResult != null && commandResult.isSuccess();
         long delayMillis = resolveCommandTaskResponseDelayMillis(taskMessage, workerId);
         long startedAtEpochMillis = System.currentTimeMillis();
@@ -166,7 +166,7 @@ final class SampleWorkerTaskFrameHandler {
         );
     }
 
-    private boolean isMockCommandTask(String eventCode) {
+    private boolean isSampleCommandTask(String eventCode) {
         return eventCode != null && switch (eventCode) {
             case "mock.state.get",
                     "mock.delay.response",
@@ -178,7 +178,7 @@ final class SampleWorkerTaskFrameHandler {
         };
     }
 
-    private CommandResponse<?> dispatchMockCommandTask(JsonObject taskMessage, String workerId, String eventCode) {
+    private CommandResponse<?> dispatchSampleCommandTask(JsonObject taskMessage, String workerId, String eventCode) {
         JsonObject commandRequest = new JsonObject();
         commandRequest.addProperty("event", eventCode);
         commandRequest.addProperty("eventCode", eventCode);
@@ -328,7 +328,7 @@ final class SampleWorkerTaskFrameHandler {
         Map<String, Object> workerProfile = new LinkedHashMap<>();
         workerProfile.put("workerId", workerId);
         workerProfile.put("runtime", runtimeName);
-        workerProfile.put("host", "mock-host-" + workerId);
+        workerProfile.put("host", "sample-host-" + workerId);
         workerProfile.put("os", System.getProperty("os.name"));
         workerProfile.put("javaVersion", System.getProperty("java.version"));
         workerProfile.put("processId", ProcessHandle.current().pid());

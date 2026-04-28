@@ -4,7 +4,7 @@ import java.net.URI;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Transport client contract for a dev-app sample worker.
+ * Transport client contract for a dev-shell sample worker.
  */
 public interface SampleWorkerClient {
     String adapterId();

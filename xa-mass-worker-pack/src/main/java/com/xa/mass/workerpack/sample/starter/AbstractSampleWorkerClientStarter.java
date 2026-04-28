@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Shared startup orchestration for adapter-specific dev-app sample worker clients.
+ * Shared startup orchestration for adapter-specific dev-shell sample worker clients.
  */
 public abstract class AbstractSampleWorkerClientStarter {
 
@@ -33,7 +33,7 @@ public abstract class AbstractSampleWorkerClientStarter {
     protected ClientSessionManager clientSessionManager;
 
     @Autowired(required = false)
-    protected SampleClientStateRegistry SampleClientStateRegistry;
+    protected SampleClientStateRegistry sampleClientStateRegistry;
 
     @Autowired(required = false)
     protected MassSdkApplication runtimeApplication;
@@ -60,12 +60,12 @@ public abstract class AbstractSampleWorkerClientStarter {
             return;
         }
 
-        log.info("Starting mock {} clients", adapterDisplayName());
+        log.info("Starting sample {} clients", adapterDisplayName());
 
         try {
             SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
-            if (SampleClientStateRegistry != null) {
-                SampleCommandRuntime.registerService(SampleClientStateRegistry.class, SampleClientStateRegistry);
+            if (sampleClientStateRegistry != null) {
+                SampleCommandRuntime.registerService(SampleClientStateRegistry.class, sampleClientStateRegistry);
             }
 
             String baseUri = resolveBaseUri();
@@ -93,7 +93,7 @@ public abstract class AbstractSampleWorkerClientStarter {
             throw e;
         } catch (Exception e) {
             started.set(false);
-            throw new IllegalStateException("Failed to start mock " + adapterDisplayName() + " clients", e);
+            throw new IllegalStateException("Failed to start sample " + adapterDisplayName() + " clients", e);
         }
     }
 
@@ -142,7 +142,7 @@ public abstract class AbstractSampleWorkerClientStarter {
 
         boolean completed = latch.await(workers.size() * (connectionTimeout + 5L), TimeUnit.SECONDS);
         if (!completed) {
-            logger().warn("Some mock {} worker connections timed out", adapterId());
+            logger().warn("Some sample {} worker connections timed out", adapterId());
         }
 
         int successCount = clientSessionManager.getClientCount();
@@ -194,7 +194,7 @@ public abstract class AbstractSampleWorkerClientStarter {
     public void shutdown() {
         Logger log = logger();
         MDC.clear();
-        log.info("Shutting down mock {} clients", adapterDisplayName());
+        log.info("Shutting down sample {} clients", adapterDisplayName());
         started.set(false);
 
         Collection<SampleWorkerClient> clients = clientSessionManager.getAllClients();

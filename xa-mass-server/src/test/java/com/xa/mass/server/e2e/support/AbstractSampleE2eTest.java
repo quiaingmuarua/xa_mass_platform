@@ -284,7 +284,7 @@ public abstract class AbstractSampleE2eTest {
     /**
      * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
      *
-     * <p>Call this before dispatching tasks that depend on mock realtime workers being ready.
+     * <p>Call this before dispatching tasks that depend on sample realtime workers being ready.
      * A failure here means SDK resource registration or adapter-specific sample client startup did not
      * produce the expected workers - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
@@ -310,7 +310,7 @@ public abstract class AbstractSampleE2eTest {
         }
         throw new AssertionError(
                 "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                + " after waiting. Check bootstrap config JSON format and mock transport client startup logs.");
+                + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag) {

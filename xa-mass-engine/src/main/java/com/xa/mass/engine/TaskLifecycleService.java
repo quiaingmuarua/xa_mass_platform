@@ -89,7 +89,7 @@ class TaskLifecycleService {
                 if (result) {
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "REJECT_TASK", "TaskManager", "task rejected");
-                    taskManager.updateTask(task);
+                    lifecycleRuntime.updateTask(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task rejected and moved to BLOCKED", duration);
                 } else {
@@ -373,7 +373,7 @@ class TaskLifecycleService {
         LogUtils.logOperationStart(trigger, "TaskManager", "taskId", taskId, "reason", reason.name());
 
         try {
-            Task task = taskManager.getTask(taskId);
+            Task task = lifecycleRuntime.getTask(taskId);
             if (task != null && !task.getStatus().isFinal()) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
@@ -384,9 +384,9 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     lifecycleRuntime.updateTask(task);
                     cancelPendingMessages(task);
-                    taskManager.getScheduler().cancelTask(taskId);
-                    taskManager.getEventPublisher().publishTaskTerminal(task);
-                    taskManager.getTaskWorkRuntime().discardTask(taskId);
+                    lifecycleRuntime.cancelTaskScheduling(taskId);
+                    lifecycleRuntime.publishTaskTerminal(task);
+                    lifecycleRuntime.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {
@@ -409,7 +409,7 @@ class TaskLifecycleService {
     private void cancelPendingMessages(Task task) {
         String taskId = task.getTid();
         Map<String, ActiveLeaseRecord> activeLeaseByMessageId = activeLeaseByMessageId(taskId);
-        for (TaskMsg msg : taskManager.getTaskStorage().getNonFinalTaskMessages(taskId)) {
+        for (TaskMsg msg : lifecycleRuntime.getNonFinalTaskMessages(taskId)) {
             cancelPendingMessage(task, msg, activeLeaseByMessageId.get(msg.getMessageId()));
         }
     }
@@ -423,10 +423,10 @@ class TaskLifecycleService {
         TaskMsgAttempt activeAttempt = null;
         boolean attemptClosed = false;
         if (activeLease != null) {
-            activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, msg, activeLease);
+            activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(lifecycleRuntime, msg, activeLease);
             if (activeAttempt != null
                     && !RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(
-                    taskManager,
+                    lifecycleRuntime,
                     task.getTid(),
                     msg,
                     activeAttempt,
@@ -437,7 +437,7 @@ class TaskLifecycleService {
             }
             status = msg.getStatus();
         } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
-            activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
+            activeAttempt = lifecycleRuntime.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
         }
         if (activeAttempt != null) {
             if (activeAttempt != null
@@ -445,7 +445,7 @@ class TaskLifecycleService {
                     activeAttempt,
                     TaskMsgAttemptFinalReason.MANUAL_CANCELLED,
                     "task cancelled")) {
-                taskManager.updateTaskMessageAttempt(task.getTid(), msg.getMessageId(), activeAttempt);
+                lifecycleRuntime.updateTaskMessageAttempt(task.getTid(), msg.getMessageId(), activeAttempt);
                 attemptClosed = true;
             }
         }
@@ -495,7 +495,7 @@ class TaskLifecycleService {
             return;
         }
 
-        taskManager.updateTaskMessage(task.getTid(), msg);
+        lifecycleRuntime.updateTaskMessage(task.getTid(), msg);
         if (attemptClosed && activeAttempt != null) {
             TraceEventLogger.taskMessageAttemptClosed(
                     task,
@@ -505,7 +505,7 @@ class TaskLifecycleService {
                     "TaskManager",
                     "task termination closed the current attempt"
             );
-            taskManager.getEventPublisher().publishTaskMessageAttemptClosed(task, msg, activeAttempt);
+            lifecycleRuntime.publishTaskMessageAttemptClosed(task, msg, activeAttempt);
         }
         TraceEventLogger.taskMessageLogicallyFinal(
                 task,
@@ -515,12 +515,12 @@ class TaskLifecycleService {
                 "TaskManager",
                 "task termination finalized the logical message"
         );
-        taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, msg);
+        lifecycleRuntime.publishTaskMessageLogicallyFinal(task, msg);
     }
 
     private Map<String, ActiveLeaseRecord> activeLeaseByMessageId(String taskId) {
         Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new HashMap<>();
-        for (ActiveLeaseRecord lease : taskManager.getTaskWorkRuntime().activeLeases(taskId)) {
+        for (ActiveLeaseRecord lease : lifecycleRuntime.getActiveLeases(taskId)) {
             if (lease == null || lease.messageId() == null || lease.messageId().isBlank()) {
                 continue;
             }
