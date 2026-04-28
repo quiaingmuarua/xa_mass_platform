@@ -39,6 +39,8 @@ import java.util.List;
 public class MassEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(MassEngine.class);
+    private static final int STARTUP_READY_TASK_SCAN_LIMIT =
+            Integer.getInteger("xa.mass.engine.startupReadyTaskScanLimit", 10_000);
 
     private final EngineConfig config;
     private boolean running = false;
@@ -94,7 +96,7 @@ public class MassEngine {
             taskManager.events().addTaskDispatchListener(assignWorker::submit);
             taskManager.events().addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
             taskManager.events().addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
-            taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
+            recoverRuntimeReadyTasks();
 
             leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
@@ -183,5 +185,18 @@ public class MassEngine {
 
     public EngineConfig getConfig() {
         return config;
+    }
+
+    private void recoverRuntimeReadyTasks() {
+        for (String taskId : taskManager.getTaskWorkRuntime().readyTaskIds(STARTUP_READY_TASK_SCAN_LIMIT)) {
+            Task task = taskManager.getTask(taskId);
+            if (task == null) {
+                continue;
+            }
+            TaskStatus status = task.getStatus();
+            if (status == TaskStatus.READY || status == TaskStatus.RUNNING) {
+                assignWorker.submit(task);
+            }
+        }
     }
 }

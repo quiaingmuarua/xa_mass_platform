@@ -19,6 +19,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
@@ -54,6 +55,8 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "node-worker-realtime-001";
     private static final String WORKER_KEY = "node-worker-realtime-key";
+    private static final String STOCK_WORKER_ID = "stock-ws-worker-001";
+    private static final String STOCK_WORKER_KEY = "stock-ws-worker-key";
 
     @Autowired
     private MassSdkApplication app;
@@ -141,6 +144,136 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         waitUntil(() -> !app.isWorkerOnline(WORKER_ID), "realtime websocket worker should go offline after disconnect");
     }
 
+    @Test
+    void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("stock-websocket-worker")
+                .credential(STOCK_WORKER_KEY)
+                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("stock.quote.fetch"))
+                .attributes(Map.of("workerId", STOCK_WORKER_ID))
+                .build());
+
+        HttpHeaders workerHeaders = sdkCredentialHeaders(STOCK_WORKER_KEY);
+        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+                "workerId", STOCK_WORKER_ID,
+                "adapterId", "websocket",
+                "transportHint", "realtime",
+                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker", "workerType", "stock-crawler"),
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "stock.quote.fetch",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders);
+        assertApiOk(registerResponse);
+        assertEquals("websocket", responseData(registerResponse).get("adapterId"));
+        assertEquals("realtime", responseData(registerResponse).get("transportHint"));
+        assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not mark realtime worker online");
+
+        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
+                "workerContextId", "ctx-" + STOCK_WORKER_ID,
+                "workerId", STOCK_WORKER_ID,
+                "project", "crawlerApp",
+                "routingTags", List.of("us", "stock"),
+                "attributes", Map.of("market", "NASDAQ", "region", "us")
+        ), workerHeaders);
+        assertApiOk(contextResponse);
+
+        String sourceUrl = "http://127.0.0.1:" + port + "/sdk/meta/events/stock.quote.fetch";
+        String initialRequestId = "stockreq-init-0001";
+        Map<String, Object> createBody = new LinkedHashMap<>();
+        createBody.put("project", "crawlerApp");
+        createBody.put("taskName", "stock-quote-stream");
+        createBody.put("userId", "stock-agent");
+        createBody.put("eventCode", "stock.quote.fetch");
+        createBody.put("mode", "STREAMING");
+        createBody.put("payloadType", "JSON");
+        createBody.put("openEnded", true);
+        createBody.put("workloadClass", "INTERACTIVE");
+        createBody.put("sharedConfig", Map.of("routingCode", "us", "sourceUrl", sourceUrl));
+        createBody.put("defaultMsgMaxRetryCount", 0);
+        createBody.put("inputs", List.of(Map.of(
+                "requestId", initialRequestId,
+                "symbol", "AAPL",
+                "market", "NASDAQ"
+        )));
+        createBody.put("batchSize", 1);
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        assertApiOk(exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=stock-websocket-stream",
+                HttpMethod.POST,
+                null
+        ));
+
+        URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
+        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(STOCK_WORKER_ID, wsUri)) {
+            waitForWorkerStatus(STOCK_WORKER_ID, "ONLINE", worker);
+
+            String successRequestId = "stockreq-async-0002";
+            assertApiOk(exchange("/status/api/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                    "inputs", List.of(Map.of(
+                            "requestId", successRequestId,
+                            "symbol", "MSFT",
+                            "market", "NASDAQ",
+                            "sourceUrl", sourceUrl
+                    ))
+            )));
+
+            String invalidRequestId = "stockreq-invalid-0003";
+            assertApiOk(exchange("/status/api/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                    "inputs", List.of(Map.of(
+                            "requestId", invalidRequestId,
+                            "market", "NASDAQ",
+                            "sourceUrl", sourceUrl
+                    ))
+            )));
+
+            TaskSnapshot stockResults = waitForTaskSnapshot(
+                    taskId,
+                    snapshot -> messageByRequestId(snapshot, successRequestId, "SUCCESS") != null
+                            && messageByRequestId(snapshot, invalidRequestId, "FAILED") != null,
+                    "stock stream messages by requestId should be final",
+                    40,
+                    250L
+            );
+
+            Map<String, Object> successMessage = messageByRequestId(stockResults, successRequestId, "SUCCESS");
+            assertNotNull(successMessage);
+            assertEquals(STOCK_WORKER_ID, successMessage.get("latestAttemptWorkerId"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> successOutput = (Map<String, Object>) successMessage.get("output");
+            assertEquals(successRequestId, successOutput.get("requestId"));
+            assertEquals("MSFT", successOutput.get("symbol"));
+            assertEquals("NASDAQ", successOutput.get("market"));
+            assertTrue(successOutput.get("price") instanceof Number);
+            assertEquals("USD", successOutput.get("currency"));
+            assertEquals(sourceUrl, successOutput.get("source"));
+            assertTrue(successOutput.get("elapsedMs") instanceof Number);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> workerProfile = (Map<String, Object>) successOutput.get("workerProfile");
+            assertEquals("node-websocket-worker", workerProfile.get("runtime"));
+            assertEquals(STOCK_WORKER_ID, workerProfile.get("workerId"));
+
+            Map<String, Object> failedMessage = messageByRequestId(stockResults, invalidRequestId, "FAILED");
+            assertNotNull(failedMessage);
+            assertEquals("INVALID_INPUT", failedMessage.get("errorCode"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> failedOutput = (Map<String, Object>) failedMessage.get("output");
+            assertEquals(invalidRequestId, failedOutput.get("requestId"));
+
+            assertApiOk(exchange("/status/api/tasks/" + taskId + "/seal", HttpMethod.PUT, null));
+            TaskSnapshot sealedTerminal = waitForTaskSnapshot(taskId, "TERMINAL", 30, 250L);
+            assertEquals("TERMINAL", sealedTerminal.task().get("status"));
+            assertTrue(List.of("MIXED_MESSAGE_RESULTS", "ALL_MESSAGES_FAILED", "ALL_MESSAGES_SUCCEEDED")
+                    .contains(String.valueOf(sealedTerminal.task().get("terminalReason"))));
+        }
+        waitUntil(() -> !app.isWorkerOnline(STOCK_WORKER_ID), "stock websocket worker should go offline after disconnect");
+    }
+
     private void waitForWorkerStatus(String workerId,
                                      String expectedStatus,
                                      ExternalNodeWorkerProcess workerProcess) throws InterruptedException {
@@ -170,6 +303,20 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> messageByRequestId(TaskSnapshot snapshot, String requestId, String status) {
+        for (Map<String, Object> message : snapshot.messages()) {
+            Map<String, Object> input = (Map<String, Object>) message.get("input");
+            Map<String, Object> output = (Map<String, Object>) message.get("output");
+            boolean inputMatches = input != null && requestId.equals(input.get("requestId"));
+            boolean outputMatches = output != null && requestId.equals(output.get("requestId"));
+            if ((inputMatches || outputMatches) && status.equals(message.get("status"))) {
+                return message;
+            }
+        }
+        return null;
     }
 
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {

@@ -27,18 +27,15 @@ class TaskResultService {
     private static final Logger logger = LoggerFactory.getLogger(TaskResultService.class);
 
     private final TaskManager taskManager;
-    private final TaskStateResolver stateResolver;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
 
     TaskResultService(TaskManager taskManager,
-                      TaskStateResolver stateResolver,
                       TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver) {
         this.taskManager = taskManager;
-        this.stateResolver = stateResolver;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
     }
 
-    boolean expireTaskMessage(String taskId, String messageId) {
+    TaskMessageMutationOutcome expireTaskMessage(String taskId, String messageId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId, "messageId", messageId);
@@ -46,30 +43,30 @@ class TaskResultService {
         TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
         if (taskMsg == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message not found", 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         Task task = taskManager.getTask(taskId);
         if (taskMsg.isCompleted()) {
             logger.info("Task message {} of task {} is already in final status {}, skip expiry",
                     messageId, taskId, taskMsg.getStatus());
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         ActiveLeaseRecord activeLease = taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
         if (activeLease == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
         if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(taskManager, taskId, taskMsg, activeAttempt, activeLease,
                 "EXPIRE_TASK_MESSAGE", "runtime active lease synchronized compatibility projection")) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message projection synchronization failed", 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         if (activeAttempt != null) {
             if (!TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                         + activeAttempt.getStatus(), 0);
-                return false;
+                return TaskMessageMutationOutcome.rejected();
             }
             taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
         }
@@ -83,14 +80,14 @@ class TaskResultService {
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
                 || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime lease rejected expiry result: " + workOutcome.status(), 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
         boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
                     "task message status " + taskMsg.getStatus() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
@@ -104,7 +101,7 @@ class TaskResultService {
         boolean stored = taskManager.updateTaskMessage(taskId, taskMsg);
         if (!stored) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message persistence failed", 0);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         Task freshTask = taskManager.getTask(taskId);
         if (retryScheduled) {
@@ -116,7 +113,7 @@ class TaskResultService {
                     "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
             if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message retry reset persistence failed", 0);
-                return false;
+                return TaskMessageMutationOutcome.rejected();
             }
         }
         if (freshTask != null && activeAttempt != null) {
@@ -130,167 +127,163 @@ class TaskResultService {
                     "EXPIRE_TASK_MESSAGE", "task message expired");
         }
         LogUtils.logOperationSuccess("task message expired", 0);
-        stateResolver.updateTaskProgress(taskId);
         if (retryScheduled) {
             Task updatedTask = taskManager.getTask(taskId);
             if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
                 requestRetryDispatch(updatedTask, workRetryDelayMillis);
             }
         }
-        return true;
+        return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
+    TaskMessageMutationOutcome handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
         return handleTaskMessageResult(taskId, messageId, success, detail, null, null);
     }
 
-    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+    TaskMessageMutationOutcome handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
         return handleTaskMessageResult(taskId, messageId, success, detail, errorCode, null);
     }
 
-    boolean handleTaskMessageResult(String taskId,
-                                    String messageId,
-                                    boolean success,
-                                    String detail,
-                                    String errorCode,
-                                    Map<String, Object> output) {
+    TaskMessageMutationOutcome handleTaskMessageResult(String taskId,
+                                                       String messageId,
+                                                       boolean success,
+                                                       String detail,
+                                                       String errorCode,
+                                                       Map<String, Object> output) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             logger.warn("Cannot handle task message result because task {} was not found", taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
 
         TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
         if (taskMsg == null) {
             logger.warn("Cannot handle task message result because msg {} was not found in task {}", messageId, taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
 
-        synchronized (taskMsg) {
-            if (taskMsg.isCompleted()) {
-                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
-                TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
-                        latestAttempt,
-                        "task message already final in status " + taskMsg.getStatus());
-                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                        messageId, taskId, taskMsg.getStatus());
-                stateResolver.updateTaskProgress(taskId);
-                return true;
-            }
+        if (taskMsg.isCompleted()) {
+            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+            TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
+                    latestAttempt,
+                    "task message already final in status " + taskMsg.getStatus());
+            logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                    messageId, taskId, taskMsg.getStatus());
+            return TaskMessageMutationOutcome.acceptedNoop();
+        }
 
-            if (task.getStatus().isFinal()) {
-                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
-                TraceEventLogger.callbackIgnoredLate(taskMsg,
-                        latestAttempt,
-                        "task already terminal in status " + task.getStatus());
-                logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                        taskId, messageId, taskMsg.getStatus());
-                return true;
-            }
+        if (task.getStatus().isFinal()) {
+            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+            TraceEventLogger.callbackIgnoredLate(taskMsg,
+                    latestAttempt,
+                    "task already terminal in status " + task.getStatus());
+            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                    taskId, messageId, taskMsg.getStatus());
+            return TaskMessageMutationOutcome.acceptedNoop();
+        }
 
-            ActiveLeaseRecord activeLease = taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
-            if (activeLease == null) {
-                TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
-                TraceEventLogger.callbackRejectedNoActiveLease(
-                        taskMsg,
-                        latestAttempt,
-                        "callback arrived without any active runtime lease"
-                );
-                logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
-                return false;
-            }
-            TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
-            if (activeAttempt == null) {
-                TraceEventLogger.callbackRejectedNoActiveAttempt(
-                        taskId,
-                        messageId,
-                        taskMsg.getStatus(),
-                        "callback arrived without any recoverable active attempt"
-                );
-                logger.error("Cannot handle task message result because msg {} in task {} has no recoverable active attempt", messageId, taskId);
-                return false;
-            }
-            if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(taskManager, taskId, taskMsg, activeAttempt, activeLease,
-                    "HANDLE_TASK_MESSAGE_RESULT", "runtime active lease synchronized compatibility projection")) {
-                logger.warn("Failed to synchronize task message {} projection from runtime active lease", messageId);
-                return false;
-            }
-            if (!isCallbackAcceptableMessageState(taskMsg)) {
-                TraceEventLogger.callbackRejectedInvalidState(taskMsg,
-                        activeAttempt,
-                        "callback arrived while message status is " + taskMsg.getStatus());
-                logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
-                        messageId, taskId, taskMsg.getStatus());
-                return false;
-            }
-
-            TraceEventLogger.callbackAccepted(
+        ActiveLeaseRecord activeLease = taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
+        if (activeLease == null) {
+            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+            TraceEventLogger.callbackRejectedNoActiveLease(
                     taskMsg,
-                    activeAttempt,
-                    success ? "success callback received" : "failure callback received");
-
-            if (!TaskMessageAttemptSupport.advanceAttemptForCallback(
-                    activeAttempt,
-                    taskManager.getTaskMessageLeaseSeconds())) {
-                logger.warn("Cannot advance attempt {} for task message {} from status {}",
-                        activeAttempt.getAttemptId(), messageId, activeAttempt.getStatus());
-                return false;
-            }
-            if (!taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt)) {
-                logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), messageId);
-                return false;
-            }
-
-            ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
-                    success, detail, errorCode, output, !success, false);
-            if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
-                    || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
-                logger.warn("Rejecting result for task message {} because runtime lease rejected the result with {}",
-                        messageId, workOutcome.status());
-                return false;
-            }
-
-            if (success) {
-                return handleSuccess(taskId, taskMsg, activeAttempt, detail, output);
-            }
-            if (workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED) {
-                return handleRetryableFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
-            }
-            return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
+                    latestAttempt,
+                    "callback arrived without any active runtime lease"
+            );
+            logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
+            return TaskMessageMutationOutcome.rejected();
         }
+        TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
+        if (activeAttempt == null) {
+            TraceEventLogger.callbackRejectedNoActiveAttempt(
+                    taskId,
+                    messageId,
+                    taskMsg.getStatus(),
+                    "callback arrived without any recoverable active attempt"
+            );
+            logger.error("Cannot handle task message result because msg {} in task {} has no recoverable active attempt", messageId, taskId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(taskManager, taskId, taskMsg, activeAttempt, activeLease,
+                "HANDLE_TASK_MESSAGE_RESULT", "runtime active lease synchronized compatibility projection")) {
+            logger.warn("Failed to synchronize task message {} projection from runtime active lease", messageId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        if (!isCallbackAcceptableMessageState(taskMsg)) {
+            TraceEventLogger.callbackRejectedInvalidState(taskMsg,
+                    activeAttempt,
+                    "callback arrived while message status is " + taskMsg.getStatus());
+            logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
+                    messageId, taskId, taskMsg.getStatus());
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        TraceEventLogger.callbackAccepted(
+                taskMsg,
+                activeAttempt,
+                success ? "success callback received" : "failure callback received");
+
+        if (!TaskMessageAttemptSupport.advanceAttemptForCallback(
+                activeAttempt,
+                taskManager.getTaskMessageLeaseSeconds())) {
+            logger.warn("Cannot advance attempt {} for task message {} from status {}",
+                    activeAttempt.getAttemptId(), messageId, activeAttempt.getStatus());
+            return TaskMessageMutationOutcome.rejected();
+        }
+        if (!taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt)) {
+            logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), messageId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
+                success, detail, errorCode, output, !success, false);
+        if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
+                || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            logger.warn("Rejecting result for task message {} because runtime lease rejected the result with {}",
+                    messageId, workOutcome.status());
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        if (success) {
+            return handleSuccess(taskId, taskMsg, activeAttempt, detail, output);
+        }
+        if (workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED) {
+            return handleRetryableFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
+        }
+        return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
     }
 
-    private boolean handleSuccess(String taskId,
-                                  TaskMsg taskMsg,
-                                  TaskMsgAttempt activeAttempt,
-                                  String detail,
-                                  Map<String, Object> output) {
+    private TaskMessageMutationOutcome handleSuccess(String taskId,
+                                                     TaskMsg taskMsg,
+                                                     TaskMsgAttempt activeAttempt,
+                                                     String detail,
+                                                     Map<String, Object> output) {
         String messageId = taskMsg.getMessageId();
         if (taskMsg.getStatus() == TaskMsgStatus.ASSIGNED) {
             TaskMsgStatus beforeRunningStatus = taskMsg.getStatus();
             if (!taskMsg.markAsRunning()) {
                 logger.warn("Failed to mark task message {} as RUNNING before success completion", messageId);
-                return false;
+                return TaskMessageMutationOutcome.rejected();
             }
-        TraceEventLogger.taskMsgStatusTransition(
-                taskMsg,
-                activeAttempt,
-                beforeRunningStatus,
-                taskMsg.getStatus(),
-                "HANDLE_TASK_MESSAGE_RESULT",
-                "TaskManager",
-                "task message entered running from callback"
+            TraceEventLogger.taskMsgStatusTransition(
+                    taskMsg,
+                    activeAttempt,
+                    beforeRunningStatus,
+                    taskMsg.getStatus(),
+                    "HANDLE_TASK_MESSAGE_RESULT",
+                    "TaskManager",
+                    "task message entered running from callback"
             );
         }
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsSuccess(detail, TaskMsgFinalReason.BUSINESS_SUCCESS)) {
             logger.warn("Failed to mark task message {} as SUCCESS", messageId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         taskMsg.setOutput(output);
         if (!activeAttempt.markSucceeded()) {
             logger.warn("Failed to mark attempt {} as SUCCEEDED", activeAttempt.getAttemptId());
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         activeAttempt.setOutput(output);
         TraceEventLogger.taskMsgStatusTransition(
@@ -305,7 +298,7 @@ class TaskResultService {
         taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
@@ -315,20 +308,19 @@ class TaskResultService {
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable success");
         }
         taskManager.getScheduler().handleTaskMsgCompletion(taskMsg);
-        stateResolver.updateTaskProgress(taskId);
-        return true;
+        return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    private boolean handleRetryableFailure(String taskId,
-                                           TaskMsg taskMsg,
-                                           TaskMsgAttempt activeAttempt,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
+    private TaskMessageMutationOutcome handleRetryableFailure(String taskId,
+                                                              TaskMsg taskMsg,
+                                                              TaskMsgAttempt activeAttempt,
+                                                              String detail,
+                                                              String errorCode,
+                                                              Map<String, Object> output) {
         String messageId = taskMsg.getMessageId();
         if (!activeAttempt.markRevokedForRetry()) {
             logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         activeAttempt.setErrorCode(errorCode);
         activeAttempt.setOutput(output);
@@ -337,7 +329,7 @@ class TaskResultService {
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.BUSINESS_FAILED)) {
             logger.warn("Failed to mark task message {} as FAILED before retry reset", messageId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
@@ -350,7 +342,7 @@ class TaskResultService {
         );
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist intermediate failed state for task message {} in task {}", messageId, taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
 
         taskMsg.incrementRetryCount();
@@ -362,31 +354,30 @@ class TaskResultService {
                 "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "retryable failure closed the current attempt");
         }
-        stateResolver.updateTaskProgress(taskId);
         updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
             requestRetryDispatch(updatedTask, workRetryDelayMillis);
         }
-        return true;
+        return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    private boolean handleRetryExhaustedFailure(String taskId,
-                                                TaskMsg taskMsg,
-                                                TaskMsgAttempt activeAttempt,
-                                                String detail,
-                                                String errorCode,
-                                                Map<String, Object> output) {
+    private TaskMessageMutationOutcome handleRetryExhaustedFailure(String taskId,
+                                                                   TaskMsg taskMsg,
+                                                                   TaskMsgAttempt activeAttempt,
+                                                                   String detail,
+                                                                   String errorCode,
+                                                                   Map<String, Object> output) {
         String messageId = taskMsg.getMessageId();
         if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail, errorCode)) {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         activeAttempt.setOutput(output);
         taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
@@ -394,9 +385,10 @@ class TaskResultService {
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.RETRY_EXHAUSTED)) {
             logger.warn("Failed to mark task message {} as FAILED", messageId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         taskMsg.setErrorCode(errorCode);
+        taskMsg.setOutput(output);
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
                 activeAttempt,
@@ -409,7 +401,7 @@ class TaskResultService {
 
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
-            return false;
+            return TaskMessageMutationOutcome.rejected();
         }
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
@@ -420,8 +412,7 @@ class TaskResultService {
         }
 
         taskManager.getScheduler().handleTaskMsgFailure(taskMsg, detail);
-        stateResolver.updateTaskProgress(taskId);
-        return true;
+        return TaskMessageMutationOutcome.acceptedDirty();
     }
 
     private boolean isCallbackAcceptableMessageState(TaskMsg taskMsg) {
@@ -488,5 +479,35 @@ class TaskResultService {
                                               String reason) {
         TraceEventLogger.taskMessageLogicallyFinal(task, taskMsg, attempt, trigger, "TaskManager", reason);
         taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, taskMsg);
+    }
+
+    static final class TaskMessageMutationOutcome {
+        private final boolean accepted;
+        private final boolean progressDirty;
+
+        private TaskMessageMutationOutcome(boolean accepted, boolean progressDirty) {
+            this.accepted = accepted;
+            this.progressDirty = progressDirty;
+        }
+
+        static TaskMessageMutationOutcome rejected() {
+            return new TaskMessageMutationOutcome(false, false);
+        }
+
+        static TaskMessageMutationOutcome acceptedNoop() {
+            return new TaskMessageMutationOutcome(true, false);
+        }
+
+        static TaskMessageMutationOutcome acceptedDirty() {
+            return new TaskMessageMutationOutcome(true, true);
+        }
+
+        boolean accepted() {
+            return accepted;
+        }
+
+        boolean progressDirty() {
+            return progressDirty;
+        }
     }
 }

@@ -259,6 +259,14 @@ public class MockApplicationSpringBootApp {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(List.of("crawlerApp"))
                 .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("stock.quote.fetch")
+                .name("Stock Quote Fetch")
+                .description("Dispatch a stock quote fetch request to an external crawler worker.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .projectCodes(List.of("crawlerApp"))
+                .build());
         registerMockTaskDefinitions(app);
         registerRuntimeToolDefinitions(app);
 
@@ -303,7 +311,7 @@ public class MockApplicationSpringBootApp {
                 .code("crawlerApp")
                 .name("Crawler")
                 .description("Crawler worker lab project for SDK-created pull worker scenarios.")
-                .eventCodes(List.of("crawler.fetch-page"))
+                .eventCodes(List.of("crawler.fetch-page", "stock.quote.fetch"))
                 .build());
     }
 

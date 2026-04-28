@@ -21,6 +21,7 @@ Already true in current code:
 - `TaskManager` still writes `Task` plus persisted `TaskMsg` compatibility projections
 - initial or appended work is also written into `TaskWorkRuntime`
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
+- engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone
 - runtime owns active lease and expiry indexes
 - task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
 - task terminal cleanup can now read only non-final `TaskMsg` projections instead of materializing the full task-message snapshot

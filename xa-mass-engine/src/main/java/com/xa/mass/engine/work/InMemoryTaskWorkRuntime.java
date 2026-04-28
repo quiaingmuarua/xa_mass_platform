@@ -115,6 +115,25 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     @Override
+    public synchronized List<String> readyTaskIds(int limit) {
+        if (!running.get() || limit <= 0) {
+            return List.of();
+        }
+        promoteDueDelayed(clock.get());
+        List<String> taskIds = new ArrayList<>(Math.min(limit, readyByTask.size()));
+        for (Map.Entry<String, ArrayDeque<WorkKey>> entry : readyByTask.entrySet()) {
+            if (taskIds.size() >= limit) {
+                break;
+            }
+            ArrayDeque<WorkKey> ready = entry.getValue();
+            if (ready != null && !ready.isEmpty()) {
+                taskIds.add(entry.getKey());
+            }
+        }
+        return List.copyOf(taskIds);
+    }
+
+    @Override
     public synchronized List<ClaimedTaskWork> claimReady(String taskId,
                                                          List<WorkerClaimTarget> workers,
                                                          TaskWorkClaimOptions options) {

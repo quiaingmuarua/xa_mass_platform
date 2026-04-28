@@ -8,6 +8,15 @@ public interface TaskWorkRuntime {
 
     WorkEnqueueOutcome enqueue(TaskWorkEnvelope item, WorkEnqueueOptions options);
 
+    /**
+     * Returns task ids that currently have runtime-ready work.
+     *
+     * <p>This is the runtime-owned dispatch recovery surface. Callers should
+     * use it when they need to recover assignment signals from queue truth
+     * instead of inferring readiness from task status alone.</p>
+     */
+    List<String> readyTaskIds(int limit);
+
     List<ClaimedTaskWork> claimReady(String taskId,
                                      List<WorkerClaimTarget> workers,
                                      TaskWorkClaimOptions options);

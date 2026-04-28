@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 /**
@@ -56,7 +57,8 @@ public class TaskManager {
     private final TaskResultService resultService;
     private final TaskRuntimeEnqueueOptionsResolver taskRuntimeEnqueueOptionsResolver;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
-    private final Map<String, ReentrantLock> taskLocks = new ConcurrentHashMap<>();
+    private final Map<String, TaskLockHandle> taskLocks = new ConcurrentHashMap<>();
+    private final Map<String, MessageLockHandle> taskMessageLocks = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler) {
@@ -90,7 +92,6 @@ public class TaskManager {
         this.lifecycleService = new TaskLifecycleService(this, stateResolver);
         this.resultService = new TaskResultService(
                 this,
-                stateResolver,
                 new TaskRuntimeRetryPolicyResolver()
         );
         this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
@@ -364,7 +365,12 @@ public class TaskManager {
      * Expires a single in-flight task message and recalculates task convergence.
      */
     public boolean expireTaskMessage(String taskId, String messageId) {
-        return withTaskLock(taskId, () -> resultService.expireTaskMessage(taskId, messageId));
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
+                () -> resultService.expireTaskMessage(taskId, messageId));
+        if (outcome.progressDirty()) {
+            updateTaskProgress(taskId);
+        }
+        return outcome.accepted();
     }
 
     /**
@@ -442,11 +448,21 @@ public class TaskManager {
     }
 
     public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
+                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
+        if (outcome.progressDirty()) {
+            updateTaskProgress(taskId);
+        }
+        return outcome.accepted();
     }
 
     public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
+                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
+        if (outcome.progressDirty()) {
+            updateTaskProgress(taskId);
+        }
+        return outcome.accepted();
     }
 
     public boolean handleTaskMessageResult(String taskId,
@@ -455,22 +471,29 @@ public class TaskManager {
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
+                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
+        if (outcome.progressDirty()) {
+            updateTaskProgress(taskId);
+        }
+        return outcome.accepted();
     }
 
     <T> T withTaskLock(String taskId, Supplier<T> action) {
+        return withTaskWriteLock(taskId, action);
+    }
+
+    private <T> T withTaskWriteLock(String taskId, Supplier<T> action) {
         if (taskId == null || taskId.isBlank()) {
             return action.get();
         }
-        ReentrantLock lock = taskLocks.computeIfAbsent(taskId, ignored -> new ReentrantLock());
-        lock.lock();
+        TaskLockHandle lockHandle = acquireTaskLockHandle(taskId);
+        lockHandle.lock.writeLock().lock();
         try {
             return action.get();
         } finally {
-            lock.unlock();
-            if (!lock.isLocked() && !lock.hasQueuedThreads()) {
-                taskLocks.remove(taskId, lock);
-            }
+            lockHandle.lock.writeLock().unlock();
+            releaseTaskLockHandle(taskId, lockHandle);
         }
     }
 
@@ -479,6 +502,39 @@ public class TaskManager {
             action.run();
             return null;
         });
+    }
+
+    private <T> T withTaskReadLock(String taskId, Supplier<T> action) {
+        if (taskId == null || taskId.isBlank()) {
+            return action.get();
+        }
+        TaskLockHandle lockHandle = acquireTaskLockHandle(taskId);
+        lockHandle.lock.readLock().lock();
+        try {
+            return action.get();
+        } finally {
+            lockHandle.lock.readLock().unlock();
+            releaseTaskLockHandle(taskId, lockHandle);
+        }
+    }
+
+    private <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
+        if (messageId == null || messageId.isBlank()) {
+            return withTaskReadLock(taskId, action);
+        }
+        return withTaskReadLock(taskId, () -> withMessageLock(taskId, messageId, action));
+    }
+
+    private <T> T withMessageLock(String taskId, String messageId, Supplier<T> action) {
+        String lockKey = taskId + "|" + messageId;
+        MessageLockHandle lockHandle = acquireMessageLockHandle(lockKey);
+        lockHandle.lock.lock();
+        try {
+            return action.get();
+        } finally {
+            lockHandle.lock.unlock();
+            releaseMessageLockHandle(lockKey, lockHandle);
+        }
     }
 
     private void validateCreateRequest(TaskCreateRequestDto dto) {
@@ -592,6 +648,63 @@ public class TaskManager {
                 item,
                 taskRuntimeEnqueueOptionsResolver.resolve(task)
         );
+    }
+
+    private TaskLockHandle acquireTaskLockHandle(String taskId) {
+        return taskLocks.compute(taskId, (ignored, existing) -> {
+            TaskLockHandle handle = existing == null ? new TaskLockHandle() : existing;
+            handle.referenceCount++;
+            return handle;
+        });
+    }
+
+    private void releaseTaskLockHandle(String taskId, TaskLockHandle lockHandle) {
+        taskLocks.computeIfPresent(taskId, (ignored, existing) -> {
+            if (existing != lockHandle) {
+                return existing;
+            }
+            existing.referenceCount--;
+            if (existing.referenceCount == 0
+                    && existing.lock.getReadLockCount() == 0
+                    && !existing.lock.isWriteLocked()
+                    && !existing.lock.hasQueuedThreads()) {
+                return null;
+            }
+            return existing;
+        });
+    }
+
+    private MessageLockHandle acquireMessageLockHandle(String lockKey) {
+        return taskMessageLocks.compute(lockKey, (ignored, existing) -> {
+            MessageLockHandle handle = existing == null ? new MessageLockHandle() : existing;
+            handle.referenceCount++;
+            return handle;
+        });
+    }
+
+    private void releaseMessageLockHandle(String lockKey, MessageLockHandle lockHandle) {
+        taskMessageLocks.computeIfPresent(lockKey, (ignored, existing) -> {
+            if (existing != lockHandle) {
+                return existing;
+            }
+            existing.referenceCount--;
+            if (existing.referenceCount == 0
+                    && !existing.lock.isLocked()
+                    && !existing.lock.hasQueuedThreads()) {
+                return null;
+            }
+            return existing;
+        });
+    }
+
+    private static final class TaskLockHandle {
+        private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
+        private int referenceCount;
+    }
+
+    private static final class MessageLockHandle {
+        private final ReentrantLock lock = new ReentrantLock(true);
+        private int referenceCount;
     }
 }
 

@@ -8,23 +8,39 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.engine.work.ClaimedTaskWork;
+import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.work.ResultApplyOutcome;
+import com.xa.mass.engine.work.TaskWorkClaimOptions;
+import com.xa.mass.engine.work.TaskWorkEnvelope;
+import com.xa.mass.engine.work.TaskWorkResult;
+import com.xa.mass.engine.work.TaskWorkRuntime;
+import com.xa.mass.engine.work.TaskWorkRuntimeStats;
+import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.engine.work.WorkEnqueueOptions;
+import com.xa.mass.engine.work.WorkEnqueueOutcome;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -229,20 +245,126 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 
+    @Test
+    void successCallbacksForDifferentMessagesDoNotSerializeAtTaskLevel() throws Exception {
+        RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
+        BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(2);
+        TaskManager concurrentTaskManager = new TaskManager(
+                localScheduler,
+                new InMemoryTaskStorage(),
+                new AllWorkFinalTaskTerminalPolicy(),
+                blockingRuntime
+        );
+
+        Task task = createRunningTask(concurrentTaskManager, "concurrent-different-messages", 2, 3);
+        List<TaskMsg> messages = concurrentTaskManager.getTaskMessages(task.getTid());
+        TaskMsg first = assignMessage(concurrentTaskManager, task, messages.get(0));
+        TaskMsg second = assignMessage(concurrentTaskManager, task, messages.get(1));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> firstFuture = executor.submit(() -> {
+                ready.countDown();
+                assertTrue(start.await(5, TimeUnit.SECONDS));
+                return concurrentTaskManager.handleTaskMessageResult(
+                        task.getTid(),
+                        first.getMessageId(),
+                        true,
+                        "done-first",
+                        null,
+                        Map.of("message", "first")
+                );
+            });
+            Future<Boolean> secondFuture = executor.submit(() -> {
+                ready.countDown();
+                assertTrue(start.await(5, TimeUnit.SECONDS));
+                return concurrentTaskManager.handleTaskMessageResult(
+                        task.getTid(),
+                        second.getMessageId(),
+                        true,
+                        "done-second",
+                        null,
+                        Map.of("message", "second")
+                );
+            });
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            assertTrue(blockingRuntime.awaitApplyResultCalls(5, TimeUnit.SECONDS));
+            blockingRuntime.releaseBlockedResults();
+
+            assertTrue(firstFuture.get(10, TimeUnit.SECONDS));
+            assertTrue(secondFuture.get(10, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        }
+
+        assertTrue(blockingRuntime.maxConcurrentApplyResult() >= 2,
+                "different messages in one task should be able to apply results concurrently");
+
+        Task finalTask = concurrentTaskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
+        assertEquals(2, finalTask.getTaskSuccessNumber());
+    }
+
+    @Test
+    void duplicateSuccessCallbackDoesNotTriggerExtraTaskProgressRecompute() {
+        CountingTaskManager countingTaskManager = new CountingTaskManager(
+                new RecordingTaskScheduler(),
+                new InMemoryTaskStorage()
+        );
+        Task task = createRunningTask(countingTaskManager, "duplicate-progress-recompute", 1, 3);
+        TaskMsg message = countingTaskManager.getTaskMessages(task.getTid()).get(0);
+        assignMessage(countingTaskManager, task, message);
+
+        assertTrue(countingTaskManager.handleTaskMessageResult(
+                task.getTid(),
+                message.getMessageId(),
+                true,
+                "done",
+                null,
+                Map.of("outcome", "success")
+        ));
+        assertEquals(1, countingTaskManager.progressUpdateCount(task.getTid()));
+
+        assertTrue(countingTaskManager.handleTaskMessageResult(
+                task.getTid(),
+                message.getMessageId(),
+                true,
+                "done-duplicate",
+                null,
+                Map.of("outcome", "duplicate")
+        ));
+        assertEquals(1, countingTaskManager.progressUpdateCount(task.getTid()));
+    }
+
     private Task createRunningSingleMessageTask(String taskName) {
         return createRunningSingleMessageTask(taskName, 3);
     }
 
     private Task createRunningSingleMessageTask(String taskName, int defaultMsgMaxRetryCount) {
-        Task task = taskManager.createTask(buildRequest(taskName, defaultMsgMaxRetryCount));
-        assertTrue(taskManager.approveTask(task.getTid()));
+        return createRunningTask(taskManager, taskName, 1, defaultMsgMaxRetryCount);
+    }
+
+    private Task createRunningTask(TaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
+        Task task = manager.createTask(buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount));
+        assertTrue(manager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
-        assertTrue(taskManager.updateTask(task));
+        assertTrue(manager.updateTask(task));
         return task;
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName, int defaultMsgMaxRetryCount) {
-        TaskCreateRequestDto dto = buildRequest(taskName);
+    private TaskCreateRequestDto buildRequestWithRetry(String taskName, int defaultMsgMaxRetryCount) {
+        TaskCreateRequestDto dto = buildRequestWithRetry(taskName, 1, defaultMsgMaxRetryCount);
+        return dto;
+    }
+
+    private TaskCreateRequestDto buildRequestWithRetry(String taskName, int messageCount, int defaultMsgMaxRetryCount) {
+        TaskCreateRequestDto dto = buildRequest(taskName, messageCount);
         dto.setDefaultMsgMaxRetryCount(defaultMsgMaxRetryCount);
         return dto;
     }
@@ -269,20 +391,30 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private TaskCreateRequestDto buildRequest(String taskName) {
+        return buildRequest(taskName, 1);
+    }
+
+    private TaskCreateRequestDto buildRequest(String taskName, int messageCount) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setSharedConfig(Map.of("textContent", "concurrency", "routingCode", "us"));
         dto.setUserId("agent");
-        dto.setInputs(List.of(Map.of("target", "alpha")));
+        dto.setInputs(java.util.stream.IntStream.range(0, messageCount)
+                .mapToObj(index -> Map.<String, Object>of("target", "alpha-" + index))
+                .toList());
         dto.setBatchSize(1);
         return dto;
     }
 
     private TaskMsg assignMessage(Task task, TaskMsg message) {
+        return assignMessage(taskManager, task, message);
+    }
+
+    private TaskMsg assignMessage(TaskManager manager, Task task, TaskMsg message) {
         String suffix = message.getMessageId();
-        if (taskManager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.getMessageId()).isEmpty()) {
-            taskManager.getTaskWorkRuntime().claimReady(
+        if (manager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.getMessageId()).isEmpty()) {
+            manager.getTaskWorkRuntime().claimReady(
                     task.getTid(),
                     List.of(new WorkerClaimTarget(
                             "worker-" + suffix,
@@ -291,7 +423,7 @@ class TaskConcurrencyAcceptanceTest {
                             1
                     )),
                     1,
-                    taskManager.getTaskMessageLeaseSeconds()
+                    manager.getTaskMessageLeaseSeconds()
             );
         }
         message.applyLatestAttemptProjection(
@@ -302,7 +434,7 @@ class TaskConcurrencyAcceptanceTest {
         if (message.getStatus() == TaskMsgStatus.INIT) {
             assertTrue(message.markAsAssigned());
         }
-        assertTrue(taskManager.updateTaskMessage(task.getTid(), message));
+        assertTrue(manager.updateTaskMessage(task.getTid(), message));
 
         int attemptNo = message.getRetryCount() + 1;
         TaskMsgAttempt attempt = new TaskMsgAttempt(
@@ -316,7 +448,7 @@ class TaskConcurrencyAcceptanceTest {
         attempt.setBatchId(message.getLatestAttemptBatchId());
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
         assertTrue(attempt.markDispatched());
-        taskManager.addTaskMessageAttempt(task.getTid(), message.getMessageId(), attempt);
+        manager.addTaskMessageAttempt(task.getTid(), message.getMessageId(), attempt);
         return message;
     }
 
@@ -401,6 +533,127 @@ class TaskConcurrencyAcceptanceTest {
         @Override
         public boolean resumeTask(String taskId) {
             return true;
+        }
+    }
+
+    private static final class BlockingApplyResultRuntime implements TaskWorkRuntime {
+        private final InMemoryTaskWorkRuntime delegate = new InMemoryTaskWorkRuntime();
+        private final CountDownLatch enteredApplyResultLatch;
+        private final CountDownLatch releaseApplyResultLatch = new CountDownLatch(1);
+        private final AtomicInteger concurrentApplyResult = new AtomicInteger();
+        private final AtomicLong maxConcurrentApplyResult = new AtomicLong();
+
+        private BlockingApplyResultRuntime(int expectedConcurrentApplyResults) {
+            this.enteredApplyResultLatch = new CountDownLatch(expectedConcurrentApplyResults);
+        }
+
+        @Override
+        public WorkEnqueueOutcome enqueue(TaskWorkEnvelope item, WorkEnqueueOptions options) {
+            return delegate.enqueue(item, options);
+        }
+
+        @Override
+        public List<String> readyTaskIds(int limit) {
+            return delegate.readyTaskIds(limit);
+        }
+
+        @Override
+        public List<ClaimedTaskWork> claimReady(String taskId,
+                                                List<WorkerClaimTarget> workers,
+                                                TaskWorkClaimOptions options) {
+            return delegate.claimReady(taskId, workers, options);
+        }
+
+        @Override
+        public ResultApplyOutcome applyResult(TaskWorkResult result) {
+            int current = concurrentApplyResult.incrementAndGet();
+            maxConcurrentApplyResult.accumulateAndGet(current, Math::max);
+            enteredApplyResultLatch.countDown();
+            try {
+                assertTrue(releaseApplyResultLatch.await(5, TimeUnit.SECONDS));
+                return delegate.applyResult(result);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            } finally {
+                concurrentApplyResult.decrementAndGet();
+            }
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now) {
+            return delegate.pollExpiredLeases(limit, now);
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> activeLeases(String taskId) {
+            return delegate.activeLeases(taskId);
+        }
+
+        @Override
+        public java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
+            return delegate.getActiveLease(taskId, messageId);
+        }
+
+        @Override
+        public boolean hasReadyWork(String taskId) {
+            return delegate.hasReadyWork(taskId);
+        }
+
+        @Override
+        public boolean hasActiveLeaseForWorker(String taskId, String workerId) {
+            return delegate.hasActiveLeaseForWorker(taskId, workerId);
+        }
+
+        @Override
+        public TaskWorkStats stats(String taskId) {
+            return delegate.stats(taskId);
+        }
+
+        @Override
+        public TaskWorkRuntimeStats stats() {
+            return delegate.stats();
+        }
+
+        @Override
+        public long discardTask(String taskId) {
+            return delegate.discardTask(taskId);
+        }
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
+        }
+
+        private boolean awaitApplyResultCalls(long timeout, TimeUnit unit) throws InterruptedException {
+            return enteredApplyResultLatch.await(timeout, unit);
+        }
+
+        private void releaseBlockedResults() {
+            releaseApplyResultLatch.countDown();
+        }
+
+        private long maxConcurrentApplyResult() {
+            return maxConcurrentApplyResult.get();
+        }
+    }
+
+    private static final class CountingTaskManager extends TaskManager {
+        private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
+
+        private CountingTaskManager(TaskScheduler taskScheduler, InMemoryTaskStorage taskStorage) {
+            super(taskScheduler, taskStorage);
+        }
+
+        @Override
+        void updateTaskProgress(String taskId) {
+            progressUpdateCounts.computeIfAbsent(taskId, ignored -> new AtomicInteger()).incrementAndGet();
+            super.updateTaskProgress(taskId);
+        }
+
+        private int progressUpdateCount(String taskId) {
+            AtomicInteger count = progressUpdateCounts.get(taskId);
+            return count == null ? 0 : count.get();
         }
     }
 }
