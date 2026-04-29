@@ -20,8 +20,8 @@ These interfaces are used by:
 
 Those shared storage contracts now live in
 `platform_infra/mass-storage-api`. `platform_infra/mass-storage-memory` now
-owns the active in-memory task/worker implementations, while
-`xa-mass-engine` still owns `InMemoryRuleStorage`.
+owns the active in-memory task/worker/rule implementations plus the default
+`QLExpressRuleEvaluator`.
 
 The storage boundary now has three distinct roles:
 
@@ -43,12 +43,12 @@ Do not collapse these back into one "storage owns everything" model.
 
 Current behavior:
 
-- engine default constructors wire memory-backed task/worker/rule storage directly
+- the embedding layer wires memory-backed task/worker/rule storage explicitly
 - `xa-mass-server` can opt into JDBC-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
   with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a `platform_infra/mass-storage-jdbc` adapter path, not an engine storage default
 - Redis queue/runtime design now belongs under `platform_infra/mass-runtime-redis`, not under engine-local storage classes
 
-That means the SDK/engine default mainline is explicit memory-backed storage,
+That means the SDK default mainline is explicit memory-backed storage,
 while the server shell has a focused H2 path for local and CI persistence
 verification.
 
@@ -299,13 +299,13 @@ Important current usage notes:
 
 ## In-Memory Implementation Baseline
 
-The verified mainline implementations are:
+The verified mainline implementations are in
+`platform_infra/mass-storage-memory`:
 
-- `platform_infra/mass-storage-memory`:
-  - `InMemoryTaskStorage`
-  - `InMemoryWorkerStorage`
-- `xa-mass-engine`:
-  - `InMemoryRuleStorage`
+- `InMemoryTaskStorage`
+- `InMemoryWorkerStorage`
+- `InMemoryRuleStorage`
+- `QLExpressRuleEvaluator`
 
 Current `InMemoryWorkerStorage` behavior that matters architecturally:
 
@@ -324,12 +324,15 @@ Current `InMemoryTaskStorage` behavior that matters architecturally:
 
 ## Manager Wiring
 
-The active managers still default to factory-created memory storage:
+The active managers are wired explicitly by the embedding layer:
 
 ```java
-TaskManager taskManager = new TaskManager(taskScheduler, taskWorkRuntime);
-WorkerManager workerManager = new WorkerManager();
-RuleManager<?> ruleManager = new RuleManager<>();
+TaskStorage taskStorage = new InMemoryTaskStorage();
+WorkerStorage workerStorage = new InMemoryWorkerStorage();
+RuleStorage ruleStorage = new InMemoryRuleStorage();
+TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, taskWorkRuntime);
+WorkerManager workerManager = new WorkerManager(workerStorage);
+RuleManager<?> ruleManager = new RuleManager<>(ruleStorage);
 ```
 
 Custom storage wiring is constructor-based:
@@ -343,7 +346,7 @@ RuleStorage ruleStorage = new InMemoryRuleStorage();
 Shell/debug query wiring is separate:
 
 ```java
-TaskManager taskManager = new TaskManager(taskScheduler, taskWorkRuntime);
+TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, taskWorkRuntime);
 TaskCommandService taskCommands = new TaskCommandService(taskManager);
 TaskEventService taskEvents = new TaskEventService(taskManager);
 TaskQueryService taskQueries = new TaskQueryService(taskManager);

@@ -1,6 +1,6 @@
 package com.xa.mass.storage.jdbc;
 
-import com.xa.mass.engine.rules.QLExpressRuleEvaluator;
+import com.xa.mass.storage.memory.QLExpressRuleEvaluator;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleEvaluator;
 import com.xa.mass.storage.rule.RuleType;

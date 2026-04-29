@@ -25,9 +25,9 @@ import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.storage.InMemoryRuleStorage;
 
 import java.util.Map;
 

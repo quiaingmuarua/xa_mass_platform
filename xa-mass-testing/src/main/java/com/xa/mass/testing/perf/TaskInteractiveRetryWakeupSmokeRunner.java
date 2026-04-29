@@ -22,6 +22,7 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -85,7 +86,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     new InMemoryTaskStorage(),
                     taskWorkRuntime);
             TaskEventService taskEvents = new TaskEventService(taskManager);
-            WorkerManager workerManager = new WorkerManager();
+            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
             ExecutorService bulkCallbackExecutor = Executors.newFixedThreadPool(config.bulkCallbackThreads(), r -> {

@@ -1,6 +1,5 @@
-package com.xa.mass.engine.storage;
+package com.xa.mass.storage.memory;
 
-import com.xa.mass.engine.rules.QLExpressRuleEvaluator;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleEvaluator;

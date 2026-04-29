@@ -6,6 +6,8 @@ Current scope:
 
 - `InMemoryTaskStorage`
 - `InMemoryWorkerStorage`
+- `InMemoryRuleStorage`
+- `QLExpressRuleEvaluator`
 - `InMemorySubmitterRegistry`
 
 These classes provide in-memory control-plane storage implementations shared by
@@ -16,4 +18,4 @@ Non-goals for this slice:
 
 - no runtime queue/lease ownership
 - no JDBC behavior
-- no rule-storage evaluator extraction yet
+- no engine lifecycle or assignment ownership

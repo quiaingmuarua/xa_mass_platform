@@ -1,4 +1,4 @@
-package com.xa.mass.engine.rules;
+package com.xa.mass.storage.memory;
 
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;

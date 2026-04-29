@@ -14,13 +14,13 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.storage.InMemoryRuleStorage;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
@@ -119,7 +119,7 @@ public class StorageExample {
                 .count();
         log.info("Workers by group - US: {}, GB: {}", usCount, gbCount);
 
-        var workerManager = new WorkerManager();
+        var workerManager = new WorkerManager(new InMemoryWorkerStorage());
         for (Worker w : workers) {
             workerManager.addWorker(w);
         }
@@ -128,7 +128,7 @@ public class StorageExample {
         List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+        var ruleManager = RuleManagerFactory.getProjectRuleManager(new InMemoryRuleStorage(), "demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(
                 new SimpleTaskScheduler(),
@@ -204,7 +204,7 @@ public class StorageExample {
                 .count();
         log.info("Workers by group - US: {}, GB: {}", usCount, gbCount);
 
-        var workerManager = new WorkerManager();
+        var workerManager = new WorkerManager(new InMemoryWorkerStorage());
         for (Worker w : workers) {
             workerManager.addWorker(w);
         }
@@ -248,8 +248,8 @@ public class StorageExample {
     public static void testMockAppActualRun() {
         log.info("=== testMockAppActualRun ===");
 
-        var workerManager = new WorkerManager();
-        var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+        var workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        var ruleManager = RuleManagerFactory.getProjectRuleManager(new InMemoryRuleStorage(), "demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(
                 new SimpleTaskScheduler(),

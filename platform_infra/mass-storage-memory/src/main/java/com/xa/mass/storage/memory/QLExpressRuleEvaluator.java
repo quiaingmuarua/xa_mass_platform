@@ -1,4 +1,4 @@
-package com.xa.mass.engine.rules;
+package com.xa.mass.storage.memory;
 
 import com.alibaba.qlexpress4.Express4Runner;
 import com.alibaba.qlexpress4.InitOptions;

@@ -12,6 +12,7 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,8 @@ public class RuleDebugExample {
 
         WorkerStorage workerStorage = new InMemoryWorkerStorage();
         WorkerManager workerManager = new WorkerManager(workerStorage);
-        RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getDefaultRuleManager();
+        RuleManager<Map<String, Object>> ruleManager =
+                RuleManagerFactory.getDefaultRuleManager(new InMemoryRuleStorage());
 
         generateTestData(workerManager);
         Task testTask = createTestTask();

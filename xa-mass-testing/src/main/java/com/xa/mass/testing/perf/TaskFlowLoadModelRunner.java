@@ -22,6 +22,7 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
@@ -88,7 +89,7 @@ public final class TaskFlowLoadModelRunner {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
             TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
             TaskEventService taskEvents = new TaskEventService(taskManager);
-            WorkerManager workerManager = new WorkerManager();
+            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             CallbackMetrics callbackMetrics = new CallbackMetrics();
             ReleaseMetrics releaseMetrics = new ReleaseMetrics();
