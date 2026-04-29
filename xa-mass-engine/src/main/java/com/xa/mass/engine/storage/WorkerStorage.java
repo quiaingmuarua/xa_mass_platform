@@ -20,14 +20,9 @@ public interface WorkerStorage {
     boolean updateWorker(Worker worker);
     boolean deleteWorker(String workerId);
     List<Worker> getWorkersByGroupId(String workerGroupId);
+    List<Worker> getWorkersBySupportedProject(String project);
+    List<Worker> getWorkersBySupportedEventCode(String eventCode);
     List<Worker> getAllWorkers();
-
-    default List<Worker> findWorkerCandidates(String project, String eventCode, String targetWorkerId) {
-        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return getWorker(targetWorkerId.trim()).map(List::of).orElse(List.of());
-        }
-        return getAllWorkers();
-    }
 
     void addWorkerContext(WorkerContext workerContext);
     List<WorkerContext> getWorkerContexts(String workerId);

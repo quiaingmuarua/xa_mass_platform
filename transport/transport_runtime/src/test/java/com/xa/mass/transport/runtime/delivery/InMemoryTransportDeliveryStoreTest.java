@@ -34,6 +34,18 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
+    void enqueueAndDrainUseCanonicalAdapterAndRouteKeys() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+
+        DispatchOutcome outcome = store.enqueue(envelope(" Polling ", item("msg-1", " worker-1 ")), 10);
+
+        assertEquals("polling", outcome.getAdapterId());
+        assertEquals("worker-1", outcome.getRouteKey());
+        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertTrue(store.drain(" Polling ", " worker-1 ", 10).isEmpty());
+    }
+
+    @Test
     void enqueueRejectsInvalidItem() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 

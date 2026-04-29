@@ -2,8 +2,18 @@ package com.xa.mass.engine.example;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.*;
-import com.xa.mass.engine.storage.*;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.base.model.UserRef;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.storage.InMemoryRuleStorage;
+import com.xa.mass.engine.storage.InMemoryTaskStorage;
+import com.xa.mass.engine.storage.InMemoryWorkerStorage;
+import com.xa.mass.engine.storage.RuleStorage;
+import com.xa.mass.engine.storage.TaskStorage;
+import com.xa.mass.engine.storage.TaskStorageFactory;
+import com.xa.mass.engine.storage.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,8 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * StorageFactoryExample — demonstrates how to use TaskStorageFactory to create different storage types.
- * Switch to Redis by changing the factory call.
+ * Demonstrates the active storage factory truth.
  */
 public class StorageFactoryExample {
 
@@ -21,7 +30,6 @@ public class StorageFactoryExample {
 
     public static void main(String[] args) {
         testInMemoryStorage();
-        testRedisStorage();
         testStorageFactory();
     }
 
@@ -46,8 +54,14 @@ public class StorageFactoryExample {
         workerContext.setStatus(WorkerContextStatus.IDLE);
 
         UserRef user = UserRef.of("testUser");
-
-        Task task = new Task("task-001", "Test Task", "demoApp", 100, java.util.Map.of("textContent", "Test content", "routingCode", "us"), user);
+        Task task = new Task(
+                "task-001",
+                "Test Task",
+                "demoApp",
+                100,
+                java.util.Map.of("textContent", "Test content", "routingCode", "us"),
+                user
+        );
 
         workerStorage.addWorker(worker);
         workerStorage.addWorkerContext(workerContext);
@@ -60,53 +74,8 @@ public class StorageFactoryExample {
         log.info("Workers: {}", workers.size());
         log.info("WorkerContext: {}", retrievedCtx.map(WorkerContext::getWorkerContextId).orElse("null"));
         log.info("Task: {}", retrievedTask.map(Task::getTid).orElse("null"));
-
+        log.info("Rule evaluators: {}", ruleStorage.getRegisteredEvaluatorTypes());
         log.info("=== testInMemoryStorage complete ===");
-    }
-
-    public static void testRedisStorage() {
-        log.info("=== testRedisStorage ===");
-
-        try {
-            WorkerStorage workerStorage = new RedisWorkerStorage();
-            TaskStorage taskStorage = new RedisTaskStorage();
-            RuleStorage ruleStorage = new RedisRuleStorage();
-
-            log.info("Redis storage instances created");
-
-            Worker worker = new Worker();
-            worker.setWorkerId("worker-002");
-            worker.setAgentVersion("1.0.1");
-            worker.setSupportedProjects(Arrays.asList("demoApp"));
-            worker.setWorkerGroupId("gb");
-
-            WorkerContext workerContext = new WorkerContext();
-            workerContext.setWorkerContextId("ctx-002");
-            workerContext.setWorkerId("worker-002");
-            workerContext.setRoutingTags(java.util.Set.of("gb"));
-            workerContext.setStatus(WorkerContextStatus.IDLE);
-
-            UserRef user = UserRef.of("testUser2");
-
-            Task task = new Task("task-002", "Test Task 2", "demoApp", 50, java.util.Map.of("textContent", "Test content 2", "routingCode", "gb"), user);
-
-            workerStorage.addWorker(worker);
-            workerStorage.addWorkerContext(workerContext);
-            taskStorage.saveTask(task);
-
-            List<Worker> workers = workerStorage.getAllWorkers();
-            Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContexts("worker-002").stream().findFirst();
-            Optional<Task> retrievedTask = taskStorage.getTask("task-002");
-
-            log.info("Workers: {}", workers.size());
-            log.info("WorkerContext: {}", retrievedCtx.map(WorkerContext::getWorkerContextId).orElse("null"));
-            log.info("Task: {}", retrievedTask.map(Task::getTid).orElse("null"));
-
-        } catch (Exception e) {
-            log.warn("Redis storage test failed — Redis server may not be running: {}", e.getMessage());
-        }
-
-        log.info("=== testRedisStorage complete ===");
     }
 
     public static void testStorageFactory() {
@@ -116,14 +85,13 @@ public class StorageFactoryExample {
         log.info("In-memory storage created: {}", inMemoryStorage.getClass().getSimpleName());
 
         try {
-            TaskStorage redisStorage = TaskStorageFactory.createTaskStorage("redis");
-            log.info("Redis storage created: {}", redisStorage.getClass().getSimpleName());
+            TaskStorageFactory.createTaskStorage("redis");
         } catch (Exception e) {
-            log.warn("Redis storage creation failed: {}", e.getMessage());
+            log.info("Redis storage path correctly fails fast: {}", e.getMessage());
         }
 
         try {
-            TaskStorage unknownStorage = TaskStorageFactory.createTaskStorage("unknown");
+            TaskStorageFactory.createTaskStorage("unknown");
         } catch (IllegalArgumentException e) {
             log.info("Unknown storage type correctly rejected: {}", e.getMessage());
         }
@@ -131,17 +99,35 @@ public class StorageFactoryExample {
         UserRef user1 = UserRef.of("factoryUser1");
         UserRef user2 = UserRef.of("factoryUser2");
 
-        Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", 100, java.util.Map.of("textContent", "Factory content 1", "routingCode", "us"), user1);
-        Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", 50, java.util.Map.of("textContent", "Factory content 2", "routingCode", "gb"), user2);
+        Task task1 = new Task(
+                "task-factory-001",
+                "Factory Task 1",
+                "demoApp",
+                100,
+                java.util.Map.of("textContent", "Factory content 1", "routingCode", "us"),
+                user1
+        );
+        Task task2 = new Task(
+                "task-factory-002",
+                "Factory Task 2",
+                "demoApp",
+                50,
+                java.util.Map.of("textContent", "Factory content 2", "routingCode", "gb"),
+                user2
+        );
 
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);
 
         List<Task> allTasks = inMemoryStorage.getAllTasks();
         log.info("Tasks in storage: {}", allTasks.size());
-
         for (Task task : allTasks) {
-            log.info("Task: {} (routingCode: {}, project: {})", task.getTid(), TaskSharedConfig.routingCode(task), task.getProject());
+            log.info(
+                    "Task: {} (routingCode: {}, project: {})",
+                    task.getTid(),
+                    TaskSharedConfig.routingCode(task),
+                    task.getProject()
+            );
         }
 
         log.info("=== testStorageFactory complete ===");

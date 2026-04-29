@@ -54,6 +54,16 @@ public class RedisWorkerStorage implements WorkerStorage {
     }
 
     @Override
+    public List<Worker> getWorkersBySupportedProject(String project) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<Worker> getWorkersBySupportedEventCode(String eventCode) {
+        throw unsupported();
+    }
+
+    @Override
     public List<Worker> getAllWorkers() {
         throw unsupported();
     }

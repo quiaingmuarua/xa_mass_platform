@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
@@ -27,6 +28,6 @@ public final class RuntimeDispatchOutcomes {
     }
 
     public static boolean missingRoute(TransportDispatchEnvelope envelope) {
-        return envelope == null || envelope.getRouteKey() == null || envelope.getRouteKey().isBlank();
+        return envelope == null || !TransportDeliveryAddressing.hasRouteKey(envelope.getRouteKey());
     }
 }

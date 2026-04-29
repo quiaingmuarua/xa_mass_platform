@@ -96,6 +96,22 @@ class InMemoryTaskStorageTest {
     }
 
     @Test
+    void updateTaskRefreshesProjectIndexAfterInPlaceMutation() {
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        Task task = runningTask("project-mutable", LocalDateTime.now(), 60);
+        task.setProject("demoApp");
+        storage.saveTask(task);
+
+        Task stored = storage.getTask("project-mutable").orElseThrow();
+        stored.setProject("crawlerApp");
+        assertTrue(storage.updateTask(stored));
+
+        assertTrue(storage.getTasksByProject("demoApp").isEmpty());
+        assertEquals(List.of("project-mutable"),
+                storage.getTasksByProject("crawlerApp").stream().map(Task::getTid).toList());
+    }
+
+    @Test
     void terminalTaskIsRemovedFromMaxRuntimeDeadlineIndex() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         LocalDateTime now = LocalDateTime.now();
@@ -153,6 +169,24 @@ class InMemoryTaskStorageTest {
         assertTrue(storage.getTaskMessages("task-1").isEmpty());
         assertTrue(storage.getNonFinalTaskMessages("task-1").isEmpty());
         assertTrue(storage.getTaskMessageAttempts("task-1", "msg-init").isEmpty());
+    }
+
+    @Test
+    void saveTaskDoesNotResetExistingMessageAndAttemptBuckets() {
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
+
+        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
+        storage.addTaskMessage("task-1", init);
+        storage.addTaskMessageAttempt("task-1", "msg-init", attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING));
+
+        Task replacement = runningTask("task-1", LocalDateTime.now(), 120);
+        storage.saveTask(replacement);
+
+        assertEquals(1, storage.countTaskMessages("task-1"));
+        assertEquals(List.of("msg-init"),
+                storage.getTaskMessages("task-1").stream().map(TaskMsg::getMessageId).toList());
+        assertEquals(1, storage.getTaskMessageAttempts("task-1", "msg-init").size());
     }
 
     private TaskMsgAttempt attempt(String attemptId, int attemptNo, TaskMsgAttemptStatus status) {

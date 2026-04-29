@@ -49,6 +49,7 @@ The shared kernel is:
 
 ## Module Map
 
+- `platform_infra/mass-queue-primitives`: narrow keyed queue/blocking-poll/backpressure primitive used by runtime modules that should not own queue bookkeeping directly
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
 - `platform_infra/mass-runtime-redis`: Redis runtime keyspace/index baseline plus future `TaskWorkRuntime` module; not part of the current verified runtime path

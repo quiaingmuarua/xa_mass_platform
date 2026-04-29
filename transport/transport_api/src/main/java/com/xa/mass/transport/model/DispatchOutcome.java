@@ -24,8 +24,8 @@ public final class DispatchOutcome {
                            boolean retryable,
                            String reason) {
         this.deliveryId = normalizeText(deliveryId);
-        this.adapterId = normalize(adapterId);
-        this.routeKey = normalizeText(routeKey);
+        this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
+        this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
         this.correlationKey = normalizeText(correlationKey);
         this.status = Objects.requireNonNull(status, "status");
         this.retryable = retryable;
@@ -107,17 +107,7 @@ public final class DispatchOutcome {
         return reason;
     }
 
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim().toLowerCase(java.util.Locale.ROOT);
-    }
-
     private static String normalizeText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
+        return TransportDeliveryAddressing.normalizeText(value);
     }
 }

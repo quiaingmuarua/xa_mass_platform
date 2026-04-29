@@ -99,9 +99,9 @@ Rules:
 - Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-server` consumes it and owns the current HTTP/control-console/frontend shell
-- shared runtime queue/lease/counter contracts now live in `platform_infra/mass-runtime-api`; the current in-memory runtime implementation lives in `platform_infra/mass-runtime-memory`
+- shared runtime queue/lease/counter contracts now live in `platform_infra/mass-runtime-api`; narrow keyed queue/blocking-poll primitives now live in `platform_infra/mass-queue-primitives`; the current in-memory runtime implementation lives in `platform_infra/mass-runtime-memory`
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `platform_infra/mass-runtime-api`, `platform_infra/mass-runtime-memory`, `transport/transport_api`, `transport/polling-adapter`, `transport/transport_runtime`, `transport/socket-adapter`, `xa-mass-engine`, `transport/websocket-adapter`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-worker-pack`, and `xa-mass-server`
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `platform_infra/mass-queue-primitives`, `platform_infra/mass-runtime-api`, `platform_infra/mass-runtime-memory`, `transport/transport_api`, `transport/polling-adapter`, `transport/transport_runtime`, `transport/socket-adapter`, `xa-mass-engine`, `transport/websocket-adapter`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-worker-pack`, and `xa-mass-server`
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell E2E
 
 ## 6. Current Contract Summary

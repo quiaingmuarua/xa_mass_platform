@@ -42,7 +42,7 @@ Current transport already has the right permanent concepts:
 
 - `TaskDispatchChannel`
 - `DispatchOutcome`
-- `TransportDelivery`
+- `TransportDispatchEnvelope`
 - `TransportDeliveryService`
 - `TransportDeliveryStore`
 - `TransportResultEnvelope`

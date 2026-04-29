@@ -1,6 +1,5 @@
 package com.xa.mass.transport.model;
 
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -24,9 +23,9 @@ public final class TransportDispatchEnvelope {
                                      TaskDispatchItem payload,
                                      long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
-        this.adapterId = normalizeAdapterId(adapterId);
-        this.routeKey = routeKey == null ? null : routeKey.trim();
-        this.correlationKey = correlationKey == null || correlationKey.isBlank() ? null : correlationKey.trim();
+        this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
+        this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
+        this.correlationKey = TransportDeliveryAddressing.normalizeText(correlationKey);
         this.payload = Objects.requireNonNull(payload, "payload");
         this.createdAtEpochMillis = createdAtEpochMillis;
     }
@@ -78,10 +77,4 @@ public final class TransportDispatchEnvelope {
         return value.trim();
     }
 
-    private static String normalizeAdapterId(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim().toLowerCase(Locale.ROOT);
-    }
 }

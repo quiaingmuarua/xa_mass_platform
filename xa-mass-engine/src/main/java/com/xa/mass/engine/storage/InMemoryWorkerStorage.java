@@ -72,31 +72,28 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     }
 
     @Override
-    public List<Worker> getAllWorkers() {
-        return new ArrayList<>(workers.values());
+    public List<Worker> getWorkersBySupportedProject(String project) {
+        synchronized (this) {
+            String normalizedProject = normalize(project);
+            return normalizedProject == null
+                    ? List.of()
+                    : workersByIndexedIds(workerIdsByProject.get(normalizedProject));
+        }
     }
 
     @Override
-    public List<Worker> findWorkerCandidates(String project, String eventCode, String targetWorkerId) {
+    public List<Worker> getWorkersBySupportedEventCode(String eventCode) {
         synchronized (this) {
-            String normalizedTargetWorkerId = normalize(targetWorkerId);
-            if (normalizedTargetWorkerId != null) {
-                Worker worker = workers.get(normalizedTargetWorkerId);
-                return worker == null ? List.of() : List.of(worker);
-            }
-
             String normalizedEventCode = normalize(eventCode);
-            if (normalizedEventCode != null) {
-                return workersByIndexedIds(workerIdsByEventCode.get(normalizedEventCode));
-            }
-
-            String normalizedProject = normalize(project);
-            if (normalizedProject != null) {
-                return workersByIndexedIds(workerIdsByProject.get(normalizedProject));
-            }
-
-            return new ArrayList<>(workers.values());
+            return normalizedEventCode == null
+                    ? List.of()
+                    : workersByIndexedIds(workerIdsByEventCode.get(normalizedEventCode));
         }
+    }
+
+    @Override
+    public List<Worker> getAllWorkers() {
+        return new ArrayList<>(workers.values());
     }
 
     @Override

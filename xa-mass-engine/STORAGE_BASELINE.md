@@ -59,17 +59,17 @@ not a product dependency on one schema flavor's quirks.
 
 ## TaskStorage
 
-`TaskStorage` owns task truth plus the compatibility APIs used by runtime
-message/attempt projection.
+`TaskStorage` owns task truth plus the narrow compatibility projection APIs
+still needed by engine convergence and result repair.
 
 Main responsibilities:
 
 - save and load `Task`
 - update and delete `Task`
 - query tasks by status
-- expose `TaskMsg` projection APIs needed by runtime convergence
-- expose `TaskMsgAttempt` projection APIs needed by result handling
-- expose task-message statistics for lifecycle convergence
+- expose bounded `TaskMsg` projection reads needed by runtime convergence
+- expose bounded `TaskMsgAttempt` projection reads needed by result handling
+- expose task-message statistics for lifecycle convergence and audit checks
 
 What `TaskStorage` does not own anymore:
 
@@ -89,16 +89,22 @@ public interface TaskStorage {
     boolean updateTask(Task task);
     boolean deleteTask(String taskId);
     List<Task> getAllTasks();
-    List<Task> getTasksByStatus(String status);
+    List<Task> getTasksByStatus(TaskStatus status);
+    List<Task> getTasksByProject(String project);
     List<Task> getSchedulableTasks();
+    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit);
     void addTaskMessage(String taskId, TaskMsg taskMsg);
     List<TaskMsg> getTaskMessages(String taskId);
+    List<TaskMsg> getTaskMessages(String taskId, int limit);
+    List<TaskMsg> getNonFinalTaskMessages(String taskId);
+    long countTaskMessages(String taskId);
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
     Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
     Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId);
+    TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
     TaskMessageStats getTaskMessageStats(String taskId);
     TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId);
@@ -110,6 +116,7 @@ Important current usage notes:
 - task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
+- scan-heavy fallback default methods were intentionally removed from the interface; each backend must now opt into these behaviors explicitly instead of inheriting silent O(n) scans
 - `getTaskMessages(...)` is a storage-level compatibility/demo snapshot plus temporary internal cleanup helper; the `TaskManager` public facade should stay on bounded reads while explicit audits/tests may still traverse the storage snapshot
 - the server JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
   process-local; after restart, only `Task` truth is recovered from DB
@@ -139,6 +146,8 @@ public interface WorkerStorage {
     boolean updateWorker(Worker worker);
     boolean deleteWorker(String workerId);
     List<Worker> getWorkersByGroupId(String workerGroupId);
+    List<Worker> getWorkersBySupportedProject(String project);
+    List<Worker> getWorkersBySupportedEventCode(String eventCode);
     List<Worker> getAllWorkers();
 
     void addWorkerContext(WorkerContext workerContext);
@@ -158,6 +167,7 @@ public interface WorkerStorage {
 Important current usage notes:
 
 - `Worker.status` is the single online truth; do not create a second online registry in storage docs or future APIs
+- worker candidate composition is owned by `WorkerManager`, not by `WorkerStorage`; storage only exposes stable indexed lookups such as target-id, project, and event-code reads
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`; the
   server JDBC adapter keeps that lock truth process-local instead of persisting
   lock churn in the control-plane DB
@@ -212,10 +222,17 @@ The verified mainline implementations are:
 Current `InMemoryWorkerStorage` behavior that matters architecturally:
 
 - workers are stored by `workerId`
+- project and event-code indexes are stored separately from the `Worker` object so in-place worker mutation does not silently break candidate lookup correctness
 - worker contexts are grouped under owner worker by `workerId`
 - a secondary `workerIdByContextId` map supports direct lookup by `workerContextId`
 - deleting a worker also removes owned worker contexts and lock state
 - worker locks are runtime-only storage truth, maintained separately from the `Worker` model
+
+Current `InMemoryTaskStorage` behavior that matters architecturally:
+
+- task status, project, schedulable, and max-runtime-deadline indexes are maintained separately from the `Task` object
+- `saveTask(...)` no longer resets existing message or attempt buckets for the same `taskId`
+- pending-logical-message and latest-active-attempt helper indexes are explicit implementation details used to avoid full compatibility-snapshot scans on hot runtime paths
 
 ## Manager Wiring
 

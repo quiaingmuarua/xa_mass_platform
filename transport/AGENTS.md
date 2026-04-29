@@ -13,8 +13,9 @@ This file is the local handoff for `transport/`. Read the repo-root [AGENTS.md](
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is runtime truth. `transportHint` is only a coarse transport family hint.
 - `com.xa.mass.sdk.transport.*` is SDK composition, not transport module internals.
-- Stable transport concepts are limited to dispatch channel/outcome, runtime delivery,
-  result ingest, and result envelope. See [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md).
+- Stable transport concepts are limited to dispatch channel/outcome, runtime
+  delivery envelope/store, result ingest, and result envelope. See
+  [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md).
 - Observability belongs in logs, traces, and bounded queue/executor diagnostics, not scan-heavy transport-owned state.
 - For high-volume transport design work, use [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md). Do not treat it as a statement of what is already implemented.
 
@@ -76,7 +77,8 @@ Prefer extending one of the stable concepts below over adding a new model:
 
 - `TaskDispatchChannel`
 - `DispatchOutcome`
-- `TransportDelivery`
+- `TransportDispatchEnvelope`
+- `TransportDeliveryStore`
 - `TaskResultIngestChannel`
 - `TransportResultEnvelope`
 

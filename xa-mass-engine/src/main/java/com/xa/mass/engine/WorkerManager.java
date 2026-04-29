@@ -97,7 +97,17 @@ public class WorkerManager {
         String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         String project = task != null ? task.getProject() : null;
-        return workerStorage.findWorkerCandidates(project, eventCode, targetWorkerId);
+        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
+            Worker targetWorker = getWorker(targetWorkerId.trim());
+            return targetWorker == null ? List.of() : List.of(targetWorker);
+        }
+        if (eventCode != null && !eventCode.isBlank()) {
+            return workerStorage.getWorkersBySupportedEventCode(eventCode);
+        }
+        if (project != null && !project.isBlank()) {
+            return workerStorage.getWorkersBySupportedProject(project);
+        }
+        return workerStorage.getAllWorkers();
     }
 
     public List<WorkerContext> getAllWorkerContexts() {

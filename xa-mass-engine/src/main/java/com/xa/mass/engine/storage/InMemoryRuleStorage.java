@@ -5,13 +5,16 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleEvaluator;
 import com.xa.mass.engine.rules.RuleType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 内存规则存储实现
- * 使用ConcurrentHashMap保证线程安全
+ * In-memory rule storage with one process-local evaluator registry.
  */
 public class InMemoryRuleStorage implements RuleStorage {
 
@@ -19,7 +22,6 @@ public class InMemoryRuleStorage implements RuleStorage {
     private final Map<RuleType, RuleEvaluator> evaluatorMap = new ConcurrentHashMap<>();
 
     public InMemoryRuleStorage() {
-        // 注册默认的评估器
         registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
     }
 
@@ -99,7 +101,6 @@ public class InMemoryRuleStorage implements RuleStorage {
     public void clear() {
         ruleMap.clear();
         evaluatorMap.clear();
-        // 重新注册默认评估器
         registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
     }
-} 
+}

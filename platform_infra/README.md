@@ -4,6 +4,7 @@ Status: shared platform infrastructure module family.
 
 Current phase-1 scope:
 
+- `mass-queue-primitives`
 - `mass-runtime-api`
 - `mass-runtime-memory`
 - `mass-runtime-redis`
@@ -14,6 +15,7 @@ workflow, task strategy, or transport-specific protocol behavior.
 
 Current truth for this conservative first slice:
 
+- `mass-queue-primitives` owns narrow keyed queue/blocking-poll/backpressure mechanics shared by runtime modules without redefining task or transport semantics
 - `mass-runtime-api` owns the shared `TaskWorkRuntime` contract and related value types
 - `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
 - `mass-runtime-redis` now owns the Redis runtime keyspace/index baseline and remains outside the verified runtime path

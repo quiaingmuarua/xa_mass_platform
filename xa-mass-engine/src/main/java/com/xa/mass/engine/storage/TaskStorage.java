@@ -24,41 +24,11 @@ public interface TaskStorage {
 
     List<Task> getTasksByStatus(TaskStatus status);
 
-    /**
-     * Returns all tasks belonging to the given project.
-     *
-     * <p>Default implementation scans {@link #getAllTasks()}; storage backends
-     * should override this with an indexed query for better performance.
-     */
-    default List<Task> getTasksByProject(String project) {
-        return getAllTasks().stream()
-                .filter(t -> project != null && project.equals(t.getProject()))
-                .collect(java.util.stream.Collectors.toList());
-    }
+    List<Task> getTasksByProject(String project);
 
     List<Task> getSchedulableTasks();
 
-    /**
-     * Returns non-terminal tasks whose max-runtime deadline is due.
-     *
-     * <p>Default implementation scans tasks; storage backends should override
-     * this with a deadline index so watchdog enforcement does not depend on
-     * full task-list scans.
-     */
-    default List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
-        if (now == null || limit <= 0) {
-            return List.of();
-        }
-        return getAllTasks().stream()
-                .filter(task -> task != null
-                        && task.getStatus() != null
-                        && !task.getStatus().isFinal()
-                        && task.getMaxRuntimeSeconds() > 0
-                        && task.getStartTime() != null
-                        && task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds()).isBefore(now))
-                .limit(limit)
-                .collect(java.util.stream.Collectors.toList());
-    }
+    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit);
 
     void addTaskMessage(String taskId, TaskMsg taskMsg);
 
@@ -73,31 +43,16 @@ public interface TaskStorage {
      * Bounded compatibility projection read. This is not pagination and should
      * not become a high-volume detail API.
      */
-    default List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        if (limit <= 0) {
-            return List.of();
-        }
-        return getTaskMessages(taskId).stream()
-                .limit(limit)
-                .collect(java.util.stream.Collectors.toList());
-    }
+    List<TaskMsg> getTaskMessages(String taskId, int limit);
 
     /**
      * Internal cleanup/convergence helper for logical messages that are not yet
      * final. Mainline runtime control flow should prefer this over full
      * task-message snapshots when it only needs pending work.
      */
-    default List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return getTaskMessages(taskId).stream()
-                .filter(taskMsg -> taskMsg != null
-                        && taskMsg.getStatus() != null
-                        && !taskMsg.getStatus().isFinal())
-                .collect(java.util.stream.Collectors.toList());
-    }
+    List<TaskMsg> getNonFinalTaskMessages(String taskId);
 
-    default long countTaskMessages(String taskId) {
-        return getTaskMessageStats(taskId).getTotal();
-    }
+    long countTaskMessages(String taskId);
 
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
 
@@ -109,16 +64,7 @@ public interface TaskStorage {
 
     Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
 
-    default Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, messageId);
-        for (int i = attempts.size() - 1; i >= 0; i--) {
-            TaskMsgAttempt attempt = attempts.get(i);
-            if (attempt != null && attempt.getStatus() != null && attempt.getStatus().isActive()) {
-                return Optional.of(attempt);
-            }
-        }
-        return Optional.empty();
-    }
+    Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 
     /**
      * Bounded audit helper for one logical task-message's attempt history.
@@ -128,39 +74,7 @@ public interface TaskStorage {
      * {@link TaskMsgAttempt} row for the message unless the backend has no
      * better index.</p>
      */
-    default TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, messageId);
-        long totalAttempts = 0;
-        long activeAttempts = 0;
-        long runningAttempts = 0;
-        long failedAttempts = 0;
-        long expiredAttempts = 0;
-        for (TaskMsgAttempt attempt : attempts) {
-            if (attempt == null) {
-                continue;
-            }
-            totalAttempts++;
-            if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
-                activeAttempts++;
-            }
-            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING) {
-                runningAttempts++;
-            }
-            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.FAILED) {
-                failedAttempts++;
-            }
-            if (attempt.getStatus() == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.EXPIRED) {
-                expiredAttempts++;
-            }
-        }
-        return new TaskMessageAttemptStats(
-                totalAttempts,
-                activeAttempts,
-                runningAttempts,
-                failedAttempts,
-                expiredAttempts
-        );
-    }
+    TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
 
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 

@@ -32,7 +32,10 @@ Transport should stay centered on these concepts only:
 
 - `TaskDispatchChannel`: adapter dispatch SPI returning `DispatchOutcome`
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
-- `TransportDelivery`: runtime-owned delivery record, not a `TaskMsg` replacement
+- `TransportDispatchEnvelope`: runtime-owned dispatch envelope, not a `TaskMsg`
+  replacement
+- `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
+  delivery
 - `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 
@@ -93,6 +96,24 @@ security model explicitly changes.
 for token generation, storage, expiry, retry interaction, old-worker behavior,
 and rejection semantics.
 
+## Delivery Addressing
+
+Transport delivery addressing is the pair:
+
+- `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
+- `routeKey`: adapter-local delivery address such as worker id / session id / endpoint id
+
+Current runtime rules:
+
+- `adapterId` is canonicalized by trim + lowercase
+- `routeKey` is canonicalized by trim only; case is preserved
+- blank `routeKey` is invalid for both queued delivery and direct-send delivery
+- queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
+- `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as
+  task, attempt, lease, or business routing truth
+- future Redis/JDBC queue replacements must preserve the same canonical addressing
+  rules and must not require hot-path scans to recover queue ownership
+
 ## Forbidden Drift
 
 Do not let transport grow these responsibilities:
@@ -107,7 +128,7 @@ Do not let transport grow these responsibilities:
 
 Do not add generic-looking transport models such as `TransportTask`,
 `TransportTaskMessage`, `WorkerDeliveryState`, or `TaskTransportSnapshot`
-without first proving why the existing five stable concepts cannot carry the
+without first proving why the existing stable concepts cannot carry the
 behavior.
 
 ## Hot-Path Rule
@@ -120,9 +141,9 @@ should provide an indexed lookup for:
 (taskId, messageId) -> latest active attempt
 ```
 
-Dispatch is also a hot path. Delivery queues may store `TransportDelivery`, but
-they should avoid deep-copying task payload maps beyond the immutable copies
-already owned by `TaskDispatchItem`.
+Dispatch is also a hot path. Delivery queues currently store
+`TransportDispatchEnvelope` values and should avoid deep-copying task payload
+maps beyond the immutable copies already owned by `TaskDispatchItem`.
 
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has both per-worker queue caps and a configurable total
@@ -132,6 +153,11 @@ backlog, queue, backlog age, and waiting-poller diagnostics. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.
+
+Queue mechanics such as keyed FIFO storage, blocking poll coordination,
+per-key/global admission, and queue snapshot counters may live under
+`platform_infra` so long as transport semantics remain owned by
+`TransportDeliveryStore`, `TransportDispatchEnvelope`, and `DispatchOutcome`.
 
 Observability rule:
 

@@ -3,12 +3,12 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -148,10 +148,8 @@ public final class TransportDeliveryService {
     }
 
     private String normalizeAdapterId(String adapterId) {
-        if (adapterId == null || adapterId.isBlank()) {
-            return "unknown";
-        }
-        return adapterId.trim().toLowerCase(Locale.ROOT);
+        String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
+        return normalizedAdapterId == null ? "unknown" : normalizedAdapterId;
     }
 
     private static final class DirectDeliveryCounters {

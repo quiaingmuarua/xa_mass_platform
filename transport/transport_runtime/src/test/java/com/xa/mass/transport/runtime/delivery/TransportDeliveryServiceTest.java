@@ -129,6 +129,24 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
+    void pollUsesCanonicalAdapterAndRouteKeys() {
+        TransportDeliveryService service = service();
+        TaskDispatchItem item = item("msg-1", " worker-1 ");
+        service.enqueue(List.of(new TransportDispatchEnvelope(
+                "delivery-msg-1",
+                " Polling ",
+                " worker-1 ",
+                item.attemptId(),
+                item,
+                1L
+        )), 10);
+
+        assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
+    }
+
+    @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
         service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);

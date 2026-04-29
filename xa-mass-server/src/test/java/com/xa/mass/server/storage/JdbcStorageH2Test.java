@@ -83,7 +83,8 @@ class JdbcStorageH2Test {
 
             assertThat(storage.getWorker("worker-1")).isPresent();
             assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
-            assertThat(storage.findWorkerCandidates("demoApp", "event.demo", null)).hasSize(1);
+            assertThat(storage.getWorkersBySupportedProject("demoApp")).hasSize(1);
+            assertThat(storage.getWorkersBySupportedEventCode("event.demo")).hasSize(1);
             assertThat(storage.getWorkerContexts("worker-1")).hasSize(1);
             assertThat(storage.getWorkerContextById("ctx-1")).isPresent();
             assertThat(storage.tryLockWorker("worker-1")).isTrue();

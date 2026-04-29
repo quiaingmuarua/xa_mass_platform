@@ -24,6 +24,12 @@ import java.util.stream.Collectors;
 public class InMemoryTaskStorage implements TaskStorage {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
+    private final Map<TaskStatus, java.util.LinkedHashSet<String>> taskIdsByStatus = new ConcurrentHashMap<>();
+    private final Map<String, java.util.LinkedHashSet<String>> taskIdsByProject = new ConcurrentHashMap<>();
+    private final java.util.LinkedHashSet<String> schedulableTaskIds = new java.util.LinkedHashSet<>();
+    private final Map<String, TaskStatus> indexedStatusByTask = new ConcurrentHashMap<>();
+    private final Map<String, String> indexedProjectByTask = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> indexedSchedulableByTask = new ConcurrentHashMap<>();
     private final Map<String, MessageBucket> taskMessages = new ConcurrentHashMap<>();
     private final Map<String, Map<String, AttemptBucket>> taskMessageAttempts = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> maxRuntimeDeadlineByTask = new ConcurrentHashMap<>();
@@ -32,10 +38,12 @@ public class InMemoryTaskStorage implements TaskStorage {
     );
 
     @Override
-    public void saveTask(Task task) {
-        tasks.put(task.getTid(), task);
-        taskMessages.put(task.getTid(), new MessageBucket());
-        taskMessageAttempts.put(task.getTid(), new ConcurrentHashMap<>());
+    public synchronized void saveTask(Task task) {
+        Task previous = tasks.put(task.getTid(), task);
+        removeTaskIndexes(previous);
+        addTaskIndexes(task);
+        taskMessages.computeIfAbsent(task.getTid(), ignored -> new MessageBucket());
+        taskMessageAttempts.computeIfAbsent(task.getTid(), ignored -> new ConcurrentHashMap<>());
         updateMaxRuntimeDeadline(task);
     }
 
@@ -45,18 +53,21 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
-    public boolean updateTask(Task task) {
+    public synchronized boolean updateTask(Task task) {
         if (task == null || task.getTid() == null || !tasks.containsKey(task.getTid())) {
             return false;
         }
-        tasks.put(task.getTid(), task);
+        Task previous = tasks.put(task.getTid(), task);
+        removeTaskIndexes(previous);
+        addTaskIndexes(task);
         updateMaxRuntimeDeadline(task);
         return true;
     }
 
     @Override
-    public boolean deleteTask(String taskId) {
+    public synchronized boolean deleteTask(String taskId) {
         Task removed = tasks.remove(taskId);
+        removeTaskIndexes(removed);
         taskMessages.remove(taskId);
         taskMessageAttempts.remove(taskId);
         clearMaxRuntimeDeadline(taskId);
@@ -70,16 +81,26 @@ public class InMemoryTaskStorage implements TaskStorage {
 
     @Override
     public List<Task> getTasksByStatus(TaskStatus status) {
-        return tasks.values().stream()
-                .filter(task -> task.getStatus() == status)
-                .collect(Collectors.toList());
+        synchronized (this) {
+            return tasksByIds(taskIdsByStatus.get(status));
+        }
+    }
+
+    @Override
+    public List<Task> getTasksByProject(String project) {
+        synchronized (this) {
+            String normalizedProject = normalize(project);
+            return normalizedProject == null
+                    ? List.of()
+                    : tasksByIds(taskIdsByProject.get(normalizedProject));
+        }
     }
 
     @Override
     public List<Task> getSchedulableTasks() {
-        return tasks.values().stream()
-                .filter(Task::isSchedulable)
-                .collect(Collectors.toList());
+        synchronized (this) {
+            return tasksByIds(schedulableTaskIds);
+        }
     }
 
     @Override
@@ -289,6 +310,88 @@ public class InMemoryTaskStorage implements TaskStorage {
             return null;
         }
         return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
+    }
+
+    private void addTaskIndexes(Task task) {
+        if (task == null || task.getTid() == null) {
+            return;
+        }
+        TaskStatus status = task.getStatus();
+        if (status != null) {
+            taskIdsByStatus.computeIfAbsent(status, ignored -> new java.util.LinkedHashSet<>())
+                    .add(task.getTid());
+            indexedStatusByTask.put(task.getTid(), status);
+        } else {
+            indexedStatusByTask.remove(task.getTid());
+        }
+        String project = normalize(task.getProject());
+        if (project != null) {
+            taskIdsByProject.computeIfAbsent(project, ignored -> new java.util.LinkedHashSet<>())
+                    .add(task.getTid());
+            indexedProjectByTask.put(task.getTid(), project);
+        } else {
+            indexedProjectByTask.remove(task.getTid());
+        }
+        if (task.isSchedulable()) {
+            schedulableTaskIds.add(task.getTid());
+            indexedSchedulableByTask.put(task.getTid(), Boolean.TRUE);
+        } else {
+            schedulableTaskIds.remove(task.getTid());
+            indexedSchedulableByTask.put(task.getTid(), Boolean.FALSE);
+        }
+    }
+
+    private void removeTaskIndexes(Task task) {
+        if (task == null || task.getTid() == null) {
+            return;
+        }
+        TaskStatus indexedStatus = indexedStatusByTask.remove(task.getTid());
+        if (indexedStatus != null) {
+            removeTaskIndex(taskIdsByStatus, indexedStatus, task.getTid());
+        }
+        String indexedProject = indexedProjectByTask.remove(task.getTid());
+        if (indexedProject != null) {
+            removeTaskIndex(taskIdsByProject, indexedProject, task.getTid());
+        }
+        Boolean indexedSchedulable = indexedSchedulableByTask.remove(task.getTid());
+        if (Boolean.TRUE.equals(indexedSchedulable)) {
+            schedulableTaskIds.remove(task.getTid());
+        } else {
+            schedulableTaskIds.remove(task.getTid());
+        }
+    }
+
+    private <K> void removeTaskIndex(Map<K, java.util.LinkedHashSet<String>> index, K key, String taskId) {
+        java.util.LinkedHashSet<String> taskIds = index.get(key);
+        if (taskIds == null) {
+            return;
+        }
+        taskIds.remove(taskId);
+        if (taskIds.isEmpty()) {
+            index.remove(key);
+        }
+    }
+
+    private List<Task> tasksByIds(java.util.Collection<String> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return List.of();
+        }
+        List<Task> result = new ArrayList<>(taskIds.size());
+        for (String taskId : taskIds) {
+            Task task = tasks.get(taskId);
+            if (task != null) {
+                result.add(task);
+            }
+        }
+        return result;
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
     private record TaskRuntimeDeadline(String taskId, LocalDateTime deadline) {
