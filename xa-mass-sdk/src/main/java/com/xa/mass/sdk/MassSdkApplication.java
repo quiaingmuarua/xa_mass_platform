@@ -25,7 +25,6 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
-import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
@@ -62,9 +61,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
-    private final InMemorySubmitterRegistry submitterRegistry;
-    private final InMemoryClientPermissionProvider clientPermissionProvider;
-    private final InMemoryUserPermissionProvider userPermissionProvider;
+    private final SubmitterRegistry submitterRegistry;
     private final EventPermissionService eventPermissionService;
     private final MassEventRuntime eventRuntime;
     private final EventDefinitionRegistry eventDefinitionRegistry;
@@ -72,18 +69,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final ProjectEventCatalog sdkMetadataCatalogView;
 
     MassSdkApplication(MassApplication delegate) {
-        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry());
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
     }
 
     MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry) {
+        this(delegate, bootstrapProjectCatalogRegistry, new InMemorySubmitterRegistry());
+    }
+
+    MassSdkApplication(MassApplication delegate, SubmitterRegistry submitterRegistry) {
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), submitterRegistry);
+    }
+
+    MassSdkApplication(MassApplication delegate,
+                       ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry,
+                       SubmitterRegistry submitterRegistry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.bootstrapProjectCatalogRegistry = Objects.requireNonNull(
                 bootstrapProjectCatalogRegistry,
                 "bootstrapProjectCatalogRegistry"
         );
-        this.submitterRegistry = new InMemorySubmitterRegistry();
-        this.clientPermissionProvider = new InMemoryClientPermissionProvider();
-        this.userPermissionProvider = new InMemoryUserPermissionProvider();
+        this.submitterRegistry = Objects.requireNonNull(submitterRegistry, "submitterRegistry");
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new EventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
@@ -94,11 +99,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEvent,
                 this::getEventsForProject
         );
-        this.eventPermissionService = new DefaultEventPermissionService(
-                clientPermissionProvider,
-                userPermissionProvider,
-                sdkMetadataCatalogView
-        );
+        this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
         registerControlPlaneEventHandlers();
@@ -117,21 +118,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public EventResponse dispatchEvent(EventRequest request, EventPrincipal principal) {
+    public EventResponse dispatchEvent(EventRequest request, PrincipalContext principal) {
         Objects.requireNonNull(request, "request");
         AuthorizationDecision decision = eventPermissionService.authorize(principal, request);
         if (!decision.isAllowed()) {
             return EventResponse.failure("FORBIDDEN", decision.getReason(), request.getRequestId());
         }
         return dispatchEventInternal(request, principal);
-    }
-
-    public void grantClientEventPermissions(String clientId, Collection<String> eventCodes) {
-        clientPermissionProvider.grant(clientId, eventCodes);
-    }
-
-    public void grantUserEventPermissions(String userId, Collection<String> eventCodes) {
-        userPermissionProvider.grant(userId, eventCodes);
     }
 
     @Override
@@ -503,12 +496,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public TaskSubmitterContext authenticateSubmitter(String credential) {
+    public PrincipalContext authenticateSubmitter(String credential) {
         return submitterRegistry.authenticate(credential);
     }
 
     @Override
-    public TaskSubmitterContext authenticate(String credential) {
+    public PrincipalContext authenticate(String credential) {
         return authenticateSubmitter(credential);
     }
 
@@ -669,7 +662,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .build());
     }
 
-    private EventResponse dispatchEventInternal(EventRequest request, EventPrincipal principal) {
+    private EventResponse dispatchEventInternal(EventRequest request, PrincipalContext principal) {
         try {
             return toSdkResponse(eventRuntime.dispatch(toCoreRequest(request), toCorePrincipal(principal)));
         } catch (IllegalArgumentException e) {
@@ -694,12 +687,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .build();
     }
 
-    private EventPrincipal toSdkPrincipal(CoreEventPrincipal principal) {
+    private PrincipalContext toSdkPrincipal(CoreEventPrincipal principal) {
         if (principal == null) {
-            return EventPrincipal.builder().build();
+            return PrincipalContext.builder()
+                    .principalId("anonymous")
+                    .principalType(PrincipalType.SERVICE)
+                    .build();
         }
-        return EventPrincipal.builder()
-                .clientId(principal.clientId())
+        return PrincipalContext.builder()
+                .principalId(principal.clientId() == null ? "anonymous" : principal.clientId())
+                .principalType(PrincipalType.SERVICE)
                 .userId(principal.userId())
                 .build();
     }
@@ -804,7 +801,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     private EventResponse dispatchCatalogTaskEvent(EventRequest request,
-                                                   EventPrincipal principal,
+                                                   PrincipalContext principal,
                                                    EventDefinition definition) {
         MassTaskRequest taskRequest = resolveTaskRequest(request, principal, definition);
         validateTaskCatalogContract(taskRequest);
@@ -813,7 +810,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     private MassTaskRequest resolveTaskRequest(EventRequest request,
-                                               EventPrincipal principal,
+                                               PrincipalContext principal,
                                                EventDefinition definition) {
         Object embeddedRequest = request.getPayload().get("request");
         if (embeddedRequest instanceof MassTaskRequest massTaskRequest) {
@@ -954,9 +951,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .build();
     }
 
-    private CoreEventPrincipal toCorePrincipal(EventPrincipal principal) {
+    private CoreEventPrincipal toCorePrincipal(PrincipalContext principal) {
         return new CoreEventPrincipal(
-                principal == null ? null : principal.getClientId(),
+                principal == null ? null : principal.getPrincipalId(),
                 principal == null ? null : principal.getUserId()
         );
     }
@@ -986,11 +983,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         throw new IllegalStateException(message);
     }
 
-    private EventPrincipal internalPrincipal(String userId) {
-        return EventPrincipal.builder()
-                .clientId("sdk-internal")
-                .userId(userId)
-                .build();
+    private PrincipalContext internalPrincipal(String userId) {
+        return PrincipalContext.internalService("sdk-internal", userId);
     }
 
     private TaskMode parseTaskMode(String rawValue, EventDefinition definition) {
@@ -1618,4 +1612,3 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return engine;
     }
 }
-

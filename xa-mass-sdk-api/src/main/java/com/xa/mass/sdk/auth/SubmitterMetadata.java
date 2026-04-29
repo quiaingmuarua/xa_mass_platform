@@ -18,6 +18,7 @@ import java.util.Set;
 public final class SubmitterMetadata {
 
     private final String principalId;
+    private final PrincipalType principalType;
     private final String keyPrefix;
     private final String userId;
     private final String projectScope;
@@ -29,6 +30,7 @@ public final class SubmitterMetadata {
 
     private SubmitterMetadata(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
+        this.principalType = builder.principalType == null ? PrincipalType.SERVICE : builder.principalType;
         this.keyPrefix = blankToNull(builder.keyPrefix);
         this.userId = blankToNull(builder.userId);
         this.projectScope = blankToNull(builder.projectScope);
@@ -47,6 +49,7 @@ public final class SubmitterMetadata {
         Objects.requireNonNull(registration, "registration");
         return builder()
                 .principalId(registration.getPrincipalId())
+                .principalType(registration.getPrincipalType())
                 .keyPrefix(registration.getKeyPrefix())
                 .userId(registration.getUserId())
                 .projectScope(registration.getProjectScope())
@@ -60,6 +63,10 @@ public final class SubmitterMetadata {
 
     public String getPrincipalId() {
         return principalId;
+    }
+
+    public PrincipalType getPrincipalType() {
+        return principalType;
     }
 
     public String getKeyPrefix() {
@@ -94,12 +101,26 @@ public final class SubmitterMetadata {
         return attributes;
     }
 
+    public PrincipalContext toPrincipalContext() {
+        return PrincipalContext.builder()
+                .principalId(principalId)
+                .principalType(principalType)
+                .userId(userId)
+                .projectScope(projectScope)
+                .permissions(permissions)
+                .projectScopes(projectScopes)
+                .eventScopes(eventScopes)
+                .attributes(attributes)
+                .build();
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof SubmitterMetadata that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
+                && principalType == that.principalType
                 && Objects.equals(keyPrefix, that.keyPrefix)
                 && Objects.equals(userId, that.userId)
                 && Objects.equals(projectScope, that.projectScope)
@@ -111,13 +132,14 @@ public final class SubmitterMetadata {
 
     @Override
     public int hashCode() {
-        return Objects.hash(principalId, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
+        return Objects.hash(principalId, principalType, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
     }
 
     @Override
     public String toString() {
         return "SubmitterMetadata{" +
                 "principalId='" + principalId + '\'' +
+                ", principalType=" + principalType +
                 ", keyPrefix='" + keyPrefix + '\'' +
                 ", userId='" + userId + '\'' +
                 ", projectScope='" + projectScope + '\'' +
@@ -176,6 +198,7 @@ public final class SubmitterMetadata {
 
     public static final class Builder {
         private String principalId;
+        private PrincipalType principalType = PrincipalType.SERVICE;
         private String keyPrefix;
         private String userId;
         private String projectScope;
@@ -190,6 +213,11 @@ public final class SubmitterMetadata {
 
         public Builder principalId(String principalId) {
             this.principalId = principalId;
+            return this;
+        }
+
+        public Builder principalType(PrincipalType principalType) {
+            this.principalType = principalType;
             return this;
         }
 

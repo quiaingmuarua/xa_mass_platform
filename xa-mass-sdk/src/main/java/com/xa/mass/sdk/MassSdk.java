@@ -6,6 +6,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -39,6 +40,7 @@ public final class MassSdk {
     public static final class Builder {
         private final MassApplicationBuilder delegate;
         private ProjectEventCatalogRegistry projectCatalogBootstrapRegistry;
+        private SubmitterRegistry submitterRegistry;
 
         private Builder(MassApplicationBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -66,11 +68,20 @@ public final class MassSdk {
             return this;
         }
 
+        public Builder submitterRegistry(SubmitterRegistry submitterRegistry) {
+            this.submitterRegistry = Objects.requireNonNull(submitterRegistry, "submitterRegistry");
+            return this;
+        }
+
         public MassSdkApplication build() {
             if (projectCatalogBootstrapRegistry != null) {
-                return new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry);
+                return submitterRegistry != null
+                        ? new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry, submitterRegistry)
+                        : new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry);
             }
-            return new MassSdkApplication(delegate.build());
+            return submitterRegistry != null
+                    ? new MassSdkApplication(delegate.build(), submitterRegistry)
+                    : new MassSdkApplication(delegate.build());
         }
 
     }

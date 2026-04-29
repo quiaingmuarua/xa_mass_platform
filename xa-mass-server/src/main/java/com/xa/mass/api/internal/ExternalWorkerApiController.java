@@ -5,7 +5,7 @@ import com.xa.mass.api.auth.ApiUnauthenticatedException;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.*;
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.ExternalWorkerOperations;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -43,7 +43,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalWorkerRegisterApiRequest requestBody) {
         validateRegisterRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
         String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
         List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
@@ -71,7 +71,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalWorkerContextRegisterApiRequest requestBody) {
         validateContextRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
         requireProjectScope(submitter, blankToNull(requestBody.getProject()));
         WorkerContextRegistration request = WorkerContextRegistration.builder()
@@ -94,7 +94,7 @@ public class ExternalWorkerApiController {
                                                          @PathVariable String workerId,
                                                          @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "online");
         externalWorkerOperations.workerOnline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
@@ -111,7 +111,7 @@ public class ExternalWorkerApiController {
                                                             @PathVariable String workerId,
                                                             @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "heartbeat");
         externalWorkerOperations.workerHeartbeat(boundWorkerId, requestBody == null ? null : requestBody.getReason());
@@ -128,7 +128,7 @@ public class ExternalWorkerApiController {
                                                           @PathVariable String workerId,
                                                           @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "offline");
         externalWorkerOperations.workerOffline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
@@ -145,7 +145,7 @@ public class ExternalWorkerApiController {
                                                       @PathVariable String workerId,
                                                       @RequestBody(required = false) ExternalWorkerPollApiRequest requestBody) {
         validatePollRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
@@ -164,7 +164,7 @@ public class ExternalWorkerApiController {
                                                          @PathVariable String workerId,
                                                          @RequestBody ExternalWorkerResultSubmitApiRequest requestBody) {
         validateResultRequest(requestBody);
-        TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
         boolean submitted = externalWorkerOperations.submitResult(boundWorkerId, new TaskResultReport(
@@ -280,19 +280,19 @@ public class ExternalWorkerApiController {
                 .toList();
     }
 
-    private TaskSubmitterContext requireExternalWorkerSubmitter(String apiKeyHeader, String authorizationHeader) {
-        TaskSubmitterContext submitter =
+    private PrincipalContext requireExternalWorkerSubmitter(String apiKeyHeader, String authorizationHeader) {
+        PrincipalContext submitter =
                 SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
         if (submitter == null) {
             throw new ApiUnauthenticatedException("Invalid or missing worker credential");
         }
-        if (!submitter.hasPermission(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION)) {
-            throw new ApiForbiddenException("SDK credential permission denied: " + TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION);
+        if (!submitter.hasPermission(PrincipalContext.EXTERNAL_WORKER_PERMISSION)) {
+            throw new ApiForbiddenException("SDK credential permission denied: " + PrincipalContext.EXTERNAL_WORKER_PERMISSION);
         }
         return submitter;
     }
 
-    private String requireBoundWorkerId(TaskSubmitterContext submitter, String requestedWorkerId) {
+    private String requireBoundWorkerId(PrincipalContext submitter, String requestedWorkerId) {
         String workerId = requireNonBlank(requestedWorkerId, "workerId");
         String boundWorkerId = submitter.getAttributes().get(WORKER_ID_ATTRIBUTE);
         if (boundWorkerId == null || boundWorkerId.isBlank()) {
@@ -304,7 +304,7 @@ public class ExternalWorkerApiController {
         return workerId;
     }
 
-    private void requireWorkerBindingScopes(TaskSubmitterContext submitter, List<WorkerEventBinding> bindings) {
+    private void requireWorkerBindingScopes(PrincipalContext submitter, List<WorkerEventBinding> bindings) {
         for (WorkerEventBinding binding : bindings) {
             if (!submitter.allowsEvent(binding.getEventCode())) {
                 throw new ApiForbiddenException("SDK credential event scope denied: " + binding.getEventCode());
@@ -318,7 +318,7 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private void requireProjectScope(TaskSubmitterContext submitter, String projectCode) {
+    private void requireProjectScope(PrincipalContext submitter, String projectCode) {
         if (projectCode != null && !submitter.allowsProject(projectCode)) {
             throw new ApiForbiddenException("SDK credential project scope denied: " + projectCode);
         }

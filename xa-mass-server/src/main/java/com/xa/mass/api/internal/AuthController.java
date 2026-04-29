@@ -3,6 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.auth.ApiAuthService;
 import com.xa.mass.api.auth.ApiCurrentUser;
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,15 +24,16 @@ public class AuthController {
 
     @GetMapping("/me")
     public ApiResponse<ApiCurrentUser> getCurrentUser(HttpServletRequest request) {
-        return ApiResponse.success(apiAuthService.requireAuthenticated(request));
+        PrincipalContext principal = apiAuthService.requireAuthenticated(request);
+        return ApiResponse.success(apiAuthService.toApiCurrentUser(principal));
     }
 
     @PostMapping("/logout")
     public ApiResponse<Map<String, Object>> logout(HttpServletRequest request) {
-        ApiCurrentUser currentUser = apiAuthService.requireAuthenticated(request);
+        PrincipalContext principal = apiAuthService.requireAuthenticated(request);
         return ApiResponse.success(Map.of(
                 "message", "Logout acknowledged",
-                "userId", currentUser.id()
+                "userId", principal.getPrincipalId()
         ));
     }
 }

@@ -1,7 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 
 public final class SdkCredentialAuthSupport {
 
@@ -11,9 +11,9 @@ public final class SdkCredentialAuthSupport {
     private SdkCredentialAuthSupport() {
     }
 
-    public static TaskSubmitterContext authenticate(AuthProvider authProvider,
-                                                    String apiKeyHeader,
-                                                    String authorizationHeader) {
+    public static PrincipalContext authenticate(AuthProvider authProvider,
+                                                String apiKeyHeader,
+                                                String authorizationHeader) {
         if (authProvider == null) {
             return null;
         }

@@ -210,13 +210,20 @@ JDBC storage scope:
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
+- the non-test Spring Boot entry
+  [XaMassServerApplication.java](/Users/kyler/Documents/code/geekrun/xa_mass_platform/xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java)
+  already supports this profile directly; local persistent H2 verification does
+  not require a separate test-only bootstrap path
 - local PostgreSQL verification can use the `postgres` profile together with the
   runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
 - JDBC storage persists task truth, worker/context registration truth, and rule
-  definitions; `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and
-  context occupancy churn stay process-local runtime projection state
+  definitions
+- JDBC storage also persists low-frequency principal credential truth used by
+  SDK submitter and external worker API-key authentication
+- `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and context
+  occupancy churn stay process-local runtime projection state
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure
   analysis should flow through queues, trace, audit sinks, or downstream

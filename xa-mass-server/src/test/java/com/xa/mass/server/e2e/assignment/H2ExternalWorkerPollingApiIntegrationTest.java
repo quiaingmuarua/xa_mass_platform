@@ -7,7 +7,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -179,7 +179,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");
 
-        assertJdbcProjection(taskId, String.valueOf(item.get("messageId")), workerId);
+        assertJdbcProjection(taskId, workerId);
     }
 
     private HttpHeaders sdkCredentialHeaders(String credential) {
@@ -222,14 +222,14 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of(projectCode))
                 .eventScopes(List.of(eventCode))
                 .attributes(Map.of("workerId", workerId))
                 .build());
     }
 
-    private void assertJdbcProjection(String taskId, String messageId, String workerId) throws Exception {
+    private void assertJdbcProjection(String taskId, String workerId) throws Exception {
         try (var conn = DriverManager.getConnection(JDBC_URL, "sa", "")) {
             try (var ps = conn.prepareStatement("""
                     SELECT status, project, schedulable, json
@@ -277,6 +277,21 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 try (var rs = ps.executeQuery()) {
                     assertTrue(rs.next());
                     assertEquals(2, rs.getInt(1));
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    SELECT principal_type, enabled, json
+                    FROM xa_principal
+                    WHERE principal_id = ?
+                    """)) {
+                ps.setString(1, "polling-h2-submitter");
+                try (var rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "principal row should exist");
+                    assertEquals("SERVICE", rs.getString("principal_type"));
+                    assertTrue(rs.getBoolean("enabled"));
+                    assertJsonContains(rs.getString("json"), "\"eventScopes\":[\"crawler.fetch-page\"]");
+                    assertFalse(rs.next(), "principal_id should remain unique");
                 }
             }
 

@@ -5,5 +5,5 @@ package com.xa.mass.sdk.auth;
  */
 public interface AuthProvider {
 
-    TaskSubmitterContext authenticate(String credential);
+    PrincipalContext authenticate(String credential);
 }

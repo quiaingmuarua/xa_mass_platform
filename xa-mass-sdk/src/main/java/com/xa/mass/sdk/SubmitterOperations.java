@@ -2,7 +2,7 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 
 import java.util.List;
 
@@ -34,5 +34,5 @@ public interface SubmitterOperations {
         return getSubmitter(principalId) != null;
     }
 
-    TaskSubmitterContext authenticateSubmitter(String credential);
+    PrincipalContext authenticateSubmitter(String credential);
 }

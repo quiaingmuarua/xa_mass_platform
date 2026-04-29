@@ -46,7 +46,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 ## 1.1 Event Control Plane Notes
 
-- Stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
+- Stable event invocation contract: `EventRequest`, `EventResponse`, and `PrincipalContext`.
 - Control-plane authorization is event-centric and currently intersects client and user allow-list scope.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
@@ -227,7 +227,7 @@ Contract rules:
 - when `eventCode` is present, runtime worker capability is matched by worker-declared `supportedEventCodes`
 - `supportedProjects` remains only a coarse worker grouping/filter hint; it is not the runtime event-capability source of truth
 - SDK credential callers use this same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
-- when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `TaskSubmitterContext`
+- when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `PrincipalContext`
 - SDK credentials must include `task:create` to create tasks
 - when an SDK credential has `projectScopes`, the request `project` must be allowed by that scope; `projectScope` remains a single-project compatibility projection
 - when an SDK credential has `eventScopes`, the request `eventCode` must be allowed by that scope

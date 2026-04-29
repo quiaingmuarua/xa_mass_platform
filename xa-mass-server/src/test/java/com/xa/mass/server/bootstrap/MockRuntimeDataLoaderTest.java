@@ -7,7 +7,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
-import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -337,7 +337,7 @@ class MockRuntimeDataLoaderTest {
         private final List<RuleDefinition> rules = new ArrayList<>();
 
         @Override
-        public EventResponse dispatchEvent(EventRequest request, EventPrincipal principal) {
+        public EventResponse dispatchEvent(EventRequest request, PrincipalContext principal) {
             return EventResponse.success(null, request == null ? null : request.getRequestId());
         }
 

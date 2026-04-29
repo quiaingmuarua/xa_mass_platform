@@ -16,7 +16,7 @@ import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.model.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,9 +95,9 @@ public class TaskApiController {
         try {
             validateKnownFields(requestBody, "task create");
 
-            TaskSubmitterContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
             if (submitter != null) {
-                requireSubmitterPermission(submitter, TaskSubmitterContext.TASK_CREATE_PERMISSION);
+                requireSubmitterPermission(submitter, PrincipalContext.TASK_CREATE_PERMISSION);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
                 requireSubmitterEventScope(requestBody, submitter);
@@ -143,10 +143,10 @@ public class TaskApiController {
             // Register future BEFORE task creation to close the timing gap.
             CompletableFuture<TaskMsg> future = syncBridge.register(correlationId);
 
-            TaskSubmitterContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
             Task task;
             if (submitter != null) {
-                requireSubmitterPermission(submitter, TaskSubmitterContext.TASK_CREATE_PERMISSION);
+                requireSubmitterPermission(submitter, PrincipalContext.TASK_CREATE_PERMISSION);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
                 requireSubmitterEventScope(requestBody, submitter);
@@ -668,11 +668,11 @@ public class TaskApiController {
         UserRef.requireUserId(userId);
     }
 
-    private TaskSubmitterContext resolveSdkSubmitter(String apiKeyHeader, String authorizationHeader) {
+    private PrincipalContext resolveSdkSubmitter(String apiKeyHeader, String authorizationHeader) {
         if (!SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
             return null;
         }
-        TaskSubmitterContext submitter =
+        PrincipalContext submitter =
                 SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
         if (submitter == null) {
             throw new SdkUnauthenticatedException("Invalid or missing SDK credential");
@@ -680,7 +680,7 @@ public class TaskApiController {
         return submitter;
     }
 
-    private String resolveSubmitterProject(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+    private String resolveSubmitterProject(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
         String requestedProject = SdkCredentialAuthSupport.firstNonBlank(requestBody.getProject());
         String scopedProject = SdkCredentialAuthSupport.firstNonBlank(submitter.getProjectScope());
         if (scopedProject != null) {
@@ -690,7 +690,7 @@ public class TaskApiController {
             return scopedProject;
         }
         if (requestedProject == null && submitter.getProjectScopes().size() == 1
-                && !TaskSubmitterContext.WILDCARD_SCOPE.equals(submitter.getProjectScopes().get(0))) {
+                && !PrincipalContext.WILDCARD_SCOPE.equals(submitter.getProjectScopes().get(0))) {
             return submitter.getProjectScopes().get(0);
         }
         if (requestedProject != null) {
@@ -702,7 +702,7 @@ public class TaskApiController {
         throw new IllegalArgumentException("project is required when submitter has no project scope");
     }
 
-    private String resolveSubmitterUserId(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+    private String resolveSubmitterUserId(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
         String requestedUserId = SdkCredentialAuthSupport.firstNonBlank(requestBody.getUserId());
         String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
         if (scopedUserId != null) {
@@ -717,13 +717,13 @@ public class TaskApiController {
         return UserRef.requireUserId(submitter.getPrincipalId());
     }
 
-    private void requireSubmitterPermission(TaskSubmitterContext submitter, String permission) {
+    private void requireSubmitterPermission(PrincipalContext submitter, String permission) {
         if (!submitter.hasPermission(permission)) {
             throw new SecurityException("SDK credential permission denied: " + permission);
         }
     }
 
-    private void requireSubmitterEventScope(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+    private void requireSubmitterEventScope(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
         String eventCode = SdkCredentialAuthSupport.firstNonBlank(requestBody.getEventCode());
         if (eventCode != null && !submitter.allowsEvent(eventCode)) {
             throw new SecurityException("SDK credential event scope denied: " + eventCode);

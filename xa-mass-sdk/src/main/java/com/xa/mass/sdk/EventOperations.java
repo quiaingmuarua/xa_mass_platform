@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -20,7 +20,7 @@ public interface EventOperations {
     /**
      * Dispatch an event through the SDK control-plane runtime.
      */
-    EventResponse dispatchEvent(EventRequest request, EventPrincipal principal);
+    EventResponse dispatchEvent(EventRequest request, PrincipalContext principal);
 
     /**
      * Register or replace multiple event definitions.

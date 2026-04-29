@@ -1,9 +1,9 @@
 package com.xa.mass.sdk.authz;
 
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
-import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventDefinition;
 import org.junit.jupiter.api.Test;
@@ -36,18 +36,14 @@ class DefaultEventPermissionServiceTest {
                 .projectCodes(List.of("demoApp", "crawlerApp"))
                 .build());
 
-        InMemoryClientPermissionProvider clientPermissions = new InMemoryClientPermissionProvider();
-        clientPermissions.grant("client-a", List.of("crawler.fetch-page"));
-        InMemoryUserPermissionProvider userPermissions = new InMemoryUserPermissionProvider();
-        userPermissions.grant("user-a", List.of("crawler.fetch-page"));
+        DefaultEventPermissionService service = new DefaultEventPermissionService(catalog);
 
-        DefaultEventPermissionService service = new DefaultEventPermissionService(
-                clientPermissions,
-                userPermissions,
-                catalog
-        );
-
-        EventPrincipal principal = EventPrincipal.of("client-a", "user-a");
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("client-a")
+                .userId("user-a")
+                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build();
         assertTrue(service.authorize(principal, EventRequest.builder()
                 .event("crawler.fetch-page")
                 .project("demoApp")

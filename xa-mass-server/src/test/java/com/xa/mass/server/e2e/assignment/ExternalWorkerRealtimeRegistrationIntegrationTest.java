@@ -5,7 +5,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -56,7 +56,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("realtime-worker-principal")
                 .credential(WORKER_KEY)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of("crawlerApp"))
                 .eventScopes(List.of("crawler.fetch-page"))
                 .attributes(Map.of("workerId", WORKER_ID))

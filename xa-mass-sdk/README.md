@@ -127,8 +127,8 @@ app.createTask(MassTaskRequest.singleRun("botApp", "bot-command")
         .build());
 ```
 
-Register a lightweight submitter credential when an embedding app wants an
-API-key or service-account style identity:
+Register a lightweight principal credential binding when an embedding app wants
+an API-key or service-account style identity:
 
 ```java
 app.registerSubmitter(SubmitterRegistration.builder()
@@ -172,7 +172,7 @@ Current SDK contracts:
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
-| submitters | in-memory API-key/service-account binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
+| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
 | diagnostics/detail | `validateTaskState(...)` is bounded; `getTaskMessages(...)` is compatibility/demo detail; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
@@ -270,4 +270,3 @@ are surfaced through `getQueueDetail().runtimeExecutors` and the Boot-shell
 `getQueueDetail().deliveryQueue.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
 replacement.
-

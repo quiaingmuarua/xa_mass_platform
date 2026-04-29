@@ -44,7 +44,7 @@ class SubmitterRegistrationTest {
         Assertions.assertEquals("dev-api-...", registration.getKeyPrefix());
         Assertions.assertEquals("bot-user", registration.getUserId());
         Assertions.assertEquals("telegramApp", registration.getProjectScope());
-        Assertions.assertEquals(List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION), registration.getPermissions());
+        Assertions.assertEquals(List.of(PrincipalContext.TASK_CREATE_PERMISSION), registration.getPermissions());
         Assertions.assertEquals(List.of("telegramApp"), registration.getProjectScopes());
         Assertions.assertEquals(List.of(), registration.getEventScopes());
         Assertions.assertEquals(Map.of("channel", "telegram"), registration.getAttributes());
@@ -68,7 +68,7 @@ class SubmitterRegistrationTest {
         Assertions.assertEquals(List.of("crawlerApp", "demoApp"), registration.getProjectScopes());
         Assertions.assertEquals(List.of("crawler.fetch-page", "tool.country.capital.lookup"), registration.getEventScopes());
 
-        TaskSubmitterContext context = registration.toSubmitterContext();
+        PrincipalContext context = registration.toPrincipalContext();
         Assertions.assertTrue(context.hasPermission("task:create"));
         Assertions.assertTrue(context.allowsProject("crawlerApp"));
         Assertions.assertFalse(context.allowsProject("otherApp"));
@@ -101,7 +101,7 @@ class SubmitterRegistrationTest {
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
         Assertions.assertEquals("bot-user", metadata.getUserId());
         Assertions.assertEquals("telegramApp", metadata.getProjectScope());
-        Assertions.assertEquals(List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION), metadata.getPermissions());
+        Assertions.assertEquals(List.of(PrincipalContext.TASK_CREATE_PERMISSION), metadata.getPermissions());
         Assertions.assertEquals(List.of("telegramApp"), metadata.getProjectScopes());
         Assertions.assertEquals(Map.of("channel", "telegram"), metadata.getAttributes());
         Assertions.assertFalse(metadata.toString().contains("secret-key"));

@@ -1,7 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.ExternalWorkerOperations;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -36,15 +36,15 @@ class ExternalWorkerApiControllerTest {
     private AuthProvider authProvider;
 
     private MockMvc mockMvc;
-    private TaskSubmitterContext workerSubmitter;
+    private PrincipalContext workerSubmitter;
 
     @BeforeEach
     void setUp() {
-        workerSubmitter = new TaskSubmitterContext(
+        workerSubmitter = new PrincipalContext(
                 "node-worker-1",
                 null,
                 null,
-                List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION),
+                List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION),
                 List.of("crawlerApp"),
                 List.of("crawler.fetch-page"),
                 Map.of("workerId", "node-worker-1")
@@ -186,11 +186,11 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void workerApiRejectsMissingWorkerPermission() throws Exception {
-        when(authProvider.authenticate("task-only-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("task-only-key")).thenReturn(new PrincipalContext(
                 "node-worker-1",
                 null,
                 null,
-                List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION),
+                List.of(PrincipalContext.TASK_CREATE_PERMISSION),
                 List.of("crawlerApp"),
                 List.of("crawler.fetch-page"),
                 Map.of("workerId", "node-worker-1")

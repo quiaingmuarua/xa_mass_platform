@@ -33,4 +33,12 @@ final class H2JdbcDialect implements JdbcDialect {
                 VALUES (?, ?, ?)
                 """;
     }
+
+    @Override
+    public String principalUpsertSql() {
+        return """
+                MERGE INTO xa_principal KEY(principal_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+    }
 }

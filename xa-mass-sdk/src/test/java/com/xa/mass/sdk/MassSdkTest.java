@@ -29,15 +29,14 @@ import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
-import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
@@ -739,9 +738,6 @@ class MassSdkTest {
                     }
                 })
                 .build());
-        app.grantClientEventPermissions("client-a", List.of("sdk.event.slow"));
-        app.grantUserEventPermissions("user-a", List.of("sdk.event.slow"));
-
         try {
             app.start();
 
@@ -750,7 +746,7 @@ class MassSdkTest {
                             .event("sdk.event.slow")
                             .requestId("req-slow")
                             .build(),
-                    EventPrincipal.of("client-a", "user-a")
+                    eventPrincipal("client-a", "user-a", "*", "sdk.event.slow")
             );
 
             assertFalse(response.isSuccess());
@@ -777,9 +773,6 @@ class MassSdkTest {
                         Map.of("virtualThread", Thread.currentThread().isVirtual()),
                         request.getRequestId()))
                 .build());
-        app.grantClientEventPermissions("client-a", List.of("sdk.event.fast"));
-        app.grantUserEventPermissions("user-a", List.of("sdk.event.fast"));
-
         try {
             app.start();
             assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
@@ -1169,9 +1162,6 @@ class MassSdkTest {
                 ))
                 .build());
 
-        app.grantClientEventPermissions("client-a", List.of("bot.command"));
-        app.grantUserEventPermissions("user-a", List.of("bot.command"));
-
         EventResponse response = app.dispatchEvent(
                 EventRequest.builder()
                         .event("bot.command")
@@ -1179,7 +1169,7 @@ class MassSdkTest {
                         .requestId("req-bot-command")
                         .payload(Map.of("text", "/start"))
                         .build(),
-                EventPrincipal.of("client-a", "user-a")
+                eventPrincipal("client-a", "user-a", "botApp", "bot.command")
         );
 
         assertTrue(response.isSuccess());
@@ -1218,7 +1208,7 @@ class MassSdkTest {
         SubmitterMetadata submitterMetadata = SubmitterMetadata.from(submitterRegistration);
         Assertions.assertEquals(List.of(submitterMetadata), app.listSubmitters());
         Assertions.assertEquals(submitterMetadata, app.getSubmitter("telegram-bot"));
-        TaskSubmitterContext submitterContext = app.authenticateSubmitter("test-api-key");
+        PrincipalContext submitterContext = app.authenticateSubmitter("test-api-key");
         Assertions.assertNotNull(submitterContext);
         Assertions.assertEquals("telegram-bot", submitterContext.getPrincipalId());
         Assertions.assertEquals("bot-user", submitterContext.getUserId());
@@ -1250,8 +1240,8 @@ class MassSdkTest {
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
 
-        TaskSubmitterContext readKey = app.authenticateSubmitter("crawler-read-secret");
-        TaskSubmitterContext createKey = app.authenticateSubmitter("crawler-create-secret");
+        PrincipalContext readKey = app.authenticateSubmitter("crawler-read-secret");
+        PrincipalContext createKey = app.authenticateSubmitter("crawler-create-secret");
 
         Assertions.assertNotNull(readKey);
         Assertions.assertNotNull(createKey);
@@ -1280,17 +1270,14 @@ class MassSdkTest {
     }
 
     @Test
-    void dispatchEventRequiresClientAndUserIntersection() {
+    void dispatchEventRequiresPrincipalEventScope() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        app.grantClientEventPermissions("client-a", List.of(PlatformEventCodes.META_EVENTS_LIST));
-        app.grantUserEventPermissions("user-a", List.of(PlatformEventCodes.META_EVENTS_LIST));
-
         EventResponse allowed = app.dispatchEvent(
                 EventRequest.builder()
                         .event(PlatformEventCodes.META_EVENTS_LIST)
                         .requestId("req-1")
                         .build(),
-                EventPrincipal.of("client-a", "user-a")
+                eventPrincipal("client-a", "user-a", "*", PlatformEventCodes.META_EVENTS_LIST)
         );
 
         assertTrue(allowed.isSuccess());
@@ -1302,7 +1289,7 @@ class MassSdkTest {
                         .event(PlatformEventCodes.META_EVENTS_LIST)
                         .requestId("req-2")
                         .build(),
-                EventPrincipal.of("client-a", "missing-user")
+                eventPrincipal("client-a", "missing-user", "*", "crawler.fetch-page")
         );
 
         assertFalse(denied.isSuccess());
@@ -1313,9 +1300,6 @@ class MassSdkTest {
     void dispatchEventRejectsCatalogEventWhenProjectDoesNotSupportIt() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
         registerExampleTaskCatalog(app);
-        app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
-        app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
-
         EventResponse response = app.dispatchEvent(
                 EventRequest.builder()
                         .event("crawler.fetch-page")
@@ -1323,7 +1307,7 @@ class MassSdkTest {
                         .payload(Map.of("url", "https://example.test"))
                         .requestId("req-catalog-deny")
                         .build(),
-                EventPrincipal.of("client-a", "user-a")
+                eventPrincipal("client-a", "user-a", "*", "crawler.fetch-page")
         );
 
         assertFalse(response.isSuccess());
@@ -1344,9 +1328,6 @@ class MassSdkTest {
         try {
             registerExampleTaskCatalog(app);
             app.start();
-            app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
-            app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
-
             EventResponse response = app.dispatchEvent(
                     EventRequest.builder()
                             .event("crawler.fetch-page")
@@ -1355,7 +1336,7 @@ class MassSdkTest {
                             .payload(Map.of("url", "https://example.test/page-1"))
                             .requestId("req-catalog-create")
                             .build(),
-                    EventPrincipal.of("client-a", "user-a")
+                    eventPrincipal("client-a", "user-a", "crawlerApp", "crawler.fetch-page")
             );
 
             assertTrue(response.isSuccess());
@@ -2400,12 +2381,24 @@ class MassSdkTest {
                         .event("sdk.event.fast")
                         .requestId(requestId)
                         .build(),
-                EventPrincipal.of("client-a", "user-a")
+                eventPrincipal("client-a", "user-a", "*", "sdk.event.fast")
         );
 
         assertTrue(response.isSuccess());
         assertEquals(requestId, response.getRequestId());
         assertEquals(true, ((Map<?, ?>) response.getData()).get("virtualThread"));
+    }
+
+    private static PrincipalContext eventPrincipal(String principalId,
+                                                   String userId,
+                                                   String projectScope,
+                                                   String... eventCodes) {
+        return PrincipalContext.builder()
+                .principalId(principalId)
+                .userId(userId)
+                .projectScopes(projectScope == null ? List.of() : List.of(projectScope))
+                .eventScopes(eventCodes == null ? List.of() : List.of(eventCodes))
+                .build();
     }
 
     private static MassSdk.TransportOptions disableBundledWebSocket(MassSdk.TransportOptions transport,
@@ -2640,4 +2633,3 @@ class MassSdkTest {
     }
 
 }
-

@@ -10,7 +10,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -177,14 +177,14 @@ public class TestDevBootstrapConfiguration {
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("crawler-submitter")
                     .credential("crawler-submitter-key")
-                    .permissions(List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION))
+                    .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))
                     .eventScopes(List.of("crawler.fetch-page", "stock.quote.fetch"))
                     .build());
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("node-worker-api-001")
                     .credential("node-worker-key")
-                    .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                    .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))
                     .eventScopes(List.of("crawler.fetch-page"))
                     .attributes(Map.of("workerId", "node-worker-api-001"))
@@ -192,7 +192,7 @@ public class TestDevBootstrapConfiguration {
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("node-worker-realtime-001")
                     .credential("node-worker-realtime-key")
-                    .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                    .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))
                     .eventScopes(List.of("crawler.fetch-page"))
                     .attributes(Map.of("workerId", "node-worker-realtime-001"))
@@ -200,7 +200,7 @@ public class TestDevBootstrapConfiguration {
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("stock-ws-worker-001")
                     .credential("stock-ws-worker-key")
-                    .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                    .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))
                     .eventScopes(List.of("stock.quote.fetch"))
                     .attributes(Map.of("workerId", "stock-ws-worker-001"))
@@ -305,4 +305,3 @@ public class TestDevBootstrapConfiguration {
         return String.join(" ", words);
     }
 }
-

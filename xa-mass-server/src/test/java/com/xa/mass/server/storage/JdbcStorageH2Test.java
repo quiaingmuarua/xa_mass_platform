@@ -14,6 +14,8 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
@@ -104,6 +106,35 @@ class JdbcStorageH2Test {
             assertThat(storage.getRegisteredEvaluatorTypes()).contains(RuleType.QL_EXPRESS);
             assertThat(storage.deleteRule(rule.getId())).isTrue();
             assertThat(storage.getAllRules()).isEmpty();
+        }
+    }
+
+    @Test
+    void submitterRegistryPersistsPrincipalTruthAndRestoresAuthentication() {
+        try (StorageFixture fixture = h2Fixture()) {
+            JdbcSubmitterRegistry registry = new JdbcSubmitterRegistry(fixture.dataSource(), new H2JdbcDialect());
+            registry.register(SubmitterRegistration.builder()
+                    .principalId("crawler-submitter")
+                    .credential("crawler-submit-secret")
+                    .userId("crawler-user")
+                    .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
+                    .projectScopes(List.of("crawlerApp"))
+                    .eventScopes(List.of("crawler.fetch-page"))
+                    .attributes(Map.of("lane", "crawler"))
+                    .build());
+
+            PrincipalContext authenticated = registry.authenticate("crawler-submit-secret");
+            assertThat(authenticated).isNotNull();
+            assertThat(authenticated.getPrincipalId()).isEqualTo("crawler-submitter");
+            assertThat(registry.getSubmitter("crawler-submitter")).isNotNull();
+            assertThat(registry.listSubmitters()).hasSize(1);
+
+            JdbcSubmitterRegistry restartedRegistry = new JdbcSubmitterRegistry(fixture.dataSource(), new H2JdbcDialect());
+            PrincipalContext restartedPrincipal = restartedRegistry.authenticate("crawler-submit-secret");
+            assertThat(restartedPrincipal).isNotNull();
+            assertThat(restartedPrincipal.getPrincipalId()).isEqualTo("crawler-submitter");
+            assertThat(restartedRegistry.getSubmitter("crawler-submitter")).isNotNull();
+            assertThat(restartedRegistry.listSubmitters()).hasSize(1);
         }
     }
 

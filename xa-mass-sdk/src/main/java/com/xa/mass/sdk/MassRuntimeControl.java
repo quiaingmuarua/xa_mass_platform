@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -31,7 +31,7 @@ public interface MassRuntimeControl {
     /**
      * Dispatch a control-plane event through the stable SDK event contract.
      */
-    EventResponse dispatchEvent(EventRequest request, EventPrincipal principal);
+    EventResponse dispatchEvent(EventRequest request, PrincipalContext principal);
 
     // --- Task creation ---
 

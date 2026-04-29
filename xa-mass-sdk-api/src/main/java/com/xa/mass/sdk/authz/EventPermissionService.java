@@ -1,6 +1,6 @@
 package com.xa.mass.sdk.authz;
 
-import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 
 /**
@@ -8,5 +8,5 @@ import com.xa.mass.sdk.event.EventRequest;
  */
 public interface EventPermissionService {
 
-    AuthorizationDecision authorize(EventPrincipal principal, EventRequest request);
+    AuthorizationDecision authorize(PrincipalContext principal, EventRequest request);
 }

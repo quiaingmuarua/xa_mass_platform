@@ -18,6 +18,7 @@ import java.util.Set;
 public final class SubmitterRegistration {
 
     private final String principalId;
+    private final PrincipalType principalType;
     private final String credential;
     private final String keyPrefix;
     private final String userId;
@@ -30,13 +31,14 @@ public final class SubmitterRegistration {
 
     private SubmitterRegistration(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
+        this.principalType = builder.principalType == null ? PrincipalType.SERVICE : builder.principalType;
         this.credential = requireNonBlank(builder.credential, "credential");
         this.keyPrefix = blankToNull(builder.keyPrefix) != null
                 ? blankToNull(builder.keyPrefix)
                 : defaultKeyPrefix(this.credential);
         this.userId = blankToNull(builder.userId);
         this.projectScope = blankToNull(builder.projectScope);
-        this.permissions = immutableStringList(builder.permissions, List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION));
+        this.permissions = immutableStringList(builder.permissions, List.of(PrincipalContext.TASK_CREATE_PERMISSION));
         this.projectScopes = immutableStringList(
                 !builder.projectScopes.isEmpty()
                         ? builder.projectScopes
@@ -54,6 +56,10 @@ public final class SubmitterRegistration {
 
     public String getPrincipalId() {
         return principalId;
+    }
+
+    public PrincipalType getPrincipalType() {
+        return principalType;
     }
 
     public String getCredential() {
@@ -92,9 +98,10 @@ public final class SubmitterRegistration {
         return attributes;
     }
 
-    public TaskSubmitterContext toSubmitterContext() {
-        return new TaskSubmitterContext(
+    public PrincipalContext toPrincipalContext() {
+        return new PrincipalContext(
                 principalId,
+                principalType,
                 userId,
                 projectScope,
                 permissions,
@@ -114,6 +121,7 @@ public final class SubmitterRegistration {
         if (!(o instanceof SubmitterRegistration that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
+                && principalType == that.principalType
                 && Objects.equals(credential, that.credential)
                 && Objects.equals(keyPrefix, that.keyPrefix)
                 && Objects.equals(userId, that.userId)
@@ -126,13 +134,14 @@ public final class SubmitterRegistration {
 
     @Override
     public int hashCode() {
-        return Objects.hash(principalId, credential, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
+        return Objects.hash(principalId, principalType, credential, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
     }
 
     @Override
     public String toString() {
         return "SubmitterRegistration{" +
                 "principalId='" + principalId + '\'' +
+                ", principalType=" + principalType +
                 ", keyPrefix='" + keyPrefix + '\'' +
                 ", userId='" + userId + '\'' +
                 ", projectScope='" + projectScope + '\'' +
@@ -197,6 +206,7 @@ public final class SubmitterRegistration {
 
     public static final class Builder {
         private String principalId;
+        private PrincipalType principalType = PrincipalType.SERVICE;
         private String credential;
         private String keyPrefix;
         private String userId;
@@ -212,6 +222,11 @@ public final class SubmitterRegistration {
 
         public Builder principalId(String principalId) {
             this.principalId = principalId;
+            return this;
+        }
+
+        public Builder principalType(PrincipalType principalType) {
+            this.principalType = principalType;
             return this;
         }
 

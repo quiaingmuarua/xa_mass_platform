@@ -1,67 +1,79 @@
 package com.xa.mass.sdk.auth;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
  * Minimal in-memory submitter registry used by the SDK facade.
  */
-public final class InMemorySubmitterRegistry implements AuthProvider {
+public final class InMemorySubmitterRegistry implements SubmitterRegistry {
 
-    private final Map<String, SubmitterRegistration> byPrincipalId = new LinkedHashMap<>();
-    private final Map<String, SubmitterRegistration> byCredentialHash = new LinkedHashMap<>();
+    private final Map<String, StoredBinding> byPrincipalId = new LinkedHashMap<>();
+    private final Map<String, StoredBinding> byCredentialHash = new LinkedHashMap<>();
 
     public synchronized void register(SubmitterRegistration submitterRegistration) {
         SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
-        String credentialHash = hashCredential(registration.getCredential());
-        SubmitterRegistration credentialOwner = byCredentialHash.get(credentialHash);
-        if (credentialOwner != null && !credentialOwner.getPrincipalId().equals(registration.getPrincipalId())) {
+        String credentialHash = CredentialHashing.sha256(registration.getCredential());
+        StoredBinding credentialOwner = byCredentialHash.get(credentialHash);
+        if (credentialOwner != null && !credentialOwner.metadata().getPrincipalId().equals(registration.getPrincipalId())) {
             throw new IllegalArgumentException("credential is already assigned to another submitter");
         }
-        SubmitterRegistration previous = byPrincipalId.put(registration.getPrincipalId(), registration);
+        StoredBinding binding = new StoredBinding(
+                registration.toMetadata(),
+                registration.toPrincipalContext(),
+                credentialHash
+        );
+        StoredBinding previous = byPrincipalId.put(registration.getPrincipalId(), binding);
         if (previous != null) {
-            byCredentialHash.remove(hashCredential(previous.getCredential()));
+            byCredentialHash.remove(previous.credentialHash());
         }
-        byCredentialHash.put(credentialHash, registration);
+        byCredentialHash.put(credentialHash, binding);
+    }
+
+    public synchronized void loadDurable(SubmitterMetadata metadata, String credentialHash) {
+        SubmitterMetadata normalizedMetadata = Objects.requireNonNull(metadata, "metadata");
+        String normalizedCredentialHash = Objects.requireNonNull(credentialHash, "credentialHash");
+        StoredBinding credentialOwner = byCredentialHash.get(normalizedCredentialHash);
+        if (credentialOwner != null && !credentialOwner.metadata().getPrincipalId().equals(normalizedMetadata.getPrincipalId())) {
+            throw new IllegalArgumentException("credential is already assigned to another submitter");
+        }
+        StoredBinding binding = new StoredBinding(
+                normalizedMetadata,
+                normalizedMetadata.toPrincipalContext(),
+                normalizedCredentialHash
+        );
+        StoredBinding previous = byPrincipalId.put(normalizedMetadata.getPrincipalId(), binding);
+        if (previous != null) {
+            byCredentialHash.remove(previous.credentialHash());
+        }
+        byCredentialHash.put(normalizedCredentialHash, binding);
     }
 
     public synchronized List<SubmitterMetadata> listSubmitters() {
         return byPrincipalId.values().stream()
-                .sorted(Comparator.comparing(SubmitterRegistration::getPrincipalId, Comparator.nullsLast(String::compareTo)))
-                .map(SubmitterRegistration::toMetadata)
+                .map(StoredBinding::metadata)
+                .sorted(Comparator.comparing(SubmitterMetadata::getPrincipalId, Comparator.nullsLast(String::compareTo)))
                 .toList();
     }
 
     public synchronized SubmitterMetadata getSubmitter(String principalId) {
-        SubmitterRegistration registration = byPrincipalId.get(principalId);
-        return registration != null ? registration.toMetadata() : null;
+        StoredBinding binding = byPrincipalId.get(principalId);
+        return binding != null ? binding.metadata() : null;
     }
 
     @Override
-    public synchronized TaskSubmitterContext authenticate(String credential) {
+    public synchronized PrincipalContext authenticate(String credential) {
         if (credential == null || credential.isBlank()) {
             return null;
         }
-        SubmitterRegistration registration = byCredentialHash.get(hashCredential(credential.trim()));
-        if (registration == null || !registration.isEnabled()) {
+        StoredBinding binding = byCredentialHash.get(CredentialHashing.sha256(credential.trim()));
+        if (binding == null || !binding.metadata().isEnabled()) {
             return null;
         }
-        return registration.toSubmitterContext();
+        return binding.principalContext();
     }
 
-    private static String hashCredential(String credential) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(credential.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
-            for (byte value : bytes) {
-                builder.append(String.format("%02x", value));
-            }
-            return builder.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
+    private record StoredBinding(SubmitterMetadata metadata,
+                                 PrincipalContext principalContext,
+                                 String credentialHash) {
     }
 }

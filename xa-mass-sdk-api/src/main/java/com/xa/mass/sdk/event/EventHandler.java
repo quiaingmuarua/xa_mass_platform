@@ -1,5 +1,7 @@
 package com.xa.mass.sdk.event;
 
+import com.xa.mass.sdk.auth.PrincipalContext;
+
 /**
  * SDK-facing runtime event handler contract.
  *
@@ -9,5 +11,5 @@ package com.xa.mass.sdk.event;
 @FunctionalInterface
 public interface EventHandler {
 
-    EventResponse handle(EventRequest request, EventPrincipal principal) throws Exception;
+    EventResponse handle(EventRequest request, PrincipalContext principal) throws Exception;
 }

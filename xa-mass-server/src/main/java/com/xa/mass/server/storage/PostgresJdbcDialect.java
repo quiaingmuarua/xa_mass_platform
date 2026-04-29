@@ -48,4 +48,20 @@ final class PostgresJdbcDialect implements JdbcDialect {
                   json = EXCLUDED.json
                 """;
     }
+
+    @Override
+    public String principalUpsertSql() {
+        return """
+                INSERT INTO xa_principal(principal_id, principal_type, credential_hash, key_prefix, user_id, project_scope, enabled, json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (principal_id) DO UPDATE SET
+                  principal_type = EXCLUDED.principal_type,
+                  credential_hash = EXCLUDED.credential_hash,
+                  key_prefix = EXCLUDED.key_prefix,
+                  user_id = EXCLUDED.user_id,
+                  project_scope = EXCLUDED.project_scope,
+                  enabled = EXCLUDED.enabled,
+                  json = EXCLUDED.json
+                """;
+    }
 }

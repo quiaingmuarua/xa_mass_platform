@@ -7,7 +7,7 @@ import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -61,7 +61,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("java-realtime-worker")
                 .credential(WORKER_KEY)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of("crawlerApp"))
                 .eventScopes(List.of("crawler.fetch-page"))
                 .attributes(Map.of("workerId", WORKER_ID))

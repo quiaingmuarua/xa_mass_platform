@@ -7,7 +7,7 @@ import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -247,7 +247,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of(projectCode))
                 .eventScopes(List.of(eventCode))
                 .attributes(Map.of("workerId", workerId))

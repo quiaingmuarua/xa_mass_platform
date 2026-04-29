@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import org.junit.jupiter.api.Test;
@@ -104,16 +104,18 @@ class SdkMetadataApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     @SuppressWarnings("unchecked")
     void handlerBackedUtilityEventsDispatchRealData() {
-        app.grantClientEventPermissions("metadata-test-client", List.of("tool.country.capital.lookup"));
-        app.grantUserEventPermissions("metadata-test-user", List.of("tool.country.capital.lookup"));
-
         EventResponse response = app.dispatchEvent(
                 EventRequest.builder()
                         .event("tool.country.capital.lookup")
                         .requestId("req-country-capital")
                         .payload(Map.of("countryCode", "GB"))
                         .build(),
-                EventPrincipal.of("metadata-test-client", "metadata-test-user")
+                PrincipalContext.builder()
+                        .principalId("metadata-test-client")
+                        .userId("metadata-test-user")
+                        .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
+                        .eventScopes(List.of("tool.country.capital.lookup"))
+                        .build()
         );
 
         assertTrue(response.isSuccess());

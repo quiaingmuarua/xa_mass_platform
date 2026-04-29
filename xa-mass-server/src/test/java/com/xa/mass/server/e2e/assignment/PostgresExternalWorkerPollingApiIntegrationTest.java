@@ -5,7 +5,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.test.EmbeddedPostgresSupport;
@@ -214,7 +214,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of(projectCode))
                 .eventScopes(List.of(eventCode))
                 .attributes(Map.of("workerId", workerId))

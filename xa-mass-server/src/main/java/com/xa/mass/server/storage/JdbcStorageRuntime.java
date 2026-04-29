@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.sdk.auth.SubmitterRegistry;
 import org.flywaydb.core.Flyway;
 
 import javax.sql.DataSource;
@@ -16,6 +17,7 @@ public final class JdbcStorageRuntime implements AutoCloseable {
     private final JdbcDialect dialect;
     private final JdbcTaskStorage taskStorage;
     private final JdbcWorkerStorage workerStorage;
+    private final JdbcSubmitterRegistry submitterRegistry;
     private final RuleManager<Map<String, Object>> ruleManager;
     private final JdbcRuntimeResidueRecovery residueRecovery;
 
@@ -24,18 +26,20 @@ public final class JdbcStorageRuntime implements AutoCloseable {
                                JdbcDialect dialect,
                                JdbcTaskStorage taskStorage,
                                JdbcWorkerStorage workerStorage,
+                               JdbcSubmitterRegistry submitterRegistry,
                                RuleManager<Map<String, Object>> ruleManager) {
         this.mode = mode;
         this.dataSource = dataSource;
         this.dialect = dialect;
         this.taskStorage = taskStorage;
         this.workerStorage = workerStorage;
+        this.submitterRegistry = submitterRegistry;
         this.ruleManager = ruleManager;
         this.residueRecovery = new JdbcRuntimeResidueRecovery();
     }
 
     public static JdbcStorageRuntime disabled() {
-        return new JdbcStorageRuntime(JdbcStorageMode.MEMORY, null, null, null, null, null);
+        return new JdbcStorageRuntime(JdbcStorageMode.MEMORY, null, null, null, null, null, null);
     }
 
     public static JdbcStorageRuntime create(JdbcStorageMode mode, String jdbcUrl, String username, String password) {
@@ -52,10 +56,11 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         JdbcDialect dialect = mode.dialect();
         JdbcTaskStorage taskStorage = new JdbcTaskStorage(dataSource, dialect);
         JdbcWorkerStorage workerStorage = new JdbcWorkerStorage(dataSource, dialect);
+        JdbcSubmitterRegistry submitterRegistry = new JdbcSubmitterRegistry(dataSource, dialect);
         JdbcRuleStorage ruleStorage = new JdbcRuleStorage(dataSource, dialect);
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(ruleStorage);
         ruleManager.addDefaultRules(RuleConfig.getDefaultWorkerMatchRules());
-        return new JdbcStorageRuntime(mode, dataSource, dialect, taskStorage, workerStorage, ruleManager);
+        return new JdbcStorageRuntime(mode, dataSource, dialect, taskStorage, workerStorage, submitterRegistry, ruleManager);
     }
 
     private static HikariDataSource createDataSource(String jdbcUrl, String username, String password) {
@@ -94,6 +99,10 @@ public final class JdbcStorageRuntime implements AutoCloseable {
 
     public RuleManager<Map<String, Object>> ruleManager() {
         return ruleManager;
+    }
+
+    public SubmitterRegistry submitterRegistry() {
+        return submitterRegistry;
     }
 
     public void recoverRuntimeResidue() {

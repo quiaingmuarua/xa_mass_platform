@@ -9,7 +9,7 @@ import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -216,7 +216,7 @@ class TaskApiControllerTest {
         createdTask.setProject("crawlerApp");
         createdTask.setUser(com.xa.mass.base.model.UserRef.of("crawler-agent"));
 
-        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "crawler-agent",
                 null,
                 "crawlerApp",
@@ -279,7 +279,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskWithSdkCredentialRejectsProjectScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
@@ -310,7 +310,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskWithSdkCredentialRejectsUserScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
@@ -341,7 +341,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskWithSdkCredentialRejectsMissingCreatePermission() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "crawler-key",
                 "crawler-agent",
                 "crawlerApp",
@@ -371,7 +371,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskWithSdkCredentialRejectsEventScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "crawler-key",
                 "crawler-agent",
                 "crawlerApp",

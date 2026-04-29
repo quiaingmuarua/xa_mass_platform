@@ -117,7 +117,11 @@ public class XaMassServerApplication {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime) {
-        return MassSdk.builder()
+        MassSdk.Builder builder = MassSdk.builder();
+        if (jdbcStorageRuntime.isEnabled()) {
+            builder.submitterRegistry(jdbcStorageRuntime.submitterRegistry());
+        }
+        return builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket

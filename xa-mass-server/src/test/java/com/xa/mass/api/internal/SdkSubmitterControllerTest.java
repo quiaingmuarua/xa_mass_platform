@@ -1,7 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +33,7 @@ class SdkSubmitterControllerTest {
 
     @Test
     void currentSubmitterReturnsAuthenticatedContext() throws Exception {
-        when(authProvider.authenticate("dev-api-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("dev-api-key")).thenReturn(new PrincipalContext(
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
@@ -48,6 +48,7 @@ class SdkSubmitterControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.principalId").value("telegram-bot"))
+                .andExpect(jsonPath("$.data.principalType").value("SERVICE"))
                 .andExpect(jsonPath("$.data.userId").value("bot-user"))
                 .andExpect(jsonPath("$.data.projectScope").value("telegramApp"))
                 .andExpect(jsonPath("$.data.permissions[0]").value("task:create"))
@@ -58,7 +59,7 @@ class SdkSubmitterControllerTest {
 
     @Test
     void currentSubmitterAcceptsBearerCredential() throws Exception {
-        when(authProvider.authenticate("bearer-key")).thenReturn(new TaskSubmitterContext(
+        when(authProvider.authenticate("bearer-key")).thenReturn(new PrincipalContext(
                 "crawler-agent",
                 null,
                 "crawlerApp",
