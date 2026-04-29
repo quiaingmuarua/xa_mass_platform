@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -60,24 +61,24 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public DispatchOutcome enqueue(String adapterId, TaskDispatchItem item, int maxItemsPerWorker) {
-        String normalizedAdapterId = normalize(adapterId);
-        if (item == null || item.getWorkerId() == null || item.getWorkerId().isBlank()) {
+    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope, int maxItemsPerRoute) {
+        String normalizedAdapterId = normalize(envelope == null ? null : envelope.getAdapterId());
+        if (envelope == null || envelope.getRouteKey() == null || envelope.getRouteKey().isBlank()) {
             invalidItems.incrementAndGet();
-            return DispatchOutcome.invalid(normalizedAdapterId, item, "workerId must not be blank");
+            return DispatchOutcome.invalid(normalizedAdapterId, envelope, "routeKey must not be blank");
         }
-        if (maxItemsPerWorker <= 0) {
+        if (maxItemsPerRoute <= 0) {
             backpressureRejectedItems.incrementAndGet();
             adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
-            return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue capacity is exhausted");
+            return DispatchOutcome.backpressureRejected(normalizedAdapterId, envelope, "delivery queue capacity is exhausted");
         }
         if (!running.get()) {
             unavailableItems.incrementAndGet();
-            return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
+            return DispatchOutcome.adapterUnavailable(normalizedAdapterId, envelope, "delivery store is stopped");
         }
 
-        String workerId = item.getWorkerId().trim();
-        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, workerId);
+        String routeKey = envelope.getRouteKey().trim();
+        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, routeKey);
         DeliveryQueue queue = deliveryByWorker.computeIfAbsent(key, ignored -> new DeliveryQueue());
         synchronized (queue) {
             if (!running.get()) {
@@ -85,12 +86,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                     deliveryByWorker.remove(key, queue);
                 }
                 unavailableItems.incrementAndGet();
-                return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
+                return DispatchOutcome.adapterUnavailable(normalizedAdapterId, envelope, "delivery store is stopped");
             }
-            if (queue.items.size() >= maxItemsPerWorker) {
+            if (queue.items.size() >= maxItemsPerRoute) {
                 backpressureRejectedItems.incrementAndGet();
                 adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
-                return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue is full");
+                return DispatchOutcome.backpressureRejected(normalizedAdapterId, envelope, "delivery queue is full");
             }
             if (!reserveGlobalSlot()) {
                 if (queue.items.isEmpty() && queue.waiters == 0) {
@@ -98,60 +99,71 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 }
                 backpressureRejectedItems.incrementAndGet();
                 adapterCounters(normalizedAdapterId).backpressureRejectedItems.incrementAndGet();
-                return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "runtime delivery backlog is full");
+                return DispatchOutcome.backpressureRejected(normalizedAdapterId, envelope, "runtime delivery backlog is full");
             }
-            queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, currentTimeMillis.getAsLong()));
+            queue.items.addLast(new TransportDelivery(
+                    normalizedAdapterId,
+                    routeKey,
+                    new TransportDispatchEnvelope(
+                            envelope.getDeliveryId(),
+                            normalizedAdapterId,
+                            routeKey,
+                            envelope.getCorrelationKey(),
+                            envelope.getPayload(),
+                            envelope.getCreatedAtEpochMillis()
+                    )
+            ));
             enqueuedItems.incrementAndGet();
             invalidateStatsSnapshot();
             signalWaitingPoller(queue);
-            return DispatchOutcome.queued(normalizedAdapterId, item);
+            return DispatchOutcome.queued(normalizedAdapterId, envelope);
         }
     }
 
     @Override
-    public List<TaskDispatchItem> drain(String adapterId, String workerId, int maxItems) {
+    public List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
         String normalizedAdapterId = normalize(adapterId);
-        String normalizedWorkerId = normalizeWorkerId(workerId);
-        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0 || !running.get()) {
+        String normalizedRouteKey = normalizeRouteKey(routeKey);
+        if (normalizedAdapterId == null || normalizedRouteKey == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
-        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedWorkerId);
+        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey);
         DeliveryQueue queue = deliveryByWorker.get(key);
         if (queue == null) {
             return List.of();
         }
 
         synchronized (queue) {
-            List<TaskDispatchItem> items = drainLocked(queue, maxItems);
-            releaseGlobalSlots(items.size());
-            drainedItems.addAndGet(items.size());
-            if (!items.isEmpty()) {
+            List<TransportDispatchEnvelope> envelopes = drainLocked(queue, maxItems);
+            releaseGlobalSlots(envelopes.size());
+            drainedItems.addAndGet(envelopes.size());
+            if (!envelopes.isEmpty()) {
                 invalidateStatsSnapshot();
             }
             if (queue.items.isEmpty() && queue.waiters == 0) {
                 deliveryByWorker.remove(key, queue);
             }
-            return List.copyOf(items);
+            return List.copyOf(envelopes);
         }
     }
 
     @Override
-    public List<TaskDispatchItem> poll(String adapterId,
-                                       String workerId,
+    public List<TransportDispatchEnvelope> poll(String adapterId,
+                                       String routeKey,
                                        int maxItems,
                                        long timeout,
                                        TimeUnit unit) throws InterruptedException {
         String normalizedAdapterId = normalize(adapterId);
-        String normalizedWorkerId = normalizeWorkerId(workerId);
-        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0 || !running.get()) {
+        String normalizedRouteKey = normalizeRouteKey(routeKey);
+        if (normalizedAdapterId == null || normalizedRouteKey == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
         if (timeout <= 0) {
-            return drain(normalizedAdapterId, normalizedWorkerId, maxItems);
+            return drain(normalizedAdapterId, normalizedRouteKey, maxItems);
         }
         long timeoutMillis = Math.max(1L, unit == null ? timeout : unit.toMillis(timeout));
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedWorkerId);
+        DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey);
         DeliveryQueue queue = deliveryByWorker.computeIfAbsent(key, ignored -> new DeliveryQueue());
         synchronized (queue) {
             queue.waiters++;
@@ -168,13 +180,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 if (queue.items.isEmpty()) {
                     return List.of();
                 }
-                List<TaskDispatchItem> items = drainLocked(queue, maxItems);
-                releaseGlobalSlots(items.size());
-                drainedItems.addAndGet(items.size());
-                if (!items.isEmpty()) {
+                List<TransportDispatchEnvelope> envelopes = drainLocked(queue, maxItems);
+                releaseGlobalSlots(envelopes.size());
+                drainedItems.addAndGet(envelopes.size());
+                if (!envelopes.isEmpty()) {
                     invalidateStatsSnapshot();
                 }
-                return List.copyOf(items);
+                return List.copyOf(envelopes);
             } finally {
                 queue.waiters--;
                 invalidateStatsSnapshot();
@@ -338,14 +350,14 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         queuedItems.updateAndGet(current -> Math.max(0, current - count));
     }
 
-    private static List<TaskDispatchItem> drainLocked(DeliveryQueue queue, int maxItems) {
-        List<TaskDispatchItem> items = new ArrayList<>(Math.max(1, maxItems));
+    private static List<TransportDispatchEnvelope> drainLocked(DeliveryQueue queue, int maxItems) {
+        List<TransportDispatchEnvelope> items = new ArrayList<>(Math.max(1, maxItems));
         while (items.size() < maxItems) {
             TransportDelivery delivery = queue.items.pollFirst();
             if (delivery == null) {
                 break;
             }
-            items.add(delivery.getDispatchItem());
+            items.add(delivery.getEnvelope());
         }
         return items;
     }
@@ -357,17 +369,17 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         return value.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static String normalizeWorkerId(String value) {
+    private static String normalizeRouteKey(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
         return value.trim();
     }
 
-    private record DeliveryQueueKey(String adapterId, String workerId) {
+    private record DeliveryQueueKey(String adapterId, String routeKey) {
         private DeliveryQueueKey {
             Objects.requireNonNull(adapterId, "adapterId");
-            Objects.requireNonNull(workerId, "workerId");
+            Objects.requireNonNull(routeKey, "routeKey");
         }
     }
 

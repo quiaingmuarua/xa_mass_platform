@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -11,15 +11,15 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(String adapterId, TaskDispatchItem item, int maxItemsPerWorker);
+    DispatchOutcome enqueue(TransportDispatchEnvelope envelope, int maxItemsPerRoute);
 
-    List<TaskDispatchItem> drain(String adapterId, String workerId, int maxItems);
+    List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems);
 
-    List<TaskDispatchItem> poll(String adapterId,
-                                String workerId,
-                                int maxItems,
-                                long timeout,
-                                TimeUnit unit) throws InterruptedException;
+    List<TransportDispatchEnvelope> poll(String adapterId,
+                                         String routeKey,
+                                         int maxItems,
+                                         long timeout,
+                                         TimeUnit unit) throws InterruptedException;
 
     TransportDeliveryStoreStats stats();
 

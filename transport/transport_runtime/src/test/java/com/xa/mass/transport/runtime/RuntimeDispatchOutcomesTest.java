@@ -3,6 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,7 +18,7 @@ class RuntimeDispatchOutcomesTest {
     void adapterUnavailableKeepsOneOutcomePerItemAndNormalizesInvalidItems() {
         List<DispatchOutcome> outcomes = RuntimeDispatchOutcomes.adapterUnavailable(
                 "websocket",
-                List.of(item("msg-1", "worker-1"), item("msg-2", " ")),
+                List.of(envelope(item("msg-1", "worker-1")), invalidEnvelope(item("msg-2", " "))),
                 "dispatch channel is unavailable"
         );
 
@@ -26,7 +27,7 @@ class RuntimeDispatchOutcomesTest {
         assertEquals("dispatch channel is unavailable", outcomes.get(0).getReason());
         assertTrue(outcomes.get(0).isRetryable());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(1).getStatus());
-        assertEquals("workerId must not be blank", outcomes.get(1).getReason());
+        assertEquals("routeKey must not be blank", outcomes.get(1).getReason());
     }
 
     @Test
@@ -49,6 +50,28 @@ class RuntimeDispatchOutcomesTest {
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+        );
+    }
+
+    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "websocket",
+                item.getWorkerId(),
+                item.attemptId(),
+                item,
+                1L
+        );
+    }
+
+    private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "websocket",
+                " ",
+                item.attemptId(),
+                item,
+                1L
         );
     }
 }

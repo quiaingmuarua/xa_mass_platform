@@ -3,6 +3,7 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,8 +22,8 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(item("msg-1", "worker-1")),
-                item -> true,
+                List.of(envelope(item("msg-1", "worker-1"))),
+                envelope -> true,
                 "unavailable"
         );
 
@@ -37,8 +38,8 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "socket",
-                List.of(item("msg-1", "worker-1")),
-                item -> false,
+                List.of(envelope(item("msg-1", "worker-1"))),
+                envelope -> false,
                 "unavailable"
         );
 
@@ -54,7 +55,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(item("msg-1", "worker-1")),
+                List.of(envelope(item("msg-1", "worker-1"))),
                 null,
                 "dispatcher context is unavailable"
         );
@@ -72,8 +73,8 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(item("msg-1", null)),
-                item -> {
+                List.of(invalidEnvelope(item("msg-1", null))),
+                envelope -> {
                     called.set(true);
                     return true;
                 },
@@ -92,8 +93,8 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "socket",
-                List.of(item("msg-1", "worker-1")),
-                item -> {
+                List.of(envelope(item("msg-1", "worker-1"))),
+                envelope -> {
                     throw new IllegalStateException("write failed");
                 },
                 "unavailable"
@@ -110,8 +111,8 @@ class TransportDeliveryServiceTest {
     void directStatsByAdapterNormalizeAdapterIds() {
         TransportDeliveryService service = service();
 
-        service.sendDirect(" WebSocket ", List.of(item("msg-1", "worker-1")), item -> true, "unavailable");
-        service.sendDirect("websocket", List.of(item("msg-2", "worker-2")), item -> false, "unavailable");
+        service.sendDirect(" WebSocket ", List.of(envelope(item("msg-1", "worker-1"))), envelope -> true, "unavailable");
+        service.sendDirect("websocket", List.of(envelope(item("msg-2", "worker-2"))), envelope -> false, "unavailable");
 
         TransportDirectDeliveryStats stats = service.directStatsByAdapter().get("websocket");
         assertEquals(1L, stats.getSentItems());
@@ -122,22 +123,22 @@ class TransportDeliveryServiceTest {
     void pollReturnsQueuedItems() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", "worker-1");
-        service.enqueue("polling", List.of(item), 10);
+        service.enqueue(List.of(envelope(item)), 10);
 
-        assertEquals(List.of(item), service.poll("polling", "worker-1", 10, 0));
+        assertEquals(List.of(item), service.pollPayloads("polling", "worker-1", 10, 0));
     }
 
     @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
-        service.enqueue("polling", List.of(item("msg-1", "worker-1")), 10);
+        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
 
         TransportDeliveryStoreStats stats = service.stats();
 
         assertEquals(1, stats.getQueuedItems());
         assertEquals(1, stats.getQueueCount());
         assertEquals(10, stats.getMaxQueuedItems());
-        assertEquals(0L, stats.getOldestQueuedAgeMillis());
+        assertTrue(stats.getOldestQueuedAgeMillis() >= 0L);
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
         assertEquals(0L, stats.getDirectSentItems());
@@ -147,14 +148,14 @@ class TransportDeliveryServiceTest {
     @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(item("msg-1", "worker-1")), 10);
+        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
 
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
-        assertTrue(service.poll("polling", "worker-1", 10, 0).isEmpty());
+        assertTrue(service.pollPayloads("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
-                service.enqueue("polling", List.of(item("msg-2", "worker-1")), 10).get(0).getStatus());
+                service.enqueue(List.of(envelope(item("msg-2", "worker-1"))), 10).get(0).getStatus());
     }
 
     private TransportDeliveryService service() {
@@ -179,6 +180,28 @@ class TransportDeliveryServiceTest {
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+        );
+    }
+
+    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "polling",
+                item.getWorkerId(),
+                item.attemptId(),
+                item,
+                1L
+        );
+    }
+
+    private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "polling",
+                " ",
+                item.attemptId(),
+                item,
+                1L
         );
     }
 }

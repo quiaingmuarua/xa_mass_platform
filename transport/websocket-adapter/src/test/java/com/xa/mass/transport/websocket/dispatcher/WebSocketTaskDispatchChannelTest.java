@@ -10,6 +10,7 @@ import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class WebSocketTaskDispatchChannelTest {
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task, taskMsg, attempt())));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(task, taskMsg, attempt()))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
@@ -82,7 +83,7 @@ class WebSocketTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(task(), taskMsg(), attempt()))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
@@ -98,7 +99,7 @@ class WebSocketTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(task(), taskMsg(), attempt()))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
@@ -109,7 +110,7 @@ class WebSocketTaskDispatchChannelTest {
     void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg(), attempt())));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(task(), taskMsg(), attempt()))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
@@ -144,5 +145,16 @@ class WebSocketTaskDispatchChannelTest {
 
     private TransportDeliveryService deliveryService() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
+    }
+
+    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "websocket",
+                item.getWorkerId(),
+                item.attemptId(),
+                item,
+                1L
+        );
     }
 }

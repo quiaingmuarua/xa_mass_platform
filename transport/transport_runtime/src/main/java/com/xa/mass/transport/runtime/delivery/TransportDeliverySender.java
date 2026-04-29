@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 /**
  * Adapter-owned synchronous send operation used by the runtime delivery service.
@@ -8,5 +8,5 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 @FunctionalInterface
 public interface TransportDeliverySender {
 
-    boolean send(TaskDispatchItem item);
+    boolean send(TransportDispatchEnvelope envelope);
 }

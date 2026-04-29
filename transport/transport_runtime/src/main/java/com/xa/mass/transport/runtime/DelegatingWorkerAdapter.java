@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,15 +51,15 @@ public class DelegatingWorkerAdapter implements WorkerAdapter {
     }
 
     @Override
-    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (items == null || items.isEmpty()) {
+    public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
         if (taskDispatchChannel == null) {
             logger.warn("Skip task dispatch because adapter dispatch channel is unavailable: adapterId={}", adapterId);
-            return RuntimeDispatchOutcomes.adapterUnavailable(adapterId, items, unavailableReason);
+            return RuntimeDispatchOutcomes.adapterUnavailable(adapterId, envelopes, unavailableReason);
         }
-        return taskDispatchChannel.dispatchTaskItems(items);
+        return taskDispatchChannel.dispatchEnvelopes(envelopes);
     }
 
     private static String requireText(String value, String field) {

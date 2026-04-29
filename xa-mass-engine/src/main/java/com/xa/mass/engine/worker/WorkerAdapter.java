@@ -7,7 +7,7 @@ import com.xa.mass.transport.channel.TaskDispatchChannel;
  * Extension seam for worker transport adapters (WebSocket, HTTP, gRPC, etc.).
  *
  * <p>A {@code WorkerAdapter} bundles the dispatch side of the worker lifecycle
- * (pushing transport-neutral task dispatch items to workers) with a protocol
+ * (pushing transport-neutral dispatch envelopes to workers) with a protocol
  * identifier so that multiple transports can coexist and be selected at runtime.
  * Runtime selection uses {@link #adapterId()} as the concrete adapter identity
  * and {@link #transportHint()} as the coarse transport family.

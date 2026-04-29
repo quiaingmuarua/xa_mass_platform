@@ -3,92 +3,96 @@ package com.xa.mass.transport.model;
 import java.util.Objects;
 
 /**
- * Adapter-neutral result of handing one task dispatch item to a transport.
+ * Adapter-neutral result of handing one transport dispatch envelope to a
+ * transport.
  */
 public final class DispatchOutcome {
 
+    private final String deliveryId;
     private final String adapterId;
-    private final String workerId;
-    private final String taskId;
-    private final String messageId;
+    private final String routeKey;
+    private final String correlationKey;
     private final DispatchOutcomeStatus status;
     private final boolean retryable;
     private final String reason;
 
-    public DispatchOutcome(String adapterId,
-                           String workerId,
-                           String taskId,
-                           String messageId,
+    public DispatchOutcome(String deliveryId,
+                           String adapterId,
+                           String routeKey,
+                           String correlationKey,
                            DispatchOutcomeStatus status,
                            boolean retryable,
                            String reason) {
+        this.deliveryId = normalizeText(deliveryId);
         this.adapterId = normalize(adapterId);
-        this.workerId = workerId;
-        this.taskId = taskId;
-        this.messageId = messageId;
+        this.routeKey = normalizeText(routeKey);
+        this.correlationKey = normalizeText(correlationKey);
         this.status = Objects.requireNonNull(status, "status");
         this.retryable = retryable;
         this.reason = reason;
     }
 
-    public static DispatchOutcome sent(String adapterId, TaskDispatchItem item) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.SENT, false, null);
+    public static DispatchOutcome sent(String adapterId, TransportDispatchEnvelope envelope) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.SENT, false, null);
     }
 
-    public static DispatchOutcome queued(String adapterId, TaskDispatchItem item) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.QUEUED, false, null);
+    public static DispatchOutcome queued(String adapterId, TransportDispatchEnvelope envelope) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.QUEUED, false, null);
     }
 
-    public static DispatchOutcome endpointOffline(String adapterId, TaskDispatchItem item, String reason) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.ENDPOINT_OFFLINE, true, reason);
+    public static DispatchOutcome endpointOffline(String adapterId, TransportDispatchEnvelope envelope, String reason) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.ENDPOINT_OFFLINE, true, reason);
     }
 
-    public static DispatchOutcome backpressureRejected(String adapterId, TaskDispatchItem item, String reason) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.BACKPRESSURE_REJECTED, true, reason);
+    public static DispatchOutcome backpressureRejected(String adapterId, TransportDispatchEnvelope envelope, String reason) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.BACKPRESSURE_REJECTED, true, reason);
     }
 
-    public static DispatchOutcome invalid(String adapterId, TaskDispatchItem item, String reason) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.INVALID_ITEM, false, reason);
+    public static DispatchOutcome invalid(String adapterId, TransportDispatchEnvelope envelope, String reason) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.INVALID_ITEM, false, reason);
     }
 
-    public static DispatchOutcome adapterUnavailable(String adapterId, TaskDispatchItem item, String reason) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, true, reason);
+    public static DispatchOutcome adapterUnavailable(String adapterId, TransportDispatchEnvelope envelope, String reason) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, true, reason);
     }
 
-    public static DispatchOutcome failed(String adapterId, TaskDispatchItem item, String reason, boolean retryable) {
-        return fromItem(adapterId, item, DispatchOutcomeStatus.FAILED, retryable, reason);
+    public static DispatchOutcome failed(String adapterId,
+                                         TransportDispatchEnvelope envelope,
+                                         String reason,
+                                         boolean retryable) {
+        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.FAILED, retryable, reason);
     }
 
-    private static DispatchOutcome fromItem(String adapterId,
-                                            TaskDispatchItem item,
-                                            DispatchOutcomeStatus status,
-                                            boolean retryable,
-                                            String reason) {
+    private static DispatchOutcome fromEnvelope(String adapterId,
+                                                TransportDispatchEnvelope envelope,
+                                                DispatchOutcomeStatus status,
+                                                boolean retryable,
+                                                String reason) {
         return new DispatchOutcome(
+                envelope != null ? envelope.getDeliveryId() : null,
                 adapterId,
-                item != null ? item.getWorkerId() : null,
-                item != null ? item.getTaskId() : null,
-                item != null ? item.getMessageId() : null,
+                envelope != null ? envelope.getRouteKey() : null,
+                envelope != null ? envelope.getCorrelationKey() : null,
                 status,
                 retryable,
                 reason
         );
     }
 
+    public String getDeliveryId() {
+        return deliveryId;
+    }
+
     public String getAdapterId() {
         return adapterId;
     }
 
-    public String getWorkerId() {
-        return workerId;
+    public String getRouteKey() {
+        return routeKey;
     }
 
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public String getMessageId() {
-        return messageId;
+    public String getCorrelationKey() {
+        return correlationKey;
     }
 
     public DispatchOutcomeStatus getStatus() {
@@ -108,5 +112,12 @@ public final class DispatchOutcome {
             return null;
         }
         return value.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static String normalizeText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

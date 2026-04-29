@@ -1,8 +1,9 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
+import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,28 +36,34 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueue(String adapterId, List<TaskDispatchItem> items, int maxItemsPerWorker) {
-        if (items == null || items.isEmpty()) {
+    public List<DispatchOutcome> enqueue(List<TransportDispatchEnvelope> envelopes, int maxItemsPerRoute) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
-        for (TaskDispatchItem item : items) {
-            outcomes.add(deliveryStore.enqueue(adapterId, item, maxItemsPerWorker));
+        List<DispatchOutcome> outcomes = new ArrayList<>(envelopes.size());
+        for (TransportDispatchEnvelope envelope : envelopes) {
+            outcomes.add(deliveryStore.enqueue(envelope, maxItemsPerRoute));
         }
         return List.copyOf(outcomes);
     }
 
-    public List<TaskDispatchItem> drain(String adapterId, String workerId, int maxItems) {
-        return deliveryStore.drain(adapterId, workerId, maxItems);
+    public List<TransportDispatchEnvelope> drainEnvelopes(String adapterId, String routeKey, int maxItems) {
+        return deliveryStore.drain(adapterId, routeKey, maxItems);
     }
 
-    public List<TaskDispatchItem> poll(String adapterId, String workerId, int maxItems, long timeoutMillis) {
+    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
         try {
-            return deliveryStore.poll(adapterId, workerId, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+            return deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return List.of();
         }
+    }
+
+    public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        return pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis).stream()
+                .map(TransportDispatchEnvelope::getPayload)
+                .toList();
     }
 
     public TransportDeliveryStoreStats stats() {
@@ -95,42 +102,42 @@ public final class TransportDeliveryService {
     }
 
     public List<DispatchOutcome> sendDirect(String adapterId,
-                                            List<TaskDispatchItem> items,
+                                            List<TransportDispatchEnvelope> envelopes,
                                             TransportDeliverySender sender,
                                             String unavailableReason) {
-        if (items == null || items.isEmpty()) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
-        for (TaskDispatchItem item : items) {
+        List<DispatchOutcome> outcomes = new ArrayList<>(envelopes.size());
+        for (TransportDispatchEnvelope envelope : envelopes) {
             DirectDeliveryCounters adapterCounters = directCounters(adapterId);
-            if (RuntimeDispatchOutcomes.missingWorker(item)) {
+            if (RuntimeDispatchOutcomes.missingRoute(envelope)) {
                 directInvalidItems.incrementAndGet();
                 adapterCounters.invalidItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.invalid(adapterId, item, "workerId must not be blank"));
+                outcomes.add(DispatchOutcome.invalid(adapterId, envelope, "routeKey must not be blank"));
                 continue;
             }
             if (sender == null) {
                 directUnavailableItems.incrementAndGet();
                 adapterCounters.unavailableItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.adapterUnavailable(adapterId, item, unavailableReason));
+                outcomes.add(DispatchOutcome.adapterUnavailable(adapterId, envelope, unavailableReason));
                 continue;
             }
             try {
-                boolean sent = sender.send(item);
+                boolean sent = sender.send(envelope);
                 if (sent) {
                     directSentItems.incrementAndGet();
                     adapterCounters.sentItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.sent(adapterId, item));
+                    outcomes.add(DispatchOutcome.sent(adapterId, envelope));
                 } else {
                     directOfflineItems.incrementAndGet();
                     adapterCounters.offlineItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.endpointOffline(adapterId, item, "endpoint is unavailable"));
+                    outcomes.add(DispatchOutcome.endpointOffline(adapterId, envelope, "endpoint is unavailable"));
                 }
             } catch (RuntimeException e) {
                 directFailedItems.incrementAndGet();
                 adapterCounters.failedItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.failed(adapterId, item, e.getMessage(), true));
+                outcomes.add(DispatchOutcome.failed(adapterId, envelope, e.getMessage(), true));
             }
         }
         return List.copyOf(outcomes);

@@ -75,6 +75,17 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
+    void authenticatedUserWithoutWorkerViewCannotLoadProjectOptions() throws Exception {
+        mockMvc.perform(get("/api/config/projects")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "limited-user")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Limited User")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.TASK_VIEW))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
     void anonymousUserCannotReachUnmappedApiRoute() throws Exception {
         mockMvc.perform(post("/api/internal/legacy-probe")
                         .contentType(MediaType.APPLICATION_JSON)

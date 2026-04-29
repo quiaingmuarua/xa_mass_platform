@@ -9,6 +9,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,15 +38,22 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
             return;
         }
 
-        Map<WorkerAdapter, List<TaskDispatchItem>> grouped = new LinkedHashMap<>();
+        Map<WorkerAdapter, List<TransportDispatchEnvelope>> grouped = new LinkedHashMap<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             WorkerAdapter adapter = resolveAdapter(binding);
+            TaskDispatchItem payload = TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt());
             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
-                    .add(TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt()));
+                    .add(TransportDispatchEnvelope.create(
+                            adapter.adapterId(),
+                            payload.getWorkerId(),
+                            payload.attemptId(),
+                            payload,
+                            System.currentTimeMillis()
+                    ));
         }
 
-        for (Map.Entry<WorkerAdapter, List<TaskDispatchItem>> entry : grouped.entrySet()) {
-            List<DispatchOutcome> outcomes = entry.getKey().dispatchTaskItems(List.copyOf(entry.getValue()));
+        for (Map.Entry<WorkerAdapter, List<TransportDispatchEnvelope>> entry : grouped.entrySet()) {
+            List<DispatchOutcome> outcomes = entry.getKey().dispatchEnvelopes(List.copyOf(entry.getValue()));
             logDispatchOutcomes(entry.getKey(), outcomes);
         }
     }
@@ -60,14 +68,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
             }
             if (outcome.getStatus() == DispatchOutcomeStatus.SENT
                     || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
-                logger.debug("Transport dispatch outcome: adapterId={}, workerId={}, taskId={}, messageId={}, status={}",
-                        outcome.getAdapterId(), outcome.getWorkerId(), outcome.getTaskId(), outcome.getMessageId(),
-                        outcome.getStatus());
+                logger.debug("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, correlationKey={}, status={}",
+                        outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
+                        outcome.getCorrelationKey(), outcome.getStatus());
                 continue;
             }
-            logger.warn("Transport dispatch outcome: adapterId={}, workerId={}, taskId={}, messageId={}, status={}, retryable={}, reason={}, routedAdapter={}",
-                    outcome.getAdapterId(), outcome.getWorkerId(), outcome.getTaskId(), outcome.getMessageId(),
-                    outcome.getStatus(), outcome.isRetryable(), outcome.getReason(),
+            logger.warn("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, correlationKey={}, status={}, retryable={}, reason={}, routedAdapter={}",
+                    outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
+                    outcome.getCorrelationKey(), outcome.getStatus(), outcome.isRetryable(), outcome.getReason(),
                     adapter != null ? adapter.adapterId() : null);
         }
     }

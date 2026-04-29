@@ -4,6 +4,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -31,23 +32,23 @@ class DelegatingWorkerAdapterTest {
 
     @Test
     void delegatesDispatchWhenChannelExists() {
-        AtomicReference<List<TaskDispatchItem>> captured = new AtomicReference<>();
+        AtomicReference<List<TransportDispatchEnvelope>> captured = new AtomicReference<>();
         DelegatingWorkerAdapter adapter = new DelegatingWorkerAdapter(
                 "socket",
                 WorkerTransportHints.REALTIME,
                 items -> {
                     captured.set(items);
                     return items.stream()
-                            .map(item -> DispatchOutcome.sent("socket", item))
+                            .map(envelope -> DispatchOutcome.sent("socket", envelope))
                             .toList();
                 },
                 "missing"
         );
-        List<TaskDispatchItem> items = List.of(item("msg-1", "worker-1"));
+        List<TransportDispatchEnvelope> envelopes = List.of(envelope(item("msg-1", "worker-1")));
 
-        List<DispatchOutcome> outcomes = adapter.dispatchTaskItems(items);
+        List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(envelopes);
 
-        assertEquals(items, captured.get());
+        assertEquals(envelopes, captured.get());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
     }
 
@@ -60,9 +61,9 @@ class DelegatingWorkerAdapterTest {
                 "dispatch channel is unavailable"
         );
 
-        List<DispatchOutcome> outcomes = adapter.dispatchTaskItems(List.of(
-                item("msg-1", "worker-1"),
-                item("msg-2", null)
+        List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(List.of(
+                envelope(item("msg-1", "worker-1")),
+                new TransportDispatchEnvelope("delivery-2", "websocket", " ", "attempt-2", item("msg-2", null), 1L)
         ));
 
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
@@ -85,6 +86,17 @@ class DelegatingWorkerAdapterTest {
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+        );
+    }
+
+    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "socket",
+                item.getWorkerId(),
+                item.attemptId(),
+                item,
+                1L
         );
     }
 }

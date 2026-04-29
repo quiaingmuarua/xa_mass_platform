@@ -2,7 +2,7 @@ package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -33,19 +33,19 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
     }
 
     @Override
-    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (items == null || items.isEmpty()) {
+    public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
         return deliveryService.sendDirect(
                 SocketRealtimeWorkerAdapter.PROTOCOL,
-                items,
-                item -> {
-                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(item);
-                    boolean sent = sessionManager.sendMessage(item.getWorkerId(), rawJson);
+                envelopes,
+                envelope -> {
+                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(envelope.getPayload());
+                    boolean sent = sessionManager.sendMessage(envelope.getRouteKey(), rawJson);
                     if (!sent) {
-                        logger.warn("Socket outbound skipped because endpoint is unavailable: workerId={}, messageId={}",
-                                item.getWorkerId(), item.getMessageId());
+                        logger.warn("Socket outbound skipped because endpoint is unavailable: workerId={}, correlationKey={}",
+                                envelope.getRouteKey(), envelope.getCorrelationKey());
                     }
                     return sent;
                 },

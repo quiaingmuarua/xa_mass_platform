@@ -13,6 +13,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -216,25 +217,26 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
+        public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
             List<DispatchOutcome> currentOutcomes = new ArrayList<>();
-            for (TaskDispatchItem item : items) {
+            for (TransportDispatchEnvelope envelope : envelopes) {
+                TaskDispatchItem item = envelope.getPayload();
                 dispatchedMessageIds.add(item.getMessageId());
-                DispatchOutcome outcome = outcome(item);
+                DispatchOutcome outcome = outcome(envelope);
                 outcomes.add(outcome);
                 currentOutcomes.add(outcome);
             }
             return List.copyOf(currentOutcomes);
         }
 
-        private DispatchOutcome outcome(TaskDispatchItem item) {
+        private DispatchOutcome outcome(TransportDispatchEnvelope envelope) {
             if (overrideStatus == DispatchOutcomeStatus.BACKPRESSURE_REJECTED) {
-                return DispatchOutcome.backpressureRejected(adapterId(), item, "test backpressure");
+                return DispatchOutcome.backpressureRejected(adapterId(), envelope, "test backpressure");
             }
             if (overrideStatus == DispatchOutcomeStatus.ENDPOINT_OFFLINE) {
-                return DispatchOutcome.endpointOffline(adapterId(), item, "test offline");
+                return DispatchOutcome.endpointOffline(adapterId(), envelope, "test offline");
             }
-            return DispatchOutcome.sent(adapterId(), item);
+            return DispatchOutcome.sent(adapterId(), envelope);
         }
 
         private List<DispatchOutcomeStatus> outcomeStatuses() {

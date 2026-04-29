@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
@@ -29,29 +29,29 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
     }
 
     @Override
-    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (items == null || items.isEmpty()) {
+    public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
         if (context == null || context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return deliveryService.sendDirect(
                     WebSocketRealtimeWorkerAdapter.PROTOCOL,
-                    items,
+                    envelopes,
                     null,
                     "dispatcher context or endpoint registry is unavailable"
             );
         }
         return deliveryService.sendDirect(
                 WebSocketRealtimeWorkerAdapter.PROTOCOL,
-                items,
-                dispatchItem -> {
-                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(dispatchItem);
-                    boolean sent = context.getEndpointRegistry().sendMessage(dispatchItem.getWorkerId(), rawJson);
+                envelopes,
+                envelope -> {
+                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(envelope.getPayload());
+                    boolean sent = context.getEndpointRegistry().sendMessage(envelope.getRouteKey(), rawJson);
                     if (!sent) {
                         logger.warn("WebSocket outbound skipped because endpoint is unavailable: workerId={}, traceId={}",
-                                dispatchItem.getWorkerId(),
-                                dispatchItem.getMessageId());
+                                envelope.getRouteKey(),
+                                envelope.getCorrelationKey());
                     }
                     return sent;
                 },

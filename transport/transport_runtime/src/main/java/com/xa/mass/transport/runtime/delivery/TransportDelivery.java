@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.Objects;
 
@@ -14,34 +14,31 @@ import java.util.Objects;
 public final class TransportDelivery {
 
     private final String adapterId;
-    private final String workerId;
-    private final TaskDispatchItem dispatchItem;
-    private final long createdAtEpochMillis;
+    private final String routeKey;
+    private final TransportDispatchEnvelope envelope;
 
     public TransportDelivery(String adapterId,
-                             String workerId,
-                             TaskDispatchItem dispatchItem,
-                             long createdAtEpochMillis) {
+                             String routeKey,
+                             TransportDispatchEnvelope envelope) {
         this.adapterId = normalize(adapterId);
-        this.workerId = Objects.requireNonNull(workerId, "workerId");
-        this.dispatchItem = Objects.requireNonNull(dispatchItem, "dispatchItem");
-        this.createdAtEpochMillis = createdAtEpochMillis;
+        this.routeKey = Objects.requireNonNull(routeKey, "routeKey");
+        this.envelope = Objects.requireNonNull(envelope, "envelope");
     }
 
     public String getAdapterId() {
         return adapterId;
     }
 
-    public String getWorkerId() {
-        return workerId;
+    public String getRouteKey() {
+        return routeKey;
     }
 
-    public TaskDispatchItem getDispatchItem() {
-        return dispatchItem;
+    public TransportDispatchEnvelope getEnvelope() {
+        return envelope;
     }
 
     public long getCreatedAtEpochMillis() {
-        return createdAtEpochMillis;
+        return envelope.getCreatedAtEpochMillis();
     }
 
     private static String normalize(String value) {

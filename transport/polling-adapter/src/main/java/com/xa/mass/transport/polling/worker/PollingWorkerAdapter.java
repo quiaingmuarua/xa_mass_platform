@@ -6,6 +6,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,15 +42,16 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (items == null || items.isEmpty()) {
+    public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueue(PROTOCOL, items, MAX_INBOX_SIZE);
+        List<DispatchOutcome> outcomes = deliveryService.enqueue(envelopes, MAX_INBOX_SIZE);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
-                logger.warn("Polling delivery rejected: workerId={}, messageId={}, status={}, reason={}",
-                        outcome.getWorkerId(), outcome.getMessageId(), outcome.getStatus(), outcome.getReason());
+                logger.warn("Polling delivery rejected: routeKey={}, deliveryId={}, correlationKey={}, status={}, reason={}",
+                        outcome.getRouteKey(), outcome.getDeliveryId(), outcome.getCorrelationKey(),
+                        outcome.getStatus(), outcome.getReason());
             }
         }
         return outcomes;
@@ -60,7 +62,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
             return List.of();
         }
-        return deliveryService.poll(PROTOCOL, workerId, maxMessages, timeoutMillis);
+        return deliveryService.pollPayloads(PROTOCOL, workerId, maxMessages, timeoutMillis);
     }
 
     public void announceWorkerOnline(String workerId, String reason) {

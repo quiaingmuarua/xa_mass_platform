@@ -13,14 +13,14 @@ class DispatchOutcomeTest {
 
     @Test
     void sentCopiesDispatchIdentityAndNormalizesAdapterId() {
-        TaskDispatchItem item = item();
+        TransportDispatchEnvelope envelope = envelope();
 
-        DispatchOutcome outcome = DispatchOutcome.sent(" WebSocket ", item);
+        DispatchOutcome outcome = DispatchOutcome.sent(" WebSocket ", envelope);
 
         assertEquals("websocket", outcome.getAdapterId());
-        assertEquals("worker-1", outcome.getWorkerId());
-        assertEquals("task-1", outcome.getTaskId());
-        assertEquals("msg-1", outcome.getMessageId());
+        assertEquals("delivery-1", outcome.getDeliveryId());
+        assertEquals("worker-1", outcome.getRouteKey());
+        assertEquals("attempt-1", outcome.getCorrelationKey());
         assertEquals(DispatchOutcomeStatus.SENT, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
@@ -28,31 +28,36 @@ class DispatchOutcomeTest {
 
     @Test
     void factoryMethodsSetRetryabilityDefaults() {
-        TaskDispatchItem item = item();
+        TransportDispatchEnvelope envelope = envelope();
 
-        assertFalse(DispatchOutcome.queued("polling", item).isRetryable());
-        assertTrue(DispatchOutcome.endpointOffline("websocket", item, "offline").isRetryable());
-        assertTrue(DispatchOutcome.backpressureRejected("polling", item, "full").isRetryable());
-        assertFalse(DispatchOutcome.invalid("polling", item, "bad").isRetryable());
-        assertTrue(DispatchOutcome.adapterUnavailable("socket", item, "missing").isRetryable());
-        assertFalse(DispatchOutcome.failed("socket", item, "bad frame", false).isRetryable());
-        assertTrue(DispatchOutcome.failed("socket", item, "io", true).isRetryable());
+        assertFalse(DispatchOutcome.queued("polling", envelope).isRetryable());
+        assertTrue(DispatchOutcome.endpointOffline("websocket", envelope, "offline").isRetryable());
+        assertTrue(DispatchOutcome.backpressureRejected("polling", envelope, "full").isRetryable());
+        assertFalse(DispatchOutcome.invalid("polling", envelope, "bad").isRetryable());
+        assertTrue(DispatchOutcome.adapterUnavailable("socket", envelope, "missing").isRetryable());
+        assertFalse(DispatchOutcome.failed("socket", envelope, "bad frame", false).isRetryable());
+        assertTrue(DispatchOutcome.failed("socket", envelope, "io", true).isRetryable());
     }
 
     @Test
-    void invalidOutcomeToleratesNullItem() {
+    void invalidOutcomeToleratesNullEnvelope() {
         DispatchOutcome outcome = DispatchOutcome.invalid(null, null, "missing item");
 
         assertNull(outcome.getAdapterId());
-        assertNull(outcome.getWorkerId());
-        assertNull(outcome.getTaskId());
-        assertNull(outcome.getMessageId());
+        assertNull(outcome.getDeliveryId());
+        assertNull(outcome.getRouteKey());
+        assertNull(outcome.getCorrelationKey());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcome.getStatus());
         assertEquals("missing item", outcome.getReason());
     }
 
-    private TaskDispatchItem item() {
-        return new TaskDispatchItem(
+    private TransportDispatchEnvelope envelope() {
+        return new TransportDispatchEnvelope(
+                "delivery-1",
+                "polling",
+                "worker-1",
+                "attempt-1",
+                new TaskDispatchItem(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
@@ -65,6 +70,8 @@ class DispatchOutcomeTest {
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+                ),
+                10L
         );
     }
 }

@@ -1,7 +1,7 @@
 package com.xa.mass.transport.channel;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
 
@@ -10,5 +10,5 @@ import java.util.List;
  */
 public interface TaskDispatchChannel {
 
-    List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items);
+    List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes);
 }

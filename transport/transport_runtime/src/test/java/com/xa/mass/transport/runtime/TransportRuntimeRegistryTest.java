@@ -55,10 +55,10 @@ class TransportRuntimeRegistryTest {
         }
 
         @Override
-        public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(
-                java.util.List<com.xa.mass.transport.model.TaskDispatchItem> items) {
-            return items == null ? java.util.List.of() : items.stream()
-                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+        public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
+                java.util.List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
+            return envelopes == null ? java.util.List.of() : envelopes.stream()
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
                     .toList();
         }
     }

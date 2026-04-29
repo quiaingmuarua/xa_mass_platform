@@ -2557,9 +2557,10 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-            return items == null ? List.of() : items.stream()
-                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
+                List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
+            return envelopes == null ? List.of() : envelopes.stream()
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
                     .toList();
         }
     }
@@ -2588,9 +2589,10 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
-            return items == null ? List.of() : items.stream()
-                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
+                List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
+            return envelopes == null ? List.of() : envelopes.stream()
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
                     .toList();
         }
 

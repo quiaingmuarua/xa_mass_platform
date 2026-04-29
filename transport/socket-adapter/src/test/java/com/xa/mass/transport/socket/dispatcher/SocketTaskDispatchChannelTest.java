@@ -3,6 +3,7 @@ package com.xa.mass.transport.socket.dispatcher;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -27,7 +28,7 @@ class SocketTaskDispatchChannelTest {
         when(sessionManager.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
-        List<DispatchOutcome> outcomes = channel.dispatchTaskItems(List.of(item("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
@@ -40,7 +41,7 @@ class SocketTaskDispatchChannelTest {
         when(sessionManager.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
-        List<DispatchOutcome> outcomes = channel.dispatchTaskItems(List.of(item("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
@@ -69,6 +70,17 @@ class SocketTaskDispatchChannelTest {
                 sessionManager,
                 new SocketTransportFrameCodec(),
                 new TransportDeliveryService(new InMemoryTransportDeliveryStore())
+        );
+    }
+
+    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return new TransportDispatchEnvelope(
+                "delivery-" + item.getMessageId(),
+                "socket",
+                item.getWorkerId(),
+                item.attemptId(),
+                item,
+                1L
         );
     }
 }

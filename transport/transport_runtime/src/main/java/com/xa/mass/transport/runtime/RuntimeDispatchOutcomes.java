@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
 
@@ -14,19 +14,19 @@ public final class RuntimeDispatchOutcomes {
     }
 
     public static List<DispatchOutcome> adapterUnavailable(String adapterId,
-                                                           List<TaskDispatchItem> items,
+                                                           List<TransportDispatchEnvelope> envelopes,
                                                            String reason) {
-        if (items == null || items.isEmpty()) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        return items.stream()
-                .map(item -> missingWorker(item)
-                        ? DispatchOutcome.invalid(adapterId, item, "workerId must not be blank")
-                        : DispatchOutcome.adapterUnavailable(adapterId, item, reason))
+        return envelopes.stream()
+                .map(envelope -> missingRoute(envelope)
+                        ? DispatchOutcome.invalid(adapterId, envelope, "routeKey must not be blank")
+                        : DispatchOutcome.adapterUnavailable(adapterId, envelope, reason))
                 .toList();
     }
 
-    public static boolean missingWorker(TaskDispatchItem item) {
-        return item == null || item.getWorkerId() == null || item.getWorkerId().isBlank();
+    public static boolean missingRoute(TransportDispatchEnvelope envelope) {
+        return envelope == null || envelope.getRouteKey() == null || envelope.getRouteKey().isBlank();
     }
 }

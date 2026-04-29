@@ -59,8 +59,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         String uri = request.getRequestURI();
         String method = request.getMethod();
         return ("GET".equalsIgnoreCase(method) && "/api/auth/me".equals(uri))
-                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri))
-                || ("GET".equalsIgnoreCase(method) && "/api/config/projects".equals(uri));
+                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri));
     }
 
     private String resolveRequiredPermission(HttpServletRequest request) {
@@ -116,6 +115,9 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
             return ApiPermissionNames.WORKER_VIEW;
         }
         if (uri.startsWith("/api/session/") && "GET".equals(method)) {
+            return ApiPermissionNames.WORKER_VIEW;
+        }
+        if (uri.equals("/api/config/projects") && "GET".equals(method)) {
             return ApiPermissionNames.WORKER_VIEW;
         }
         if (uri.equals("/status/api/workers") && "GET".equals(method)) {
