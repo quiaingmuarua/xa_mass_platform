@@ -52,7 +52,8 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         String uri = request.getRequestURI();
         String method = request.getMethod();
         return ("GET".equalsIgnoreCase(method) && "/api/auth/me".equals(uri))
-                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri));
+                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri))
+                || ("GET".equalsIgnoreCase(method) && "/api/config/projects".equals(uri));
     }
 
     private String resolveRequiredPermission(HttpServletRequest request) {
@@ -101,14 +102,17 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         if (uri.matches("^/status/api/tasks/[^/]+/seal$") && "PUT".equals(method)) {
             return ApiPermissionNames.TASK_EDIT;
         }
+        if (uri.startsWith("/api/queue/") && "GET".equals(method)) {
+            return ApiPermissionNames.WORKER_VIEW;
+        }
+        if (uri.startsWith("/api/session/") && "GET".equals(method)) {
+            return ApiPermissionNames.WORKER_VIEW;
+        }
         if (uri.equals("/status/api/workers") && "GET".equals(method)) {
             return ApiPermissionNames.WORKER_VIEW;
         }
         if (uri.equals("/status/api/worker-contexts") && "GET".equals(method)) {
             return ApiPermissionNames.WORKER_VIEW;
-        }
-        if (uri.matches("^/status/api/workers/[^/]+/supported-projects$") && "PUT".equals(method)) {
-            return ApiPermissionNames.WORKER_EDIT;
         }
         if (uri.equals("/status/api/rules") && "GET".equals(method)) {
             return ApiPermissionNames.RULE_VIEW;

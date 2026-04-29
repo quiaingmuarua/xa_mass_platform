@@ -73,7 +73,7 @@ function stubWorkersApi(): void {
 }
 
 describe('WorkersPage', () => {
-    it('loads workers from the real API mode and shows edit actions for editors', async () => {
+    it('loads workers from the real API mode and keeps the page read-only', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         setMockCurrentUser(mockAdminUser)
         stubWorkersApi()
@@ -100,7 +100,8 @@ describe('WorkersPage', () => {
         expect(wrapper.text()).toContain('worker-us-01')
         expect(wrapper.text()).toContain('ONLINE')
         expect(wrapper.text()).toContain('demo.dispatch')
-        expect(wrapper.text()).toContain('Edit projects')
+        expect(wrapper.text()).toContain('Open debug view')
+        expect(wrapper.text()).not.toContain('Edit projects')
     })
 
     it('hides edit actions for read-only users', async () => {

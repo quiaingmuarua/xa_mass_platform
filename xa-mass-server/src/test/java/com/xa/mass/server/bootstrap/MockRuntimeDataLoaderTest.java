@@ -437,9 +437,6 @@ class MockRuntimeDataLoaderTest {
         @Override
         public boolean sealTask(String taskId) { return false; }
 
-        @Override
-        public List<com.xa.mass.base.model.TaskMsg> getTaskMessages(String taskId) { return List.of(); }
-
         private WorkerContext workerContextById(String workerContextId) {
             return workerContexts.stream()
                     .filter(workerContext -> workerContextId.equals(workerContext.getWorkerContextId()))

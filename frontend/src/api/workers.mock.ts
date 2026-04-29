@@ -83,16 +83,3 @@ export async function listWorkersMock(): Promise<WorkerListResponse> {
 export async function listWorkerContextsMock(): Promise<WorkerContextListResponse> {
     return delay(mockWorkerContexts)
 }
-
-export async function updateWorkerSupportedProjectsMock(
-    workerId: string,
-    supportedProjects: string[],
-): Promise<void> {
-    const worker = mockWorkers.items.find((item) => item.workerId === workerId)
-    if (!worker) {
-        throw new Error(`Worker not found: ${workerId}`)
-    }
-
-    worker.supportedProjects = supportedProjects
-    await delay(undefined)
-}

@@ -36,23 +36,40 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
-    void viewerCannotCallWorkerEditEndpoint() throws Exception {
-        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header(ApiAuthService.USER_MODE_HEADER, "viewer")
-                        .content("""
-                                {
-                                  "supportedProjects": ["demoApp"]
-                                }
-                                """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("Missing permission: worker:edit"));
+    void viewerCanReadLegacyQueueDiagnostics() throws Exception {
+        mockMvc.perform(get("/api/queue/status")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void anonymousUserCannotReachLegacyQueueDiagnostics() throws Exception {
+        mockMvc.perform(get("/api/queue/status")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void anonymousUserCannotReachLegacySessionDiagnostics() throws Exception {
+        mockMvc.perform(get("/api/session/list")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
     void authenticatedUserCanLoadMe() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void authenticatedUserCanLoadProjectOptions() throws Exception {
+        mockMvc.perform(get("/api/config/projects")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
     }
@@ -88,16 +105,27 @@ class ApiAuthInterceptorTest {
             return Map.of("ok", true, "body", body);
         }
 
-        @PutMapping("/status/api/workers/{workerId}/supported-projects")
+        @GetMapping("/api/queue/status")
         @ResponseBody
-        public Map<String, Object> updateSupportedProjects(@PathVariable String workerId,
-                                                           @RequestBody Map<String, Object> body) {
-            return Map.of("workerId", workerId, "body", body);
+        public Map<String, Object> queueStatus() {
+            return Map.of("ok", true);
+        }
+
+        @GetMapping("/api/session/list")
+        @ResponseBody
+        public Map<String, Object> sessionList() {
+            return Map.of("ok", true);
         }
 
         @GetMapping("/api/auth/me")
         @ResponseBody
         public Map<String, Object> me() {
+            return Map.of("ok", true);
+        }
+
+        @GetMapping("/api/config/projects")
+        @ResponseBody
+        public Map<String, Object> projects() {
             return Map.of("ok", true);
         }
     }

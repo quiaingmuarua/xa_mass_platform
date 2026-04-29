@@ -47,7 +47,7 @@ final class TaskManagerStateRuntimePort implements TaskStateRuntimePort {
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId) {
-        return taskManager.getTaskMessages(taskId);
+        return taskManager.getTaskStorage().getTaskMessages(taskId);
     }
 
     @Override

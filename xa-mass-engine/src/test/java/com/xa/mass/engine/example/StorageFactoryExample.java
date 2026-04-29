@@ -112,18 +112,18 @@ public class StorageFactoryExample {
     public static void testStorageFactory() {
         log.info("=== testStorageFactory ===");
 
-        TaskStorage inMemoryStorage = TaskStorageFactory.createStorage("memory");
+        TaskStorage inMemoryStorage = TaskStorageFactory.createTaskStorage("memory");
         log.info("In-memory storage created: {}", inMemoryStorage.getClass().getSimpleName());
 
         try {
-            TaskStorage redisStorage = TaskStorageFactory.createStorage("redis");
+            TaskStorage redisStorage = TaskStorageFactory.createTaskStorage("redis");
             log.info("Redis storage created: {}", redisStorage.getClass().getSimpleName());
         } catch (Exception e) {
             log.warn("Redis storage creation failed: {}", e.getMessage());
         }
 
         try {
-            TaskStorage unknownStorage = TaskStorageFactory.createStorage("unknown");
+            TaskStorage unknownStorage = TaskStorageFactory.createTaskStorage("unknown");
         } catch (IllegalArgumentException e) {
             log.info("Unknown storage type correctly rejected: {}", e.getMessage());
         }

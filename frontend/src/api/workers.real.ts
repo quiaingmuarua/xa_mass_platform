@@ -13,13 +13,3 @@ export async function listWorkerContextsReal(): Promise<WorkerContextListRespons
         '/status/api/worker-contexts',
     )
 }
-
-export async function updateWorkerSupportedProjectsReal(
-    workerId: string,
-    supportedProjects: string[],
-): Promise<void> {
-    await requestApiData(`/status/api/workers/${workerId}/supported-projects`, {
-        method: 'PUT',
-        body: JSON.stringify({ supportedProjects }),
-    })
-}

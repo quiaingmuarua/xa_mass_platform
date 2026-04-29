@@ -61,7 +61,7 @@ Current task inputs already available:
 
 Recommended near-term workload input:
 
-- `Task.sharedConfig.executionClass`
+- `Task.workloadClass`
 
 Allowed values:
 
@@ -70,9 +70,9 @@ Allowed values:
 
 Near-term rule:
 
-- use a fixed, engine-owned key such as `sharedConfig.executionClass`
-- do not let callers invent additional scheduler-driving keys without updating
-  the resolver and this file
+- use the explicit task-level `workloadClass` field
+- do not let callers invent additional scheduler-driving keys in
+  `sharedConfig` without updating the resolver and this file
 
 Longer-term direction:
 
@@ -101,8 +101,9 @@ Notes:
 
 Recommended precedence:
 
-1. explicit `sharedConfig.executionClass`
-2. engine-owned fallback heuristics from stable task fields
+1. explicit `Task.workloadClass`
+2. engine-owned fallback heuristics from stable task fields only when the field
+   is absent
 3. final default to `BULK`
 
 Recommended fallback heuristics:
@@ -115,7 +116,7 @@ Recommended fallback heuristics:
 Guardrail:
 
 - heuristics may choose a default, but they must not replace explicit
-  `executionClass`
+  `workloadClass`
 - assignment and retry code should consume the resolved profile only, not
   re-run heuristics
 
@@ -173,7 +174,7 @@ It should not require:
 
 When a runtime profile is introduced, structured trace should emit:
 
-- resolved `executionClass`
+- resolved `workloadClass`
 - resolved `dispatchLane`
 - resolved `leaseProfile`
 - resolved `batchPolicy`

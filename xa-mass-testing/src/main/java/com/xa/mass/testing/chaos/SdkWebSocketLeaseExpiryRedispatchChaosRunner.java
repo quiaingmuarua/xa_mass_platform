@@ -307,11 +307,11 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
         private TaskMsg waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
             waitForCondition(
-                    () -> app.getTaskMessages(taskId).size() == 1,
+                    () -> app.getTaskMessages(taskId, 1).size() == 1,
                     config.timeoutSeconds(),
                     "task should materialize exactly one logical message"
             );
-            return app.getTaskMessages(taskId).get(0);
+            return app.getTaskMessages(taskId, 1).get(0);
         }
 
         private TaskMsgAttempt waitForActiveAttemptOnWorker(MassSdkApplication app,
@@ -340,7 +340,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            List<TaskMsg> messages = app.getTaskMessages(taskId);
+            List<TaskMsg> messages = app.getTaskMessages(taskId, 1);
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
                 List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());

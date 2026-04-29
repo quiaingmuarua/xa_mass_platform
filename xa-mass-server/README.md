@@ -211,7 +211,7 @@ JDBC storage scope:
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
 - the non-test Spring Boot entry
-  [XaMassServerApplication.java](/Users/kyler/Documents/code/geekrun/xa_mass_platform/xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java)
+  [XaMassServerApplication.java](/D:/code_project/geekrun/xa_mass_platform/xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java)
   already supports this profile directly; local persistent H2 verification does
   not require a separate test-only bootstrap path
 - local PostgreSQL verification can use the `postgres` profile together with the

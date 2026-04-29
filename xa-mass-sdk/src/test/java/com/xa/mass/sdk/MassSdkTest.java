@@ -1345,8 +1345,8 @@ class MassSdkTest {
             Task task = (Task) response.getData();
             Assertions.assertEquals("crawlerApp", task.getProject());
             Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            Assertions.assertEquals(1, app.getTaskMessages(task.getTid()).size());
-            Assertions.assertEquals("json", app.getTaskMessages(task.getTid()).get(0).getInput().get("type"));
+            Assertions.assertEquals(1, app.getTaskMessages(task.getTid(), 1).size());
+            Assertions.assertEquals("json", app.getTaskMessages(task.getTid(), 1).get(0).getInput().get("type"));
         } finally {
             app.stop();
         }
@@ -2166,7 +2166,7 @@ class MassSdkTest {
             assertNotNull(terminalTask);
             Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
 
-            TaskMsg finalMessage = app.getTaskMessages(task.getTid()).get(0);
+            TaskMsg finalMessage = app.getTaskMessages(task.getTid(), 1).get(0);
             Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
             Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
         } finally {
@@ -2347,7 +2347,7 @@ class MassSdkTest {
                 () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
-                () -> app.getTaskMessages("task-1"),
+                () -> app.getTaskMessages("task-1", 1),
                 () -> app.getTaskMessage("task-1", "msg-1"),
                 () -> app.getTaskMessageAttempts("task-1", "msg-1"),
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),

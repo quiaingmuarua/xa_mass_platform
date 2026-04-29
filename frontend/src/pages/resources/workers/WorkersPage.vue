@@ -5,7 +5,7 @@
         <h2 class="page-title">Workers</h2>
         <p class="page-subtitle">
           Worker inventory for the orchestration runtime. This page reads the
-          backend worker truth, keeps edit scope limited to supported projects,
+          backend worker truth, keeps capability inspection centered on events,
           and links to a dedicated worker debug view.
         </p>
       </div>
@@ -130,94 +130,29 @@
             >
               Open debug view
             </el-button>
-            <el-button
-              v-if="canEditWorkers"
-              v-permission="'worker:edit'"
-              link
-              type="primary"
-              @click="openProjectEditor(row)"
-            >
-              Edit projects
-            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
-
-    <el-dialog
-      v-model="projectDialogVisible"
-      title="Edit supported projects"
-      width="460px"
-    >
-      <p class="dialog-subtitle">
-        Worker:
-        <span class="mono">{{ editingWorker?.workerId }}</span>
-      </p>
-
-      <PageErrorState
-        v-if="projectOptionsError"
-        :message="projectOptionsError"
-        @retry="loadProjectOptions"
-      />
-
-      <el-checkbox-group v-else v-model="selectedProjects">
-        <el-checkbox
-          v-for="project in projectOptions"
-          :key="project"
-          :label="project"
-          :value="project"
-        />
-      </el-checkbox-group>
-
-      <PageErrorState
-        v-if="saveErrorMessage"
-        class="save-error"
-        :message="saveErrorMessage"
-        :show-retry="false"
-      />
-
-      <template #footer>
-        <el-button @click="projectDialogVisible = false">Cancel</el-button>
-        <el-button
-          type="primary"
-          :loading="savingProjects"
-          :disabled="projectOptionsError.length > 0"
-          @click="saveSupportedProjects"
-        >
-          Save
-        </el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {listProjectCodes} from '@/api/configs'
-import {listWorkerContexts, listWorkers, updateWorkerSupportedProjects,} from '@/api/workers'
+import {listWorkerContexts, listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {WorkerContextListItem, WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
-import {hasPermission} from '@/utils/permissions'
 
 const router = useRouter()
 
 const loading = ref(false)
-const savingProjects = ref(false)
 const workers = ref<WorkerListItem[]>([])
 const workerContexts = ref<WorkerContextListItem[]>([])
 const errorMessage = ref('')
-const saveErrorMessage = ref('')
-const projectOptionsError = ref('')
-const projectOptions = ref<string[]>([])
-const selectedProjects = ref<string[]>([])
-const editingWorker = ref<WorkerListItem | null>(null)
-const projectDialogVisible = ref(false)
-
-const canEditWorkers = computed(() => hasPermission('worker:edit'))
 const onlineWorkerCount = computed(
   () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
 )
@@ -251,56 +186,6 @@ async function loadWorkers(): Promise<void> {
   }
 }
 
-async function loadProjectOptions(): Promise<void> {
-  projectOptionsError.value = ''
-
-  try {
-    projectOptions.value = await listProjectCodes()
-  } catch (error) {
-    projectOptions.value = []
-    projectOptionsError.value = toErrorMessage(
-      error,
-      'Failed to load project options.',
-    )
-  }
-}
-
-function openProjectEditor(worker: WorkerListItem): void {
-  editingWorker.value = worker
-  selectedProjects.value = [...worker.supportedProjects]
-  saveErrorMessage.value = ''
-  projectDialogVisible.value = true
-
-  if (projectOptions.value.length === 0) {
-    void loadProjectOptions()
-  }
-}
-
-async function saveSupportedProjects(): Promise<void> {
-  if (!editingWorker.value) {
-    return
-  }
-
-  savingProjects.value = true
-  saveErrorMessage.value = ''
-
-  try {
-    await updateWorkerSupportedProjects(
-      editingWorker.value.workerId,
-      selectedProjects.value,
-    )
-    projectDialogVisible.value = false
-    await loadWorkers()
-  } catch (error) {
-    saveErrorMessage.value = toErrorMessage(
-      error,
-      'Failed to update supported projects.',
-    )
-  } finally {
-    savingProjects.value = false
-  }
-}
-
 function openWorkerDetail(workerId: string): void {
   void router.push({ name: 'worker-detail', params: { workerId } })
 }
@@ -331,14 +216,5 @@ onMounted(() => {
 
 .project-tag {
   margin: 0 6px 6px 0;
-}
-
-.dialog-subtitle {
-  margin: 0 0 16px;
-  color: #6b7a90;
-}
-
-.save-error {
-  margin-top: 16px;
 }
 </style>

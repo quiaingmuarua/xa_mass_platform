@@ -163,6 +163,7 @@ Response notes:
 - adapter labels and old compatibility names (`websocket`, `ws`, `push`, `pull`, `queue`, ...) are not `transportHint` aliases
 - capability views expose both fields; runtime routing keys off `adapterId`, not `transportHint`
 - `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
+- worker inventory may still display `supportedProjects` as a coarse scope hint, but the server no longer exposes an operator write path for mutating that hint through the control console API
 
 ## 2.6 SDK Submitter Introspection API
 
@@ -738,6 +739,7 @@ Notes:
 
 - queue metrics are compatibility/observability data only; they are not the
   transport runtime routing truth
+- queue diagnostics are operator-only read surfaces; they are not a repo-external worker or SDK contract
 - `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
   when the embedded runtime is assembled through adapter-native paths without a
   shared message transporter
@@ -778,6 +780,7 @@ Current meaning:
 
 - this endpoint returns transport endpoint snapshots, not a kernel-level worker truth source
 - current mainline data is backed by the WebSocket adapter, but the response shape is transport-neutral
+- session diagnostics are operator-only read surfaces and should not be used as a second worker-control API
 
 Response shape:
 
@@ -834,6 +837,7 @@ Response shape:
 Behavior:
 
 - returns the configured project code list from `GlobalConfig`
+- requires authenticated operator context; it exists to populate backend-served console forms, not as a public metadata surface
 
 ### 6.2 Backend-Served Control Console
 
@@ -858,21 +862,10 @@ Behavior:
 - `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only and are not the primary console entrypoints
 - worker-context read models now include first-class `project` when the context is bound to a specific project/account domain
 
-## 7. Message API
+## 7. Legacy Control-Surface Notes
 
-### 7.1 Send Message
-
-- Method: `POST`
-- Path: `/api/message/send`
-- Status: `Partial`
-
-Current behavior:
-
-- thin passthrough into the current output transporter
-- accepts an arbitrary JSON body and serializes it as raw output envelope payload
-- primarily useful for diagnostics or manual transport probing, not as a stable platform SDK contract
-
-Response shape:
+- `/api/message/send` has been removed from the server API surface
+- raw transport-envelope injection is not an accepted operator or SDK contract; task-backed dispatch must enter through `POST /status/api/tasks`, and repo-external worker data-plane traffic must stay on `/worker-api/*`
 
 ```json
 {

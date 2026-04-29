@@ -84,8 +84,6 @@ public interface MassRuntimeControl {
      */
     boolean sealTask(String taskId);
 
-    List<TaskMsg> getTaskMessages(String taskId);
-
     // --- Worker management ---
 
     /**

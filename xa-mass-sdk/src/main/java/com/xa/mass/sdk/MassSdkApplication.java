@@ -219,11 +219,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
-    public List<TaskMsg> getTaskMessages(String taskId) {
-        return requireStartedTaskManager().getTaskMessages(taskId);
-    }
-
-    @Override
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
         return requireStartedTaskManager().getTaskMessages(taskId, limit);
     }

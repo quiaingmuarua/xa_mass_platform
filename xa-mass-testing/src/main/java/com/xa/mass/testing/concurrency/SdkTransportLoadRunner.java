@@ -375,7 +375,7 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                List<TaskMsg> messages = app.getTaskMessages(taskId);
+                List<TaskMsg> messages = app.getTaskMessages(taskId, config.messagesPerTask());
                 total += messages.size();
                 for (TaskMsg message : messages) {
                     if (message.getStatus() == TaskMsgStatus.SUCCESS) {

@@ -28,12 +28,12 @@ final class TaskManagerResultRuntimePort implements TaskResultRuntimePort {
 
     @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager.getTaskMessage(taskId, messageId);
+        return taskManager.getTaskStorage().getTaskMessage(taskId, messageId).orElse(null);
     }
 
     @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskManager.updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskManager.getTaskStorage().updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
@@ -78,21 +78,21 @@ final class TaskManagerResultRuntimePort implements TaskResultRuntimePort {
 
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return taskManager.getTaskStorage().getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
     @Override
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+        return taskManager.getTaskStorage().getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskManager.getTaskStorage().addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskManager.updateTaskMessage(taskId, taskMsg);
+        return taskManager.getTaskStorage().updateTaskMessage(taskId, taskMsg);
     }
 }

@@ -1,16 +1,13 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerAdminOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,32 +23,27 @@ public class WorkerApiController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final WorkerQueryOperations workerQueries;
-    private final WorkerAdminOperations workerAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final TransportOperations transportOperations;
 
-    public WorkerApiController(WorkerQueryOperations workerQueries, WorkerAdminOperations workerAdmin) {
-        this(workerQueries, workerAdmin, (SdkMetadataCatalog) null, (TransportOperations) null);
+    public WorkerApiController(WorkerQueryOperations workerQueries) {
+        this(workerQueries, (SdkMetadataCatalog) null, (TransportOperations) null);
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               WorkerAdminOperations workerAdmin,
                                SdkMetadataCatalog metadataCatalog,
                                TransportOperations transportOperations) {
         this.workerQueries = workerQueries;
-        this.workerAdmin = workerAdmin;
         this.metadataCatalog = metadataCatalog;
         this.transportOperations = transportOperations;
     }
 
     @Autowired
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               WorkerAdminOperations workerAdmin,
                                ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
                                ObjectProvider<TransportOperations> transportOperationsProvider) {
         this(
                 workerQueries,
-                workerAdmin,
                 metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
                 transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
         );
@@ -84,37 +76,6 @@ public class WorkerApiController {
                 "items", items,
                 "total", items.size()
         ));
-    }
-
-    @PutMapping("/workers/{workerId}/supported-projects")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(@PathVariable String workerId,
-                                                                                    @RequestBody WorkerSupportedProjectsApiRequest requestBody) {
-        validateKnownFields(requestBody);
-        Worker worker = workerQueries.getWorker(workerId);
-        if (worker == null) {
-            return ResponseEntity.status(404).body(ApiResponse.error(404, "Worker not found: " + workerId));
-        }
-
-        workerAdmin.updateWorkerSupportedProjects(workerId, requestBody.getSupportedProjects());
-        Worker updatedWorker = workerQueries.getWorker(workerId);
-
-        return ResponseEntity.ok(ApiResponse.success(Map.of(
-                "workerId", workerId,
-                "supportedProjects", updatedWorker == null ? List.of() : updatedWorker.getSupportedProjects()
-        )));
-    }
-
-    private void validateKnownFields(WorkerSupportedProjectsApiRequest requestBody) {
-        if (requestBody == null) {
-            throw new IllegalArgumentException("worker request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker update fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
-        }
-        if (requestBody.getSupportedProjects() == null) {
-            throw new IllegalArgumentException("supportedProjects is required");
-        }
     }
 
     private Map<String, Object> toWorkerItem(Worker worker, List<Map<String, Object>> connections) {

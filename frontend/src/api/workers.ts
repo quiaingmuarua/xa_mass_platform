@@ -2,12 +2,10 @@ import {getAppConfig} from '@/app/config'
 import {
     listWorkerContextsMock,
     listWorkersMock,
-    updateWorkerSupportedProjectsMock,
 } from '@/api/workers.mock'
 import {
     listWorkerContextsReal,
     listWorkersReal,
-    updateWorkerSupportedProjectsReal,
 } from '@/api/workers.real'
 import type {
     WorkerContextListResponse,
@@ -28,15 +26,4 @@ export async function listWorkerContexts(): Promise<WorkerContextListResponse> {
     }
 
     return listWorkerContextsReal()
-}
-
-export async function updateWorkerSupportedProjects(
-    workerId: string,
-    supportedProjects: string[],
-): Promise<void> {
-    if (getAppConfig().useMockApi) {
-        return updateWorkerSupportedProjectsMock(workerId, supportedProjects)
-    }
-
-    return updateWorkerSupportedProjectsReal(workerId, supportedProjects)
 }

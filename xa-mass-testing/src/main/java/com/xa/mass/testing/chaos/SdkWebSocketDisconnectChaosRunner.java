@@ -276,7 +276,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            List<TaskMsg> messages = app.getTaskMessages(taskId);
+            List<TaskMsg> messages = app.getTaskMessages(taskId, config.messagesPerTask());
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
                 List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());

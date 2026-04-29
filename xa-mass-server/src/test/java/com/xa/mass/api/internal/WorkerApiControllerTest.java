@@ -5,7 +5,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerAdminOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -25,11 +24,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,9 +34,6 @@ class WorkerApiControllerTest {
 
     @Mock
     private WorkerQueryOperations workerQueries;
-
-    @Mock
-    private WorkerAdminOperations workerAdmin;
 
     @Mock
     private TransportOperations transportOperations;
@@ -66,7 +59,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerQueries, workerAdmin, metadataCatalog, transportOperations))
+                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, transportOperations))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -136,44 +129,5 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].project").value("demoApp"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OCCUPIED"))
                 .andExpect(jsonPath("$.data.items[0].lastBindTaskId").value("task-123"));
-    }
-
-    @Test
-    void updateSupportedProjectsMutatesWorker() throws Exception {
-        Worker existingWorker = new Worker();
-        existingWorker.setWorkerId("worker-001");
-        Worker updatedWorker = new Worker();
-        updatedWorker.setWorkerId("worker-001");
-        updatedWorker.setSupportedProjects(List.of("demoApp", "testApp"));
-        when(workerQueries.getWorker("worker-001")).thenReturn(existingWorker, updatedWorker);
-
-        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "supportedProjects": ["demoApp", "testApp"]
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.workerId").value("worker-001"))
-                .andExpect(jsonPath("$.data.supportedProjects.length()").value(2));
-
-        verify(workerAdmin).updateWorkerSupportedProjects("worker-001", List.of("demoApp", "testApp"));
-    }
-
-    @Test
-    void updateSupportedProjectsRejectsUnknownFields() throws Exception {
-        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "supportedProjects": ["demoApp"],
-                                  "workerGroupId": "legacy"
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Unsupported worker update fields: workerGroupId"));
     }
 }
