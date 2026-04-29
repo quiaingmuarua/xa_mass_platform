@@ -1,6 +1,7 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
@@ -24,6 +25,7 @@ public class EngineConfig {
 
     private TaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager;
+    private TaskQueryService taskQueryService;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
@@ -42,6 +44,7 @@ public class EngineConfig {
         this.workerThreads = source.workerThreads;
         this.scheduler = source.scheduler;
         this.taskManager = source.taskManager;
+        this.taskQueryService = source.taskQueryService;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerManager = source.workerManager;
@@ -101,12 +104,21 @@ public class EngineConfig {
     public void setTaskManager(TaskManager taskManager) {
         if (taskManager == null) {
             this.taskManager = null;
+            this.taskQueryService = null;
             return;
         }
         if (taskManager.getScheduler() != scheduler) {
             throw new IllegalArgumentException("Configured taskManager must use the same scheduler as EngineConfig");
         }
         this.taskManager = taskManager;
+        this.taskQueryService = null;
+    }
+
+    public TaskQueryService getTaskQueryService() {
+        if (taskQueryService == null) {
+            taskQueryService = new TaskQueryService(getTaskManager());
+        }
+        return taskQueryService;
     }
 
     public TaskWorkRuntime getTaskWorkRuntime() {

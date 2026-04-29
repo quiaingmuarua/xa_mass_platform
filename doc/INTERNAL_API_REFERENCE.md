@@ -740,6 +740,9 @@ Notes:
 - queue metrics are compatibility/observability data only; they are not the
   transport runtime routing truth
 - queue diagnostics are operator-only read surfaces; they are not a repo-external worker or SDK contract
+- `inputQueue` / `outputQueue` and `inputQueueSize` / `outputQueueSize` currently
+  expose the same values. The shorter keys are compatibility aliases kept for
+  older control-shell consumers; do not infer separate queue concepts from them.
 - `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
   when the embedded runtime is assembled through adapter-native paths without a
   shared message transporter
@@ -751,6 +754,9 @@ Notes:
   outcomes. `queueByAdapter` breaks queue-focused store diagnostics down by
   concrete `adapterId`, and `directByAdapter` breaks direct-send counters down
   by concrete `adapterId` for realtime adapter troubleshooting.
+- `deliveryQueue` is a combined diagnostics envelope, not proof that direct-send
+  outcomes are queue-owned. `queueByAdapter` remains queue-path only, while
+  `directByAdapter` remains direct-send only.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned
   transport and optional bounded event-handler executors. `maxPendingTasks`
   reflects SDK runtime config, not a fixed platform constant.

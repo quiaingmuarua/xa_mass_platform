@@ -117,7 +117,7 @@ Important current usage notes:
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
 - scan-heavy fallback default methods were intentionally removed from the interface; each backend must now opt into these behaviors explicitly instead of inheriting silent O(n) scans
-- `getTaskMessages(...)` is a storage-level compatibility/demo snapshot plus temporary internal cleanup helper; the `TaskManager` public facade should stay on bounded reads while explicit audits/tests may still traverse the storage snapshot
+- `getTaskMessages(...)` is a storage-level compatibility/demo snapshot plus temporary internal cleanup helper; shell-facing bounded reads should flow through a dedicated query/read surface rather than expanding the `TaskManager` runtime facade
 - the server JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
   process-local; after restart, only `Task` truth is recovered from DB
 - runtime cleanup paths that only need pending logical messages should use `getNonFinalTaskMessages(...)` instead of materializing the full task-message snapshot

@@ -3,7 +3,12 @@ package com.xa.mass.transport.runtime.delivery;
 import java.util.Map;
 
 /**
- * Runtime delivery store snapshot for admission-control and HA diagnostics.
+ * Runtime transport delivery diagnostics snapshot.
+ *
+ * <p>Historical name note: this type still exposes both queue-path/store-path
+ * metrics and direct-send metrics because SDK/server diagnostics already
+ * consume one combined shape. Queue metrics and direct-send metrics must remain
+ * semantically separate even though they share this wrapper.</p>
  */
 public final class TransportDeliveryStoreStats {
 
@@ -181,6 +186,11 @@ public final class TransportDeliveryStoreStats {
         return directUnavailableItems;
     }
 
+    /**
+     * Queue-path only per-adapter breakdown keyed by canonical {@code adapterId}.
+     * Direct-send counters belong in the dedicated direct-delivery diagnostics,
+     * not in this queue-focused map.
+     */
     public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;
     }

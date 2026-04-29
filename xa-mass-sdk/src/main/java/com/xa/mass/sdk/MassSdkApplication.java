@@ -14,6 +14,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -220,35 +221,35 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return requireStartedTaskManager().getTaskMessages(taskId, limit);
+        return requireStartedTaskQueries().getTaskMessages(taskId, limit);
     }
 
     @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return requireStartedTaskManager().getTaskMessage(taskId, messageId);
+        return requireStartedTaskQueries().getTaskMessage(taskId, messageId);
     }
 
     @Override
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return requireStartedTaskManager().getTaskMessageAttempts(taskId, messageId);
+        return requireStartedTaskQueries().getTaskMessageAttempts(taskId, messageId);
     }
 
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return requireStartedTaskManager().getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public long countTaskMessages(String taskId) {
-        return requireStartedTaskManager().countTaskMessages(taskId);
+        return requireStartedTaskQueries().countTaskMessages(taskId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return requireStartedTaskManager().resolveTaskState(taskId);
+        return requireStartedTaskQueries().resolveTaskState(taskId);
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return requireStartedTaskManager().validateTaskState(taskId);
+        return requireStartedTaskQueries().validateTaskState(taskId);
     }
 
     @Override
@@ -1551,6 +1552,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Task manager is unavailable for this SDK application");
         }
         return taskManager;
+    }
+
+    private TaskQueryService requireStartedTaskQueries() {
+        TaskQueryService taskQueries = requireStartedEngine().getConfig().getTaskQueryService();
+        if (taskQueries == null) {
+            throw new IllegalStateException("Task query service is unavailable for this SDK application");
+        }
+        return taskQueries;
     }
 
     private WorkerManager requireStartedWorkerManager() {

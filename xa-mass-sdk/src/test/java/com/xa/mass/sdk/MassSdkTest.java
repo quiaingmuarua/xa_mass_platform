@@ -612,6 +612,15 @@ class MassSdkTest {
                                         "oldestQueuedAgeMillis", 0L,
                                         "backpressureRejectedItems", 0L
                                 )
+                        ),
+                        "directByAdapter", Map.of(
+                                "websocket", Map.of(
+                                        "sentItems", 2L,
+                                        "offlineItems", 1L,
+                                        "failedItems", 0L,
+                                        "invalidItems", 0L,
+                                        "unavailableItems", 0L
+                                )
                         )
                 ),
                 "runtimeExecutors", Map.of(
@@ -632,6 +641,10 @@ class MassSdkTest {
         assertEquals(5, queueDetail.get("outputQueue"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
         assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryQueue")).get("queuedItems"));
+        assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryQueue"))
+                .get("queueByAdapter")).get("polling")).get("queuedItems"));
+        assertEquals(2L, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryQueue"))
+                .get("directByAdapter")).get("websocket")).get("sentItems"));
         assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
                 .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));

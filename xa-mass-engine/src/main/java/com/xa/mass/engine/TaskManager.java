@@ -342,15 +342,15 @@ public class TaskManager {
      * Bounded compatibility read for UI/debug snapshots. Not a pagination or
      * analysis contract.
      */
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
+    List<TaskMsg> getTaskMessages(String taskId, int limit) {
         return taskStorage.getTaskMessages(taskId, limit);
     }
 
-    public long countTaskMessages(String taskId) {
+    long countTaskMessages(String taskId) {
         return taskStorage.countTaskMessages(taskId);
     }
 
-    public TaskMsg getTaskMessage(String taskId, String messageId) {
+    TaskMsg getTaskMessage(String taskId, String messageId) {
         return taskStorage.getTaskMessage(taskId, messageId).orElse(null);
     }
 
@@ -362,15 +362,15 @@ public class TaskManager {
         taskStorage.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
         return taskStorage.getTaskMessageAttempts(taskId, messageId);
     }
 
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
@@ -433,7 +433,7 @@ public class TaskManager {
         eventPublisher.publishTaskTerminal(task);
     }
 
-    public TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return taskStorage.getTaskMessageAttemptStats(taskId, messageId);
     }
 

@@ -437,6 +437,8 @@ public class MassApplication {
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
         Map<String, Object> map = new LinkedHashMap<>();
+        // Keep both legacy and explicit size keys stable for current server/SDK
+        // diagnostics consumers until the control-plane contract is intentionally changed.
         map.put("inputQueue", inputSize);
         map.put("outputQueue", outputSize);
         map.put("inputQueueSize", inputSize);

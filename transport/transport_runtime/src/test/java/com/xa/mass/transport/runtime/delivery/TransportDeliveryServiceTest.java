@@ -164,6 +164,44 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
+    void directSendDoesNotPopulateQueueStats() {
+        TransportDeliveryService service = service();
+
+        List<DispatchOutcome> outcomes = service.sendDirect(
+                "websocket",
+                List.of(envelope(item("msg-1", "worker-1"))),
+                envelope -> true,
+                "unavailable"
+        );
+
+        TransportDeliveryStoreStats stats = service.stats();
+        assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
+        assertEquals(0, stats.getQueuedItems());
+        assertEquals(0, stats.getQueueCount());
+        assertEquals(Map.of(), stats.getQueueByAdapter());
+        assertEquals(1L, stats.getDirectSentItems());
+        assertEquals(1L, service.directStatsByAdapter().get("websocket").getSentItems());
+    }
+
+    @Test
+    void queuedDeliveryDoesNotPopulateDirectCounters() {
+        TransportDeliveryService service = service();
+
+        List<DispatchOutcome> outcomes = service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
+
+        TransportDeliveryStoreStats stats = service.stats();
+        assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
+        assertEquals(1, stats.getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(0L, stats.getDirectSentItems());
+        assertEquals(0L, stats.getDirectOfflineItems());
+        assertEquals(0L, stats.getDirectFailedItems());
+        assertEquals(0L, stats.getDirectInvalidItems());
+        assertEquals(0L, stats.getDirectUnavailableItems());
+        assertEquals(Map.of(), service.directStatsByAdapter());
+    }
+
+    @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
         service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);

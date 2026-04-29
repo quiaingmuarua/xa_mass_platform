@@ -269,4 +269,7 @@ are surfaced through `getQueueDetail().runtimeExecutors` and the Boot-shell
 `/api/queue/detail` response. Delivery-store diagnostics also expose
 `getQueueDetail().deliveryQueue.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
-replacement.
+replacement. Realtime direct-send counters are intentionally separate under
+`getQueueDetail().deliveryQueue.directByAdapter`; they share delivery outcome
+language with queued delivery but they do not imply queue ownership, dequeue,
+or durable backlog state.

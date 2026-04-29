@@ -159,6 +159,30 @@ per-key/global admission, and queue snapshot counters may live under
 `platform_infra` so long as transport semantics remain owned by
 `TransportDeliveryStore`, `TransportDispatchEnvelope`, and `DispatchOutcome`.
 
+## Direct vs Queued Delivery
+
+Transport currently has two delivery paths:
+
+- direct-send: realtime adapters attempt synchronous endpoint delivery and return
+  `SENT` / `ENDPOINT_OFFLINE` / `FAILED` / `ADAPTER_UNAVAILABLE` / `INVALID_ITEM`
+- queued delivery: polling or backlog-backed adapters admit an envelope into
+  `TransportDeliveryStore` and return `QUEUED` / `BACKPRESSURE_REJECTED` /
+  `ADAPTER_UNAVAILABLE` / `INVALID_ITEM`
+
+These paths intentionally share `DispatchOutcome` identity fields and status
+language, but they do not form one richer transport-owned lifecycle model.
+
+Keep these rules:
+
+- `SENT` does not imply durable store ownership, ack tracking, or later dequeue
+- `QUEUED` means store admission only; engine lifecycle truth still lives outside transport
+- queue stats such as `queueByAdapter`, backlog age, waiting pollers, and queued-item counts
+  are queue-path diagnostics only
+- direct-send counters are separate transport diagnostics and must not appear as
+  synthetic queue occupancy or queue ownership
+- do not add a transport-owned retry/lease/state machine that merges direct-send
+  and queued delivery into one second attempt lifecycle
+
 Observability rule:
 
 - use logs, traces, queue stats, and indexed runtime lookups for diagnosis
