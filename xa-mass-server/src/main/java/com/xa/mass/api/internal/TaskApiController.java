@@ -1,6 +1,8 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthService;
+import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.api.auth.ApiUnauthenticatedException;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
@@ -16,14 +18,7 @@ import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
-import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.authz.AuthorizationDecision;
-import com.xa.mass.sdk.authz.AuthorizationPolicy;
-import com.xa.mass.sdk.authz.AuthorizationRequest;
-import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
-import com.xa.mass.sdk.authz.PlatformAction;
-import com.xa.mass.sdk.authz.PlatformResourceType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.model.*;
@@ -51,46 +46,42 @@ public class TaskApiController {
     private final TaskQueryOperations taskQueries;
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
-    private final AuthProvider authProvider;
-    private final AuthorizationPolicy authorizationPolicy;
     private final ApiAuthService apiAuthService;
+    private final ApiAuthorizationService apiAuthorizationService;
 
     @Autowired(required = false)
     private SyncTaskResultBridge syncBridge;
 
     public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
-                new DefaultAuthorizationPolicy(), new ApiAuthService());
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+                new ApiAuthService(), new ApiAuthorizationService());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, null,
-                new DefaultAuthorizationPolicy(), new ApiAuthService());
+        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
-                             AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, metadataCatalog, authProvider,
-                new DefaultAuthorizationPolicy(), new ApiAuthService());
+                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
+        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null));
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
-                             AuthProvider authProvider,
-                             AuthorizationPolicy authorizationPolicy,
-                             ApiAuthService apiAuthService) {
+                             ApiAuthService apiAuthService,
+                             ApiAuthorizationService apiAuthorizationService) {
         this.taskQueries = taskQueries;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
-        this.authProvider = authProvider;
-        this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
+        this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
     }
 
     @GetMapping("")
@@ -121,7 +112,7 @@ public class TaskApiController {
         try {
             validateKnownFields(requestBody, "task create");
 
-            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader, requestBody);
             if (submitter != null) {
                 authorizeSubmitterTaskCreate(submitter, requestBody);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
@@ -173,7 +164,7 @@ public class TaskApiController {
             // Register future BEFORE task creation to close the timing gap.
             CompletableFuture<TaskMsg> future = syncBridge.register(correlationId);
 
-            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader, requestBody);
             Task task;
             if (submitter != null) {
                 authorizeSubmitterTaskCreate(submitter, requestBody);
@@ -707,35 +698,37 @@ public class TaskApiController {
         UserRef.requireUserId(userId);
     }
 
-    private PrincipalContext resolveSdkSubmitter(String apiKeyHeader, String authorizationHeader) {
-        if (!SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
-            return null;
+    private PrincipalContext resolveSdkSubmitter(String apiKeyHeader,
+                                                 String authorizationHeader,
+                                                 TaskCreateApiRequest requestBody) {
+        try {
+            return apiAuthorizationService.resolveSdkSubmitter(
+                    apiKeyHeader,
+                    authorizationHeader,
+                    "task-create",
+                    Map.of(
+                            "project", requestBody != null ? String.valueOf(requestBody.getProject()) : "",
+                            "eventCode", requestBody != null ? String.valueOf(requestBody.getEventCode()) : ""
+                    )
+            );
+        } catch (ApiUnauthenticatedException ex) {
+            throw new SdkUnauthenticatedException(ex.getMessage());
         }
-        PrincipalContext submitter =
-                SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
-        if (submitter == null) {
-            throw new SdkUnauthenticatedException("Invalid or missing SDK credential");
-        }
-        return submitter;
     }
 
     private void authorizeSubmitterTaskCreate(PrincipalContext submitter, TaskCreateApiRequest requestBody) {
-        Map<String, Object> resourceAttributes = new LinkedHashMap<>();
-        resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, PrincipalContext.TASK_CREATE_PERMISSION);
-        if (requestBody.getUserId() != null) {
-            resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, requestBody.getUserId());
-        }
-        AuthorizationDecision decision = authorizationPolicy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
-                .resourceType(PlatformResourceType.TASK)
-                .action(PlatformAction.CREATE)
-                .project(requestBody.getProject())
-                .eventCode(requestBody.getEventCode())
-                .resourceAttributes(resourceAttributes)
-                .build());
-        if (!decision.isAllowed()) {
-            throw new SecurityException(toSdkCredentialMessage(decision.getReason()));
-        }
+        apiAuthorizationService.requireSubmitterTaskCreate(
+                submitter,
+                requestBody.getProject(),
+                requestBody.getEventCode(),
+                requestBody.getUserId(),
+                "task-create",
+                Map.of(
+                        "taskName", String.valueOf(requestBody.getTaskName()),
+                        "mode", String.valueOf(requestBody.getMode()),
+                        "payloadType", String.valueOf(requestBody.getPayloadType())
+                )
+        );
     }
 
     private String resolveSubmitterProject(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
@@ -768,25 +761,6 @@ public class TaskApiController {
 
     private boolean hasEventCode(TaskCreateApiRequest requestBody) {
         return requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank();
-    }
-
-    private String toSdkCredentialMessage(String reason) {
-        if (reason == null || reason.isBlank()) {
-            return "SDK credential authorization denied";
-        }
-        if (reason.startsWith("permission denied: ")) {
-            return "SDK credential permission denied: " + reason.substring("permission denied: ".length());
-        }
-        if (reason.startsWith("project scope denied: ")) {
-            return "SDK credential project scope denied: " + reason.substring("project scope denied: ".length());
-        }
-        if (reason.startsWith("user scope denied: ")) {
-            return "SDK credential user scope denied: " + reason.substring("user scope denied: ".length());
-        }
-        if (reason.startsWith("event scope denied: ")) {
-            return "SDK credential event scope denied: " + reason.substring("event scope denied: ".length());
-        }
-        return reason;
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

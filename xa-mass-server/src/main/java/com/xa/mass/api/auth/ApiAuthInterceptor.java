@@ -4,10 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.authz.AuthorizationDecision;
-import com.xa.mass.sdk.authz.AuthorizationPolicy;
-import com.xa.mass.sdk.authz.AuthorizationRequest;
-import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,19 +21,19 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
     private final ApiAuthService apiAuthService;
     private final ObjectMapper objectMapper;
-    private final AuthorizationPolicy authorizationPolicy;
+    private final ApiAuthorizationService apiAuthorizationService;
 
     public ApiAuthInterceptor(ApiAuthService apiAuthService, ObjectMapper objectMapper) {
-        this(apiAuthService, objectMapper, new DefaultAuthorizationPolicy());
+        this(apiAuthService, objectMapper, new ApiAuthorizationService());
     }
 
     @Autowired
     public ApiAuthInterceptor(ApiAuthService apiAuthService,
                               ObjectMapper objectMapper,
-                              AuthorizationPolicy authorizationPolicy) {
+                              ApiAuthorizationService apiAuthorizationService) {
         this.apiAuthService = apiAuthService;
         this.objectMapper = objectMapper;
-        this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
+        this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
     }
 
     @Override
@@ -56,18 +52,17 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         try {
             if (routeAuthorization != null) {
                 PrincipalContext principal = apiAuthService.requireAuthenticated(request);
-                AuthorizationDecision decision = authorizationPolicy.authorize(AuthorizationRequest.builder()
-                        .principal(principal)
-                        .resourceType(routeAuthorization.resourceType())
-                        .action(routeAuthorization.action())
-                        .resourceAttributes(java.util.Map.of(
-                                DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION,
-                                routeAuthorization.requiredPermission()
-                        ))
-                        .build());
-                if (!decision.isAllowed()) {
-                    throw new ApiForbiddenException(decision.getReason());
-                }
+                apiAuthorizationService.requireOperatorRoutePermission(
+                        principal,
+                        routeAuthorization.resourceType(),
+                        routeAuthorization.action(),
+                        routeAuthorization.requiredPermission(),
+                        "operator-route",
+                        java.util.Map.of(
+                                "method", request.getMethod(),
+                                "path", request.getRequestURI()
+                        )
+                );
             } else {
                 apiAuthService.requireAuthenticated(request);
             }

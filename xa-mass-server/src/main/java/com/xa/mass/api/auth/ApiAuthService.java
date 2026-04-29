@@ -3,6 +3,8 @@ package com.xa.mass.api.auth;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +15,7 @@ import java.util.stream.Collectors;
 
 @Component
 public class ApiAuthService {
+    private static final Logger logger = LoggerFactory.getLogger(ApiAuthService.class);
     private static final String ATTR_DISPLAY_NAME = "displayName";
     private static final String ATTR_EMAIL = "email";
     private static final String ATTR_ROLES = "roles";
@@ -60,6 +63,8 @@ public class ApiAuthService {
     public PrincipalContext requireAuthenticated(HttpServletRequest request) {
         PrincipalContext principal = resolveCurrentPrincipal(request);
         if (principal == null) {
+            logger.warn("Authentication required: method={} path={} mode={}",
+                    request.getMethod(), request.getRequestURI(), readTrimmed(request.getHeader(USER_MODE_HEADER)));
             throw new ApiUnauthenticatedException("Authentication is required");
         }
         return principal;

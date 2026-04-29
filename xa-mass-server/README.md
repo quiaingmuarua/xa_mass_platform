@@ -37,6 +37,7 @@ Controller/console ownership now includes:
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
 - `TaskApiController` keeps the existing HTTP contract but routes SDK submitter create checks through the shared policy
 - `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
+- host-side authorization adaptation is centralized in `com.xa.mass.api.auth.ApiAuthorizationService`, including deny-message mapping and structured deny logging
 - task create paths stamp framework-owned ownership metadata into `Task.sharedConfig._massSecurity`
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
 - default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
