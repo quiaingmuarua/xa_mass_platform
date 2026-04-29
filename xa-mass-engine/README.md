@@ -19,6 +19,8 @@ implementation modules or storage implementations.
 Start with these classes before changing behavior:
 
 - `src/main/java/com/xa/mass/engine/TaskManager.java`
+- `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
+- `src/main/java/com/xa/mass/engine/TaskRuntimeBridge.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
 - `src/main/java/com/xa/mass/engine/WorkerManager.java`
@@ -43,6 +45,12 @@ Keep these facts fixed unless the owning global baselines change:
   not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-`TaskMsg`
   matching on the hot path
+- `TaskManager` is the engine orchestration entry, not the place to keep raw
+  lock bookkeeping or direct runtime-bridge mechanics
+- `TaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
+  reconciliation
+- `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
+  including enqueue, claim, lease, and discard/apply helpers
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,

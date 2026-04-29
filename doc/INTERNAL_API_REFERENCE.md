@@ -330,6 +330,7 @@ Response notes:
 - `task.project` is serialized as the canonical project code
 - `task.user` is serialized as the current business-user binding object
 - `task.sharedConfig` may include framework-owned `_massSecurity` ownership metadata in addition to caller-provided keys
+- task detail also exposes a derived `data.security` view so callers do not need to parse `_massSecurity` directly
 - returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
 Example response shape:

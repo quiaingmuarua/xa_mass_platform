@@ -456,6 +456,10 @@ class TaskApiControllerTest {
         Task task = taskWithStatus(TaskStatus.READY);
         task.setProject("demoApp");
         task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
+        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
+        ));
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
         when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
@@ -482,10 +486,33 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.itemsTotal").value(2))
                 .andExpect(jsonPath("$.data.itemsLimit").value(100))
                 .andExpect(jsonPath("$.data.itemsTruncated").value(false))
+                .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("crawler-agent"))
+                .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))
                 .andExpect(jsonPath("$.data.compatTargetList").doesNotExist())
                 .andExpect(jsonPath("$.data.stateValidation.valid").value(true))
                 .andExpect(jsonPath("$.data.stateValidation.needsResolution").value(false))
                 .andExpect(jsonPath("$.data.stateValidation.status").value("READY"));
+    }
+
+    @Test
+    void listTasksExposesDerivedSecurityView() throws Exception {
+        Task task = taskWithStatus(TaskStatus.NEW);
+        task.setTaskName("secured-task");
+        task.setProject("demoApp");
+        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
+        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("ops-admin", PrincipalType.OPERATOR)
+        ));
+
+        when(taskQueries.getAllTasks()).thenReturn(List.of(task));
+
+        mockMvc.perform(get("/status/api/tasks"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.items[0].id").value(TASK_ID))
+                .andExpect(jsonPath("$.data.items[0].security.createdByPrincipalId").value("ops-admin"))
+                .andExpect(jsonPath("$.data.items[0].security.createdByPrincipalType").value("OPERATOR"));
     }
 
     @Test

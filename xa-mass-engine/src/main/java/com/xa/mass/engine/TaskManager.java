@@ -14,7 +14,6 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
-import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -23,12 +22,10 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
-import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
-import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.slf4j.Logger;
@@ -38,10 +35,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 /**
@@ -54,7 +47,6 @@ public class TaskManager {
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
-    private final TaskWorkRuntime taskWorkRuntime;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -63,11 +55,9 @@ public class TaskManager {
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
-    private final TaskRuntimeEnqueueOptionsResolver taskRuntimeEnqueueOptionsResolver;
+    private final TaskRuntimeBridge taskRuntimeBridge;
+    private final TaskConcurrencyCoordinator concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
-    private final Map<String, TaskLockHandle> taskLocks = new ConcurrentHashMap<>();
-    private final Map<String, MessageLockHandle> taskMessageLocks = new ConcurrentHashMap<>();
-    private final Map<String, TaskProgressReconcileHandle> taskProgressReconcileHandles = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
@@ -80,11 +70,17 @@ public class TaskManager {
                        TaskWorkRuntime taskWorkRuntime) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
-        this.taskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
+        TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.eventPublisher = new TaskEventPublisher();
         this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this));
         this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this));
+        this.taskRuntimeBridge = new TaskRuntimeBridge(
+                taskStorage,
+                requiredTaskWorkRuntime,
+                new com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver()
+        );
+        this.concurrencyCoordinator = new TaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
@@ -101,7 +97,6 @@ public class TaskManager {
                 new TaskManagerResultRuntimePort(this),
                 new TaskRuntimeRetryPolicyResolver()
         );
-        this.taskRuntimeEnqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
     }
 
     /**
@@ -219,13 +214,7 @@ public class TaskManager {
     }
 
     List<Task> getRuntimeDispatchableTasks(int limit) {
-        if (limit <= 0) {
-            return List.of();
-        }
-        return taskWorkRuntime.readyTaskIds(limit).stream()
-                .map(this::getTask)
-                .filter(task -> task != null)
-                .toList();
+        return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
     }
 
     /**
@@ -318,7 +307,7 @@ public class TaskManager {
                 "messageId", taskMsg.getMessageId());
 
         WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, taskMsg);
-        if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
+        if (!taskRuntimeBridge.isTaskWorkEnqueueAccepted(outcome)) {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
@@ -411,20 +400,19 @@ public class TaskManager {
     }
 
     int countPendingDispatchableMessages(String taskId) {
-        long readyCount = taskWorkRuntime.stats(taskId).readyCount();
-        return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
+        return taskRuntimeBridge.countPendingDispatchableMessages(taskId);
     }
 
     boolean hasPendingDispatchableMessages(String taskId) {
-        return countPendingDispatchableMessages(taskId) > 0;
+        return taskRuntimeBridge.hasPendingDispatchableMessages(taskId);
     }
 
     boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
+        return taskRuntimeBridge.hasProcessingMessagesForWorker(taskId, workerId);
     }
 
     TaskWorkStats getTaskWorkStats(String taskId) {
-        return taskWorkRuntime.stats(taskId);
+        return taskRuntimeBridge.getTaskWorkStats(taskId);
     }
 
     TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
@@ -506,7 +494,7 @@ public class TaskManager {
         dispatchRequestService.shutdown();
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
-        taskWorkRuntime.shutdown();
+        taskRuntimeBridge.shutdown();
     }
 
     public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
@@ -542,21 +530,7 @@ public class TaskManager {
     }
 
     <T> T withTaskLock(String taskId, Supplier<T> action) {
-        return withTaskWriteLock(taskId, action);
-    }
-
-    private <T> T withTaskWriteLock(String taskId, Supplier<T> action) {
-        if (taskId == null || taskId.isBlank()) {
-            return action.get();
-        }
-        TaskLockHandle lockHandle = acquireTaskLockHandle(taskId);
-        lockHandle.lock.writeLock().lock();
-        try {
-            return action.get();
-        } finally {
-            lockHandle.lock.writeLock().unlock();
-            releaseTaskLockHandle(taskId, lockHandle);
-        }
+        return concurrencyCoordinator.withTaskWriteLock(taskId, action);
     }
 
     void withTaskLock(String taskId, Runnable action) {
@@ -566,120 +540,12 @@ public class TaskManager {
         });
     }
 
-    private <T> T withTaskReadLock(String taskId, Supplier<T> action) {
-        if (taskId == null || taskId.isBlank()) {
-            return action.get();
-        }
-        TaskLockHandle lockHandle = acquireTaskLockHandle(taskId);
-        lockHandle.lock.readLock().lock();
-        try {
-            return action.get();
-        } finally {
-            lockHandle.lock.readLock().unlock();
-            releaseTaskLockHandle(taskId, lockHandle);
-        }
-    }
-
     private <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
-        if (messageId == null || messageId.isBlank()) {
-            return withTaskReadLock(taskId, action);
-        }
-        return withTaskReadLock(taskId, () -> withMessageLock(taskId, messageId, action));
-    }
-
-    private <T> T withMessageLock(String taskId, String messageId, Supplier<T> action) {
-        String lockKey = taskId + "|" + messageId;
-        MessageLockHandle lockHandle = acquireMessageLockHandle(lockKey);
-        lockHandle.lock.lock();
-        try {
-            return action.get();
-        } finally {
-            lockHandle.lock.unlock();
-            releaseMessageLockHandle(lockKey, lockHandle);
-        }
+        return concurrencyCoordinator.withTaskMessageReadLock(taskId, messageId, action);
     }
 
     private void reconcileTaskProgress(String taskId) {
-        if (taskId == null || taskId.isBlank()) {
-            withTaskLock(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
-            return;
-        }
-        TaskProgressReconcileHandle handle = acquireTaskProgressReconcileHandle(taskId);
-        try {
-            long requestedVersion;
-            boolean leader;
-            handle.lock.lock();
-            try {
-                requestedVersion = ++handle.requestedVersion;
-                if (!handle.running) {
-                    handle.running = true;
-                    leader = true;
-                } else {
-                    leader = false;
-                }
-            } finally {
-                handle.lock.unlock();
-            }
-            if (!leader) {
-                awaitTaskProgressReconcile(handle, requestedVersion);
-                return;
-            }
-            runTaskProgressReconcileLoop(taskId, handle);
-        } finally {
-            releaseTaskProgressReconcileHandle(taskId, handle);
-        }
-    }
-
-    private void awaitTaskProgressReconcile(TaskProgressReconcileHandle handle, long requestedVersion) {
-        handle.lock.lock();
-        try {
-            while (handle.running && handle.completedVersion < requestedVersion) {
-                handle.idle.awaitUninterruptibly();
-            }
-        } finally {
-            handle.lock.unlock();
-        }
-    }
-
-    private void runTaskProgressReconcileLoop(String taskId, TaskProgressReconcileHandle handle) {
-        try {
-            while (true) {
-                long targetVersion;
-                handle.lock.lock();
-                try {
-                    targetVersion = handle.requestedVersion;
-                } finally {
-                    handle.lock.unlock();
-                }
-
-                withTaskLock(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
-
-                boolean done;
-                handle.lock.lock();
-                try {
-                    handle.completedVersion = Math.max(handle.completedVersion, targetVersion);
-                    done = handle.requestedVersion <= handle.completedVersion;
-                    if (done) {
-                        handle.running = false;
-                    }
-                    handle.idle.signalAll();
-                } finally {
-                    handle.lock.unlock();
-                }
-                if (done) {
-                    return;
-                }
-            }
-        } catch (RuntimeException | Error ex) {
-            handle.lock.lock();
-            try {
-                handle.running = false;
-                handle.idle.signalAll();
-            } finally {
-                handle.lock.unlock();
-            }
-            throw ex;
-        }
+        concurrencyCoordinator.reconcileTaskProgress(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
     }
 
     private void validateCreateRequest(TaskCreateRequestDto dto) {
@@ -734,7 +600,7 @@ public class TaskManager {
     }
 
     public TaskWorkRuntime getTaskWorkRuntime() {
-        return taskWorkRuntime;
+        return taskRuntimeBridge.runtime();
     }
 
     /**
@@ -754,27 +620,27 @@ public class TaskManager {
     List<ClaimedTaskWork> claimReady(String taskId,
                                      List<WorkerClaimTarget> claimTargets,
                                      TaskWorkClaimOptions claimOptions) {
-        return taskWorkRuntime.claimReady(taskId, claimTargets, claimOptions);
+        return taskRuntimeBridge.claimReady(taskId, claimTargets, claimOptions);
     }
 
     java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
-        return taskWorkRuntime.getActiveLease(taskId, messageId);
+        return taskRuntimeBridge.getActiveLease(taskId, messageId);
     }
 
     List<ActiveLeaseRecord> getActiveLeases(String taskId) {
-        return taskWorkRuntime.activeLeases(taskId);
+        return taskRuntimeBridge.getActiveLeases(taskId);
     }
 
     List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
-        return taskWorkRuntime.pollExpiredLeases(limit, now);
+        return taskRuntimeBridge.pollExpiredLeases(limit, now);
     }
 
     void discardTaskRuntime(String taskId) {
-        taskWorkRuntime.discardTask(taskId);
+        taskRuntimeBridge.discardTaskRuntime(taskId);
     }
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
-        return taskWorkRuntime.applyResult(result);
+        return taskRuntimeBridge.applyTaskWorkResult(result);
     }
 
     void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
@@ -803,115 +669,7 @@ public class TaskManager {
     }
 
     private WorkEnqueueOutcome enqueueTaskWork(String taskId, TaskMsg taskMsg) {
-        if (taskMsg == null || taskMsg.getStatus() != com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT) {
-            return null;
-        }
-        Task task = taskStorage.getTask(taskId).orElse(null);
-        TaskWorkEnvelope item = new TaskWorkEnvelope(
-                taskId,
-                taskMsg.getMessageId(),
-                task != null ? TaskSharedConfig.sdkEventCode(task) : null,
-                taskMsg.getInput(),
-                null,
-                taskMsg.getRetryCount(),
-                taskMsg.getMaxRetryCount(),
-                null,
-                null,
-                java.time.Instant.now()
-        );
-        return taskWorkRuntime.enqueue(
-                item,
-                taskRuntimeEnqueueOptionsResolver.resolve(task)
-        );
-    }
-
-    private TaskLockHandle acquireTaskLockHandle(String taskId) {
-        return taskLocks.compute(taskId, (ignored, existing) -> {
-            TaskLockHandle handle = existing == null ? new TaskLockHandle() : existing;
-            handle.referenceCount++;
-            return handle;
-        });
-    }
-
-    private void releaseTaskLockHandle(String taskId, TaskLockHandle lockHandle) {
-        taskLocks.computeIfPresent(taskId, (ignored, existing) -> {
-            if (existing != lockHandle) {
-                return existing;
-            }
-            existing.referenceCount--;
-            if (existing.referenceCount == 0
-                    && existing.lock.getReadLockCount() == 0
-                    && !existing.lock.isWriteLocked()
-                    && !existing.lock.hasQueuedThreads()) {
-                return null;
-            }
-            return existing;
-        });
-    }
-
-    private MessageLockHandle acquireMessageLockHandle(String lockKey) {
-        return taskMessageLocks.compute(lockKey, (ignored, existing) -> {
-            MessageLockHandle handle = existing == null ? new MessageLockHandle() : existing;
-            handle.referenceCount++;
-            return handle;
-        });
-    }
-
-    private TaskProgressReconcileHandle acquireTaskProgressReconcileHandle(String taskId) {
-        return taskProgressReconcileHandles.compute(taskId, (ignored, existing) -> {
-            TaskProgressReconcileHandle handle = existing == null ? new TaskProgressReconcileHandle() : existing;
-            handle.referenceCount++;
-            return handle;
-        });
-    }
-
-    private void releaseMessageLockHandle(String lockKey, MessageLockHandle lockHandle) {
-        taskMessageLocks.computeIfPresent(lockKey, (ignored, existing) -> {
-            if (existing != lockHandle) {
-                return existing;
-            }
-            existing.referenceCount--;
-            if (existing.referenceCount == 0
-                    && !existing.lock.isLocked()
-                    && !existing.lock.hasQueuedThreads()) {
-                return null;
-            }
-            return existing;
-        });
-    }
-
-    private void releaseTaskProgressReconcileHandle(String taskId, TaskProgressReconcileHandle lockHandle) {
-        taskProgressReconcileHandles.computeIfPresent(taskId, (ignored, existing) -> {
-            if (existing != lockHandle) {
-                return existing;
-            }
-            existing.referenceCount--;
-            if (existing.referenceCount == 0
-                    && !existing.running
-                    && !existing.lock.hasQueuedThreads()) {
-                return null;
-            }
-            return existing;
-        });
-    }
-
-    private static final class TaskLockHandle {
-        private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
-        private int referenceCount;
-    }
-
-    private static final class MessageLockHandle {
-        private final ReentrantLock lock = new ReentrantLock(true);
-        private int referenceCount;
-    }
-
-    private static final class TaskProgressReconcileHandle {
-        private final ReentrantLock lock = new ReentrantLock(true);
-        private final Condition idle = lock.newCondition();
-        private long requestedVersion;
-        private long completedVersion;
-        private boolean running;
-        private int referenceCount;
+        return taskRuntimeBridge.enqueueTaskWork(taskId, taskMsg);
     }
 }
 
