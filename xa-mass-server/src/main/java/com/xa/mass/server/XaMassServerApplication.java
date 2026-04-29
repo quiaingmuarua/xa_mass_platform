@@ -3,6 +3,7 @@ package com.xa.mass.server;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
@@ -152,7 +153,7 @@ public class XaMassServerApplication {
                                         jdbcStorageRuntime.taskStorage(),
                                         new InMemoryTaskWorkRuntime()))
                                 .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
-                                .ruleManager(jdbcStorageRuntime.ruleManager());
+                                .ruleManager(RuleManagerFactory.getDefaultRuleManager(jdbcStorageRuntime.ruleStorage()));
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {

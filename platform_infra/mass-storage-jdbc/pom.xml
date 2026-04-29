@@ -15,11 +15,6 @@
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-engine</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
             <artifactId>mass-storage-api</artifactId>
             <version>${project.version}</version>
         </dependency>

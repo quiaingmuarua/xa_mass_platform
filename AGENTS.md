@@ -36,12 +36,19 @@ Canonical trust order:
 5. module README files
 6. refactor inventories and older notes only after re-verification
 
+Fast multi-agent handoff rule:
+
+- when the directory surface is large, narrow context with: repo README -> owning module README -> one entry class -> one acceptance surface
+- when handing work to the next agent, name the owning module, the current code truth, and any known drift between current truth and desired boundary
+- treat "current implementation fact" and "target convergence direction" as different statements; do not collapse them into one summary
+- if a module has no owner README yet and it is repeatedly touched, add one before expanding feature work in that module
+
 ## 2. Task-Type Reading Map
 
 Start here based on the change:
 
 - runtime queue/lease/counter ownership or runtime implementation extraction: [platform_infra/README.md](platform_infra/README.md), [platform_infra/mass-runtime-api/README.md](platform_infra/mass-runtime-api/README.md), [platform_infra/mass-runtime-memory/README.md](platform_infra/mass-runtime-memory/README.md), [platform_infra/mass-runtime-redis/README.md](platform_infra/mass-runtime-redis/README.md)
-- JDBC or in-memory control-plane storage implementation ownership: [platform_infra/README.md](platform_infra/README.md), [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [xa-mass-engine/STORAGE_BASELINE.md](xa-mass-engine/STORAGE_BASELINE.md)
+- JDBC or in-memory control-plane storage implementation ownership: [platform_infra/README.md](platform_infra/README.md), [platform_infra/mass-storage-memory/README.md](platform_infra/mass-storage-memory/README.md), [platform_infra/mass-storage-jdbc/README.md](platform_infra/mass-storage-jdbc/README.md), [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [xa-mass-engine/STORAGE_BASELINE.md](xa-mass-engine/STORAGE_BASELINE.md)
 - Redis runtime key/index ownership: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
 - transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
 - websocket adapter/transport: [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)

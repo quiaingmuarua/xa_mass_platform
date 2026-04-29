@@ -11,7 +11,6 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 
@@ -97,7 +96,7 @@ class JdbcStoragePostgresTest {
     void ruleStoragePersistsRulesButKeepsEvaluatorsInProcess() {
         try (StorageFixture fixture = postgresFixture("rule_storage")) {
             JdbcRuleStorage storage = new JdbcRuleStorage(fixture.dataSource(), new PostgresJdbcDialect());
-            RuleDefinition rule = RuleConfig.getDefaultWorkerMatchRules().getFirst();
+            RuleDefinition rule = testRule();
             storage.addRule(rule);
 
             assertThat(storage.getRule(rule.getId())).isPresent();
@@ -116,6 +115,15 @@ class JdbcStoragePostgresTest {
         HikariDataSource dataSource = new HikariDataSource(config);
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration/control-plane").load().migrate();
         return new StorageFixture(dataSource);
+    }
+
+    private RuleDefinition testRule() {
+        RuleDefinition rule = new RuleDefinition();
+        rule.setId("basic_worker_check");
+        rule.setType(RuleType.QL_EXPRESS);
+        rule.setContent("isWorkerAvailable == true && isWorkerLocked == false");
+        rule.setDescription("Worker must be available and unlocked");
+        return rule;
     }
 
     private record StorageFixture(HikariDataSource dataSource) implements AutoCloseable {

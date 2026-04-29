@@ -2,6 +2,10 @@
 
 Status: shared in-memory storage implementation module.
 
+This module is partly mainline default implementation and partly current
+convergence residue. Agents must keep those two ideas separate when summarizing
+it for a handoff.
+
 Current scope:
 
 - `InMemoryTaskStorage`
@@ -14,8 +18,28 @@ These classes provide in-memory control-plane storage implementations shared by
 engine defaults, focused tests, and storage adapters that still need a
 process-local compatibility projection.
 
+Current code truth:
+
+- `InMemoryTaskStorage` and `InMemoryWorkerStorage` are the real in-memory
+  control-plane defaults used by SDK/server embedding and focused tests
+- `InMemoryRuleStorage` and `QLExpressRuleEvaluator` currently live here, so
+  rule-evaluator ownership is infra-local in code today
+- `InMemorySubmitterRegistry` currently lives here under `com.xa.mass.sdk.auth`,
+  which means SDK auth surface and infra packaging are coupled in the current
+  implementation
+- other modules should treat those rule/auth placements as current facts to
+  work with, not as a reason to expand this module further into SDK or engine
+  ownership
+
+Read with:
+
+- [../README.md](../README.md)
+- [../mass-storage-jdbc/README.md](../mass-storage-jdbc/README.md)
+- [../../doc/DB_STORAGE_PRINCIPLES.md](../../doc/DB_STORAGE_PRINCIPLES.md)
+
 Non-goals for this slice:
 
 - no runtime queue/lease ownership
 - no JDBC behavior
 - no engine lifecycle or assignment ownership
+- no transport protocol ownership
