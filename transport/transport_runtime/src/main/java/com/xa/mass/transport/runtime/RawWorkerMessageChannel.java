@@ -17,9 +17,9 @@ public interface RawWorkerMessageChannel {
 
     /**
      * Returns whether this channel can confidently route a raw message to the
-     * given worker under the current runtime state.
+     * given transport route under the current runtime state.
      */
-    default boolean supports(String workerId, String workerAdapterId) {
+    default boolean supportsRoute(String routeKey, String workerAdapterId) {
         return supportsAdapter(workerAdapterId);
     }
 
@@ -33,14 +33,14 @@ public interface RawWorkerMessageChannel {
     }
 
     /**
-     * Returns whether a worker id can be used for endpoint lookup.
+     * Returns whether a route key can be used for endpoint lookup.
      */
-    default boolean hasWorkerId(String workerId) {
-        return workerId != null && !workerId.isBlank();
+    default boolean hasRouteKey(String routeKey) {
+        return routeKey != null && !routeKey.isBlank();
     }
 
     /**
-     * Sends a raw transport payload to a concrete worker endpoint.
+     * Sends a raw transport payload to a concrete route-addressed endpoint.
      */
-    void send(String workerId, String rawJson, String traceId);
+    void sendToRoute(String routeKey, String rawJson, String traceId);
 }

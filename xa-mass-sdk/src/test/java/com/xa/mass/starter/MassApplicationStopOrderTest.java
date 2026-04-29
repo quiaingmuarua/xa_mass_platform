@@ -99,14 +99,14 @@ class MassApplicationStopOrderTest {
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
         when(registry.resolveWorkerAdapterId("worker-1")).thenReturn("websocket");
-        when(channel.supports("worker-1", "websocket")).thenReturn(true);
+        when(channel.supportsRoute("worker-1", "websocket")).thenReturn(true);
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
         inject(app, "transportRuntimeRegistry", registry);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
-        verify(channel).send("worker-1", "{\"hello\":1}", "trace-1");
-        verify(channel).supports("worker-1", "websocket");
+        verify(channel).sendToRoute("worker-1", "{\"hello\":1}", "trace-1");
+        verify(channel).supportsRoute("worker-1", "websocket");
     }
 
     @Test
@@ -115,16 +115,16 @@ class MassApplicationStopOrderTest {
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
         when(registry.resolveWorkerAdapterId("worker-2")).thenReturn("websocket");
-        when(first.supports("worker-2", "websocket")).thenReturn(false);
-        when(second.supports("worker-2", "websocket")).thenReturn(true);
+        when(first.supportsRoute("worker-2", "websocket")).thenReturn(false);
+        when(second.supportsRoute("worker-2", "websocket")).thenReturn(true);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
         inject(app, "transportRuntimeRegistry", registry);
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
-        verify(first, never()).send(anyString(), anyString(), anyString());
-        verify(second).send("worker-2", "{\"hello\":2}", "trace-2");
+        verify(first, never()).sendToRoute(anyString(), anyString(), anyString());
+        verify(second).sendToRoute("worker-2", "{\"hello\":2}", "trace-2");
     }
 
     @Test
@@ -133,16 +133,16 @@ class MassApplicationStopOrderTest {
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
         when(registry.resolveWorkerAdapterId("worker-3")).thenReturn("websocket");
-        when(first.supports("worker-3", "websocket")).thenReturn(false);
-        when(second.supports("worker-3", "websocket")).thenReturn(false);
+        when(first.supportsRoute("worker-3", "websocket")).thenReturn(false);
+        when(second.supportsRoute("worker-3", "websocket")).thenReturn(false);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
         inject(app, "transportRuntimeRegistry", registry);
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
-        verify(first, never()).send(anyString(), anyString(), anyString());
-        verify(second, never()).send(anyString(), anyString(), anyString());
+        verify(first, never()).sendToRoute(anyString(), anyString(), anyString());
+        verify(second, never()).sendToRoute(anyString(), anyString(), anyString());
     }
 
     @Test

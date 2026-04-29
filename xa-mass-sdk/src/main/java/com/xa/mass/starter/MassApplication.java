@@ -419,9 +419,10 @@ public class MassApplication {
             return false;
         }
         String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(workerId);
+        String routeKey = workerId;
         for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
-            if (rawWorkerMessageChannel.supports(workerId, workerAdapterId)) {
-                rawWorkerMessageChannel.send(workerId, rawJson, traceId);
+            if (rawWorkerMessageChannel.supportsRoute(routeKey, workerAdapterId)) {
+                rawWorkerMessageChannel.sendToRoute(routeKey, rawJson, traceId);
                 return true;
             }
         }

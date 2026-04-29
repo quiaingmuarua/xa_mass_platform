@@ -165,7 +165,7 @@ public final class SocketTransportServer implements TransportServer {
                     if (boundWorkerId == null) {
                         continue;
                     }
-                    sessionManager.addSession(boundWorkerId, endpointId, socket, writer);
+                    sessionManager.addSession(boundWorkerId, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }
                 if (boundWorkerId == null) {

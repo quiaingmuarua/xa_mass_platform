@@ -22,12 +22,13 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
         Objects.requireNonNull(request, "request");
         PrincipalContext principal = request.getPrincipal();
         if (principal == null) {
-            return AuthorizationDecision.deny("principal is required");
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PRINCIPAL_REQUIRED, "principal is required");
         }
 
         String requiredPermission = request.getStringAttribute(ATTR_REQUIRED_PERMISSION);
         if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
-            return AuthorizationDecision.deny("permission denied: " + requiredPermission);
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PERMISSION_DENIED,
+                    "permission denied: " + requiredPermission);
         }
 
         return switch (request.getResourceType()) {
@@ -66,14 +67,16 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
                         continue;
                     }
                     if (!principal.allowsEvent(binding.getEventCode())) {
-                        return AuthorizationDecision.deny("event scope denied: " + binding.getEventCode());
+                        return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_SCOPE_DENIED,
+                                "event scope denied: " + binding.getEventCode());
                     }
                     if (binding.getProjectCodes() == null) {
                         continue;
                     }
                     for (String projectCode : binding.getProjectCodes()) {
                         if (projectCode != null && !principal.allowsProject(projectCode)) {
-                            return AuthorizationDecision.deny("project scope denied: " + projectCode);
+                            return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_SCOPE_DENIED,
+                                    "project scope denied: " + projectCode);
                         }
                     }
                 }
@@ -88,7 +91,8 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
             return workerBindingDecision;
         }
         if (request.getProject() != null && !principal.allowsProject(request.getProject())) {
-            return AuthorizationDecision.deny("project scope denied: " + request.getProject());
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_SCOPE_DENIED,
+                    "project scope denied: " + request.getProject());
         }
         return AuthorizationDecision.allow();
     }
@@ -98,12 +102,14 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
         String scopedProject = firstNonBlank(principal.getProjectScope());
         if (scopedProject != null) {
             if (requestedProject != null && !scopedProject.equals(requestedProject)) {
-                return AuthorizationDecision.deny("project scope denied: " + requestedProject);
+                return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_SCOPE_DENIED,
+                        "project scope denied: " + requestedProject);
             }
             return AuthorizationDecision.allow();
         }
         if (requestedProject != null && !principal.allowsProject(requestedProject)) {
-            return AuthorizationDecision.deny("project scope denied: " + requestedProject);
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_SCOPE_DENIED,
+                    "project scope denied: " + requestedProject);
         }
         return AuthorizationDecision.allow();
     }
@@ -111,7 +117,8 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
     private AuthorizationDecision authorizeTaskEventScope(AuthorizationRequest request, PrincipalContext principal) {
         String eventCode = request.getEventCode();
         if (eventCode != null && !principal.allowsEvent(eventCode)) {
-            return AuthorizationDecision.deny("event scope denied: " + eventCode);
+            return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_SCOPE_DENIED,
+                    "event scope denied: " + eventCode);
         }
         return AuthorizationDecision.allow();
     }
@@ -120,7 +127,8 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
         String requestedUserId = firstNonBlank(request.getStringAttribute(ATTR_USER_ID));
         String scopedUserId = firstNonBlank(principal.getUserId());
         if (scopedUserId != null && requestedUserId != null && !scopedUserId.equals(requestedUserId)) {
-            return AuthorizationDecision.deny("user scope denied: " + requestedUserId);
+            return AuthorizationDecision.deny(AuthorizationReasonCode.USER_SCOPE_DENIED,
+                    "user scope denied: " + requestedUserId);
         }
         return AuthorizationDecision.allow();
     }
@@ -132,10 +140,12 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
             return AuthorizationDecision.allow();
         }
         if (boundWorkerId == null) {
-            return AuthorizationDecision.deny("worker binding missing");
+            return AuthorizationDecision.deny(AuthorizationReasonCode.WORKER_BINDING_MISSING,
+                    "worker binding missing");
         }
         if (!requestedWorkerId.equals(boundWorkerId)) {
-            return AuthorizationDecision.deny("worker binding denied: " + requestedWorkerId);
+            return AuthorizationDecision.deny(AuthorizationReasonCode.WORKER_BINDING_DENIED,
+                    "worker binding denied: " + requestedWorkerId);
         }
         return AuthorizationDecision.allow();
     }

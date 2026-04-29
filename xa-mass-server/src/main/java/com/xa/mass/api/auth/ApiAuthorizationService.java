@@ -6,6 +6,7 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.authz.AuthorizationDecision;
 import com.xa.mass.sdk.authz.AuthorizationPolicy;
+import com.xa.mass.sdk.authz.AuthorizationReasonCode;
 import com.xa.mass.sdk.authz.AuthorizationRequest;
 import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
 import com.xa.mass.sdk.authz.PlatformAction;
@@ -117,7 +118,8 @@ public class ApiAuthorizationService {
         );
         AuthorizationDecision decision = authorize(principal, resourceType, action, null, null, null, resourceAttributes);
         if (!decision.isAllowed()) {
-            logDenied(surface, principal, resourceType, action, null, null, null, resourceAttributes, decision.getReason(), context);
+            logDenied(surface, principal, resourceType, action, null, null, null,
+                    resourceAttributes, decision.getReasonCode(), decision.getReason(), context);
             throw new ApiForbiddenException(decision.getReason());
         }
     }
@@ -144,8 +146,8 @@ public class ApiAuthorizationService {
         );
         if (!decision.isAllowed()) {
             logDenied(scenario.surface(), principal, scenario.resourceType(), scenario.action(),
-                    project, eventCode, null, resourceAttributes, decision.getReason(), context);
-            throw new SecurityException(scenario.deniedMessage(decision.getReason()));
+                    project, eventCode, null, resourceAttributes, decision.getReasonCode(), decision.getReason(), context);
+            throw new SecurityException(scenario.deniedMessage(decision));
         }
     }
 
@@ -171,8 +173,8 @@ public class ApiAuthorizationService {
         );
         if (!decision.isAllowed()) {
             logDenied(scenario.surface(), principal, scenario.resourceType(), scenario.action(),
-                    project, null, workerId, resourceAttributes, decision.getReason(), context);
-            throw new ApiForbiddenException(scenario.deniedMessage(decision.getReason()));
+                    project, null, workerId, resourceAttributes, decision.getReasonCode(), decision.getReason(), context);
+            throw new ApiForbiddenException(scenario.deniedMessage(decision));
         }
     }
 
@@ -206,10 +208,11 @@ public class ApiAuthorizationService {
                            String eventCode,
                            String workerId,
                            Map<String, Object> resourceAttributes,
+                           AuthorizationReasonCode reasonCode,
                            String reason,
                            Map<String, Object> context) {
         logger.warn(
-                "Authorization denied: surface={} principalId={} principalType={} resourceType={} action={} project={} eventCode={} workerId={} reason={} resourceAttributes={} context={}",
+                "Authorization denied: surface={} principalId={} principalType={} resourceType={} action={} project={} eventCode={} workerId={} reasonCode={} reason={} resourceAttributes={} context={}",
                 surface,
                 principal != null ? principal.getPrincipalId() : "anonymous",
                 principal != null ? principal.getPrincipalType() : "UNKNOWN",
@@ -218,6 +221,7 @@ public class ApiAuthorizationService {
                 project,
                 eventCode,
                 workerId,
+                reasonCode,
                 reason,
                 resourceAttributes,
                 safeContext(context)

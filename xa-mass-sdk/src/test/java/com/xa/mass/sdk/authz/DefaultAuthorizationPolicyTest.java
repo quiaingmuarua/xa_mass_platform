@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultAuthorizationPolicyTest {
@@ -38,6 +39,7 @@ class DefaultAuthorizationPolicyTest {
 
         assertTrue(allowed.isAllowed());
         assertFalse(denied.isAllowed());
+        assertEquals(AuthorizationReasonCode.PERMISSION_DENIED, denied.getReasonCode());
     }
 
     @Test
@@ -96,6 +98,9 @@ class DefaultAuthorizationPolicyTest {
         assertFalse(deniedProject.isAllowed());
         assertFalse(deniedEvent.isAllowed());
         assertFalse(deniedUser.isAllowed());
+        assertEquals(AuthorizationReasonCode.PROJECT_SCOPE_DENIED, deniedProject.getReasonCode());
+        assertEquals(AuthorizationReasonCode.EVENT_SCOPE_DENIED, deniedEvent.getReasonCode());
+        assertEquals(AuthorizationReasonCode.USER_SCOPE_DENIED, deniedUser.getReasonCode());
     }
 
     @Test
@@ -151,5 +156,7 @@ class DefaultAuthorizationPolicyTest {
         assertTrue(allowedRegister.isAllowed());
         assertFalse(deniedWorkerBinding.isAllowed());
         assertFalse(deniedEvent.isAllowed());
+        assertEquals(AuthorizationReasonCode.WORKER_BINDING_DENIED, deniedWorkerBinding.getReasonCode());
+        assertEquals(AuthorizationReasonCode.EVENT_SCOPE_DENIED, deniedEvent.getReasonCode());
     }
 }

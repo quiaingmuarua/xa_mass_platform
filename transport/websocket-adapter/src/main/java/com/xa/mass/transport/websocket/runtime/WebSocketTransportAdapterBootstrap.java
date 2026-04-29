@@ -97,15 +97,15 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         }
 
         @Override
-        public boolean supports(String workerId, String workerAdapterId) {
+        public boolean supportsRoute(String routeKey, String workerAdapterId) {
             return supportsAdapter(workerAdapterId)
-                    && hasWorkerId(workerId)
-                    && endpointRegistry.isRouteOnline(workerId);
+                    && hasRouteKey(routeKey)
+                    && endpointRegistry.isAdapterRouteOnline(adapterId(), routeKey);
         }
 
         @Override
-        public void send(String workerId, String rawJson, String traceId) {
-            endpointRegistry.sendToRoute(workerId, rawJson);
+        public void sendToRoute(String routeKey, String rawJson, String traceId) {
+            endpointRegistry.sendToAdapterRoute(adapterId(), routeKey, rawJson);
         }
     }
 }

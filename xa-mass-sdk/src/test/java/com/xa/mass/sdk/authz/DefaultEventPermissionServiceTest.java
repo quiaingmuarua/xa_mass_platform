@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultEventPermissionServiceTest {
@@ -61,6 +62,7 @@ class DefaultEventPermissionServiceTest {
                 .requestId("req-other")
                 .build());
         assertFalse(denied.isAllowed());
+        assertEquals(AuthorizationReasonCode.PROJECT_EVENT_UNSUPPORTED, denied.getReasonCode());
         assertTrue(denied.getReason().contains("project does not support event"));
     }
 }

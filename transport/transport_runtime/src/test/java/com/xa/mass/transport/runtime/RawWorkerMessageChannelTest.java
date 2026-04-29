@@ -17,12 +17,12 @@ class RawWorkerMessageChannelTest {
     }
 
     @Test
-    void hasWorkerIdRejectsBlankValues() {
+    void hasRouteKeyRejectsBlankValues() {
         RawWorkerMessageChannel channel = channel("socket");
 
-        assertTrue(channel.hasWorkerId("worker-1"));
-        assertFalse(channel.hasWorkerId(null));
-        assertFalse(channel.hasWorkerId(" "));
+        assertTrue(channel.hasRouteKey("worker-1"));
+        assertFalse(channel.hasRouteKey(null));
+        assertFalse(channel.hasRouteKey(" "));
     }
 
     private RawWorkerMessageChannel channel(String adapterId) {
@@ -33,7 +33,7 @@ class RawWorkerMessageChannelTest {
             }
 
             @Override
-            public void send(String workerId, String rawJson, String traceId) {
+            public void sendToRoute(String routeKey, String rawJson, String traceId) {
             }
         };
     }

@@ -1,6 +1,8 @@
 package com.xa.mass.api.auth;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.AuthorizationDecision;
+import com.xa.mass.sdk.authz.AuthorizationReasonCode;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
 
@@ -103,32 +105,44 @@ public enum ApiSecurityScenario {
         };
     }
 
-    public String deniedMessage(String reason) {
-        if (reason == null || reason.isBlank()) {
+    public String deniedMessage(AuthorizationDecision decision) {
+        if (decision == null || decision.getReason() == null || decision.getReason().isBlank()) {
             return "SDK credential authorization denied";
         }
-        if (reason.startsWith("permission denied: ")) {
-            return "SDK credential permission denied: " + reason.substring("permission denied: ".length());
+        AuthorizationReasonCode reasonCode = decision.getReasonCode();
+        String reason = decision.getReason();
+        if (reasonCode == AuthorizationReasonCode.PERMISSION_DENIED) {
+            return "SDK credential permission denied: " + suffixAfter(reason, "permission denied: ");
         }
-        if (reason.startsWith("project scope denied: ")) {
-            return "SDK credential project scope denied: " + reason.substring("project scope denied: ".length());
+        if (reasonCode == AuthorizationReasonCode.PROJECT_SCOPE_DENIED) {
+            return "SDK credential project scope denied: " + suffixAfter(reason, "project scope denied: ");
         }
-        if (reason.startsWith("event scope denied: ")) {
-            return "SDK credential event scope denied: " + reason.substring("event scope denied: ".length());
+        if (reasonCode == AuthorizationReasonCode.EVENT_SCOPE_DENIED) {
+            return "SDK credential event scope denied: " + suffixAfter(reason, "event scope denied: ");
         }
         if (credentialAudience == CredentialAudience.SDK_SUBMITTER
-                && reason.startsWith("user scope denied: ")) {
-            return "SDK credential user scope denied: " + reason.substring("user scope denied: ".length());
+                && reasonCode == AuthorizationReasonCode.USER_SCOPE_DENIED) {
+            return "SDK credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
-                && reason.equals("worker binding missing")) {
+                && reasonCode == AuthorizationReasonCode.WORKER_BINDING_MISSING) {
             return "SDK credential is missing workerId binding";
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
-                && reason.startsWith("worker binding denied: ")) {
-            return "SDK credential worker binding denied: " + reason.substring("worker binding denied: ".length());
+                && reasonCode == AuthorizationReasonCode.WORKER_BINDING_DENIED) {
+            return "SDK credential worker binding denied: " + suffixAfter(reason, "worker binding denied: ");
         }
         return reason;
+    }
+
+    private String suffixAfter(String value, String prefix) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        if (value.startsWith(prefix)) {
+            return value.substring(prefix.length());
+        }
+        return value;
     }
 
     private enum CredentialAudience {

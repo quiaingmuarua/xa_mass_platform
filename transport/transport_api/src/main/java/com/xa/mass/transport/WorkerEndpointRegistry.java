@@ -14,6 +14,14 @@ public interface WorkerEndpointRegistry {
 
     boolean isRouteOnline(String routeKey);
 
+    default boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
+        return sendToRoute(routeKey, message);
+    }
+
+    default boolean isAdapterRouteOnline(String adapterId, String routeKey) {
+        return isRouteOnline(routeKey);
+    }
+
     int getActiveConnectionCount();
 
     void shutdown();

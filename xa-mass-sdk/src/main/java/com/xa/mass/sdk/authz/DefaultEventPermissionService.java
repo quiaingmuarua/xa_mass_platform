@@ -27,13 +27,15 @@ public class DefaultEventPermissionService implements EventPermissionService {
             return catalogDecision;
         }
         if (principal == null) {
-            return AuthorizationDecision.deny("principal is required");
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PRINCIPAL_REQUIRED, "principal is required");
         }
         if (!principal.allowsEvent(eventCode)) {
-            return AuthorizationDecision.deny("event not allowed for principal");
+            return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_NOT_ALLOWED,
+                    "event not allowed for principal");
         }
         if (request.getProject() != null && !request.getProject().isBlank() && !principal.allowsProject(request.getProject())) {
-            return AuthorizationDecision.deny("project not allowed for principal");
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_NOT_ALLOWED,
+                    "project not allowed for principal");
         }
         return AuthorizationDecision.allow();
     }
@@ -42,20 +44,23 @@ public class DefaultEventPermissionService implements EventPermissionService {
         EventDefinition definition = metadataCatalog.getEvent(eventCode);
         if (definition != null) {
             if (!definition.isEnabled()) {
-                return AuthorizationDecision.deny("event disabled: " + eventCode);
+                return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_DISABLED,
+                        "event disabled: " + eventCode);
             }
             if (definition.getProjectCodes().isEmpty() && definition.getTaskModes().isEmpty()) {
                 return AuthorizationDecision.allow();
             }
             if (!definition.getProjectCodes().isEmpty()
                     && (projectCode == null || projectCode.isBlank() || !definition.getProjectCodes().contains(projectCode))) {
-                return AuthorizationDecision.deny("project does not support event: " + eventCode);
+                return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_EVENT_UNSUPPORTED,
+                        "project does not support event: " + eventCode);
             }
             if (projectCode == null || projectCode.isBlank()) {
-                return AuthorizationDecision.deny("project is required for event: " + eventCode);
+                return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_REQUIRED,
+                        "project is required for event: " + eventCode);
             }
             return AuthorizationDecision.allow();
         }
-        return AuthorizationDecision.deny("unknown event: " + eventCode);
+        return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_NOT_ALLOWED, "unknown event: " + eventCode);
     }
 }

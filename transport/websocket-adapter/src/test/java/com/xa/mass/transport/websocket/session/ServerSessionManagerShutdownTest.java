@@ -29,8 +29,8 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
         ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", ch1, ctx1);
-        manager.addSession("worker-2", ch2, ctx2);
+        manager.addSession("worker-1", "worker-1", ch1, ctx1);
+        manager.addSession("worker-2", "worker-2", ch2, ctx2);
 
         assertEquals(2, manager.getWorkerConnectionCount());
 
@@ -57,8 +57,8 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", firstChannel, firstCtx);
-        manager.addSession("worker-1", secondChannel, secondCtx);
+        manager.addSession("worker-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
 
         verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
         assertTrue(manager.isRouteOnline("worker-1"));
@@ -82,10 +82,10 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", firstChannel, firstCtx);
+        manager.addSession("worker-1", "worker-1", firstChannel, firstCtx);
         assertEquals(1, manager.getWorkerConnectionCount());
 
-        manager.addSession("worker-1", secondChannel, secondCtx);
+        manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
 
         assertEquals(1, manager.getWorkerConnectionCount());
         assertEquals(secondChannel, manager.getChannel("worker-1"));
@@ -107,8 +107,8 @@ class ServerSessionManagerShutdownTest {
         when(inactiveId.asShortText()).thenReturn("inactive");
 
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-        manager.addSession("worker-a", active, ctx);
-        manager.addSession("worker-b", inactive, ctx);
+        manager.addSession("worker-a", "worker-a", active, ctx);
+        manager.addSession("worker-b", "worker-b", inactive, ctx);
 
         manager.shutdown();
 

@@ -120,7 +120,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (workerId.equals(existingWorkerId) && sessionManager.getChannelContext(workerId) != null) {
             return;
         }
-        sessionManager.addSession(workerId, ctx.channel(), ctx);
+        sessionManager.addSession(workerId, workerId, ctx.channel(), ctx);
     }
 
     private String extractWorkerIdFromRequestUri(String requestUri) {

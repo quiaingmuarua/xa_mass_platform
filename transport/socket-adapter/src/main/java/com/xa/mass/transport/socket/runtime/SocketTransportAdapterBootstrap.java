@@ -95,15 +95,15 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         }
 
         @Override
-        public boolean supports(String workerId, String workerAdapterId) {
+        public boolean supportsRoute(String routeKey, String workerAdapterId) {
             return supportsAdapter(workerAdapterId)
-                    && hasWorkerId(workerId)
-                    && sessionManager.isRouteOnline(workerId);
+                    && hasRouteKey(routeKey)
+                    && sessionManager.isAdapterRouteOnline(adapterId(), routeKey);
         }
 
         @Override
-        public void send(String workerId, String rawJson, String traceId) {
-            sessionManager.sendToRoute(workerId, rawJson);
+        public void sendToRoute(String routeKey, String rawJson, String traceId) {
+            sessionManager.sendToAdapterRoute(adapterId(), routeKey, rawJson);
         }
     }
 }
