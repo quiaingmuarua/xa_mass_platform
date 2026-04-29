@@ -46,7 +46,7 @@ Current behavior:
 - engine default constructors wire memory-backed task/worker/rule storage directly
 - `xa-mass-server` can opt into JDBC-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
   with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a `platform_infra/mass-storage-jdbc` adapter path, not an engine storage default
-- Redis placeholder storage classes still exist under engine legacy storage code, but they are not part of the active wiring path
+- Redis queue/runtime design now belongs under `platform_infra/mass-runtime-redis`, not under engine-local storage classes
 
 That means the SDK/engine default mainline is explicit memory-backed storage,
 while the server shell has a focused H2 path for local and CI persistence
@@ -354,7 +354,7 @@ TaskQueryService taskQueries = new TaskQueryService(taskManager);
 When extending storage behavior, keep these rules fixed unless the kernel itself changes:
 
 - do not reintroduce `Device` / `Token` terminology in active storage docs
-- do not document placeholder Redis storage classes as if they were active engine wiring
+- do not recreate engine-local Redis storage placeholders; Redis runtime/storage design belongs in the infra modules that will own the real implementation
 - do not add APIs that collapse `WorkerContext` back to `0..1`
 - do not duplicate `workerId` ownership across method parameters when the `WorkerContext` already carries it
 - do not move online truth or lifecycle truth into `attributes`

@@ -32,8 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * StorageExample — demonstrates in-memory worker/workerContext storage and task assignment.
- * Switch to Redis by swapping InMemoryWorkerStorage for RedisWorkerStorage.
+ * StorageExample demonstrates explicit in-memory worker/task/rule storage wiring and task assignment.
  */
 public class StorageExample {
 
