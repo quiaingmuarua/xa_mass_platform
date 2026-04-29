@@ -33,22 +33,22 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
 
     @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getTaskMessage(taskId, messageId).orElse(null);
+        return taskManager.getTaskMessage(taskId, messageId);
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskManager.getTaskStorage().updateTaskMessage(taskId, taskMsg);
+        return taskManager.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskManager.getTaskStorage().addTaskMessageAttempt(taskId, messageId, attempt);
+        taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
@@ -60,7 +60,7 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
     public List<ClaimedTaskWork> claimReady(String taskId,
                                             List<WorkerClaimTarget> claimTargets,
                                             TaskWorkClaimOptions claimOptions) {
-        return taskManager.getTaskWorkRuntime().claimReady(taskId, claimTargets, claimOptions);
+        return taskManager.claimReady(taskId, claimTargets, claimOptions);
     }
 }
 

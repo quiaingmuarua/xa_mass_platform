@@ -16,6 +16,17 @@ These modules host platform-level runtime semantics and implementations that are
 shared by engine, transport, server, and test shells. They do not own business
 workflow, task strategy, or transport-specific protocol behavior.
 
+Think about infra through three truth layers:
+
+1. control-plane storage
+2. runtime state
+3. trace / audit stream
+
+This directory currently contains modules for the first two layers. The third
+layer is still mostly a contract and design direction rather than a landed
+module family. That absence is not permission to promote trace-shaped data into
+JDBC tables or hot runtime state.
+
 Read this file as the directory index only. For storage work, always follow it
 with the owning module README under `mass-storage-memory/` or
 `mass-storage-jdbc/` before changing code.
@@ -44,6 +55,7 @@ Boundary to keep stable:
 - runtime modules own queue, lease, delayed, expiry, counter, and backpressure truth
 - storage modules own durable control-plane truth
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
+- when trace/audit sinks are not landed yet, keep trace-shaped detail in bounded runtime projections or logs only as temporary residue; do not redefine that residue as control-plane truth
 
 When docs and code disagree inside `platform_infra/`, preserve the disagreement
 explicitly in the owner README as "current implementation drift" rather than

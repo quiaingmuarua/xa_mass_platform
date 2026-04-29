@@ -33,32 +33,32 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
 
     @Override
     public TaskWorkStats getTaskWorkStats(String taskId) {
-        return taskManager.getTaskWorkRuntime().stats(taskId);
+        return taskManager.getTaskWorkStats(taskId);
     }
 
     @Override
     public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
-        return taskManager.getTaskTerminalPolicy().evaluate(task, stats);
+        return taskManager.evaluateTerminalPolicy(task, stats);
     }
 
     @Override
     public void publishTaskReady(Task task) {
-        taskManager.getEventPublisher().publishTaskReady(task);
+        taskManager.publishTaskReady(task);
     }
 
     @Override
     public void publishTaskTerminal(Task task) {
-        taskManager.getEventPublisher().publishTaskTerminal(task);
+        taskManager.publishTaskTerminal(task);
     }
 
     @Override
     public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        taskManager.getEventPublisher().publishTaskMessageAttemptClosed(task, taskMsg, attempt);
+        taskManager.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
     }
 
     @Override
     public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
-        taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, taskMsg);
+        taskManager.publishTaskMessageLogicallyFinal(task, taskMsg);
     }
 
     @Override
@@ -88,47 +88,47 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
 
     @Override
     public boolean deleteTaskRecord(String taskId) {
-        return taskManager.getTaskStorage().deleteTask(taskId);
+        return taskManager.deleteTaskRecord(taskId);
     }
 
     @Override
     public void discardTaskRuntime(String taskId) {
-        taskManager.getTaskWorkRuntime().discardTask(taskId);
+        taskManager.discardTaskRuntime(taskId);
     }
 
     @Override
     public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskManager.getTaskStorage().getNonFinalTaskMessages(taskId);
+        return taskManager.getNonFinalTaskMessages(taskId);
     }
 
     @Override
     public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
-        return taskManager.getTaskWorkRuntime().activeLeases(taskId);
+        return taskManager.getActiveLeases(taskId);
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskManager.getTaskStorage().updateTaskMessage(taskId, taskMsg);
+        return taskManager.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskManager.getTaskStorage().updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskManager.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskManager.getTaskStorage().addTaskMessageAttempt(taskId, messageId, attempt);
+        taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 }
 

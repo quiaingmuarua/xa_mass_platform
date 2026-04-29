@@ -22,12 +22,12 @@ public final class TaskManagerRuntimeMaintenancePort implements TaskRuntimeMaint
 
     @Override
     public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
-        return taskManager.getTaskWorkRuntime().activeLeases(taskId);
+        return taskManager.getActiveLeases(taskId);
     }
 
     @Override
     public List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now) {
-        return taskManager.getTaskWorkRuntime().pollExpiredLeases(limit, now);
+        return taskManager.pollExpiredLeases(limit, now);
     }
 
     @Override

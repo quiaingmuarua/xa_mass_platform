@@ -47,6 +47,13 @@ The runtime layer belongs in queue/lease/counter modules such as
 The audit/trace layer should be exported asynchronously. It must not redefine
 the control-plane DB into a hot-path event store.
 
+Today that third layer is only partially implemented in code. Until it lands
+more fully, do not use "there is nowhere else to put it" as justification for
+adding trace-shaped history into JDBC tables or into unbounded runtime state.
+If something is fundamentally trace/audit data, keep it in bounded temporary
+projections, logs, or explicit export seams rather than reclassifying it as
+control-plane truth.
+
 ## What Belongs In DB
 
 Current default scope:
@@ -109,6 +116,10 @@ These belong in some combination of:
 - logs
 - trace / audit sinks
 - metrics
+
+If the intended long-term home is trace / audit, prefer the smallest temporary
+runtime/logging residue that preserves correctness. Do not make the temporary
+placement authoritative.
 
 ## Current JDBC Boundary
 

@@ -20,7 +20,9 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -28,6 +30,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -403,6 +406,10 @@ public class TaskManager {
         return taskStorage.getTaskMessageStats(taskId);
     }
 
+    List<TaskMsg> getNonFinalTaskMessages(String taskId) {
+        return taskStorage.getNonFinalTaskMessages(taskId);
+    }
+
     int countPendingDispatchableMessages(String taskId) {
         long readyCount = taskWorkRuntime.stats(taskId).readyCount();
         return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
@@ -428,8 +435,20 @@ public class TaskManager {
         eventPublisher.publishTaskTerminal(task);
     }
 
+    void publishTaskReady(Task task) {
+        eventPublisher.publishTaskReady(task);
+    }
+
+    void publishTaskDispatchRequested(Task task) {
+        eventPublisher.publishTaskDispatchRequested(task);
+    }
+
     TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return taskStorage.getTaskMessageAttemptStats(taskId, messageId);
+    }
+
+    boolean deleteTaskRecord(String taskId) {
+        return taskStorage.deleteTask(taskId);
     }
 
     /**
@@ -714,20 +733,8 @@ public class TaskManager {
         return sourceRef.trim();
     }
 
-    TaskStorage getTaskStorage() {
-        return taskStorage;
-    }
-
     public TaskWorkRuntime getTaskWorkRuntime() {
         return taskWorkRuntime;
-    }
-
-    TaskTerminalPolicy getTaskTerminalPolicy() {
-        return taskTerminalPolicy;
-    }
-
-    TaskEventPublisher getEventPublisher() {
-        return eventPublisher;
     }
 
     /**
@@ -744,8 +751,26 @@ public class TaskManager {
         dispatchRequestService.requestDelayed(task, delayMillis);
     }
 
+    List<ClaimedTaskWork> claimReady(String taskId,
+                                     List<WorkerClaimTarget> claimTargets,
+                                     TaskWorkClaimOptions claimOptions) {
+        return taskWorkRuntime.claimReady(taskId, claimTargets, claimOptions);
+    }
+
     java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
         return taskWorkRuntime.getActiveLease(taskId, messageId);
+    }
+
+    List<ActiveLeaseRecord> getActiveLeases(String taskId) {
+        return taskWorkRuntime.activeLeases(taskId);
+    }
+
+    List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
+        return taskWorkRuntime.pollExpiredLeases(limit, now);
+    }
+
+    void discardTaskRuntime(String taskId) {
+        taskWorkRuntime.discardTask(taskId);
     }
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {

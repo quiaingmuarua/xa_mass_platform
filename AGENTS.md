@@ -13,6 +13,7 @@ Fast coding-agent entry. Use owner docs under `doc/`, `transport/`, and module r
 - Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
 - Observability is logs, trace, and bounded diagnostics; do not add scan-heavy hot-path state.
 - Prefer idempotent operations and bounded queues over richer but expensive control-plane projections.
+- Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream. Do not force a trace candidate into DB or runtime just because the trace module is not landed yet.
 - Official Java baseline is Java 21 with virtual threads used through explicit runtime abstractions.
 - Real Boot entry is `xa-mass-server`; embedded runtime composition lives in `xa-mass-sdk`.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
@@ -59,6 +60,7 @@ Start here based on the change:
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - database/control-plane storage boundary: [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [xa-mass-engine/STORAGE_BASELINE.md](xa-mass-engine/STORAGE_BASELINE.md)
+- three-layer infra truth split and what to do before trace lands: [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [platform_infra/README.md](platform_infra/README.md)
 - perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
 - integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-server/README.md](xa-mass-server/README.md)
 - known runtime or coverage gaps: [doc/CURRENT_GAPS.md](doc/CURRENT_GAPS.md)

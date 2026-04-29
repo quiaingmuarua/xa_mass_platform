@@ -26,6 +26,6 @@ final class TaskManagerDispatchRequestRuntimePort implements TaskDispatchRequest
 
     @Override
     public void publishTaskDispatchRequested(Task task) {
-        taskManager.getEventPublisher().publishTaskDispatchRequested(task);
+        taskManager.publishTaskDispatchRequested(task);
     }
 }
