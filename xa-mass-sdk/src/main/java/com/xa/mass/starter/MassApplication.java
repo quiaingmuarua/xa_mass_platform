@@ -88,10 +88,11 @@ public class MassApplication {
         logger.info("Starting Mass Application");
 
         try {
-            initializeComponents();
+            TaskMsgDispatchListener taskMsgDispatchListener = initializeComponents();
 
             startManagedTransportAdapters();
             startTransportServer();
+            startEngine(taskMsgDispatchListener);
 
             LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
@@ -115,13 +116,12 @@ public class MassApplication {
 
         try {
             try {
-                stopManagedTransportAdapters();
-
                 if (engine != null && engineConfig.isEnabled()) {
                     engine.stop();
                 }
 
                 stopTransportServers();
+                stopManagedTransportAdapters();
             } finally {
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
@@ -138,12 +138,6 @@ public class MassApplication {
 
     private void cleanupAfterFailedStart(Exception startupFailure) {
         try {
-            stopManagedTransportAdapters();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop managed transport adapters after startup failure", cleanupError);
-        }
-        try {
             if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
@@ -156,6 +150,12 @@ public class MassApplication {
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop transport servers after startup failure", cleanupError);
+        }
+        try {
+            stopManagedTransportAdapters();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop managed transport adapters after startup failure", cleanupError);
         }
         try {
             stopTransportDeliveryService();
@@ -177,7 +177,7 @@ public class MassApplication {
         }
     }
 
-    private void initializeComponents() {
+    private TaskMsgDispatchListener initializeComponents() {
         logger.info("Initializing core components");
 
         try {
@@ -241,12 +241,7 @@ public class MassApplication {
                 );
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-
-            if (engineConfig.isEnabled()) {
-                startEngine(taskMsgDispatchListener);
-            } else {
-                logger.info("MassEngine is disabled, skipping start");
-            }
+            return taskMsgDispatchListener;
         } catch (Exception e) {
             try {
                 stopTransportDeliveryService();
@@ -258,8 +253,6 @@ public class MassApplication {
             logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
-
-        logger.info("Core components initialized");
     }
 
     private void startManagedTransportAdapters() {
@@ -275,6 +268,10 @@ public class MassApplication {
     }
 
     private void startEngine(TaskMsgDispatchListener taskMsgDispatchListener) {
+        if (!engineConfig.isEnabled()) {
+            logger.info("MassEngine is disabled, skipping start");
+            return;
+        }
         logger.info("Starting MassEngine");
         if (engine != null) {
             engine.start(taskMsgDispatchListener);
@@ -392,7 +389,9 @@ public class MassApplication {
 
     public boolean isRunning() {
         return running.get()
-                && transportServers.stream().allMatch(TransportServer::isRunning);
+                && managedTransportAdapters.stream().allMatch(ManagedTransportAdapter::isRunning)
+                && transportServers.stream().allMatch(TransportServer::isRunning)
+                && (!engineConfig.isEnabled() || engine == null || engine.isRunning());
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {

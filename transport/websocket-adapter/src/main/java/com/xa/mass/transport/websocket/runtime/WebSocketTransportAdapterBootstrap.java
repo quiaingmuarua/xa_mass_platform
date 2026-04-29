@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -49,9 +48,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     )
             ).build());
             contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(endpointRegistry));
-            ManagedTransportAdapter managedTransportAdapter =
-                    new WebSocketManagedTransportAdapter(config.getMaxConnections(), dispatcherContext);
-            contribution.managedTransportAdapter(managedTransportAdapter);
         }
 
         TransportServer transportServer = WebSocketEmbeddedRuntimeSupport.createTransportServer(

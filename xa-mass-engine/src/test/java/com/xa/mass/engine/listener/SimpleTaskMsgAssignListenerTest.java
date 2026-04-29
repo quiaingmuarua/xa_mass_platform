@@ -52,7 +52,7 @@ class SimpleTaskMsgAssignListenerTest {
     void usesPersistedTaskMessagesInsteadOfGeneratingNewOnes() {
         Task task = createTask(3);
         task.setBatchSize(10);
-        List<String> storedMsgIds = taskManager.getTaskMessages(task.getTid()).stream()
+        List<String> storedMsgIds = storedMessages(task.getTid()).stream()
                 .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
@@ -86,7 +86,7 @@ class SimpleTaskMsgAssignListenerTest {
 
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(4, stored.size());
         assertEquals(List.of(TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
@@ -137,7 +137,7 @@ class SimpleTaskMsgAssignListenerTest {
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
         LocalDateTime afterAssign = LocalDateTime.now();
 
-        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg message = storedMessages(task.getTid()).get(0);
         TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
@@ -161,7 +161,7 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
@@ -186,7 +186,7 @@ class SimpleTaskMsgAssignListenerTest {
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
         LocalDateTime afterAssign = LocalDateTime.now();
 
-        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg message = storedMessages(task.getTid()).get(0);
         TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
@@ -294,7 +294,7 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(4, dispatched.size());
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
@@ -317,7 +317,7 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
@@ -340,7 +340,7 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
@@ -356,7 +356,7 @@ class SimpleTaskMsgAssignListenerTest {
         task.setBatchSize(10);
         assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() != null && !msg.getLatestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
@@ -372,7 +372,7 @@ class SimpleTaskMsgAssignListenerTest {
         blocked.block();
         assertTrue(listener.onMsgAssign(task, List.of(matched(worker("d1"), blocked))).isEmpty());
 
-        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> stored = storedMessages(task.getTid());
         assertEquals(TaskMsgStatus.INIT, stored.get(0).getStatus());
         verify(workerManager).unlockWorker("d1");
         verify(recordService, never()).recordMessageAssignment(
@@ -383,13 +383,13 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void emptyWorkerListSkipsWithoutMutation() {
         Task task = createTask(2);
-        List<String> before = taskManager.getTaskMessages(task.getTid()).stream()
+        List<String> before = storedMessages(task.getTid()).stream()
                 .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
 
         assertTrue(listener.onMsgAssign(task, List.of()).isEmpty());
 
-        List<TaskMsg> after = taskManager.getTaskMessages(task.getTid());
+        List<TaskMsg> after = storedMessages(task.getTid());
         assertEquals(before, after.stream().map(TaskMsg::getMessageId).collect(Collectors.toList()));
         assertTrue(after.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
         verifyNoInteractions(recordService);
@@ -406,6 +406,14 @@ class SimpleTaskMsgAssignListenerTest {
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
                 .collect(Collectors.toCollection(ArrayList::new)));
         return taskManager.createTask(dto);
+    }
+
+    private List<TaskMsg> storedMessages(String taskId) {
+        long count = taskManager.countTaskMessages(taskId);
+        if (count == 0) {
+            return List.of();
+        }
+        return taskManager.getTaskMessages(taskId, Math.toIntExact(count));
     }
 
     private Worker worker(String id) {
@@ -489,3 +497,4 @@ class SimpleTaskMsgAssignListenerTest {
         }
     }
 }
+

@@ -23,12 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 /**
- * Verifies shutdown order: WebSocket adapter -> Engine -> transport server.
+ * Verifies MassApplication transport and engine startup/shutdown order.
  */
 class MassApplicationStopOrderTest {
 
     @Test
-    void webSocketAdapterStopsBeforeTransportServer() throws Exception {
+    void transportServerStopsBeforeManagedAdapter() throws Exception {
         List<String> order = new ArrayList<>();
 
         ManagedTransportAdapter adapter = spy(new RecordingManagedTransportAdapter(order, "websocket"));
@@ -44,12 +44,12 @@ class MassApplicationStopOrderTest {
 
         app.stop();
 
-        assertEquals(List.of("websocket", "transport"), order,
-                "WebSocket adapter must stop before the transport server to let the dispatcher drain in-flight messages");
+        assertEquals(List.of("transport", "websocket"), order,
+                "Transport server should stop before optional managed adapter cleanup");
     }
 
     @Test
-    void engineStopsBetweenWebSocketAdapterAndTransportServer() throws Exception {
+    void engineStopsBeforeTransportServerAndManagedAdapter() throws Exception {
         List<String> order = new ArrayList<>();
 
         ManagedTransportAdapter adapter = new RecordingManagedTransportAdapter(order, "websocket");
@@ -69,8 +69,8 @@ class MassApplicationStopOrderTest {
 
         app.stop();
 
-        assertEquals(List.of("websocket", "engine", "transport"), order,
-                "Stop order must be: websocket -> engine -> transport server");
+        assertEquals(List.of("engine", "transport", "websocket"), order,
+                "Stop order must be: engine -> transport server -> managed adapter");
     }
 
     @Test
@@ -148,6 +148,7 @@ class MassApplicationStopOrderTest {
     @Test
     void startBootstrapsManagedAdapterEvenWhenBundledWebSocketIsDisabled() {
         ManagedTransportAdapter adapter = mock(ManagedTransportAdapter.class);
+        when(adapter.isRunning()).thenReturn(true);
         TransportConfig transport = disabledTransportWithQueues();
         transport.addSupplementalTransportAdapterBootstrap(new StaticManagedAdapterBootstrap(adapter));
 
@@ -198,7 +199,7 @@ class MassApplicationStopOrderTest {
 
         assertTrue(failure.getMessage().contains("Failed to start Mass Application"));
         assertFalse(app.isRunning());
-        assertEquals(List.of("server-start", "adapter-stop", "server-stop"), order);
+        assertEquals(List.of("server-start", "server-stop", "adapter-stop"), order);
         assertEquals(false, ((java.util.Map<?, ?>) app.getTransportQueueDetail().get("deliveryQueue")).get("available"));
         assertEquals(false, ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) app.getTransportQueueDetail()
                 .get("runtimeExecutors")).get("transport")).get("available"));
@@ -263,6 +264,7 @@ class MassApplicationStopOrderTest {
     private static final class RecordingManagedTransportAdapter implements ManagedTransportAdapter {
         private final List<String> order;
         private final String name;
+        private boolean running;
 
         private RecordingManagedTransportAdapter(List<String> order, String name) {
             this.order = order;
@@ -271,16 +273,18 @@ class MassApplicationStopOrderTest {
 
         @Override
         public void start() {
+            running = true;
         }
 
         @Override
         public void stop() {
             order.add(name);
+            running = false;
         }
 
         @Override
         public boolean isRunning() {
-            return false;
+            return running;
         }
     }
 

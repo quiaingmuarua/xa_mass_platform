@@ -110,7 +110,7 @@ Important current usage notes:
 - task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
 - storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
-- `getTaskMessages(...)` is a compatibility/demo snapshot plus temporary internal cleanup helper; it is not the production business-detail path
+- `getTaskMessages(...)` is a storage-level compatibility/demo snapshot plus temporary internal cleanup helper; the `TaskManager` public facade should stay on bounded reads while explicit audits/tests may still traverse the storage snapshot
 - the server JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
   process-local; after restart, only `Task` truth is recovered from DB
 - runtime cleanup paths that only need pending logical messages should use `getNonFinalTaskMessages(...)` instead of materializing the full task-message snapshot

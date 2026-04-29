@@ -334,10 +334,11 @@ public class TaskManager {
     }
 
     /**
-     * Compatibility read surface for demo/tests. Do not treat full task-message
-     * reads as a future business-detail path.
+     * Package-local compatibility read surface for demo/tests and explicit
+     * projection audit. Do not treat full task-message reads as a future
+     * business-detail path.
      */
-    public List<TaskMsg> getTaskMessages(String taskId) {
+    List<TaskMsg> getTaskMessages(String taskId) {
         return taskStorage.getTaskMessages(taskId);
     }
 

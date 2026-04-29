@@ -439,6 +439,36 @@ class MassSdkTest {
     }
 
     @Test
+    void runtimeCompositionWebSocketBootstrapNoLongerContributesManagedAdapter() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setEnabled(true);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(true);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        TransportAdapterContribution contribution;
+        try {
+            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
+                    new TransportAdapterBootstrapContext<>(
+                            new CompositeWorkerEndpointRegistry(),
+                            mock(TaskResultIngestChannel.class),
+                            new RuntimeEventBusWorkerSystemEventChannel(),
+                            deliveryService(),
+                            runtimeTaskExecutor
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertNotNull(contribution.getTransportBinding());
+        assertNull(contribution.getManagedTransportAdapter());
+        assertNotNull(contribution.getTransportServer());
+        assertNotNull(contribution.getRawWorkerMessageChannel());
+    }
+
+    @Test
     void bundledWebSocketTransportBootstrapRejectsNonSessionRegistry() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();

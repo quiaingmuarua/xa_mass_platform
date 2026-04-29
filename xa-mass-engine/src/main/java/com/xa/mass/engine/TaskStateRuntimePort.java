@@ -24,7 +24,10 @@ public interface TaskStateRuntimePort {
 
     void publishTaskTerminal(Task task);
 
-    List<TaskMsg> getTaskMessages(String taskId);
+    /**
+     * Diagnostic-only full projection read for explicit audit flows.
+     */
+    List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId);
 
     TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
 }

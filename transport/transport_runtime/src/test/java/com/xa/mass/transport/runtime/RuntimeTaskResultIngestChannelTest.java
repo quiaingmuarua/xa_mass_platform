@@ -41,7 +41,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void successResponseUpdatesStoredTaskMessage() {
         Task task = createRunningTask("task-success");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
 
@@ -59,7 +59,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleTaskMessageProjection() {
         Task task = createRunningTask("task-failure");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
@@ -82,7 +82,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void duplicateResponseKeepsFirstFinalResultAndStillReturnsHandled() {
         Task task = createRunningTask("task-duplicate");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean firstHandled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
         boolean secondHandled = channel.ingest(report(task, taskMsg, "FAILED", "boom", null));
@@ -99,7 +99,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void transportNeutralResultReportCanBeIngestedWithoutWebSocketMessageObject() {
         Task task = createRunningTask("task-transport-neutral");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(new TaskResultReport(
                 task.getTid(),
@@ -120,7 +120,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void resultEnvelopeDelegatesToTaskResultLifecycleWithoutChangingSemantics() {
         Task task = createRunningTask("task-envelope");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
                 "polling",
@@ -139,7 +139,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void mismatchedEnvelopeAttemptIdentityStillDelegatesDuringLogOnlyStage() {
         Task task = createRunningTask("task-envelope-attempt-mismatch");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
@@ -172,7 +172,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
         taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
@@ -258,3 +258,4 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
+

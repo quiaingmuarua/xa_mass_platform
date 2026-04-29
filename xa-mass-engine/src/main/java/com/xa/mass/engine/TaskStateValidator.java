@@ -165,7 +165,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskMsg taskMsg : stateRuntime.getTaskMessages(taskId)) {
+        for (TaskMsg taskMsg : stateRuntime.getTaskMessagesForProjectionAudit(taskId)) {
             if (taskMsg == null) {
                 continue;
             }

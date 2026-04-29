@@ -75,6 +75,48 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
+    void anonymousUserCannotReachUnmappedApiRoute() throws Exception {
+        mockMvc.perform(post("/api/internal/legacy-probe")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
+    void anonymousUserCannotReachSyncTaskCreateWithoutSdkCredential() throws Exception {
+        mockMvc.perform(post("/status/api/tasks/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .content("""
+                                {
+                                  "taskName":"sdk-sync-task",
+                                  "eventCode":"crawler.fetch-page",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void sdkCredentialAttemptCanReachUnifiedSyncTaskCreateWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(post("/status/api/tasks/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "taskName":"sdk-sync-task",
+                                  "eventCode":"crawler.fetch-page",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
     void sdkCredentialAttemptCanReachUnifiedTaskCreateWithoutOperatorPermission() throws Exception {
         mockMvc.perform(post("/status/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -105,6 +147,12 @@ class ApiAuthInterceptorTest {
             return Map.of("ok", true, "body", body);
         }
 
+        @PostMapping("/status/api/tasks/sync")
+        @ResponseBody
+        public Map<String, Object> createTaskSync(@RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "body", body);
+        }
+
         @GetMapping("/api/queue/status")
         @ResponseBody
         public Map<String, Object> queueStatus() {
@@ -127,6 +175,12 @@ class ApiAuthInterceptorTest {
         @ResponseBody
         public Map<String, Object> projects() {
             return Map.of("ok", true);
+        }
+
+        @PostMapping("/api/internal/legacy-probe")
+        @ResponseBody
+        public Map<String, Object> legacyProbe(@RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "body", body);
         }
     }
 }

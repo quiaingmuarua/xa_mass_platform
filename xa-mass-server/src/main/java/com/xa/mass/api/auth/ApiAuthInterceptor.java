@@ -13,6 +13,8 @@ import java.io.IOException;
 @Component
 public class ApiAuthInterceptor implements HandlerInterceptor {
 
+    private static final String SDK_CREDENTIAL_BYPASS = "__SDK_CREDENTIAL_BYPASS__";
+
     private final ApiAuthService apiAuthService;
     private final ObjectMapper objectMapper;
 
@@ -25,8 +27,13 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         String requiredPermission = resolveRequiredPermission(request);
         boolean requiresAuthenticationOnly = requiresAuthenticationOnly(request);
-        if (requiredPermission == null && !requiresAuthenticationOnly) {
+        if (SDK_CREDENTIAL_BYPASS.equals(requiredPermission)) {
             return true;
+        }
+        if (requiredPermission == null && !requiresAuthenticationOnly) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                    "API route is not enabled for anonymous or implicit access: " + request.getRequestURI());
+            return false;
         }
 
         try {
@@ -63,9 +70,12 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         if (uri.equals("/status/api/tasks")) {
             return switch (method) {
                 case "GET" -> ApiPermissionNames.TASK_VIEW;
-                case "POST" -> hasSdkCredentialAttempt(request) ? null : ApiPermissionNames.TASK_CREATE;
+                case "POST" -> hasSdkCredentialAttempt(request) ? SDK_CREDENTIAL_BYPASS : ApiPermissionNames.TASK_CREATE;
                 default -> null;
             };
+        }
+        if (uri.equals("/status/api/tasks/sync") && "POST".equals(method)) {
+            return hasSdkCredentialAttempt(request) ? SDK_CREDENTIAL_BYPASS : ApiPermissionNames.TASK_CREATE;
         }
         if (uri.matches("^/status/api/tasks/[^/]+$")) {
             return switch (method) {
