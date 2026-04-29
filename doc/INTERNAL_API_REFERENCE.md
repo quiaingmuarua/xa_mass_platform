@@ -38,7 +38,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
 - `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
-- framework-owned task-create ownership metadata is currently stored in `Task.sharedConfig._massSecurity` with `createdByPrincipalId` and `createdByPrincipalType`.
+- framework-owned task-create ownership metadata is currently persisted in the reserved internal envelope `Task.sharedConfig._massSecurity` with `createdByPrincipalId` and `createdByPrincipalType`.
+- HTTP read surfaces do not expose `_massSecurity` directly; callers should treat `data.security` as the supported task ownership read model.
 - `Task.workloadClass` is an explicit task-level create field; current values are `INTERACTIVE` and `BULK`, and omission defaults to `BULK`.
 - `TaskMsg.output` is the canonical logical success payload for one work item; `result` remains a summary/string read-model field.
 - `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
@@ -205,7 +206,7 @@ Behavior notes:
 
 - operator callers still require `task:view`
 - SDK credential callers may also use this route
-- current SDK task-list behavior is ownership-scoped: only tasks whose `sharedConfig._massSecurity` matches the credential principal are returned
+- current SDK task-list behavior is ownership-scoped: only tasks whose internal ownership stamp matches the credential principal are returned
 
 ### 3.2 Create Task
 
@@ -254,8 +255,8 @@ Contract rules:
 - when an SDK submitter has `userId`, the request `userId` may be omitted or must match that scope; mismatches return HTTP 403
 - when an SDK submitter has no scoped `userId`, user resolution order is request `userId`, then submitter `principalId`
 - invalid or missing SDK credentials return HTTP 401
-- successful task create writes framework-owned ownership metadata to `sharedConfig._massSecurity`
-- `sharedConfig._massSecurity` currently contains `createdByPrincipalId` and `createdByPrincipalType`
+- successful task create writes framework-owned ownership metadata to the reserved internal envelope `sharedConfig._massSecurity`
+- callers must not rely on `_massSecurity` as a public request/response schema; read ownership through the explicit `security` view
 - `mode` defaults to `SINGLE_RUN`, or `STREAMING` when `openEnded=true` and `mode` is omitted
 - `payloadType` defaults to `JSON`
 - `defaultMsgMaxRetryCount` defaults to `3`
@@ -342,9 +343,9 @@ Response notes:
 - returns `stateValidation`
 - `task.project` is serialized as the canonical project code
 - `task.user` is serialized as the current business-user binding object
-- `task.sharedConfig` may include framework-owned `_massSecurity` ownership metadata in addition to caller-provided keys
-- task detail also exposes a derived `data.security` view so callers do not need to parse `_massSecurity` directly
-- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match `sharedConfig._massSecurity`
+- task detail returns caller-visible `sharedConfig` only; framework-reserved `_massSecurity` is stripped from the HTTP read model
+- task detail exposes the supported ownership read model at `data.security`
+- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match the internal ownership stamp
 - SDK credential owner mismatches return HTTP 403 with an explicit reason
 - returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
@@ -561,7 +562,7 @@ Response shape:
 - raw top-level target projections are not part of the message read model
 - `total` reports the task-message count; `truncated=true` means the bounded
   snapshot omitted messages
-- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match `sharedConfig._massSecurity`
+- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match the internal ownership stamp
 
 ```json
 {

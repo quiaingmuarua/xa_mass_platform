@@ -25,6 +25,7 @@ import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.model.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.BeanUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -253,7 +254,7 @@ public class TaskApiController {
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("task", task);
+            response.put("task", toTaskDetailTaskView(task));
             response.put("items", items);
             response.put("itemsTotal", itemTotal);
             response.put("itemsLimit", boundedLimit);
@@ -556,6 +557,13 @@ public class TaskApiController {
         return item;
     }
 
+    private Task toTaskDetailTaskView(Task task) {
+        Task view = new Task();
+        BeanUtils.copyProperties(task, view);
+        view.setSharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(task.getSharedConfig()));
+        return view;
+    }
+
     private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
         return ResponseEntity.ok(ApiResponse.success(new LinkedHashMap<>(data)));
     }
@@ -616,7 +624,7 @@ public class TaskApiController {
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
                 .taskName(requestBody.getTaskName())
-                .sharedConfig(requestBody.getSharedConfig())
+                .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .inputs(toPlainJsonInputs(requestBody.getInputs()))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
@@ -656,7 +664,7 @@ public class TaskApiController {
                 .eventCode(requestBody.getEventCode())
                 .mode(mode)
                 .payloadType(payloadType)
-                .sharedConfig(requestBody.getSharedConfig())
+                .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .inputs(toMassInputs(requestBody.getInputs(), payloadType, resolveSourceType(requestBody)))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
@@ -678,7 +686,7 @@ public class TaskApiController {
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
                 .taskName(requestBody.getTaskName())
-                .sharedConfig(requestBody.getSharedConfig())
+                .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .batchSize(requestBody.getBatchSize())
                 .build();
     }
@@ -932,7 +940,7 @@ public class TaskApiController {
     private Map<String, Object> mergeSyncKey(Map<String, Object> existing, String syncKey) {
         Map<String, Object> merged = new LinkedHashMap<>();
         if (existing != null) {
-            merged.putAll(existing);
+            merged.putAll(taskSecurityViewSupport.sanitizeSharedConfig(existing));
         }
         merged.put(SyncTaskResultBridge.SYNC_KEY, syncKey);
         return Map.copyOf(merged);

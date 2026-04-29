@@ -43,7 +43,7 @@ embedding callers without pulling in runtime composition internals.
 - `com.xa.mass.sdk.authz.AuthorizationRequest` + `AuthorizationPolicy` are the unified control-plane authorization entrypoint
 - `AuthorizationDecision` now carries both human-readable `reason` and structured `AuthorizationReasonCode`, so hosts do not need to infer deny semantics from string prefixes
 - `PlatformResourceType` and `PlatformAction` provide the current minimal platform resource/action vocabulary
-- `TaskOwnershipStamp` is the minimal framework-owned task ownership envelope currently persisted under `Task.sharedConfig._massSecurity`
+- `TaskOwnershipStamp` is the minimal framework-owned task ownership envelope currently persisted under the reserved internal key `Task.sharedConfig._massSecurity`; hosts should expose an explicit derived read model instead of teaching callers to parse that envelope directly
 - `xa-mass-server` and other hosts should adapt transport or HTTP details into these contracts instead of inventing host-local permission truth
 
 ## Start Here

@@ -17,6 +17,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -94,16 +95,14 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> securityView = (Map<String, Object>) responseData(detailResponse).get("security");
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
         Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
-        Map<String, Object> securityMetadata = (Map<String, Object>) sharedConfig.get("_massSecurity");
 
         assertEquals("demo.dispatch", sdkMetadata.get("eventCode"));
         assertEquals("JSON", sdkMetadata.get("payloadType"));
         assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
+        assertFalse(sharedConfig.containsKey("_massSecurity"));
         assertEquals("crawler-agent", securityView.get("createdByPrincipalId"));
         assertEquals("SERVICE", securityView.get("createdByPrincipalType"));
-        assertEquals("crawler-agent", securityMetadata.get("createdByPrincipalId"));
-        assertEquals("SERVICE", securityMetadata.get("createdByPrincipalType"));
     }
 
     @Test

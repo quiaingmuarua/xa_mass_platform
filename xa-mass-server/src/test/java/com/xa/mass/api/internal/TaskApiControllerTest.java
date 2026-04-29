@@ -481,6 +481,8 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.status").value("READY"))
                 .andExpect(jsonPath("$.data.task.project").value("demoApp"))
                 .andExpect(jsonPath("$.data.task.user.userId").value("agent-1"))
+                .andExpect(jsonPath("$.data.task.sharedConfig.source").value("sdk"))
+                .andExpect(jsonPath("$.data.task.sharedConfig._massSecurity").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].target").value("alpha"))
                 .andExpect(jsonPath("$.data.items[1].target").value("beta"))
                 .andExpect(jsonPath("$.data.itemsTotal").value(2))
@@ -622,7 +624,13 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"updated-name",
                                   "project":"testApp",
-                                  "sharedConfig":{"textContent":"updated-content"},
+                                  "sharedConfig":{
+                                    "textContent":"updated-content",
+                                    "_massSecurity":{
+                                      "createdByPrincipalId":"forged-owner",
+                                      "createdByPrincipalType":"SERVICE"
+                                    }
+                                  },
                                   "userId":"updated-user",
                                   "batchSize":5
                                 }
@@ -635,6 +643,7 @@ class TaskApiControllerTest {
                 "updated-name".equals(request.getTaskName())
                         && "testApp".equals(request.getProject())
                         && "updated-content".equals(request.getSharedConfig() != null ? request.getSharedConfig().get("textContent") : null)
+                        && (request.getSharedConfig() == null || !request.getSharedConfig().containsKey(TaskOwnershipStamp.SHARED_CONFIG_KEY))
                         && "updated-user".equals(request.getUserId())
                         && Integer.valueOf(5).equals(request.getBatchSize())
         ));

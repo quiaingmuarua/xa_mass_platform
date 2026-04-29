@@ -23,4 +23,13 @@ public class TaskSecurityViewSupport {
         view.put("createdByPrincipalType", ownershipStamp.getCreatedByPrincipalType().name());
         return Map.copyOf(view);
     }
+
+    public Map<String, Object> sanitizeSharedConfig(Map<String, Object> sharedConfig) {
+        if (sharedConfig == null || sharedConfig.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> sanitized = new LinkedHashMap<>(sharedConfig);
+        sanitized.remove(TaskOwnershipStamp.SHARED_CONFIG_KEY);
+        return Map.copyOf(sanitized);
+    }
 }
