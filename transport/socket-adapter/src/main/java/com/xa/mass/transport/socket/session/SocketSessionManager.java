@@ -34,7 +34,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
-        boolean wasOnline = isWorkerOnline(workerId);
+        boolean wasOnline = isRouteOnline(workerId);
         SocketWorkerEndpoint existing = endpointsByWorkerId.get(workerId);
         if (existing != null && existing.isActive() && existing.endpointId().equals(endpointId)) {
             return;
@@ -74,8 +74,8 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     }
 
     @Override
-    public boolean sendMessage(String workerId, String message) {
-        SocketWorkerEndpoint endpoint = endpointsByWorkerId.get(workerId);
+    public boolean sendToRoute(String routeKey, String message) {
+        SocketWorkerEndpoint endpoint = endpointsByWorkerId.get(routeKey);
         if (endpoint == null || !endpoint.isActive()) {
             return false;
         }
@@ -83,16 +83,16 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
             endpoint.send(message);
             return true;
         } catch (IOException ex) {
-            logger.warn("Failed to send socket message to workerId={}, endpointId={}",
-                    workerId, endpoint.endpointId(), ex);
+            logger.warn("Failed to send socket message to routeKey={}, endpointId={}",
+                    routeKey, endpoint.endpointId(), ex);
             removeSession(endpoint.endpointId());
             return false;
         }
     }
 
     @Override
-    public boolean isWorkerOnline(String workerId) {
-        SocketWorkerEndpoint endpoint = endpointsByWorkerId.get(workerId);
+    public boolean isRouteOnline(String routeKey) {
+        SocketWorkerEndpoint endpoint = endpointsByWorkerId.get(routeKey);
         return endpoint != null && endpoint.isActive();
     }
 
@@ -117,6 +117,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         for (Map.Entry<String, SocketWorkerEndpoint> entry : endpointsByWorkerId.entrySet()) {
             SocketWorkerEndpoint endpoint = entry.getValue();
             snapshots.add(new WorkerEndpointSnapshot(
+                    entry.getKey(),
                     entry.getKey(),
                     endpoint != null && endpoint.isActive(),
                     endpoint != null ? endpoint.endpointId() : null,

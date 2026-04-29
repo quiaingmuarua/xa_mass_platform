@@ -121,6 +121,10 @@ Current runtime rules:
 - mainline polling/websocket/socket bindings currently resolve `routeKey` from
   worker id explicitly at binding assembly time; that is a current policy, not
   a transport-global invariant
+- realtime endpoint registries may still be keyed by worker id today, but
+  their direct-send contract is route-based: send and online checks should
+  speak in terms of `routeKey`, not imply that worker identity is the only
+  valid address key
 - blank `routeKey` is invalid for both queued delivery and direct-send delivery
 - queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
 - `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as

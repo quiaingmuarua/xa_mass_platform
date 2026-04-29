@@ -7,19 +7,26 @@ import java.util.Objects;
  */
 public final class WorkerEndpointSnapshot {
 
+    private final String routeKey;
     private final String workerId;
     private final boolean active;
     private final String endpointId;
     private final String transport;
 
-    public WorkerEndpointSnapshot(String workerId,
+    public WorkerEndpointSnapshot(String routeKey,
+                                  String workerId,
                                   boolean active,
                                   String endpointId,
                                   String transport) {
+        this.routeKey = Objects.requireNonNull(routeKey, "routeKey");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.active = active;
         this.endpointId = endpointId;
         this.transport = transport;
+    }
+
+    public String getRouteKey() {
+        return routeKey;
     }
 
     public String getWorkerId() {

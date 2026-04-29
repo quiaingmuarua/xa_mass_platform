@@ -51,9 +51,9 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
     }
 
     @Override
-    public synchronized boolean sendMessage(String workerId, String message) {
+    public synchronized boolean sendToRoute(String routeKey, String message) {
         for (WorkerEndpointRegistry registry : uniqueRegistries()) {
-            if (registry.sendMessage(workerId, message)) {
+            if (registry.sendToRoute(routeKey, message)) {
                 return true;
             }
         }
@@ -61,9 +61,9 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
     }
 
     @Override
-    public synchronized boolean isWorkerOnline(String workerId) {
+    public synchronized boolean isRouteOnline(String routeKey) {
         for (WorkerEndpointRegistry registry : uniqueRegistries()) {
-            if (registry.isWorkerOnline(workerId)) {
+            if (registry.isRouteOnline(routeKey)) {
                 return true;
             }
         }

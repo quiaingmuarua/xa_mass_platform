@@ -1,7 +1,6 @@
 package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.sdk.auth.CredentialHashing;
-import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -21,7 +20,7 @@ import java.util.Objects;
 public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements SubmitterRegistry {
 
     private final JdbcDialect dialect;
-    private final InMemorySubmitterRegistry runtimeProjection = new InMemorySubmitterRegistry();
+    private final JdbcSubmitterCompatibilityProjection runtimeProjection = new JdbcSubmitterCompatibilityProjection();
     private boolean loadedFromDb;
 
     public JdbcSubmitterRegistry(DataSource dataSource, JdbcDialect dialect) {

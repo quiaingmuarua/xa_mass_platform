@@ -78,7 +78,7 @@ class SocketTransportServerTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isWorkerOnline("worker-1"),
+                waitUntil(() -> sessionManager.isRouteOnline("worker-1"),
                         "hello frame should register worker socket session");
             }
         } finally {

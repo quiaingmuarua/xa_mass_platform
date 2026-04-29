@@ -31,7 +31,7 @@ class WebSocketOutputProcessorTest {
 
     @Test
     void returnsFalseWhenEndpointUnavailable() {
-        when(endpointRegistry.sendMessage("worker-1", "{\"hello\":\"world\"}"))
+        when(endpointRegistry.sendToRoute("worker-1", "{\"hello\":\"world\"}"))
                 .thenReturn(false);
 
         boolean result = outputProcessor.process(
@@ -43,7 +43,7 @@ class WebSocketOutputProcessorTest {
 
     @Test
     void returnsTrueWhenEndpointSendSucceeds() {
-        when(endpointRegistry.sendMessage("worker-1", "{\"hello\":\"world\"}"))
+        when(endpointRegistry.sendToRoute("worker-1", "{\"hello\":\"world\"}"))
                 .thenReturn(true);
 
         boolean result = outputProcessor.process(

@@ -21,7 +21,7 @@ public final class WebSocketOutputProcessor {
 
     public boolean process(WorkerTransportMessage delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendMessage(delivery.getWorkerId(), delivery.getRawJson());
+            boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getWorkerId(), delivery.getRawJson());
             if (sent) {
                 return true;
             }

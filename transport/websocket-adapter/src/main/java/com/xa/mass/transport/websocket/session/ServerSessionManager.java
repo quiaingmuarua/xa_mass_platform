@@ -81,19 +81,19 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     @Override
-    public boolean sendMessage(String workerId, String message) {
-        Channel channel = workerChannelMap.get(workerId);
+    public boolean sendToRoute(String routeKey, String message) {
+        Channel channel = workerChannelMap.get(routeKey);
         if (channel != null && channel.isActive()) {
             channel.writeAndFlush(new TextWebSocketFrame(message));
             return true;
         }
-        logger.warn("Failed to send to worker={}. Channel not found or inactive.", workerId);
+        logger.warn("Failed to send to routeKey={}. Channel not found or inactive.", routeKey);
         return false;
     }
 
     @Override
-    public boolean isWorkerOnline(String workerId) {
-        Channel channel = workerChannelMap.get(workerId);
+    public boolean isRouteOnline(String routeKey) {
+        Channel channel = workerChannelMap.get(routeKey);
         return channel != null && channel.isActive();
     }
 
@@ -151,6 +151,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
         workerChannelMap.forEach((workerId, channel) -> snapshots.add(
                 new WorkerEndpointSnapshot(
+                        workerId,
                         workerId,
                         channel != null && channel.isActive(),
                         channel != null ? channel.id().asShortText() : null,

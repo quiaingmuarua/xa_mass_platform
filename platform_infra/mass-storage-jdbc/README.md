@@ -45,6 +45,8 @@ Current implementation drift to keep explicit:
 - `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
   projection for worker/context/lock residue, but that residue is still
   in-process and restart-volatile
+- `JdbcSubmitterRegistry` now owns a JDBC-local process-local auth projection,
+  but that residue is still in-process and restart-volatile
 
 Do not describe those drift points as target architecture. If they change,
 update this README in the same change.

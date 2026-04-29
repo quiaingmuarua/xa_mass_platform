@@ -10,9 +10,9 @@ package com.xa.mass.transport;
  */
 public interface WorkerEndpointRegistry {
 
-    boolean sendMessage(String workerId, String message);
+    boolean sendToRoute(String routeKey, String message);
 
-    boolean isWorkerOnline(String workerId);
+    boolean isRouteOnline(String routeKey);
 
     int getActiveConnectionCount();
 

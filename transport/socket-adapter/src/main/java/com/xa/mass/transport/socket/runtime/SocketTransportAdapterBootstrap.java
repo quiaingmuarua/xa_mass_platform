@@ -98,12 +98,12 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         public boolean supports(String workerId, String workerAdapterId) {
             return supportsAdapter(workerAdapterId)
                     && hasWorkerId(workerId)
-                    && sessionManager.isWorkerOnline(workerId);
+                    && sessionManager.isRouteOnline(workerId);
         }
 
         @Override
         public void send(String workerId, String rawJson, String traceId) {
-            sessionManager.sendMessage(workerId, rawJson);
+            sessionManager.sendToRoute(workerId, rawJson);
         }
     }
 }

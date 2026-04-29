@@ -25,20 +25,20 @@ class SocketTaskDispatchChannelTest {
     @Test
     void dispatchReturnsSentWhenSessionManagerAcceptsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
+        when(sessionManager.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
-        verify(sessionManager).sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any());
+        verify(sessionManager).sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any());
     }
 
     @Test
     void dispatchReturnsEndpointOfflineWhenSessionManagerRejectsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
+        when(sessionManager.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
