@@ -31,6 +31,25 @@ class AuthControllerTest {
     }
 
     @Test
+    void meReturnsCustomOperatorPrincipalFromHeaders() throws Exception {
+        mockMvc.perform(get("/api/auth/me")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "alice")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Alice Ops")
+                        .header(ApiAuthService.USER_EMAIL_HEADER, "alice@example.test")
+                        .header(ApiAuthService.USER_ROLES_HEADER, "OPS_CUSTOM")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, "task:view,worker:view"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.id").value("alice"))
+                .andExpect(jsonPath("$.data.name").value("Alice Ops"))
+                .andExpect(jsonPath("$.data.email").value("alice@example.test"))
+                .andExpect(jsonPath("$.data.roles[0]").value("OPS_CUSTOM"))
+                .andExpect(jsonPath("$.data.permissions[0]").value("task:view"))
+                .andExpect(jsonPath("$.data.permissions[1]").value("worker:view"));
+    }
+
+    @Test
     void logoutAcknowledgesAuthenticatedUser() throws Exception {
         mockMvc.perform(post("/api/auth/logout"))
                 .andExpect(status().isOk())
