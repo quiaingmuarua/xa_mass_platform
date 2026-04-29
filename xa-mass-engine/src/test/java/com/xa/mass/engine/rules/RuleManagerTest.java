@@ -1,6 +1,9 @@
 package com.xa.mass.engine.rules;
 
 import com.xa.mass.engine.storage.InMemoryRuleStorage;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.storage.rule.RuleType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

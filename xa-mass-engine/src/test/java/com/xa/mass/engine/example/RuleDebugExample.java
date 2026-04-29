@@ -11,7 +11,7 @@ import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.storage.api.TaskStorageFactory;
+import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

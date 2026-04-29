@@ -16,7 +16,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryRuleStorage;
-import com.xa.mass.engine.storage.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.Test;
 

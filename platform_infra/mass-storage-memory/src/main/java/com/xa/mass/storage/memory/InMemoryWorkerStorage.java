@@ -1,4 +1,4 @@
-package com.xa.mass.engine.storage;
+package com.xa.mass.storage.memory;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;

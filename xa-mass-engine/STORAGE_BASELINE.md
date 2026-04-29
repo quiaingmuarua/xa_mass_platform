@@ -19,8 +19,9 @@ These interfaces are used by:
 - `RuleManager`
 
 Those shared storage contracts now live in
-`platform_infra/mass-storage-api`. `xa-mass-engine` still owns the active
-in-memory/placeholder implementations plus `TaskStorageFactory`.
+`platform_infra/mass-storage-api`. `platform_infra/mass-storage-memory` now
+owns the active in-memory task/worker implementations, while
+`xa-mass-engine` still owns `InMemoryRuleStorage` plus `TaskStorageFactory`.
 
 The storage boundary now has three distinct roles:
 
@@ -304,9 +305,11 @@ Important current usage notes:
 
 The verified mainline implementations are:
 
-- `InMemoryTaskStorage`
-- `InMemoryWorkerStorage`
-- `InMemoryRuleStorage`
+- `platform_infra/mass-storage-memory`:
+  - `InMemoryTaskStorage`
+  - `InMemoryWorkerStorage`
+- `xa-mass-engine`:
+  - `InMemoryRuleStorage`
 
 Current `InMemoryWorkerStorage` behavior that matters architecturally:
 

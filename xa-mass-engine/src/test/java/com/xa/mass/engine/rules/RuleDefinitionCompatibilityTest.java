@@ -1,6 +1,7 @@
 package com.xa.mass.engine.rules;
 
 import com.google.gson.Gson;
+import com.xa.mass.storage.rule.RuleDefinition;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

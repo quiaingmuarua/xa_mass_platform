@@ -7,6 +7,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

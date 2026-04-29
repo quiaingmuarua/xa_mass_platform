@@ -23,10 +23,10 @@ Current truth for this conservative first slice:
 - `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
 - `mass-runtime-redis` now owns the Redis runtime keyspace/index baseline and remains outside the verified runtime path
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the storage-adjacent rule types referenced by those contracts
-- `mass-storage-memory` owns in-memory control-plane submitter storage used by the current embedded SDK/server path
+- `mass-storage-memory` owns in-memory control-plane task/worker/submitter storage used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring and migrations
 - `xa-mass-engine` now depends only on the runtime contract; default memory-runtime assembly is lifted into sdk/server/bootstrap and explicit test harnesses
-- `xa-mass-engine` still owns the in-memory/placeholder storage implementations and factory wiring for now, but the shared storage contracts no longer live under the engine package root
+- `xa-mass-engine` still owns `InMemoryRuleStorage`, placeholder fail-fast factory wiring, and engine-side storage usage, but the shared task/worker in-memory implementations and storage contracts no longer live under the engine package root
 
 Boundary to keep stable:
 

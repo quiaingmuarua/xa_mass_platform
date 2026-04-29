@@ -2,7 +2,7 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.storage.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 
 import javax.sql.DataSource;
