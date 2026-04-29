@@ -61,6 +61,12 @@ public final class InMemorySubmitterRegistry implements SubmitterRegistry {
     }
 
     @Override
+    public synchronized PrincipalContext getPrincipal(String principalId) {
+        StoredBinding binding = byPrincipalId.get(principalId);
+        return binding != null ? binding.principalContext() : null;
+    }
+
+    @Override
     public synchronized PrincipalContext authenticate(String credential) {
         if (credential == null || credential.isBlank()) {
             return null;

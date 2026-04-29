@@ -33,6 +33,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - The current HTTP/API surface validates the kernel; it does not define the kernel.
 - `/sdk/meta/**` is read-only metadata discovery, not a second task domain.
 - SDK credential callers use the same `POST /status/api/tasks` route as console/operator callers; `/sdk/submitters/me` is credential introspection only.
+- control-console mock auth still uses request headers, but those headers now resolve to built-in operator `PrincipalContext` definitions instead of a separate permission truth model.
 - `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
 - `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
@@ -47,7 +48,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 ## 1.1 Event Control Plane Notes
 
 - Stable event invocation contract: `EventRequest`, `EventResponse`, and `PrincipalContext`.
-- Control-plane authorization is event-centric and currently intersects client and user allow-list scope.
+- Control-plane authorization resolves one unified `PrincipalContext` and then applies direct permissions plus `projectScopes` / `eventScopes`.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.

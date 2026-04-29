@@ -1,12 +1,15 @@
 package com.xa.mass.api.auth;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.auth.PrincipalType;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
@@ -22,18 +25,29 @@ public class ApiAuthService {
     public static final String USER_ROLES_HEADER = "X-Mass-Roles";
     public static final String USER_PERMISSIONS_HEADER = "X-Mass-Permissions";
 
+    private final PrincipalDirectory principalDirectory;
+
+    public ApiAuthService() {
+        this(new CompositePrincipalDirectory(List.of(new DefaultOperatorPrincipalDirectory())));
+    }
+
+    @Autowired
+    public ApiAuthService(PrincipalDirectory principalDirectory) {
+        this.principalDirectory = Objects.requireNonNull(principalDirectory, "principalDirectory");
+    }
+
     public PrincipalContext resolveCurrentPrincipal(HttpServletRequest request) {
         String explicitMode = readTrimmed(request.getHeader(USER_MODE_HEADER));
         if (explicitMode == null && hasCustomHeaders(request)) {
             return buildCustomPrincipal(request);
         }
         if (explicitMode == null || explicitMode.isBlank()) {
-            return adminPrincipal();
+            return requireKnownPrincipal("ops-admin");
         }
 
         return switch (explicitMode.trim().toLowerCase()) {
-            case "admin" -> adminPrincipal();
-            case "viewer" -> viewerPrincipal();
+            case "admin" -> requireKnownPrincipal("ops-admin");
+            case "viewer" -> requireKnownPrincipal("ops-viewer");
             case "anonymous" -> null;
             case "custom" -> buildCustomPrincipal(request);
             default -> throw new IllegalArgumentException("Unsupported auth mode header: " + explicitMode);
@@ -88,44 +102,6 @@ public class ApiAuthService {
         );
     }
 
-    private PrincipalContext adminPrincipal() {
-        return PrincipalContext.builder()
-                .principalId("ops-admin")
-                .principalType(PrincipalType.OPERATOR)
-                .userId("ops-admin")
-                .permissions(ApiPermissionNames.ALL)
-                .attributes(java.util.Map.of(
-                        ATTR_DISPLAY_NAME, "Ops Admin",
-                        ATTR_EMAIL, "ops-admin@example.internal",
-                        ATTR_ROLES, "OPS_ADMIN"
-                ))
-                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .build();
-    }
-
-    private PrincipalContext viewerPrincipal() {
-        return PrincipalContext.builder()
-                .principalId("ops-viewer")
-                .principalType(PrincipalType.OPERATOR)
-                .userId("ops-viewer")
-                .permissions(List.of(
-                        ApiPermissionNames.TASK_VIEW,
-                        ApiPermissionNames.WORKER_VIEW,
-                        ApiPermissionNames.RULE_VIEW,
-                        ApiPermissionNames.CONFIG_VIEW,
-                        ApiPermissionNames.AUDIT_VIEW
-                ))
-                .attributes(java.util.Map.of(
-                        ATTR_DISPLAY_NAME, "Ops Viewer",
-                        ATTR_EMAIL, "ops-viewer@example.internal",
-                        ATTR_ROLES, "OPS_VIEWER"
-                ))
-                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .build();
-    }
-
     private PrincipalContext buildCustomPrincipal(HttpServletRequest request) {
         List<String> roles = parseCsvHeader(request.getHeader(USER_ROLES_HEADER));
         List<String> permissions = parseCsvHeader(request.getHeader(USER_PERMISSIONS_HEADER));
@@ -143,6 +119,14 @@ public class ApiAuthService {
                 .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
                 .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
                 .build();
+    }
+
+    private PrincipalContext requireKnownPrincipal(String principalId) {
+        PrincipalContext principal = principalDirectory.getPrincipal(principalId);
+        if (principal == null) {
+            throw new IllegalStateException("Missing principal definition: " + principalId);
+        }
+        return principal;
     }
 
     private List<String> parseCsvAttribute(String value, String defaultValue) {

@@ -6,7 +6,7 @@ import java.util.List;
  * Unified principal credential registry used by SDK submitter operations and
  * server-side credential authentication.
  */
-public interface SubmitterRegistry extends AuthProvider {
+public interface SubmitterRegistry extends AuthProvider, PrincipalDirectory {
 
     void register(SubmitterRegistration submitterRegistration);
 

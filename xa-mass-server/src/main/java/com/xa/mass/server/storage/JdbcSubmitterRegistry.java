@@ -69,6 +69,12 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
     }
 
     @Override
+    public synchronized PrincipalContext getPrincipal(String principalId) {
+        ensureLoaded();
+        return runtimeProjection.getPrincipal(principalId);
+    }
+
+    @Override
     public synchronized PrincipalContext authenticate(String credential) {
         ensureLoaded();
         return runtimeProjection.authenticate(credential);

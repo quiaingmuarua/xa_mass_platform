@@ -12,7 +12,10 @@ import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.api.auth.CompositePrincipalDirectory;
+import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -217,6 +220,14 @@ public class XaMassServerApplication {
     @Profile("dev")
     public SdkMetadataCatalog devAppMetadataCatalog(MassSdkApplication app) {
         return app.metadataCatalog();
+    }
+
+    @Bean
+    @Primary
+    @Profile("dev")
+    public PrincipalDirectory serverPrincipalDirectory(DefaultOperatorPrincipalDirectory operatorPrincipalDirectory,
+                                                       MassSdkApplication app) {
+        return new CompositePrincipalDirectory(List.of(operatorPrincipalDirectory, app));
     }
 
     private static List<String> describeConfiguredTransportAdapters(String webSocketUri,

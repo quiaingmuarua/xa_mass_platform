@@ -53,7 +53,7 @@ import java.util.*;
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
-        ResourceOperations, AuthProvider,
+        ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations,
         RuleOperations, TransportOperations {
 
@@ -498,6 +498,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public PrincipalContext authenticateSubmitter(String credential) {
         return submitterRegistry.authenticate(credential);
+    }
+
+    @Override
+    public PrincipalContext getPrincipal(String principalId) {
+        return submitterRegistry.getPrincipal(principalId);
     }
 
     @Override
