@@ -51,7 +51,7 @@ Current implementation drift agents must keep explicit:
 
 - `mass-storage-memory` currently contains `InMemoryRuleStorage` and `QLExpressRuleEvaluator` in addition to task/worker storage implementations; this is current code truth, not proof that those ownership boundaries are final
 - `mass-storage-jdbc` currently persists control-plane truth and still exposes `JdbcStorageRuntime` as a convenience bundle for migrations, storage adapters, and residue recovery; it now returns storage contracts to outer layers, but that bundle is still convergence work rather than a long-term product extension point
-- `JdbcTaskStorage`, `JdbcWorkerStorage`, and `JdbcSubmitterRegistry` now each keep JDBC-local process-local compatibility projections for task-message, worker-runtime, and auth residue; those in-process projections are current implementation facts, not target architecture
+- `JdbcTaskStorage` and `JdbcWorkerStorage` now each keep JDBC-local process-local compatibility projections for task-message and worker-runtime residue; those in-process projections are current implementation facts, not target architecture
 - `xa-mass-engine` still uses `mass-storage-memory` from tests, but its main sources no longer import that package directly; keep the dependency scoped to tests unless a verified mainline caller requires more
 
 Boundary to keep stable:

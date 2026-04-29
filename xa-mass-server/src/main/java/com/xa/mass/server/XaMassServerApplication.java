@@ -18,6 +18,7 @@ import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
+import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -124,7 +125,10 @@ public class XaMassServerApplication {
                                                           JdbcStorageRuntime jdbcStorageRuntime) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
-            builder.submitterRegistry(jdbcStorageRuntime.submitterRegistry());
+            builder.submitterRegistry(new JdbcSubmitterRegistry(
+                    jdbcStorageRuntime.dataSource(),
+                    JdbcStorageMode.parse(storageMode)
+            ));
         }
         return builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())

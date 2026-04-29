@@ -10,7 +10,6 @@ root [AGENTS.md](../../AGENTS.md) and [../README.md](../README.md) first.
 - owns JDBC task truth persistence
 - owns JDBC worker and worker-context registration persistence
 - owns JDBC rule-definition persistence
-- owns JDBC submitter/principal persistence
 - owns H2/PostgreSQL dialect wiring, migrations, and startup residue recovery
 
 ## Read This As Current Truth
@@ -31,8 +30,6 @@ Current implementation facts:
 - `JdbcWorkerStorage` persists durable worker/worker-context registration truth
   but keeps online/offline churn, worker locks, and context occupancy residue
   in-process
-- `JdbcSubmitterRegistry` persists principal credential truth in JDBC and
-  restores an in-process auth projection for runtime checks
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
   datasource, Flyway, adapter construction, and residue recovery, and it is the
   first file to re-check when boundary drift is suspected
@@ -48,8 +45,6 @@ Current implementation drift to keep explicit:
 - `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
   projection for worker/context/lock residue, but that residue is still
   in-process and restart-volatile
-- `JdbcSubmitterRegistry` now owns a JDBC-local process-local auth projection,
-  but that residue is still in-process and restart-volatile
 - some of that residue is present only because the trace/audit layer is not yet
   landed; treat it as bounded compatibility state, not as evidence that JDBC
   should absorb message history or execution timelines
@@ -62,7 +57,6 @@ update this README in the same change.
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcStorageRuntime.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcTaskStorage.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcWorkerStorage.java`
-- `src/main/java/com/xa/mass/storage/jdbc/JdbcSubmitterRegistry.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcRuntimeResidueRecovery.java`
 
 ## Fast Verification

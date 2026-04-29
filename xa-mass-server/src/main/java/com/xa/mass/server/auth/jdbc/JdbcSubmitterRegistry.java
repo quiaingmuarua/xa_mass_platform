@@ -1,10 +1,15 @@
-package com.xa.mass.storage.jdbc;
+package com.xa.mass.server.auth.jdbc;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.sdk.auth.CredentialHashing;
+import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
+import com.xa.mass.storage.jdbc.JdbcStorageMode;
 
 import javax.sql.DataSource;
 import java.sql.ResultSet;
@@ -13,19 +18,26 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * JDBC-backed low-frequency principal credential registry. Durable control
- * truth lives in the database; runtime authentication reads from the loaded
- * in-process projection.
+ * Server-side JDBC persistence for submitter/auth principal truth.
+ *
+ * <p>Auth contracts stay owned by the SDK surface; this class is only a host-side
+ * persistence adapter and intentionally does not live under platform_infra.
  */
-public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements SubmitterRegistry {
+public final class JdbcSubmitterRegistry implements SubmitterRegistry {
 
-    private final JdbcDialect dialect;
-    private final JdbcSubmitterCompatibilityProjection runtimeProjection = new JdbcSubmitterCompatibilityProjection();
+    private final DataSource dataSource;
+    private final JdbcStorageMode mode;
+    private final ObjectMapper mapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private final InMemorySubmitterRegistry runtimeProjection = new InMemorySubmitterRegistry();
     private boolean loadedFromDb;
 
-    public JdbcSubmitterRegistry(DataSource dataSource, JdbcDialect dialect) {
-        super(dataSource);
-        this.dialect = Objects.requireNonNull(dialect, "dialect");
+    public JdbcSubmitterRegistry(DataSource dataSource, JdbcStorageMode mode) {
+        this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.mode = Objects.requireNonNull(mode, "mode");
+        if (!mode.isJdbc()) {
+            throw new IllegalArgumentException("JdbcSubmitterRegistry requires a JDBC storage mode");
+        }
     }
 
     @Override
@@ -39,7 +51,7 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
         }
         SubmitterMetadata metadata = registration.toMetadata();
         String metadataJson = json(StoredSubmitterDocument.from(metadata));
-        try (var conn = connection(); var ps = conn.prepareStatement(dialect.principalUpsertSql())) {
+        try (var conn = dataSource.getConnection(); var ps = conn.prepareStatement(principalUpsertSql())) {
             ps.setString(1, registration.getPrincipalId());
             ps.setString(2, registration.getPrincipalType().name());
             ps.setString(3, credentialHash);
@@ -90,7 +102,7 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
     }
 
     private List<StoredPrincipalRecord> queryStoredPrincipals() {
-        try (var conn = connection(); var ps = conn.prepareStatement(
+        try (var conn = dataSource.getConnection(); var ps = conn.prepareStatement(
                 "SELECT principal_id, credential_hash, json FROM xa_principal ORDER BY principal_id"
         )) {
             List<StoredPrincipalRecord> result = new ArrayList<>();
@@ -111,7 +123,7 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
     }
 
     private String findPrincipalIdByCredentialHash(String credentialHash) {
-        try (var conn = connection(); var ps = conn.prepareStatement(
+        try (var conn = dataSource.getConnection(); var ps = conn.prepareStatement(
                 "SELECT principal_id FROM xa_principal WHERE credential_hash = ?"
         )) {
             ps.setString(1, credentialHash);
@@ -120,6 +132,44 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to query principal by credential hash", e);
+        }
+    }
+
+    private String principalUpsertSql() {
+        return switch (mode) {
+            case JDBC_H2 -> """
+                    MERGE INTO xa_principal KEY(principal_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+            case JDBC_POSTGRES -> """
+                    INSERT INTO xa_principal(principal_id, principal_type, credential_hash, key_prefix, user_id, project_scope, enabled, json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (principal_id) DO UPDATE SET
+                      principal_type = EXCLUDED.principal_type,
+                      credential_hash = EXCLUDED.credential_hash,
+                      key_prefix = EXCLUDED.key_prefix,
+                      user_id = EXCLUDED.user_id,
+                      project_scope = EXCLUDED.project_scope,
+                      enabled = EXCLUDED.enabled,
+                      json = EXCLUDED.json
+                    """;
+            case MEMORY -> throw new IllegalStateException("memory mode does not use JDBC submitter persistence");
+        };
+    }
+
+    private String json(Object value) {
+        try {
+            return mapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize submitter metadata", e);
+        }
+    }
+
+    private <T> T readJson(String json, Class<T> type) {
+        try {
+            return mapper.readValue(json, type);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to deserialize submitter metadata: " + type.getSimpleName(), e);
         }
     }
 
@@ -155,7 +205,7 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
         SubmitterMetadata toMetadata() {
             return SubmitterMetadata.builder()
                     .principalId(principalId)
-                    .principalType(principalType == null ? null : com.xa.mass.sdk.auth.PrincipalType.valueOf(principalType))
+                    .principalType(principalType == null ? null : PrincipalType.valueOf(principalType))
                     .keyPrefix(keyPrefix)
                     .userId(userId)
                     .projectScope(projectScope)
@@ -168,4 +218,3 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
         }
     }
 }
-
