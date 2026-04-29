@@ -36,10 +36,15 @@ Current implementation facts:
 
 Current implementation drift to keep explicit:
 
-- `JdbcStorageRuntime` currently reaches into rule-manager bootstrap concerns
-  instead of stopping at rule storage ownership
-- `JdbcTaskStorage` and `JdbcWorkerStorage` currently rely on in-memory
-  compatibility projections instead of a neutral shared projection helper
+- `JdbcStorageRuntime` is still a convenience bundle for datasource, migration,
+  adapter construction, and residue recovery; treat it as convergence work, not
+  a long-term public extension point
+- `JdbcTaskStorage` now owns a JDBC-local process-local compatibility
+  projection instead of reusing the full in-memory task-storage backend, but
+  that residue is still in-process and restart-volatile
+- `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
+  projection for worker/context/lock residue, but that residue is still
+  in-process and restart-volatile
 
 Do not describe those drift points as target architecture. If they change,
 update this README in the same change.

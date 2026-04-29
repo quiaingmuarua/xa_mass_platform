@@ -9,6 +9,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -224,6 +225,42 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         assertEquals(123456789L, pollingAdapter.lastEnvelopes.get(0).getCreatedAtEpochMillis());
     }
 
+    @Test
+    void routeKeyComesFromTransportBindingResolverInsteadOfBeingHardcodedToWorkerId() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+
+        Worker worker = new Worker();
+        worker.setWorkerId("poll-worker");
+        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
+        workerManager.addWorker(worker);
+
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
+        TransportBinding binding = TransportBinding.builder(pollingAdapter)
+                .routeKeyResolver((dispatchBinding, payload) -> "endpoint:" + payload.runtimeMetadata().batchId())
+                .build();
+        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                workerManager,
+                new TransportRuntimeRegistry(
+                        workerManager,
+                        report -> true,
+                        new NoopWorkerSystemEventChannel(),
+                        List.of(binding)
+                )
+        );
+
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskMsg taskMsg = new TaskMsg();
+        taskMsg.setTaskId("task-1");
+        taskMsg.setMessageId("msg-1");
+        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-9");
+
+        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+
+        assertEquals("endpoint:batch-9", pollingAdapter.lastEnvelopes.get(0).getRouteKey());
+    }
+
     private static final class RecordingAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
@@ -287,7 +324,9 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 report -> true,
                 new NoopWorkerSystemEventChannel(),
                 Arrays.stream(adapters)
-                        .map(adapter -> TransportBinding.builder(adapter).build())
+                        .map(adapter -> TransportBinding.builder(adapter)
+                                .routeKeyResolver(TransportRouteKeyResolvers.workerId())
+                                .build())
                         .toList()
         );
     }

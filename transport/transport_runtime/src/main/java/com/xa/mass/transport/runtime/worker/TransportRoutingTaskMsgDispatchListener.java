@@ -7,9 +7,9 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
-import com.xa.mass.transport.model.TaskDispatchRuntimeMetadata;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
 import org.slf4j.Logger;
@@ -50,14 +50,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
 
         Map<WorkerAdapter, List<TransportDispatchEnvelope>> grouped = new LinkedHashMap<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
-            WorkerAdapter adapter = resolveAdapter(binding);
+            TransportBinding transportBinding = resolveBinding(binding);
+            WorkerAdapter adapter = transportBinding.getWorkerAdapter();
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt());
-            TaskDispatchRuntimeMetadata runtimeMetadata = payload.runtimeMetadata();
             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
                     .add(envelopeFactory.create(
                             adapter.adapterId(),
-                            runtimeMetadata.workerId(),
-                            runtimeMetadata.attemptId(),
+                            transportBinding.resolveRouteKey(binding, payload),
+                            payload.runtimeMetadata().attemptId(),
                             payload
                     ));
         }
@@ -90,12 +90,12 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         }
     }
 
-    private WorkerAdapter resolveAdapter(TaskDispatchBinding binding) {
+    private TransportBinding resolveBinding(TaskDispatchBinding binding) {
         String workerId = binding != null && binding.attempt() != null ? binding.attempt().getWorkerId() : null;
         if (workerId == null || workerManager.getWorker(workerId) == null) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }
-        return transportRuntimeRegistry.resolveDispatchAdapter(workerId);
+        return transportRuntimeRegistry.resolveDispatchBinding(workerId);
     }
 }
 

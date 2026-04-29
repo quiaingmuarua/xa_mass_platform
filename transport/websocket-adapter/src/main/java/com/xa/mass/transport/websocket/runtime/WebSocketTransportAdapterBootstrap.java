@@ -6,6 +6,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
@@ -46,7 +47,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
-            ).build());
+            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
             contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(endpointRegistry));
         }
 

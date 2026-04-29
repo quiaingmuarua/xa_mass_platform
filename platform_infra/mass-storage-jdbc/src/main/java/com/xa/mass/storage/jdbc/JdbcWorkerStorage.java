@@ -2,7 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 
 import javax.sql.DataSource;
@@ -16,7 +15,7 @@ import java.util.Optional;
 public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStorage {
 
     private final JdbcDialect dialect;
-    private final InMemoryWorkerStorage runtimeProjection = new InMemoryWorkerStorage();
+    private final JdbcWorkerCompatibilityProjection runtimeProjection = new JdbcWorkerCompatibilityProjection();
     private final Map<String, String> durableWorkerJsonById = new HashMap<>();
     private final Map<String, String> durableWorkerContextJsonById = new HashMap<>();
     private boolean loadedFromDb;

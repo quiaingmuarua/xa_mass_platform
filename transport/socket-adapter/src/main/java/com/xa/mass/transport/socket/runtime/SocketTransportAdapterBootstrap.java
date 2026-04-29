@@ -7,6 +7,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -46,7 +47,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             frameCodec,
                             context.getDeliveryService()
                     ))
-            ).build());
+            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
             contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(sessionManager));
         }
         if (config.isServerEnabled()) {

@@ -44,7 +44,7 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
                     String rawJson = frameCodec.encodeCanonicalTaskDispatch(envelope.getPayload());
                     boolean sent = sessionManager.sendMessage(envelope.getRouteKey(), rawJson);
                     if (!sent) {
-                        logger.warn("Socket outbound skipped because endpoint is unavailable: workerId={}, correlationKey={}",
+                        logger.warn("Socket outbound skipped because endpoint is unavailable: routeKey={}, correlationKey={}",
                                 envelope.getRouteKey(), envelope.getCorrelationKey());
                     }
                     return sent;

@@ -115,6 +115,12 @@ Current runtime rules:
 
 - `adapterId` is canonicalized by trim + lowercase
 - `routeKey` is canonicalized by trim only; case is preserved
+- route-key assembly is owned by transport runtime binding composition; the
+  current default resolver uses worker id, but listeners must not hard-code
+  worker id as the only valid delivery address
+- mainline polling/websocket/socket bindings currently resolve `routeKey` from
+  worker id explicitly at binding assembly time; that is a current policy, not
+  a transport-global invariant
 - blank `routeKey` is invalid for both queued delivery and direct-send delivery
 - queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
 - `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as

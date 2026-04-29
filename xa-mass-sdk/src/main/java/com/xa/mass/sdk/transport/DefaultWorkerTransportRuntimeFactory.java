@@ -2,6 +2,7 @@ package com.xa.mass.sdk.transport;
 
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
@@ -24,6 +25,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                 context.getDeliveryService()
         );
         bindings.add(TransportBinding.builder(pollingAdapter)
+                .routeKeyResolver(TransportRouteKeyResolvers.workerId())
                 .taskPullChannel(pollingAdapter)
                 .build());
         bindings.addAll(context.getAdapterBindings());

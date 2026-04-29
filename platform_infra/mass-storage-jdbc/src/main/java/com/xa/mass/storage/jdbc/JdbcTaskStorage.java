@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.api.TaskStorage;
 
 import javax.sql.DataSource;
@@ -27,7 +26,7 @@ import java.util.Optional;
 public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
 
     private final JdbcDialect dialect;
-    private final InMemoryTaskStorage runtimeProjection = new InMemoryTaskStorage();
+    private final JdbcTaskCompatibilityProjection runtimeProjection = new JdbcTaskCompatibilityProjection();
 
     public JdbcTaskStorage(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
@@ -42,7 +41,7 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
         try (var conn = connection(); var ps = conn.prepareStatement(dialect.taskUpsertSql())) {
             bindTask(ps, task);
             ps.executeUpdate();
-            upsertRuntimeTask(task);
+            runtimeProjection.ensureTask(task.getTid());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to save task " + task.getTid(), e);
         }
@@ -70,7 +69,7 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
             ps.setString(6, task.getTid());
             boolean updated = ps.executeUpdate() > 0;
             if (updated) {
-                upsertRuntimeTask(task);
+                runtimeProjection.ensureTask(task.getTid());
             }
             return updated;
         } catch (Exception e) {
@@ -265,14 +264,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
             return null;
         }
         return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
-    }
-
-    private void upsertRuntimeTask(Task task) {
-        if (runtimeProjection.getTask(task.getTid()).isPresent()) {
-            runtimeProjection.updateTask(task);
-        } else {
-            runtimeProjection.saveTask(task);
-        }
     }
 }
 
