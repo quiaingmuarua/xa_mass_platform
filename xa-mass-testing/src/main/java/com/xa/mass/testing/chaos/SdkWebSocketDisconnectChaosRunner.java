@@ -10,7 +10,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -202,7 +202,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
                                     .enabled(true)
                                     .serverEnabled(true))
                             .inputQueue(new InMemoryMessageQueue<>("sdk-chaos-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("sdk-chaos-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
+                            .outputQueue(new InMemoryMessageQueue<>("sdk-chaos-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
                             .queueMode())
                     .engine(engine -> engine
                             .enabled(true)
@@ -835,3 +835,4 @@ public final class SdkWebSocketDisconnectChaosRunner {
         }
     }
 }
+

@@ -8,9 +8,7 @@ Trust code and verified runtime behavior over historical documentation.
 
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
-- [doc/TESTING_BASELINE.md](./doc/TESTING_BASELINE.md)
-- [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
-- [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
+- [doc/README.md](./doc/README.md)
 - [transport/AGENTS.md](./transport/AGENTS.md)
 
 Design-only reference:

@@ -231,7 +231,7 @@ runtime-composition object during `MassApplication` construction. Runtime
 assembly then manages only assembled transport components rather than holding a
 live transport config object as the primary composition backbone. That
 composition now consumes one or more adapter bootstrap contributions and uses
-the transport-neutral `WorkerTransportMessage` outbound carrier keyed by route
+the transport-neutral `TransportOutboundMessage` outbound carrier keyed by route
 rather than a
 WebSocket-only delivery DTO.
 
@@ -274,3 +274,4 @@ replacement. Realtime direct-send counters are intentionally separate under
 `getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.
+

@@ -8,7 +8,7 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
@@ -142,7 +142,7 @@ public class XaMassServerApplication {
                         .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
                         .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
                 .engine(engine -> {
                     engine.enabled(true).workerThreads(workerThreads);
                     if (jdbcStorageRuntime.isEnabled()) {
@@ -244,3 +244,4 @@ public class XaMassServerApplication {
     }
 
 }
+

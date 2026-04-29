@@ -5,7 +5,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,7 +38,7 @@ class TransportConfigTest {
     }
 
     private record StubBootstrap(String adapterId, String transportHint)
-            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+            implements TransportAdapterBootstrap<TransportOutboundMessage> {
 
         @Override
         public TransportAdapterDescriptor descriptor() {
@@ -46,8 +46,9 @@ class TransportConfigTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
             return TransportAdapterContribution.builder().build();
         }
     }
 }
+

@@ -7,7 +7,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -96,12 +96,12 @@ public class MassApplicationBuilder {
                 + ",port=" + socket.getServerPort()
                 + ")");
 
-        TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap =
+        TransportAdapterBootstrap<TransportOutboundMessage> primaryBootstrap =
                 transportConfig.getPrimaryTransportAdapterBootstrap();
         if (primaryBootstrap != null) {
             summaries.add(describeBootstrap("primaryBootstrap", primaryBootstrap));
         }
-        List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalBootstraps =
+        List<TransportAdapterBootstrap<TransportOutboundMessage>> additionalBootstraps =
                 transportConfig.getSupplementalTransportAdapterBootstraps();
         for (int i = 0; i < additionalBootstraps.size(); i++) {
             summaries.add(describeBootstrap("supplemental[" + i + "]", additionalBootstraps.get(i)));
@@ -111,7 +111,7 @@ public class MassApplicationBuilder {
     }
 
     private static String describeBootstrap(String source,
-                                            TransportAdapterBootstrap<WorkerTransportMessage> bootstrap) {
+                                            TransportAdapterBootstrap<TransportOutboundMessage> bootstrap) {
         TransportAdapterDescriptor descriptor = bootstrap.descriptor();
         if (descriptor == null) {
             return source + "(descriptor=<none>)";
@@ -170,13 +170,13 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder outputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
+        public TransportBuilder outputQueue(MessageQueue<TransportOutboundMessage> outputQueue) {
             config.setOutputQueue(outputQueue);
             return this;
         }
 
         public TransportBuilder addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
+                TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
             config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
@@ -332,3 +332,4 @@ public class MassApplicationBuilder {
 
     }
 }
+

@@ -8,7 +8,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 
@@ -28,7 +28,7 @@ public class TransportConfig {
     private MessageTransporterFactory.TransporterType transporterType =
             MessageTransporterFactory.TransporterType.QUEUE_BASED;
     private MessageQueue<String> inputQueue;
-    private MessageQueue<WorkerTransportMessage> outputQueue;
+    private MessageQueue<TransportOutboundMessage> outputQueue;
 
     private String inputApiUrl;
     private String outputApiUrl;
@@ -41,8 +41,8 @@ public class TransportConfig {
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
-    private List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps = List.of();
+    private TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
+    private List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
@@ -100,11 +100,11 @@ public class TransportConfig {
         this.inputQueue = inputQueue;
     }
 
-    public MessageQueue<WorkerTransportMessage> getOutputQueue() {
+    public MessageQueue<TransportOutboundMessage> getOutputQueue() {
         return outputQueue;
     }
 
-    public void setOutputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
+    public void setOutputQueue(MessageQueue<TransportOutboundMessage> outputQueue) {
         this.outputQueue = outputQueue;
     }
 
@@ -176,32 +176,32 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
     }
 
-    public TransportAdapterBootstrap<WorkerTransportMessage> getPrimaryTransportAdapterBootstrap() {
+    public TransportAdapterBootstrap<TransportOutboundMessage> getPrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap;
     }
 
     public void setPrimaryTransportAdapterBootstrap(
-            TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap) {
+            TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap) {
         this.primaryTransportAdapterBootstrap = primaryTransportAdapterBootstrap;
     }
 
-    public List<TransportAdapterBootstrap<WorkerTransportMessage>> getSupplementalTransportAdapterBootstraps() {
+    public List<TransportAdapterBootstrap<TransportOutboundMessage>> getSupplementalTransportAdapterBootstraps() {
         return supplementalTransportAdapterBootstraps;
     }
 
     public void setSupplementalTransportAdapterBootstraps(
-            List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps) {
+            List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps) {
         this.supplementalTransportAdapterBootstraps = supplementalTransportAdapterBootstraps == null
                 ? List.of()
                 : List.copyOf(supplementalTransportAdapterBootstraps);
     }
 
     public void addSupplementalTransportAdapterBootstrap(
-            TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
+            TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
         if (transportAdapterBootstrap == null) {
             return;
         }
-        List<TransportAdapterBootstrap<WorkerTransportMessage>> bootstraps =
+        List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps =
                 new ArrayList<>(supplementalTransportAdapterBootstraps);
         bootstraps.add(transportAdapterBootstrap);
         supplementalTransportAdapterBootstraps = List.copyOf(bootstraps);
@@ -263,3 +263,4 @@ public class TransportConfig {
         return new TransportRuntimeComposition(this);
     }
 }
+

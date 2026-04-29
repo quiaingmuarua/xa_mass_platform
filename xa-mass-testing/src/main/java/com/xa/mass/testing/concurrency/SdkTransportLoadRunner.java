@@ -10,7 +10,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -204,7 +204,7 @@ public final class SdkTransportLoadRunner {
                                     .enabled(config.transport() == WorkerTransportMode.SOCKET)
                                     .serverEnabled(config.transport() == WorkerTransportMode.SOCKET))
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
+                            .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
                             .queueMode())
                     .engine(engine -> engine.enabled(true))
                     .build();
@@ -1408,3 +1408,4 @@ public final class SdkTransportLoadRunner {
         }
     }
 }
+

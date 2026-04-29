@@ -14,7 +14,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -39,7 +39,7 @@ public class TransportRuntimeComposition {
 
     private final MessageTransporterFactory.TransporterType transporterType;
     private final MessageQueue<String> inputQueue;
-    private final MessageQueue<WorkerTransportMessage> outputQueue;
+    private final MessageQueue<TransportOutboundMessage> outputQueue;
     private final WorkerSystemEventChannel customSystemEventChannel;
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
@@ -47,8 +47,8 @@ public class TransportRuntimeComposition {
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private final TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
-    private final List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps;
+    private final TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
+    private final List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
     private final int transportRuntimeMaxPendingTasks;
     private final int eventRuntimeMaxPendingTasks;
@@ -85,7 +85,7 @@ public class TransportRuntimeComposition {
                 || !supplementalTransportAdapterBootstraps.isEmpty();
     }
 
-    public MessageTransporter<String, WorkerTransportMessage> createMessageTransporter() {
+    public MessageTransporter<String, TransportOutboundMessage> createMessageTransporter() {
         return switch (transporterType) {
             case QUEUE_BASED -> {
                 if (inputQueue == null || outputQueue == null) {
@@ -98,7 +98,7 @@ public class TransportRuntimeComposition {
         };
     }
 
-    public MessageTransporter<String, WorkerTransportMessage> createMessageTransporterIfConfigured() {
+    public MessageTransporter<String, TransportOutboundMessage> createMessageTransporterIfConfigured() {
         return switch (transporterType) {
             case QUEUE_BASED -> (inputQueue != null && outputQueue != null)
                     ? MessageTransporterFactory.createQueueBased(inputQueue, outputQueue)
@@ -160,8 +160,8 @@ public class TransportRuntimeComposition {
         return registrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
-    public List<TransportAdapterBootstrap<WorkerTransportMessage>> resolveTransportAdapterBootstraps() {
-        List<TransportAdapterBootstrap<WorkerTransportMessage>> bootstraps = new ArrayList<>();
+    public List<TransportAdapterBootstrap<TransportOutboundMessage>> resolveTransportAdapterBootstraps() {
+        List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps = new ArrayList<>();
         bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
         bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
         bootstraps.addAll(supplementalTransportAdapterBootstraps);
@@ -184,13 +184,13 @@ public class TransportRuntimeComposition {
         return eventRuntimeMaxPendingTasks;
     }
 
-    TransportAdapterBootstrap<WorkerTransportMessage> resolvePrimaryTransportAdapterBootstrap() {
+    TransportAdapterBootstrap<TransportOutboundMessage> resolvePrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap != null
                 ? primaryTransportAdapterBootstrap
                 : new WebSocketTransportAdapterBootstrap(bundledWebSocketAdapterConfig);
     }
 
-    TransportAdapterBootstrap<WorkerTransportMessage> resolveBundledSocketTransportAdapterBootstrap() {
+    TransportAdapterBootstrap<TransportOutboundMessage> resolveBundledSocketTransportAdapterBootstrap() {
         return new SocketTransportAdapterBootstrap(bundledSocketAdapterConfig);
     }
 
@@ -207,7 +207,7 @@ public class TransportRuntimeComposition {
                 PollingWorkerAdapter.PROTOCOL,
                 WorkerTransportHints.POLLING
         ));
-        TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
+        TransportAdapterBootstrap<TransportOutboundMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
         if (primaryTransportAdapterBootstrap != null) {
             TransportAdapterDescriptor primaryDescriptor = primaryBootstrap.descriptor();
             if (primaryDescriptor != null) {
@@ -225,7 +225,7 @@ public class TransportRuntimeComposition {
                 descriptors.add(socketDescriptor);
             }
         }
-        for (TransportAdapterBootstrap<WorkerTransportMessage> bootstrap : supplementalTransportAdapterBootstraps) {
+        for (TransportAdapterBootstrap<TransportOutboundMessage> bootstrap : supplementalTransportAdapterBootstraps) {
             TransportAdapterDescriptor descriptor = bootstrap.descriptor();
             if (descriptor != null) {
                 descriptors.add(descriptor);
@@ -239,3 +239,4 @@ public class TransportRuntimeComposition {
                 || workerTransportRuntimeFactory instanceof DefaultWorkerTransportRuntimeFactory;
     }
 }
+

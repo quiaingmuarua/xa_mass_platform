@@ -1,7 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
@@ -218,7 +218,7 @@ class MassApplicationStopOrderTest {
         c.getBundledWebSocketAdapterConfig().setEnabled(false);
         c.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         c.setInputQueue(new InMemoryMessageQueue<>("transport-input", String.class));
-        c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", WorkerTransportMessage.class));
+        c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", TransportOutboundMessage.class));
         return c;
     }
 
@@ -289,7 +289,7 @@ class MassApplicationStopOrderTest {
     }
 
     private static final class StaticManagedAdapterBootstrap
-            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+            implements TransportAdapterBootstrap<TransportOutboundMessage> {
 
         private final ManagedTransportAdapter managedTransportAdapter;
 
@@ -298,7 +298,7 @@ class MassApplicationStopOrderTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
             return TransportAdapterContribution.builder()
                     .managedTransportAdapter(managedTransportAdapter)
                     .build();
@@ -306,7 +306,7 @@ class MassApplicationStopOrderTest {
     }
 
     private static final class StaticTransportServerBootstrap
-            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+            implements TransportAdapterBootstrap<TransportOutboundMessage> {
 
         private final TransportServer transportServer;
 
@@ -315,7 +315,7 @@ class MassApplicationStopOrderTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
             return TransportAdapterContribution.builder()
                     .transportServer(transportServer)
                     .build();
@@ -380,3 +380,4 @@ class MassApplicationStopOrderTest {
         }
     }
 }
+

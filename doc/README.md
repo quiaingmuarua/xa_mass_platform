@@ -2,93 +2,72 @@
 
 Status: current documentation index.
 
-This directory holds active project-level docs only.
+Use [../AGENTS.md](../AGENTS.md) for the fast repo-root handoff. Use this page
+only when you need the expanded reading map inside `doc/`.
 
-Use [../AGENTS.md](../AGENTS.md) for the canonical repo-root handoff and read order.
-Use this page only as an index once you are already inside `doc/`.
+## 1. Fast Paths
 
-## 1. File Map
+Most tasks only need one contract lane plus one owner README:
+
+- lifecycle / trace / E2E:
+  [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md),
+  [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
+  [E2E_BASELINE.md](./E2E_BASELINE.md)
+- storage / runtime / trace placement:
+  [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md),
+  [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
+  [../platform_infra/README.md](../platform_infra/README.md)
+- testing / acceptance:
+  [TESTING_BASELINE.md](./TESTING_BASELINE.md),
+  [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- HTTP / external shell:
+  [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md),
+  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md)
+
+## 2. Core Global Docs
 
 | File | Purpose |
 | --- | --- |
-| [../README.md](../README.md) | shortest project summary |
-| [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) | repo-level deprecated/compatibility seams |
-| [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global mainline baseline and guardrails |
-| [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | dense control-plane/runtime/trace placement contract |
+| [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
 | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
-| [E2E_BASELINE.md](./E2E_BASELINE.md) | release-gate E2E scope |
-| [TESTING_BASELINE.md](./TESTING_BASELINE.md) | cross-module testing lanes and change matrix |
+| [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
+| [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
+| [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
+| [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
-| [CURRENT_GAPS.md](./CURRENT_GAPS.md) | runtime/coverage gap index |
-| [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contracts |
-| [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) | cross-module design/refactor reference, not current truth |
-| [../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md) | engine-owned design/refactor reference, not current truth |
-| [../xa-mass-engine/README.md](../xa-mass-engine/README.md) | engine owner README |
-| [../xa-mass-testing/README.md](../xa-mass-testing/README.md) | testing owner README |
-| [../xa-mass-server/README.md](../xa-mass-server/README.md) | server owner README |
-| [../xa-mass-worker-pack/README.md](../xa-mass-worker-pack/README.md) | sample/dev worker capability owner README |
-| [../transport/AGENTS.md](../transport/AGENTS.md) | transport owner entry |
-| [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md) | transport boundary |
-| [../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](../transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) | websocket adapter boundary |
-| [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) | transport design/refactor reference, not current truth |
+| [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
+| [CURRENT_GAPS.md](./CURRENT_GAPS.md) | runtime and coverage gap index |
 
-## 2. Keep In `doc/`
+## 3. Owner Docs
 
-These files are appropriate at the global `doc/` level because they define
-cross-module contracts, repo-level verification, or operator-facing reference
-surfaces:
+Use owner docs for module-local truth:
 
-| Category | Files |
-| --- | --- |
-| global baseline / contract | `AGENT_BASELINE.md`, `INFRA_TRUTH_LAYERS.md`, `STATE_MACHINE_BASELINE.md`, `TRACE_CONTRACT.md`, `DB_STORAGE_PRINCIPLES.md` |
-| global verification / reference | `TESTING_BASELINE.md`, `E2E_BASELINE.md`, `VERIFIED_RUNBOOK.md`, `INTERNAL_API_REFERENCE.md`, `EXTERNAL_WORKER_QUICKSTART.md` |
-| global index / status | `README.md`, `CURRENT_GAPS.md` |
-| global design reference | `HIGH_VOLUME_MODEL_BASELINE.md` |
+- engine: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
+- transport: [../transport/AGENTS.md](../transport/AGENTS.md)
+- infra: [../platform_infra/README.md](../platform_infra/README.md)
+- testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
+- server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
+- worker pack: [../xa-mass-worker-pack/README.md](../xa-mass-worker-pack/README.md)
+- SDK API: [../xa-mass-sdk-api/README.md](../xa-mass-sdk-api/README.md)
+- SDK embedding: [../xa-mass-sdk/README.md](../xa-mass-sdk/README.md)
 
-## 3. Compression Policy
+## 4. Design-Only References
 
-`doc/` can stay small, but do not compress by merging distinct contracts into
-one long narrative. Compress by reducing overlap and by refusing new global docs
-unless they are truly cross-module.
+These are useful only when the task explicitly touches those future directions:
 
-Preferred compression rules:
+- [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
+- [../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 
-- keep one stable doc per global concern
-- move module-owned detail into the owning module README instead of adding a new
-  `doc/*` file
-- shorten repeated explanations in baseline docs and replace them with links to
-  the owning contract
-- keep indexes, checklists, and matrices dense; keep examples and local details
-  near the owning module
+## 5. What Stays Out Of `doc/`
 
-Current recommendation:
+Do not add a new `doc/*` file for:
 
-- keep the current global set
-- do not merge `STATE_MACHINE_BASELINE.md`, `TRACE_CONTRACT.md`, and
-  `DB_STORAGE_PRINCIPLES.md`; they are adjacent but not the same concern
-- do not merge `TESTING_BASELINE.md`, `E2E_BASELINE.md`, and
-  `VERIFIED_RUNBOOK.md`; they answer different questions
-- if `INTERNAL_API_REFERENCE.md` grows further, split by API family only if the
-  split still stays under the same global HTTP contract surface
-
-## 4. Move Out Of `doc/`
-
-A file should move out of `doc/` when it becomes primarily:
-
-- module-local behavior or implementation detail
-- module-local test inventory or command list
+- module-local implementation notes
+- module-local test inventories or command lists
 - adapter-specific protocol behavior
-- design/refactor notes owned by one module
-- migration inventory that only one owner module needs
+- one-module design/refactor notes
+- migration inventory owned by one module
 
-In those cases, keep a short global pointer here and move the actual content to
-the owning module.
-
-## 5. Rules
-
-- `doc/` holds global/cross-module introductions, contracts, constraints, indexes, and verified runbooks.
-- Module-local tests, runners, design notes, and refactor notes live under the owning module; `doc/` may index cross-module-impacting design notes.
-- Prefer one stable document per concern; reference normative facts instead of restating them.
-- Mark status explicitly: current baseline/contract, gap index, design/refactor reference, or migration inventory.
-- Delete stale history; keep short changelog notes only when they explain a live operational constraint.
+Those belong in the owning module.

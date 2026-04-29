@@ -8,7 +8,7 @@ import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
@@ -18,7 +18,7 @@ import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 /**
  * Adapter-owned bootstrap for embedded raw-socket runtime contribution.
  */
-public final class SocketTransportAdapterBootstrap implements TransportAdapterBootstrap<WorkerTransportMessage> {
+public final class SocketTransportAdapterBootstrap implements TransportAdapterBootstrap<TransportOutboundMessage> {
 
     private final SocketAdapterConfig config;
 
@@ -35,7 +35,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     }
 
     @Override
-    public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+    public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         SocketSessionManager sessionManager = resolveSessionManager(context);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
 
@@ -65,7 +65,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         return contribution.build();
     }
 
-    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         if (context.getEndpointRegistry() instanceof SocketSessionManager sessionManager) {
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
@@ -107,3 +107,4 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         }
     }
 }
+

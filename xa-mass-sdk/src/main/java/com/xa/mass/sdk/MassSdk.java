@@ -6,7 +6,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
@@ -140,13 +140,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions outputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
+        public TransportOptions outputQueue(MessageQueue<TransportOutboundMessage> outputQueue) {
             delegate.outputQueue(outputQueue);
             return this;
         }
 
         public TransportOptions addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
+                TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
             delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
@@ -294,3 +294,4 @@ public final class MassSdk {
 
     }
 }
+

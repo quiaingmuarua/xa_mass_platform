@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ public class MassApplicationExample {
                                 .enabled(true)
                                 .maxConnections(1000))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(8))
@@ -57,7 +57,7 @@ public class MassApplicationExample {
                                 .serverEnabled(true)
                                 .maxConnections(1000))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(12))
@@ -70,7 +70,7 @@ public class MassApplicationExample {
     private static void exampleQueueBackedTransport() {
         logger.info("Example 3: queue-backed transport");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
+        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", TransportOutboundMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
@@ -93,7 +93,7 @@ public class MassApplicationExample {
     private static void exampleSingleRealtimeAdapter() {
         logger.info("Example 4: single realtime adapter");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
+        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", TransportOutboundMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
@@ -124,3 +124,4 @@ public class MassApplicationExample {
         app.stop();
     }
 }
+

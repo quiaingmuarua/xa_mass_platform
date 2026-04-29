@@ -9,13 +9,13 @@ import java.util.Objects;
  * embedded runtime should not need adapter-local delivery DTOs just to place a
  * raw payload onto an adapter-owned outbound path.
  */
-public final class WorkerTransportMessage {
+public final class TransportOutboundMessage {
 
     private final String routeKey;
     private final String rawJson;
     private final String traceId;
 
-    public WorkerTransportMessage(String routeKey, String rawJson, String traceId) {
+    public TransportOutboundMessage(String routeKey, String rawJson, String traceId) {
         this.routeKey = Objects.requireNonNull(routeKey, "routeKey");
         this.rawJson = Objects.requireNonNull(rawJson, "rawJson");
         this.traceId = traceId;

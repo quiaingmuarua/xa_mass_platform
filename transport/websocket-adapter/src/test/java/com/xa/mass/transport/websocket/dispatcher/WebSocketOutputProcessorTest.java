@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +35,7 @@ class WebSocketOutputProcessorTest {
                 .thenReturn(false);
 
         boolean result = outputProcessor.process(
-                new WorkerTransportMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
+                new TransportOutboundMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertFalse(result);
@@ -47,9 +47,10 @@ class WebSocketOutputProcessorTest {
                 .thenReturn(true);
 
         boolean result = outputProcessor.process(
-                new WorkerTransportMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
+                new TransportOutboundMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertTrue(result);
     }
 }
+

@@ -10,7 +10,7 @@ import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
@@ -58,7 +58,7 @@ public class MassApplication {
     private final List<TransportServer> transportServers = new ArrayList<>();
 
     private final MassEngine engine;
-    private MessageTransporter<String, WorkerTransportMessage> messageTransporter;
+    private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportDeliveryService transportDeliveryService;
@@ -210,7 +210,7 @@ public class MassApplication {
                 logger.info("Task result ingest channel initialized");
             }
 
-            for (TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap
+            for (TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap
                     : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                 TransportAdapterContribution contribution = transportAdapterBootstrap.create(
                         new TransportAdapterBootstrapContext<>(
@@ -499,3 +499,4 @@ public class MassApplication {
     }
 
 }
+

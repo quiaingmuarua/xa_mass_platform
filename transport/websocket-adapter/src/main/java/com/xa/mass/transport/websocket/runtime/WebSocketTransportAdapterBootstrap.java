@@ -8,14 +8,14 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
  */
-public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap<WorkerTransportMessage> {
+public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap<TransportOutboundMessage> {
 
     private final WebSocketAdapterConfig config;
 
@@ -32,7 +32,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     @Override
-    public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+    public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         com.xa.mass.transport.websocket.session.ServerSessionManager endpointRegistry =
                 resolveEndpointRegistry(context);
         WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
@@ -64,7 +64,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     private com.xa.mass.transport.websocket.session.ServerSessionManager resolveEndpointRegistry(
-            TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+            TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         if (context.getEndpointRegistry() instanceof com.xa.mass.transport.websocket.session.ServerSessionManager sessionManager) {
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
@@ -109,3 +109,4 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         }
     }
 }
+

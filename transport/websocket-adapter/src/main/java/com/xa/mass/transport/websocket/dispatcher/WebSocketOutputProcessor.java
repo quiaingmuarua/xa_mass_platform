@@ -1,7 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +19,7 @@ public final class WebSocketOutputProcessor {
         this.context = Objects.requireNonNull(context, "context");
     }
 
-    public boolean process(WorkerTransportMessage delivery) {
+    public boolean process(TransportOutboundMessage delivery) {
         try {
             boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getRouteKey(), delivery.getRawJson());
             if (sent) {
@@ -34,3 +34,4 @@ public final class WebSocketOutputProcessor {
         }
     }
 }
+
