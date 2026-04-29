@@ -25,6 +25,7 @@ For a new session, read these before changing behavior:
 1. [README.md](README.md)
 2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
 3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
+4. [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md) when the change touches storage, runtime, audit, or observability placement
 
 Everything else is on-demand. Core acceptance surfaces: `xa-mass-testing` for `perf`/`chaos`/SDK probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell `E2E`. Treat `chaos` as scheduled/release-style until stable enough for stricter gating.
 
@@ -60,13 +61,13 @@ Start here based on the change:
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - database/control-plane storage boundary: [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [xa-mass-engine/STORAGE_BASELINE.md](xa-mass-engine/STORAGE_BASELINE.md)
-- three-layer infra truth split and what to do before trace lands: [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [platform_infra/README.md](platform_infra/README.md)
+- three-layer infra truth split and what to do before trace lands: [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md), [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md), [platform_infra/README.md](platform_infra/README.md)
 - perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [xa-mass-engine/README.md](xa-mass-engine/README.md), [xa-mass-testing/README.md](xa-mass-testing/README.md)
 - integration/E2E coverage: [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md), [xa-mass-server/README.md](xa-mass-server/README.md)
 - known runtime or coverage gaps: [doc/CURRENT_GAPS.md](doc/CURRENT_GAPS.md)
 - sample/dev worker clients, launchers, or worker-side command runtime: [xa-mass-worker-pack/README.md](xa-mass-worker-pack/README.md)
 - policy ownership or interactions: [xa-mass-engine/POLICY_INTERACTION_BASELINE.md](xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
-- dispatch/result flow: [xa-mass-engine/TASK_EXECUTION_FLOW.md](xa-mass-engine/TASK_EXECUTION_FLOW.md)
+- engine dispatch/result/matching owner entry: [xa-mass-engine/README.md](xa-mass-engine/README.md)
 - legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 
 Naming: `sample` = runnable validation/reference worker assets; `mock.*` = sample command capabilities, not kernel semantics; `demoApp` = example project code; HTTP/control console = validation/operator shell, not runtime kernel.

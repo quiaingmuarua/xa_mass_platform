@@ -49,6 +49,7 @@ The shared kernel is:
 
 ## Module Map
 
+- `xa-mass-base`: shared base models, enums, utility infrastructure, and low-level channel primitives used across the reactor
 - `platform_infra/mass-queue-primitives`: narrow keyed queue/blocking-poll/backpressure primitive used by runtime modules that should not own queue bookkeeping directly
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
@@ -56,14 +57,17 @@ The shared kernel is:
 - `platform_infra/mass-storage-api`: shared task/worker/rule storage contracts and storage-adjacent rule types used across engine, JDBC adapters, server, SDK, and tests
 - `platform_infra/mass-storage-memory`: in-memory control-plane task/worker storage plus the current in-memory rule helpers used by SDK/server defaults and focused tests
 - `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth; current implementation also keeps compatibility projections in-process
-- `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
-- `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
-- `xa-mass-sdk` + `xa-mass-sdk-api`: embedding entry, runtime composition, and public SDK types
-- `transport/transport_api` + `transport/transport_runtime`: transport-neutral SPI and shared transport runtime assembly
-- `transport/polling-adapter` + `transport/websocket-adapter` + `transport/socket-adapter`: concrete transport adapters
+- `transport/transport_api`: transport-neutral dispatch/result/system-event contracts and transport model surface
+- `transport/transport_runtime`: shared transport runtime assembly, adapter routing, and delivery/result-ingest runtime glue
+- `transport/polling-adapter`: polling/pull worker transport adapter
+- `transport/socket-adapter`: socket worker transport adapter
+- `transport/websocket-adapter`: WebSocket worker transport adapter
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
+- `xa-mass-sdk-api`: stable SDK-facing auth, catalog, event, and model contracts
+- `xa-mass-sdk`: embedding entry and runtime composition for JVM callers
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
-- `xa-mass-base`: shared base models, enums, and infrastructure
+- `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
+- `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
 
 Module truth comes from the root `pom.xml`. Do not treat removed historical modules or top-level directories outside the reactor as current mainline.
 
@@ -75,5 +79,7 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - active HTTP contracts: [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)
+- SDK contract ownership: [xa-mass-sdk-api/README.md](./xa-mass-sdk-api/README.md)
+- SDK embedding/runtime composition: [xa-mass-sdk/README.md](./xa-mass-sdk/README.md)
 - external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
 - samples: [samples/](./samples/)

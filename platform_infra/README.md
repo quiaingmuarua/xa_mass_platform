@@ -27,6 +27,10 @@ layer is still mostly a contract and design direction rather than a landed
 module family. That absence is not permission to promote trace-shaped data into
 JDBC tables or hot runtime state.
 
+Use [../doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md) as the dense
+placement matrix. This README stays an index and owner-summary layer, not the
+full decision table.
+
 Read this file as the directory index only. For storage work, always follow it
 with the owning module README under `mass-storage-memory/` or
 `mass-storage-jdbc/` before changing code.

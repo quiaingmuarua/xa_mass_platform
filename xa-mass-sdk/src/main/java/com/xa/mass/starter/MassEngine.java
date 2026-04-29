@@ -10,7 +10,6 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
@@ -51,7 +50,7 @@ public class MassEngine {
     private final EngineConfig config;
     private boolean running = false;
 
-    private TaskManager taskManager;
+    private TaskCommandService taskCommands;
     private TaskRuntimeRecoveryPort runtimeRecoveryPort;
     private TaskRuntimeMaintenancePort runtimeMaintenancePort;
     private TaskEventListenerRegistrar eventListeners;
@@ -83,11 +82,10 @@ public class MassEngine {
         }
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
-            taskManager = config.getTaskManager();
+            taskCommands = config.getTaskCommandService();
             runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
             runtimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
             TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
-            taskManager.setTaskMessageLeaseSeconds(config.getTaskMessageLeaseSeconds());
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
             workerManager = config.getWorkerManager();
@@ -156,9 +154,8 @@ public class MassEngine {
                 assignWorker.stop();
                 assignWorker = null;
             }
-            if (taskManager != null) {
-                taskManager.shutdown();
-            }
+            config.shutdownTaskRuntime();
+            taskCommands = null;
             runtimeRecoveryPort = null;
             runtimeMaintenancePort = null;
             eventListeners = null;
@@ -173,10 +170,6 @@ public class MassEngine {
     }
 
     public Task createTask(com.xa.mass.engine.model.TaskCreateRequestDto dto) {
-        if (taskManager == null) {
-            throw new IllegalStateException("MassEngine has not been started; taskManager is unavailable");
-        }
-        TaskCommandService taskCommands = config.getTaskCommandService();
         if (taskCommands == null) {
             throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
         }
@@ -193,7 +186,7 @@ public class MassEngine {
      */
     @SuppressWarnings("unchecked")
     public void publishTaskEvents() {
-        if (taskManager != null && eventBus != null) {
+        if (taskCommands != null && eventBus != null) {
             EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
             List<Task> allTasks = runtimeRecoveryPort != null ? runtimeRecoveryPort.getAllTasks() : List.of();
             for (Task task : allTasks) {

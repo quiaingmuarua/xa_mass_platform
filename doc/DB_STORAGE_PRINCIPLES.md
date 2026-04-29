@@ -6,6 +6,9 @@ This document exists to prevent repeated storage refactors. Treat it as the
 default policy whenever someone proposes a new table, a new hot-path write, or
 an early PostgreSQL requirement.
 
+For the dense cross-layer placement matrix, read
+[INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) first.
+
 ## Core Rule
 
 The database is for **recoverable control-plane truth**, not for runtime event

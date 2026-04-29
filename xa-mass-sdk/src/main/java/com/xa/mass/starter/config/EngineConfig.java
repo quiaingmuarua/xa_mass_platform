@@ -129,10 +129,7 @@ public class EngineConfig {
     }
 
     public TaskManager getTaskManager() {
-        if (taskManager == null) {
-            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskWorkRuntime());
-        }
-        return taskManager;
+        return ensureTaskManager();
     }
 
     public void setTaskManager(TaskManager taskManager) {
@@ -152,6 +149,7 @@ public class EngineConfig {
         }
         this.taskManager = taskManager;
         this.taskWorkRuntime = taskManager.getTaskWorkRuntime();
+        this.taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         this.taskCommandService = null;
         this.taskEventService = null;
         this.taskQueryService = null;
@@ -163,49 +161,49 @@ public class EngineConfig {
 
     public TaskCommandService getTaskCommandService() {
         if (taskCommandService == null) {
-            taskCommandService = new TaskCommandService(getTaskManager());
+            taskCommandService = new TaskCommandService(ensureTaskManager());
         }
         return taskCommandService;
     }
 
     public TaskEventService getTaskEventService() {
         if (taskEventService == null) {
-            taskEventService = new TaskEventService(getTaskManager());
+            taskEventService = new TaskEventService(ensureTaskManager());
         }
         return taskEventService;
     }
 
     public TaskQueryService getTaskQueryService() {
         if (taskQueryService == null) {
-            taskQueryService = new TaskQueryService(getTaskManager());
+            taskQueryService = new TaskQueryService(ensureTaskManager());
         }
         return taskQueryService;
     }
 
     public TaskResultIngestFacade getTaskResultIngestFacade() {
         if (taskResultIngestFacade == null) {
-            taskResultIngestFacade = new TaskManagerResultIngestFacade(getTaskManager());
+            taskResultIngestFacade = new TaskManagerResultIngestFacade(ensureTaskManager());
         }
         return taskResultIngestFacade;
     }
 
     public TaskAssignmentRuntimePort getTaskAssignmentRuntimePort() {
         if (taskAssignmentRuntimePort == null) {
-            taskAssignmentRuntimePort = new TaskManagerAssignmentRuntimePort(getTaskManager());
+            taskAssignmentRuntimePort = new TaskManagerAssignmentRuntimePort(ensureTaskManager());
         }
         return taskAssignmentRuntimePort;
     }
 
     public TaskRuntimeMaintenancePort getTaskRuntimeMaintenancePort() {
         if (taskRuntimeMaintenancePort == null) {
-            taskRuntimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(getTaskManager());
+            taskRuntimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(ensureTaskManager());
         }
         return taskRuntimeMaintenancePort;
     }
 
     public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {
         if (taskRuntimeRecoveryPort == null) {
-            taskRuntimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(getTaskManager());
+            taskRuntimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(ensureTaskManager());
         }
         return taskRuntimeRecoveryPort;
     }
@@ -326,5 +324,22 @@ public class EngineConfig {
 
     public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
         this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
+        if (taskManager != null) {
+            taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
+        }
+    }
+
+    public void shutdownTaskRuntime() {
+        if (taskManager != null) {
+            taskManager.shutdown();
+        }
+    }
+
+    private TaskManager ensureTaskManager() {
+        if (taskManager == null) {
+            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskWorkRuntime());
+        }
+        taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
+        return taskManager;
     }
 }

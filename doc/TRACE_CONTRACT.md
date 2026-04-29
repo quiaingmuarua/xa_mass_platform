@@ -7,6 +7,11 @@ Status: current global trace contract.
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
 
+This file defines trace semantics, not a fully landed trace module or sink.
+If trace implementation is incomplete, do not push trace-shaped history back
+into control-plane JDBC truth or unbounded runtime state. Use
+[INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) for placement decisions.
+
 ## 1. Scope
 
 The contract covers:

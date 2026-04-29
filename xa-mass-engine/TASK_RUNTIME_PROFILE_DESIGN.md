@@ -1,213 +1,93 @@
 # Task Runtime Profile Design
 
-Last updated: 2026-04-27
+Last updated: 2026-04-29
 
 Status: design/refactor reference, not current runtime truth.
 
-Trust: code and verified behavior override this engine-owned design/refactor reference.
+Current truth for implemented behavior lives in code, the engine README, and
+the global lifecycle/trace baselines. This file only records the remaining
+design direction so workload-profile work does not sprawl into unrelated API or
+storage redesign.
 
-- [../AGENTS.md](../AGENTS.md)
-- [../doc/HIGH_VOLUME_MODEL_BASELINE.md](../doc/HIGH_VOLUME_MODEL_BASELINE.md)
-- [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
-- [./TASK_EXECUTION_FLOW.md](./TASK_EXECUTION_FLOW.md)
+## Problem
 
-## 1. Problem
+The engine must handle two materially different workload shapes with one kernel:
 
-The engine needs to support two materially different workload shapes without
-forking the kernel:
+- `INTERACTIVE`: low queueing latency and quicker retry/expiry recovery
+- `BULK`: high throughput and stronger backlog shaping
 
-- low-latency interactive tasks such as chatbot or agent conversations
-- high-throughput bulk tasks such as crawler or batch-processing platforms
+The shared kernel remains:
 
-Both should continue to use the same kernel truth:
-
-- `Task` as the orchestration shell
-- `TaskWorkRuntime` for ready work, lease, retry, and expiry truth
+- `Task` as orchestration shell
+- `TaskWorkRuntime` as ready/lease/retry/expiry owner
 - `TaskMsgAttempt` as attempt audit truth
 
-What must change is runtime policy selection, not the message model boundary.
+## Current Implemented Slice
 
-## 2. Non-Goals
+Already on the mainline:
+
+- `Task.workloadClass` is the explicit workload input
+- current supported values are `INTERACTIVE` and `BULK`
+- `TaskRuntimeProfileResolver` resolves an engine-internal
+  `TaskRuntimeProfile`
+- assignment entry is lane-aware through `INTERACTIVE` and `BULK` routing
+- claim, retry-delay, backpressure, and trace now consume resolved profile
+  semantics instead of reinterpreting free-form `sharedConfig`
+
+Current mapping:
+
+- `INTERACTIVE`
+  - high priority
+  - small batch policy
+  - short lease profile
+  - interactive backpressure class
+- `BULK`
+  - normal priority
+  - large batch policy
+  - normal lease profile
+  - bulk backpressure class
+
+## Remaining Work
+
+Still intentionally out of the first slice:
+
+- fair scheduling across lanes
+- precise lane quotas and admission budgets
+- multi-executor throughput tuning inside one runtime
+- richer lease-duration tuning per workload
+- stronger perf gates in `xa-mass-testing`
+
+Those should build on the resolved profile that already exists. They should not
+reintroduce ad hoc scheduler semantics on `Task.sharedConfig`.
+
+## Hard Non-Goals
 
 This design does not authorize:
 
 - per-`TaskMsg` rule matching
-- a new public API contract yet
-- engine-owned full-message detail queries for analysis use cases
-- separate kernels for interactive and bulk tasks
+- engine-owned full-message analytics queries
+- separate interactive and bulk kernels
+- broad public API redesign in the same refactor slice
 
-If different messages need materially different routing semantics, split them
-into separate tasks or explicit task-owned slices before dispatch.
+If messages need materially different routing semantics, split them into
+separate tasks or explicit task-owned slices before dispatch.
 
-## 3. Design Rule
+## Acceptance Direction
 
-Task attributes are inputs. Resolved runtime profile is the engine truth.
-
-Do not let hot-path scheduling repeatedly interpret arbitrary `sharedConfig`
-keys. The engine should resolve a small, explicit `TaskRuntimeProfile` once and
-then let assignment, lease, retry, queue lane, and backpressure logic consume
-that profile.
-
-## 4. Minimal Input Set
-
-Current task inputs already available:
-
-- `Task.sourceType`
-- `Task.batchSize`
-- `Task.minRequiredWorkerCount`
-- `Task.intakeStatus`
-- `Task.maxRuntimeSeconds`
-- `Task.sharedConfig`
-
-Recommended near-term workload input:
-
-- `Task.workloadClass`
-
-Allowed values:
-
-- `INTERACTIVE`
-- `BULK`
-
-Near-term rule:
-
-- use the explicit task-level `workloadClass` field
-- do not let callers invent additional scheduler-driving keys in
-  `sharedConfig` without updating the resolver and this file
-
-Current mainline truth:
-
-- `Task.workloadClass` is already the explicit task-level field
-- do not route new scheduling semantics through `sharedConfig`
-
-## 5. Resolved Profile
-
-Minimal internal profile:
-
-- `executionClass`: `INTERACTIVE | BULK`
-- `dispatchLane`: `INTERACTIVE | BULK`
-- `dispatchPriority`: `HIGH | NORMAL`
-- `batchPolicy`: `SMALL | LARGE`
-- `leaseProfile`: `SHORT | NORMAL | LONG`
-- `backpressureClass`: `INTERACTIVE | BULK`
-
-Notes:
-
-- this is an engine-internal normalized profile, not yet a public request model
-- different fields may temporarily map to the same value during the first slice
-- keep the profile intentionally small; add fields only when a real policy
-  consumer needs them
-
-## 6. Resolver Rules
-
-Recommended precedence:
-
-1. explicit `Task.workloadClass`
-2. engine-owned fallback heuristics from stable task fields only when the field
-   is absent
-3. final default to `BULK`
-
-Recommended fallback heuristics:
-
-- `STREAM` tasks may default toward `INTERACTIVE` only when combined with small
-  `batchSize` and low-latency expectations
-- `FILE` tasks default to `BULK`
-- large `batchSize` biases toward `BULK`
-
-Guardrail:
-
-- heuristics may choose a default, but they must not replace explicit
-  `workloadClass`
-- assignment and retry code should consume the resolved profile only, not
-  re-run heuristics
-
-## 7. Policy Mapping
-
-Recommended first mapping:
-
-### INTERACTIVE
-
-- `dispatchLane = INTERACTIVE`
-- `dispatchPriority = HIGH`
-- `batchPolicy = SMALL`
-- `leaseProfile = SHORT`
-- `backpressureClass = INTERACTIVE`
-
-Intended behavior:
-
-- small dispatch rounds
-- lower queueing latency
-- faster retry and expiry recovery
-- isolation from bulk backlog
-
-### BULK
-
-- `dispatchLane = BULK`
-- `dispatchPriority = NORMAL`
-- `batchPolicy = LARGE`
-- `leaseProfile = NORMAL` or `LONG`
-- `backpressureClass = BULK`
-
-Intended behavior:
-
-- larger dispatch rounds
-- higher throughput
-- stronger backlog shaping
-- lower sensitivity to single-item latency
-
-## 8. Engine Impact
-
-The first runtime-profile slice should affect:
-
-- assignment lane selection
-- claim batch sizing
-- lease duration defaults or selection
-- retry scheduling and backpressure class
-- structured trace fields for dispatch and result paths
-
-It should not require:
-
-- per-message matching
-- richer task-detail query APIs
-- separate attempt models per workload class
-
-## 9. Trace Requirements
-
-When a runtime profile is introduced, structured trace should emit:
-
-- resolved `workloadClass`
-- resolved `dispatchLane`
-- resolved `leaseProfile`
-- resolved `batchPolicy`
-
-Reason:
-
-- downstream analysis should explain why an interactive task or bulk task was
-  dispatched differently without forcing the engine to keep heavy projections
-
-## 10. Acceptance Direction
-
-The profile slice should add acceptance coverage for both workload classes.
-
-Minimum lanes:
+Keep workload-profile validation aligned with the repo's core acceptance lanes:
 
 - `perf`
   - interactive queueing latency under bulk background pressure
-  - bulk dispatch throughput under sustained ingest
+  - bulk dispatch continuity under sustained backlog
 - `concurrency`
-  - retry, expiry, and duplicate result behavior for both classes
-  - no cross-lane starvation or incorrect lease sharing
+  - retry, expiry, callback replay, and release correctness for both workload
+    classes
 - `Boot-shell E2E`
-  - one interactive flow
-  - one bulk flow
+  - one interactive task flow
+  - one bulk task flow
 
-## 11. Migration Advice
+## Read Next
 
-Keep migration small:
-
-1. add resolver and internal profile
-2. emit profile in trace
-3. split assignment or queue policy by resolved profile
-4. add dual-workload acceptance coverage
-
-Do not combine this with broader API redesign, SDK redesign, or full storage
-engine replacement in the same change.
+- [`README.md`](./README.md)
+- [`../doc/HIGH_VOLUME_MODEL_BASELINE.md`](../doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [`../doc/TESTING_BASELINE.md`](../doc/TESTING_BASELINE.md)
