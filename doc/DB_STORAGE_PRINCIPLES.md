@@ -23,39 +23,14 @@ A field or table belongs in DB only if at least one of these is true:
 If queue replay, logs, trace, or runtime projection can recover it, do not put
 it in the control-plane DB by default.
 
-## Three Truth Layers
+Practical translation:
 
-Treat storage decisions through these three layers:
+- DB owns stable control-plane truth
+- runtime owns queue/lease/counter churn
+- trace/audit owns high-volume history and analytics
 
-1. control-plane storage truth
-   - durable `Task` shell truth
-   - durable worker / worker-context registration truth
-   - durable rule / principal / submitter truth
-2. runtime hot-path truth
-   - ready queue membership
-   - delayed visibility / retry timing
-   - lease ownership and expiry
-   - worker lock / occupancy churn
-   - runtime counters and backpressure state
-3. async audit / trace truth
-   - high-volume task-message detail
-   - attempt history and callback timelines
-   - downstream analytics and failure analysis
-
-The control-plane DB owns only the first layer.
-
-The runtime layer belongs in queue/lease/counter modules such as
-`TaskWorkRuntime`, whether the implementation is memory or Redis.
-
-The audit/trace layer should be exported asynchronously. It must not redefine
-the control-plane DB into a hot-path event store.
-
-Today that third layer is only partially implemented in code. Until it lands
-more fully, do not use "there is nowhere else to put it" as justification for
-adding trace-shaped history into JDBC tables or into unbounded runtime state.
-If something is fundamentally trace/audit data, keep it in bounded temporary
-projections, logs, or explicit export seams rather than reclassifying it as
-control-plane truth.
+Do not use "there is nowhere else to put it" as justification for pushing
+trace-shaped history into JDBC truth.
 
 ## What Belongs In DB
 
@@ -139,16 +114,6 @@ The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 
 This is true for both `jdbc-h2` and future `jdbc-postgres`.
 
-## H2 And PostgreSQL Policy
-
-- H2 is a local/server verification dialect
-- PostgreSQL is the intended durable control-plane dialect
-- neither H2 nor PostgreSQL should be used as a substitute for runtime queues,
-  trace, or analytics
-
-Do not justify a schema addition with "we will need it for PostgreSQL later".
-First prove it is part of recoverable control-plane truth.
-
 ## Before Adding A Table Or Hot Write
 
 Answer these questions first:
@@ -162,6 +127,15 @@ Answer these questions first:
 
 If the answer to 3 is yes, or the answer to 4 is yes, default to **not using
 DB**.
+
+## Dialect Rule
+
+- H2 is a local/server verification dialect
+- PostgreSQL is the intended durable control-plane dialect
+- neither changes the DB boundary
+
+Do not justify a schema addition with "we will need it for PostgreSQL later".
+First prove it is recoverable control-plane truth.
 
 ## Non-Goals
 

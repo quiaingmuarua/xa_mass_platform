@@ -1,6 +1,11 @@
 # Transport Boundary Baseline
 
+Last updated: 2026-04-29
+
 Status: current transport boundary baseline.
+
+Trust order for transport decisions: code, verified runtime behavior, this
+baseline, then design/reference or historical notes.
 
 This file freezes the current transport boundary so transport does not turn
 into a second task engine.

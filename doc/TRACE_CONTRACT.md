@@ -7,32 +7,17 @@ Status: current global trace contract.
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
 
-This file defines trace semantics, not a fully landed trace module or sink.
-If trace implementation is incomplete, do not push trace-shaped history back
-into control-plane JDBC truth or unbounded runtime state. Use
-[INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) for placement decisions.
+This file defines trace semantics, not placement policy or sink design. If a
+new field or history surface is being proposed, use
+[INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) and
+[DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) instead of extending this
+contract into a storage design document.
 
 ## 1. Scope
 
-The contract covers:
-
-- task transitions
-- task progress snapshots
-- task-message transitions
-- task-message-attempt transitions
-- worker-context transitions
-- worker lock acquire/release
-- worker match accept/reject
-- dispatch accept/skip
-- assignment summaries
-- task-state validation summaries
-- dispatch binding summaries
-- attempt lifecycle summaries
-- assignment-queue snapshots
-- assignment-queue retry scheduling
-- callback accept/ignore
-- resource release
-- policy decision points when lifecycle, retry, release, refill, intake, or terminal behavior changes
+The contract covers task/task-message/attempt lifecycle, assignment and
+dispatch decisions, worker/context resource transitions, callback outcomes,
+resource release, and policy decision points that would otherwise be hidden.
 
 ## 2. Stable Event Names
 

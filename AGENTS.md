@@ -68,7 +68,7 @@ Start here based on the change:
 - sample/dev worker clients, launchers, or worker-side command runtime: [xa-mass-worker-pack/README.md](xa-mass-worker-pack/README.md)
 - policy ownership or interactions: [xa-mass-engine/POLICY_INTERACTION_BASELINE.md](xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
 - engine dispatch/result/matching owner entry: [xa-mass-engine/README.md](xa-mass-engine/README.md)
-- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](transport/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
+- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md), [transport/TRANSPORT_BOUNDARY_BASELINE.md](transport/TRANSPORT_BOUNDARY_BASELINE.md)
 
 Naming: `sample` = runnable validation/reference worker assets; `mock.*` = sample command capabilities, not kernel semantics; `demoApp` = example project code; HTTP/control console = validation/operator shell, not runtime kernel.
 

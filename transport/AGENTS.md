@@ -1,5 +1,7 @@
 # Transport Agent Handoff
 
+Last updated: 2026-04-29
+
 Status: current transport owner handoff.
 
 Read the repo-root [AGENTS.md](../AGENTS.md) first. This file is only the fast
@@ -20,6 +22,13 @@ entry for `transport/`.
 Canonical transport concepts live in
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md). Use that as
 the transport truth document.
+
+Document layering inside `transport/`:
+
+- current truth: `AGENTS.md`, `TRANSPORT_BOUNDARY_BASELINE.md`,
+  `WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md`
+- design/reference only: `TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md`
+- historical inventory only: `refactor/*`
 
 ## Module Map
 
@@ -61,9 +70,6 @@ Use this order for transport changes:
 3. [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) when changing WebSocket adapter behavior
 4. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
 5. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
-
-Use [refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](./refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
-only when auditing old WebSocket refactor context. It is not current truth.
 
 ## Fast Verification
 

@@ -15,14 +15,9 @@ Read with:
 
 ## 1. Core Rule
 
-XA Mass infra has three truth layers:
-
-1. control-plane storage
-2. runtime state
-3. trace / audit stream
-
-Do not collapse them just because one layer is currently more implemented than
-another.
+XA Mass infra has three truth layers: control-plane storage, runtime state, and
+trace / audit stream. Do not collapse them just because one layer is currently
+more implemented than another.
 
 - missing trace implementation does not make trace-shaped data become DB truth
 - missing trace implementation does not justify unbounded runtime residue
@@ -52,12 +47,11 @@ another.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task/worker/rule/principal truth | correct control-plane role |
-| `JdbcTaskStorage` | keeps process-local `TaskMsg` / `TaskMsgAttempt` compatibility projection | temporary trace-shaped residue, not a storage expansion license |
-| `JdbcWorkerStorage` | keeps process-local worker/context/lock residue | temporary runtime residue, not durable worker-runtime truth |
-| `JdbcSubmitterRegistry` | keeps process-local auth projection restored from durable principal truth | cache/projection, not SDK-surface ownership |
-| `platform_infra/mass-storage-memory` | owns in-memory control-plane task/worker/rule storage | current embedded/test implementation |
-| `mass-runtime-*` modules | own queue/lease/counter semantics | canonical runtime-state home |
-| `doc/TRACE_CONTRACT.md` | defines required trace semantics | contract exists before full sink/module convergence |
+| JDBC-local `TaskMsg` / `TaskMsgAttempt` projections | process-local compatibility residue | not a storage expansion license |
+| JDBC-local worker/context/lock residue | process-local runtime residue | not durable worker-runtime truth |
+| `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
+| `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
+| `doc/TRACE_CONTRACT.md` | required trace semantics | contract exists before full sink/module convergence |
 
 ## 4. Fast Placement Test
 
