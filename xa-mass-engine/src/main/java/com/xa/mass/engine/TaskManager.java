@@ -21,7 +21,6 @@ import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -36,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -68,16 +68,12 @@ public class TaskManager {
     private final Map<String, TaskProgressReconcileHandle> taskProgressReconcileHandles = new ConcurrentHashMap<>();
     private long taskMessageLeaseSeconds = 300L;
 
-    public TaskManager(TaskScheduler taskScheduler) {
-        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllWorkFinalTaskTerminalPolicy());
+    public TaskManager(TaskScheduler taskScheduler, TaskWorkRuntime taskWorkRuntime) {
+        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
     }
 
-    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
-        this(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy());
-    }
-
-    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskTerminalPolicy taskTerminalPolicy) {
-        this(taskScheduler, taskStorage, taskTerminalPolicy, new InMemoryTaskWorkRuntime());
+    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
+        this(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -86,8 +82,8 @@ public class TaskManager {
                        TaskWorkRuntime taskWorkRuntime) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
-        this.taskWorkRuntime = taskWorkRuntime == null ? new InMemoryTaskWorkRuntime() : taskWorkRuntime;
-        this.taskTerminalPolicy = taskTerminalPolicy;
+        this.taskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
+        this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.eventPublisher = new TaskEventPublisher();
         this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this));
         this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this));

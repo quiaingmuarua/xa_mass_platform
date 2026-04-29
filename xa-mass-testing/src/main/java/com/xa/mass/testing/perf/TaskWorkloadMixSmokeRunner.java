@@ -24,6 +24,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
@@ -73,7 +74,10 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         private SmokeReport run() throws Exception {
-            TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), new InMemoryTaskStorage());
+            TaskManager taskManager = new TaskManager(
+                    new NoOpTaskScheduler(),
+                    new InMemoryTaskStorage(),
+                    new InMemoryTaskWorkRuntime());
             WorkerManager workerManager = new WorkerManager();
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();

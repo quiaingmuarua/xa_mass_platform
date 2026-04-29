@@ -15,6 +15,7 @@ import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +45,7 @@ class SimpleTaskMsgAssignListenerTest {
         workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
         TaskStorage taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage);
+        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
         listener = newAssignmentListener(taskManager);
     }
 
@@ -200,7 +201,7 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage);
+        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, new InMemoryTaskWorkRuntime());
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);

@@ -6,6 +6,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
@@ -311,6 +312,11 @@ public class MassApplicationBuilder {
 
         public EngineBuilder taskManager(TaskManager taskManager) {
             config.setTaskManager(taskManager);
+            return this;
+        }
+
+        public EngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
+            config.setTaskWorkRuntime(taskWorkRuntime);
             return this;
         }
 

@@ -51,6 +51,7 @@ The shared kernel is:
 
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
+- `platform_infra/mass-runtime-redis`: Redis runtime keyspace/index baseline plus future `TaskWorkRuntime` module; not part of the current verified runtime path
 - `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
 - `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
 - `xa-mass-sdk` + `xa-mass-sdk-api`: embedding entry, runtime composition, and public SDK types
@@ -65,6 +66,7 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 ## Pointers
 
 - runtime infra ownership: [platform_infra/README.md](./platform_infra/README.md)
+- Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
 - startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - active HTTP contracts: [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)

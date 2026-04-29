@@ -74,10 +74,10 @@ Near-term rule:
 - do not let callers invent additional scheduler-driving keys in
   `sharedConfig` without updating the resolver and this file
 
-Longer-term direction:
+Current mainline truth:
 
-- if workload class becomes a stable platform contract, promote it from
-  `sharedConfig` into an explicit task-level field
+- `Task.workloadClass` is already the explicit task-level field
+- do not route new scheduling semantics through `sharedConfig`
 
 ## 5. Resolved Profile
 

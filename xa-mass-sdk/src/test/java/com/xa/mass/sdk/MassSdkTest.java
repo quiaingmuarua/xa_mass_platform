@@ -22,6 +22,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -986,7 +987,7 @@ class MassSdkTest {
         EngineConfig config = new EngineConfig();
         SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
         config.setScheduler(scheduler);
-        config.setTaskManager(new com.xa.mass.engine.TaskManager(scheduler));
+        config.setTaskManager(new com.xa.mass.engine.TaskManager(scheduler, new InMemoryTaskWorkRuntime()));
 
         assertThrows(IllegalStateException.class,
                 () -> config.setScheduler(new SimpleTaskScheduler()));
@@ -998,7 +999,21 @@ class MassSdkTest {
         config.setScheduler(new SimpleTaskScheduler());
 
         assertThrows(IllegalArgumentException.class,
-                () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(new SimpleTaskScheduler())));
+                () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(
+                        new SimpleTaskScheduler(),
+                        new InMemoryTaskWorkRuntime())));
+    }
+
+    @Test
+    void engineConfigUsesInjectedTaskWorkRuntimeForDefaultTaskManagerAssembly() {
+        EngineConfig config = new EngineConfig();
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
+
+        config.setTaskWorkRuntime(runtime);
+
+        TaskManager taskManager = config.getTaskManager();
+
+        assertSame(runtime, taskManager.getTaskWorkRuntime());
     }
 
     @Test

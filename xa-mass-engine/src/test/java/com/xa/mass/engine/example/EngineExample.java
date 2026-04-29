@@ -13,6 +13,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +27,10 @@ public class EngineExample {
     private static final Logger log = LoggerFactory.getLogger(EngineExample.class);
 
     public static void main(String[] args) {
-        TaskManager taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
+        TaskManager taskManager = new TaskManager(
+                new SimpleTaskScheduler(),
+                new InMemoryTaskStorage(),
+                new InMemoryTaskWorkRuntime());
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);

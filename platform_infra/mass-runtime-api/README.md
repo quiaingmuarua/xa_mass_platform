@@ -25,5 +25,6 @@ Status: current shared runtime contract module.
 ## Current Phase-1 Truth
 
 - this module was extracted conservatively from `xa-mass-engine`
-- engine still consumes this API and still defaults to the memory implementation through `TaskManager`
+- engine consumes this API directly and now requires runtime injection at `TaskManager` construction time
+- sdk/server bootstrap currently provide the default in-memory runtime implementation
 - this module is the correct place for future Redis runtime implementations to target

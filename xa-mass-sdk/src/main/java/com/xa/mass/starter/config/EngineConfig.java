@@ -8,6 +8,8 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 
 import java.util.Map;
@@ -22,6 +24,7 @@ public class EngineConfig {
 
     private TaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager;
+    private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
@@ -39,6 +42,7 @@ public class EngineConfig {
         this.workerThreads = source.workerThreads;
         this.scheduler = source.scheduler;
         this.taskManager = source.taskManager;
+        this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerManager = source.workerManager;
         this.recordService = source.recordService;
@@ -89,7 +93,7 @@ public class EngineConfig {
 
     public TaskManager getTaskManager() {
         if (taskManager == null) {
-            taskManager = new TaskManager(scheduler);
+            taskManager = new TaskManager(scheduler, getTaskWorkRuntime());
         }
         return taskManager;
     }
@@ -103,6 +107,17 @@ public class EngineConfig {
             throw new IllegalArgumentException("Configured taskManager must use the same scheduler as EngineConfig");
         }
         this.taskManager = taskManager;
+    }
+
+    public TaskWorkRuntime getTaskWorkRuntime() {
+        return taskWorkRuntime;
+    }
+
+    public void setTaskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
+        if (taskWorkRuntime == null) {
+            throw new IllegalArgumentException("taskWorkRuntime must not be null");
+        }
+        this.taskWorkRuntime = taskWorkRuntime;
     }
 
     public WorkerManager getWorkerManager() {

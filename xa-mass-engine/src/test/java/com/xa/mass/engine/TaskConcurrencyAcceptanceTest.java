@@ -55,7 +55,7 @@ class TaskConcurrencyAcceptanceTest {
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
-        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage());
+        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -708,7 +708,7 @@ class TaskConcurrencyAcceptanceTest {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
         private CountingTaskManager(TaskScheduler taskScheduler, InMemoryTaskStorage taskStorage) {
-            super(taskScheduler, taskStorage);
+            super(taskScheduler, taskStorage, new InMemoryTaskWorkRuntime());
         }
 
         @Override

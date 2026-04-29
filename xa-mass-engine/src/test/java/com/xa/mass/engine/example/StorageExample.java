@@ -17,6 +17,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.*;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,7 +50,7 @@ public class StorageExample {
 
         WorkerManager workerManager = new WorkerManager(workerStorage);
         TaskScheduler taskScheduler = new SimpleTaskScheduler();
-        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage);
+        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, new InMemoryTaskWorkRuntime());
 
         Worker worker1 = new Worker();
         worker1.setWorkerId("worker-001");
@@ -125,7 +126,10 @@ public class StorageExample {
 
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
-        var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
+        var taskManager = new TaskManager(
+                new SimpleTaskScheduler(),
+                new InMemoryTaskStorage(),
+                new InMemoryTaskWorkRuntime());
         var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
@@ -243,7 +247,10 @@ public class StorageExample {
         var workerManager = new WorkerManager();
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
-        var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
+        var taskManager = new TaskManager(
+                new SimpleTaskScheduler(),
+                new InMemoryTaskStorage(),
+                new InMemoryTaskWorkRuntime());
         var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(

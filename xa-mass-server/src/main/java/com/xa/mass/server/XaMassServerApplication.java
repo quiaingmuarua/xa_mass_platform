@@ -6,6 +6,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.server.storage.JdbcStorageMode;
 import com.xa.mass.server.storage.JdbcStorageRuntime;
 import com.xa.mass.transport.model.WorkerTransportMessage;
@@ -148,7 +149,8 @@ public class XaMassServerApplication {
                         engine.scheduler(scheduler)
                                 .taskManager(new TaskManager(
                                         scheduler,
-                                        jdbcStorageRuntime.taskStorage()))
+                                        jdbcStorageRuntime.taskStorage(),
+                                        new InMemoryTaskWorkRuntime()))
                                 .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
                                 .ruleManager(jdbcStorageRuntime.ruleManager());
                     }

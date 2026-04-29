@@ -5,6 +5,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -273,6 +274,11 @@ public final class MassSdk {
 
         public EngineOptions taskManager(TaskManager taskManager) {
             delegate.taskManager(taskManager);
+            return this;
+        }
+
+        public EngineOptions taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
+            delegate.taskWorkRuntime(taskWorkRuntime);
             return this;
         }
 

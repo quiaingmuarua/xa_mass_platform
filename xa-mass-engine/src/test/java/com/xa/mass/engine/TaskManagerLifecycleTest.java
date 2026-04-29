@@ -22,6 +22,7 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +44,7 @@ class TaskManagerLifecycleTest {
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(scheduler, taskStorage);
+        taskManager = new TaskManager(scheduler, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -321,7 +322,7 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = new TaskCreateRequestDto();
             dto.setTaskName("interactive-backpressure");
             dto.setProject("demoApp");
@@ -578,7 +579,7 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = buildRequest("task-result-interactive-delayed-retry", List.of("alpha"));
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             Task task = manager.createTask(dto);
@@ -618,7 +619,7 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage());
+            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = buildRequest("task-result-interactive-coalesced-retry", List.of("alpha", "beta"), 1);
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             Task task = manager.createTask(dto);
@@ -1328,7 +1329,7 @@ class TaskManagerLifecycleTest {
     @Test
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1351,7 +1352,7 @@ class TaskManagerLifecycleTest {
     @Test
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage);
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1424,7 +1425,8 @@ class TaskManagerLifecycleTest {
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
                 new InMemoryTaskStorage(),
-                (task, stats) -> TaskTerminalPolicyDecision.keepRunning()
+                (task, stats) -> TaskTerminalPolicyDecision.keepRunning(),
+                new InMemoryTaskWorkRuntime()
         );
         Task task = policyAwareManager.createTask(buildRequest("task-policy-keep-running", List.of("alpha")));
         policyAwareManager.approveTask(task.getTid());
@@ -1453,7 +1455,8 @@ class TaskManagerLifecycleTest {
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
                 new InMemoryTaskStorage(),
-                runtimeLimitPolicy
+                runtimeLimitPolicy,
+                new InMemoryTaskWorkRuntime()
         );
         Task task = policyAwareManager.createTask(buildRequest("task-policy-force-terminal"));
         policyAwareManager.approveTask(task.getTid());
@@ -1468,7 +1471,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, policyAwareManager.getTask(task.getTid()).getTerminalReason());
     }
 
-    // ---- Bug1: READY/RUNNING é–?BLOCKED (blockTask) ----
+    // ---- Bug1: READY/RUNNING -> BLOCKED (blockTask) ----
 
     // ---- Open intake terminal validation ----
 
@@ -1479,7 +1482,8 @@ class TaskManagerLifecycleTest {
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
                 new InMemoryTaskStorage(),
-                runtimeLimitPolicy
+                runtimeLimitPolicy,
+                new InMemoryTaskWorkRuntime()
         );
 
         TaskCreateRequestDto request = buildRequest("task-open-intake-runtime-limit", List.of("alpha"));
@@ -1532,7 +1536,7 @@ class TaskManagerLifecycleTest {
     @Test
     void blockReadyTaskTransitionsToBlocked() {
         Task task = taskManager.createTask(buildRequest("block-ready"));
-        taskManager.approveTask(task.getTid()); // NEW é–?READY
+        taskManager.approveTask(task.getTid()); // NEW -> READY
 
         assertTrue(taskManager.blockTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
@@ -1566,11 +1570,11 @@ class TaskManagerLifecycleTest {
         assertFalse(taskManager.blockTask(newTask.getTid()), "NEW task cannot be blocked via blockTask");
 
         taskManager.approveTask(newTask.getTid());
-        taskManager.cancelTask(newTask.getTid()); // é–?TERMINAL
+        taskManager.cancelTask(newTask.getTid()); // -> TERMINAL
         assertFalse(taskManager.blockTask(newTask.getTid()), "TERMINAL task cannot be blocked");
     }
 
-    // ---- Bug2: TaskMsg.EXPIRED é–?expireTaskMessage ----
+    // ---- Bug2: TaskMsg.EXPIRED -> expireTaskMessage ----
 
     @Test
     void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
@@ -1588,7 +1592,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.EXPIRED, updated.getStatus());
         assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, updated.getFinalReason());
 
-        // All messages now final é–?task should auto-terminate
+        // All messages are final, so the task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, updatedTask.getTerminalReason());
@@ -1678,7 +1682,7 @@ class TaskManagerLifecycleTest {
         taskManager.approveTask(task.getTid());
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        // message is in INIT state é–?cannot be expired (never dispatched)
+        // message is in INIT state and cannot be expired (never dispatched)
         assertFalse(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
         assertEquals(TaskMsgStatus.INIT,
                 taskManager.getTaskMessage(task.getTid(), message.getMessageId()).getStatus());
@@ -1706,7 +1710,7 @@ class TaskManagerLifecycleTest {
         TaskMsg msg1 = taskManager.getTaskMessage(task.getTid(), messages.get(1).getMessageId());
         TaskMsg msg2 = taskManager.getTaskMessage(task.getTid(), messages.get(2).getMessageId());
 
-        // INIT é–?FAILED; ASSIGNED é–?EXPIRED
+        // INIT -> FAILED; ASSIGNED -> EXPIRED
         assertTrue(msg0.isCompleted(), "assigned message should be in final state after cancel");
         assertEquals(TaskMsgStatus.EXPIRED, msg0.getStatus());
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg0.getFinalReason());
@@ -1733,11 +1737,11 @@ class TaskManagerLifecycleTest {
         ready.setTaskSuccessNumber(ready.getTaskEligibleNumber()); // all "succeeded" in the counter
         taskManager.updateTask(ready);
 
-        // Status is READY, not TERMINAL é–?must still report not completed
+        // Status is READY, not TERMINAL, so it must still report not completed
         assertFalse(taskManager.getTask(task.getTid()).isCompleted(),
                 "Task with all messages 'succeeded' in counter but status=READY must not be completed");
 
-        // After cancellation the task is TERMINAL é–?must report completed
+        // After cancellation the task is TERMINAL and must report completed
         taskManager.cancelTask(task.getTid());
         assertTrue(taskManager.getTask(task.getTid()).isCompleted());
     }
@@ -1946,6 +1950,8 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+
+
 
 
 

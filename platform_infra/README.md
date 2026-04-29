@@ -6,6 +6,7 @@ Current phase-1 scope:
 
 - `mass-runtime-api`
 - `mass-runtime-memory`
+- `mass-runtime-redis`
 
 These modules host platform-level runtime semantics and implementations that are
 shared by engine, transport, server, and test shells. They do not own business
@@ -15,5 +16,6 @@ Current truth for this conservative first slice:
 
 - `mass-runtime-api` owns the shared `TaskWorkRuntime` contract and related value types
 - `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
-- `xa-mass-engine` still defaults `TaskManager` constructors to `InMemoryTaskWorkRuntime`; runtime implementation assembly has not yet been lifted fully into sdk/server bootstrap
+- `mass-runtime-redis` now owns the Redis runtime keyspace/index baseline and remains outside the verified runtime path
+- `xa-mass-engine` now depends only on the runtime contract; default memory-runtime assembly is lifted into sdk/server/bootstrap and explicit test harnesses
 - Redis runtime and storage extraction are intentionally out of scope for this phase

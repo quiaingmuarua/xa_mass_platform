@@ -11,6 +11,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +35,7 @@ class RuntimeTaskResultIngestChannelTest {
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
-        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage());
+        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
 

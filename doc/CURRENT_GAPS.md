@@ -12,6 +12,7 @@ broad redesign, or speculative target-state work.
 | Gap | Handling | Owner |
 | --- | --- | --- |
 | `SimpleTaskScheduler.scheduleTasks()` is still a stub | Do not treat it as verified scheduling behavior | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
+| `mass-runtime-redis` has keyspace/index baseline only; queue/lease operations are not implemented or verified | Keep the active runtime mainline on `mass-runtime-memory`; inject custom runtimes explicitly only when they are real | [platform_infra/mass-runtime-redis/README.md](../platform_infra/mass-runtime-redis/README.md) |
 | Redis storage is a fail-fast placeholder | Use memory or focused H2 verification paths | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
 | Engine `DATABASE` factory methods remain fail-fast | `xa-mass-server` owns the focused JDBC path behind `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres` | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
 | Redis-backed EventBus is not verified runtime behavior | Do not depend on it for acceptance or mainline behavior | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |

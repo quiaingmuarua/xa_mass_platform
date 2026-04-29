@@ -24,6 +24,7 @@ import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
@@ -84,7 +85,7 @@ public final class TaskFlowLoadModelRunner {
 
         private LoadReport run() throws Exception {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
-            TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage);
+            TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
             WorkerManager workerManager = new WorkerManager();
             AssignmentRecordService recordService = new AssignmentRecordService();
             CallbackMetrics callbackMetrics = new CallbackMetrics();

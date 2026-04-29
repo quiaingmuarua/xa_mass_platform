@@ -10,7 +10,7 @@ Status: current in-memory runtime implementation module.
 ## Current Truth
 
 - `InMemoryTaskWorkRuntime` is the only shipped runtime implementation in this phase
-- `xa-mass-engine` still constructs this implementation by default in `TaskManager` when no runtime is injected
+- sdk `EngineConfig`, server bootstrap, and explicit tests currently construct this implementation as the default embedded runtime
 - this module is an implementation module; engine policy and task lifecycle ownership remain outside this module
 
 ## Near-Term Boundary
