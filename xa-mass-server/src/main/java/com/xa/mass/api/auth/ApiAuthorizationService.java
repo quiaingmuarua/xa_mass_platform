@@ -290,8 +290,12 @@ public class ApiAuthorizationService {
             return Map.of();
         }
         Map<String, Object> attributes = new LinkedHashMap<>();
-        attributes.put("taskId", task.getTid());
-        attributes.put("project", task.getProject());
+        if (task.getTid() != null) {
+            attributes.put("taskId", task.getTid());
+        }
+        if (task.getProject() != null) {
+            attributes.put("project", task.getProject());
+        }
         com.xa.mass.sdk.authz.TaskOwnershipStamp stamp =
                 com.xa.mass.sdk.authz.TaskOwnershipStamp.fromSharedConfig(task.getSharedConfig());
         if (stamp != null) {

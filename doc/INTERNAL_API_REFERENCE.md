@@ -52,6 +52,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Stable event invocation contract: `EventRequest`, `EventResponse`, and `PrincipalContext`.
 - Control-plane authorization resolves one unified `PrincipalContext` and then applies direct permissions plus `projectScopes` / `eventScopes`.
 - `AuthorizationPolicy` is the current shared authorization entrypoint for operator routes, SDK submitter task create, and external worker HTTP access.
+- SDK task-read ownership checks use the shared `TaskOwnershipStamp` / `AuthorizationReasonCode` contract and are adapted by the server host layer rather than hidden inside controller-local string rules.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
@@ -194,7 +195,19 @@ Contract notes:
 
 Base path: `/status/api/tasks`
 
-### 3.1 Create Task
+### 3.1 List Tasks
+
+- Method: `GET`
+- Path: `/status/api/tasks`
+- Status: `Implemented`
+
+Behavior notes:
+
+- operator callers still require `task:view`
+- SDK credential callers may also use this route
+- current SDK task-list behavior is ownership-scoped: only tasks whose `sharedConfig._massSecurity` matches the credential principal are returned
+
+### 3.2 Create Task
 
 - Method: `POST`
 - Path: `/status/api/tasks`
@@ -313,7 +326,7 @@ Example response:
 }
 ```
 
-### 3.2 Get Task
+### 3.3 Get Task
 
 - Method: `GET`
 - Path: `/status/api/tasks/{taskId}`
@@ -331,6 +344,8 @@ Response notes:
 - `task.user` is serialized as the current business-user binding object
 - `task.sharedConfig` may include framework-owned `_massSecurity` ownership metadata in addition to caller-provided keys
 - task detail also exposes a derived `data.security` view so callers do not need to parse `_massSecurity` directly
+- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match `sharedConfig._massSecurity`
+- SDK credential owner mismatches return HTTP 403 with an explicit reason
 - returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
 Example response shape:
@@ -373,7 +388,7 @@ Example response shape:
 }
 ```
 
-### 3.3 Update Task Metadata
+### 3.4 Update Task Metadata
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}`
@@ -394,7 +409,7 @@ Contract rules:
 - omitted fields keep the currently persisted metadata/binding values
 - `inputs` and unknown fields are rejected with HTTP 400
 
-### 3.4 Delete Task
+### 3.5 Delete Task
 
 - Method: `DELETE`
 - Path: `/status/api/tasks/{taskId}`
@@ -405,7 +420,7 @@ Contract rules:
 - only `NEW` and `TERMINAL` tasks can be deleted
 - returns `ApiResponse.error(...)` when the task is in a non-deletable state
 
-### 3.5 Audit Task
+### 3.6 Audit Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/audit`
@@ -435,7 +450,7 @@ Example success response:
 }
 ```
 
-### 3.6 Pause Task
+### 3.7 Pause Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/pause`
@@ -445,7 +460,7 @@ Behavior:
 
 - `READY` or `RUNNING` -> `PAUSED`
 
-### 3.7 Resume Task
+### 3.8 Resume Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/resume`
@@ -484,7 +499,7 @@ Alternate success response when it already completed:
 }
 ```
 
-### 3.8 Terminate Task
+### 3.9 Terminate Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/terminate`
@@ -494,7 +509,7 @@ Behavior:
 
 - any non-`TERMINAL` task may be closed to `TERMINAL`
 
-### 3.9 Status Routing Helper
+### 3.10 Status Routing Helper
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}/status`
@@ -514,7 +529,7 @@ Behavior:
 - `TERMINAL` routes to cancel
 - no direct route exists for `RUNNING` through this helper
 
-### 3.10 Runtime Block Task
+### 3.11 Runtime Block Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/block`
@@ -527,7 +542,7 @@ Behavior:
 - moves the task to `BLOCKED`
 - unlike audit reject, this is not limited to `NEW`
 
-### 3.11 List Task Messages
+### 3.12 List Task Messages
 
 - Method: `GET`
 - Path: `/status/api/tasks/{taskId}/messages`
@@ -546,6 +561,7 @@ Response shape:
 - raw top-level target projections are not part of the message read model
 - `total` reports the task-message count; `truncated=true` means the bounded
   snapshot omitted messages
+- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match `sharedConfig._massSecurity`
 
 ```json
 {
@@ -579,7 +595,7 @@ Response shape:
 }
 ```
 
-### 3.12 Append Items To Open-Ended Task
+### 3.13 Append Items To Open-Ended Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/items`
@@ -621,7 +637,7 @@ Example response:
 }
 ```
 
-### 3.13 Seal Open-Ended Task
+### 3.14 Seal Open-Ended Task
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}/seal`

@@ -36,6 +36,7 @@ Controller/console ownership now includes:
 - operator, SDK submitter, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
 - `TaskApiController` keeps the existing HTTP contract but routes SDK submitter create checks through the shared policy
+- `TaskApiController` now also supports SDK submitter task read on `list / detail / messages` through centralized ownership checks derived from `Task.sharedConfig._massSecurity`
 - `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
 - host-side authorization adaptation is centralized in `com.xa.mass.api.auth.ApiAuthorizationService`, including deny-message mapping and structured deny logging
 - operator route-to-permission declarations are centralized in `com.xa.mass.api.auth.ApiRouteAuthorizationCatalog`
@@ -51,6 +52,7 @@ Current host security matrix:
 | Scenario | Principal surface | Resource/action | Current gate |
 | --- | --- | --- | --- |
 | `SUBMITTER_TASK_CREATE` | SDK credential | `TASK / CREATE` | `task:create` + project/event/user scope |
+| `SUBMITTER_TASK_VIEW` | SDK credential | `TASK / VIEW` | ownership match against `Task.sharedConfig._massSecurity` |
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
 | `WORKER_CONTEXT_REGISTER` | external worker credential | `WORKER_CONTEXT / REGISTER` | `worker:poll` + worker binding + project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
