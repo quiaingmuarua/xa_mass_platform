@@ -255,7 +255,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request) {
         Objects.requireNonNull(request, "request");
-        Task task = requireStartedTaskManager().getTask(requireTaskId(taskId));
+        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
         if (task == null) {
             return false;
         }

@@ -54,10 +54,10 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
-        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("SUCCESS", attempt.getOutput().get("status"));
-        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
     }
 
     @Test
@@ -75,11 +75,11 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(1, updated.getRetryCount());
         assertNull(updated.getErrorMessage());
         assertNull(updated.getErrorCode());
-        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
         assertEquals("FAILED", attempt.getOutput().get("status"));
-        assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, taskQueries.getTask(task.getTid()).getStatus());
         assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
@@ -137,7 +137,7 @@ class RuntimeTaskResultIngestChannelTest {
         TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-envelope", updated.getOutput().get("mockData"));
-        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
     }
 
     @Test

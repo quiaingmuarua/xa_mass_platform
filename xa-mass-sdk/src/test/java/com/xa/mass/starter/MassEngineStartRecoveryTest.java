@@ -65,7 +65,7 @@ class MassEngineStartRecoveryTest {
         Task task = taskManager.createTask(dto);
         assertTrue(taskManager.approveTask(task.getTid()));
 
-        Task runningTask = taskManager.getTask(task.getTid());
+        Task runningTask = taskQueries.getTask(task.getTid());
         assertNotNull(runningTask);
         assertTrue(runningTask.transitionTo(TaskStatus.RUNNING));
         assertTrue(taskManager.updateTask(runningTask));

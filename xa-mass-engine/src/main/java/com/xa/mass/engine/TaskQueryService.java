@@ -50,6 +50,10 @@ public class TaskQueryService {
         return taskManager.getTaskStorage().getTaskMessageAttempts(taskId, messageId);
     }
 
+    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+        return taskManager.getTaskStorage().getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+    }
+
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskManager.getTaskStorage().getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }

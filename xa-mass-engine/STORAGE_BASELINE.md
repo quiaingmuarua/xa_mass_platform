@@ -62,6 +62,10 @@ not a product dependency on one schema flavor's quirks.
 `TaskStorage` owns task truth plus the narrow compatibility projection APIs
 still needed by engine convergence and result repair.
 
+Shell-facing bounded reads should go through `TaskQueryService`, which composes
+query semantics over `TaskStorage` and task-state services without expanding the
+runtime mutation facade on `TaskManager`.
+
 Main responsibilities:
 
 - save and load `Task`
@@ -250,6 +254,13 @@ Custom storage wiring is still constructor-based:
 TaskStorage taskStorage = TaskStorageFactory.createTaskStorage("memory");
 WorkerStorage workerStorage = TaskStorageFactory.createWorkerStorage("memory");
 RuleStorage ruleStorage = TaskStorageFactory.createRuleStorage("memory");
+```
+
+Shell/debug query wiring is separate:
+
+```java
+TaskManager taskManager = new TaskManager(taskScheduler, taskWorkRuntime);
+TaskQueryService taskQueries = new TaskQueryService(taskManager);
 ```
 
 ## Guardrails

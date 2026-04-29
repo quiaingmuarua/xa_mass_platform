@@ -168,7 +168,7 @@ public class TaskManager {
     /**
      * Returns a task by id or {@code null} if it does not exist.
      */
-    public Task getTask(String taskId) {
+    Task getTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("GET_TASK", "TaskManager", "taskId", taskId);
 
@@ -211,7 +211,7 @@ public class TaskManager {
     /**
      * Returns all persisted tasks.
      */
-    public List<Task> getAllTasks() {
+    List<Task> getAllTasks() {
         LogUtils.logOperationStart("GET_ALL_TASKS", "TaskManager");
 
         List<Task> tasks = taskStorage.getAllTasks();
@@ -233,7 +233,7 @@ public class TaskManager {
     /**
      * Returns tasks currently in the given status.
      */
-    public List<Task> getTasksByStatus(TaskStatus status) {
+    List<Task> getTasksByStatus(TaskStatus status) {
         LogUtils.logOperationStart("GET_TASKS_BY_STATUS", "TaskManager", "status", status.name());
 
         List<Task> tasks = taskStorage.getTasksByStatus(status);
@@ -366,7 +366,7 @@ public class TaskManager {
         return taskStorage.getTaskMessageAttempts(taskId, messageId);
     }
 
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
@@ -453,7 +453,7 @@ public class TaskManager {
      * Resolves task state explicitly from runtime-owned work stats plus the
      * persisted task aggregate.
      */
-    public TaskStateResolutionResult resolveTaskState(String taskId) {
+    TaskStateResolutionResult resolveTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateResolver.resolveTaskState(taskId));
     }
 
@@ -463,7 +463,7 @@ public class TaskManager {
      * validates task/runtime aggregates without scanning the full TaskMsg
      * compatibility projection.
      */
-    public TaskStateValidationResult validateTaskState(String taskId) {
+    TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
     }
 
