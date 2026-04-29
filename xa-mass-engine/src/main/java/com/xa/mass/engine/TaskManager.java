@@ -104,7 +104,7 @@ public class TaskManager {
     /**
      * Creates a task plus one persisted {@link TaskMsg} per work-item input.
      */
-    public Task createTask(TaskCreateRequestDto dto) {
+    Task createTask(TaskCreateRequestDto dto) {
         validateCreateRequest(dto);
         long startTime = System.currentTimeMillis();
         LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
@@ -181,7 +181,7 @@ public class TaskManager {
     /**
      * Persists a task update.
      */
-    public boolean updateTask(Task task) {
+    boolean updateTask(Task task) {
         LogUtils.setTaskId(task.getTid());
         LogUtils.logOperationStart("UPDATE_TASK", "TaskManager", "taskId", task.getTid());
 
@@ -199,7 +199,7 @@ public class TaskManager {
     /**
      * Deletes a task if it is still safe to remove.
      */
-    public boolean deleteTask(String taskId) {
+    boolean deleteTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.deleteTask(taskId));
     }
 
@@ -253,62 +253,62 @@ public class TaskManager {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
-    public boolean approveTask(String taskId) {
+    boolean approveTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.approveTask(taskId));
     }
 
-    public boolean rejectTask(String taskId) {
+    boolean rejectTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.rejectTask(taskId));
     }
 
-    public boolean blockTask(String taskId) {
+    boolean blockTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.blockTask(taskId));
     }
 
-    public boolean pauseTask(String taskId) {
+    boolean pauseTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.pauseTask(taskId));
     }
 
-    public TaskResumeResult resumeTaskDetailed(String taskId) {
+    TaskResumeResult resumeTaskDetailed(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.resumeTaskDetailed(taskId));
     }
 
-    public boolean resumeTask(String taskId) {
+    boolean resumeTask(String taskId) {
         return resumeTaskDetailed(taskId).isSuccess();
     }
 
     /**
      * Manually terminates a non-final task (operator/user-initiated cancellation).
      */
-    public boolean cancelTask(String taskId) {
+    boolean cancelTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.cancelTask(taskId));
     }
 
     /**
      * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
      */
-    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    boolean terminateTask(String taskId, TaskTerminalReason reason) {
         return withTaskLock(taskId, () -> lifecycleService.terminateTask(taskId, reason));
     }
 
     /**
      * Appends new work items to a READY or RUNNING open-ended task.
      */
-    public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
+    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
         return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
     }
 
     /**
      * Seals an open-ended task.
      */
-    public boolean sealTask(String taskId) {
+    boolean sealTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.sealTask(taskId));
     }
 
     /**
      * Persists a task message under the owning task.
      */
-    public void addTaskMessage(String taskId, TaskMsg taskMsg) {
+    void addTaskMessage(String taskId, TaskMsg taskMsg) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId,

@@ -7,6 +7,7 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskManager;
@@ -175,7 +176,11 @@ public class MassEngine {
         if (taskManager == null) {
             throw new IllegalStateException("MassEngine has not been started; taskManager is unavailable");
         }
-        return taskManager.createTask(dto);
+        TaskCommandService taskCommands = config.getTaskCommandService();
+        if (taskCommands == null) {
+            throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
+        }
+        return taskCommands.createTask(dto);
     }
 
     /**

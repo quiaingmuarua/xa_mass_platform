@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
@@ -31,6 +32,7 @@ class RuntimeTaskResultIngestChannelTest {
 
     private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
+    private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private InMemoryTaskStorage taskStorage;
     private InMemoryTaskWorkRuntime taskWorkRuntime;
@@ -42,6 +44,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = new InMemoryTaskStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         taskManager = new TaskManager(scheduler, taskStorage, taskWorkRuntime);
+        taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
@@ -176,8 +179,8 @@ class RuntimeTaskResultIngestChannelTest {
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setInputs(List.of(Map.of("target", "alpha")));
-        Task task = taskManager.createTask(dto);
-        taskManager.approveTask(task.getTid());
+        Task task = taskCommands.createTask(dto);
+        taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);

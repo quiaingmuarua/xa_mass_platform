@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
@@ -85,6 +86,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     new NoOpTaskScheduler(),
                     new InMemoryTaskStorage(),
                     taskWorkRuntime);
+            TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
@@ -162,18 +164,18 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 });
                 assignWorker.start();
 
-                Task bulkTask = taskManager.createTask(buildBulkRequest(config));
+                Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
                 timing.onCreated(bulkTask);
-                require(taskManager.approveTask(bulkTask.getTid()), "bulk task should approve");
+                require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
                 require(timing.awaitBulkFirstDispatch(config.awaitSeconds(), TimeUnit.SECONDS),
                         "bulk task should start dispatching before interactive submission");
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = taskManager.createTask(buildInteractiveRequest(config));
+                Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
                 timing.onCreated(interactiveTask);
-                require(taskManager.approveTask(interactiveTask.getTid()), "interactive task should approve");
+                require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
 
                 require(timing.awaitInteractiveFailure(config.awaitSeconds(), TimeUnit.SECONDS),

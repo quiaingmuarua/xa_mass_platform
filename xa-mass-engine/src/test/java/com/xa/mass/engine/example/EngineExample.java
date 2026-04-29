@@ -7,6 +7,7 @@ import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -31,6 +32,7 @@ public class EngineExample {
                 new SimpleTaskScheduler(),
                 new InMemoryTaskStorage(),
                 new InMemoryTaskWorkRuntime());
+        TaskCommandService taskCommands = new TaskCommandService(taskManager);
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);
@@ -42,7 +44,7 @@ public class EngineExample {
         workerContexts.forEach(workerManager::addWorkerContext);
 
         TaskCreateRequestDto taskDto = new TaskCreateRequestDto();
-        taskManager.createTask(taskDto);
+        taskCommands.createTask(taskDto);
     }
 
     public static Task genMockTask() {

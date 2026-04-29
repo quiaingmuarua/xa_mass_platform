@@ -21,12 +21,12 @@ public final class WebSocketOutputProcessor {
 
     public boolean process(WorkerTransportMessage delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getWorkerId(), delivery.getRawJson());
+            boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getRouteKey(), delivery.getRawJson());
             if (sent) {
                 return true;
             }
-            logger.warn("WebSocket outbound skipped because endpoint is unavailable: workerId={}, traceId={}",
-                    delivery.getWorkerId(), delivery.getTraceId());
+            logger.warn("WebSocket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",
+                    delivery.getRouteKey(), delivery.getTraceId());
             return false;
         } catch (Exception ex) {
             logger.error("WebSocket outbound processing failed", ex);

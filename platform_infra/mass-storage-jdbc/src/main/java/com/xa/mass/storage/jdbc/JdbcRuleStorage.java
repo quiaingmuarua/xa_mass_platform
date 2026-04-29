@@ -1,6 +1,5 @@
 package com.xa.mass.storage.jdbc;
 
-import com.xa.mass.storage.memory.QLExpressRuleEvaluator;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleEvaluator;
 import com.xa.mass.storage.rule.RuleType;
@@ -23,7 +22,7 @@ public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
     public JdbcRuleStorage(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
         this.dialect = dialect;
-        registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
+        registerEvaluator(RuleType.QL_EXPRESS, new JdbcQlExpressRuleEvaluator());
     }
 
     @Override
@@ -131,7 +130,7 @@ public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
             throw new IllegalStateException("Failed to clear rules", e);
         }
         evaluatorMap.clear();
-        registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
+        registerEvaluator(RuleType.QL_EXPRESS, new JdbcQlExpressRuleEvaluator());
     }
 
     private List<RuleDefinition> queryRules(String sql, String... args) {

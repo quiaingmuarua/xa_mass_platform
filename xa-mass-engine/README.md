@@ -34,6 +34,10 @@ Status: current engine owner README.
   `TaskRuntimeRecoveryPort`, `TaskEventListenerRegistrar`, and the public
   shell/testing listener surface `TaskEventService`
   instead of taking the full `TaskManager` facade by default
+- shell/admin create-update-lifecycle flows should go through `TaskCommandService`,
+  and bounded inspection should go through `TaskQueryService`; those surfaces are
+  the current repo-level mainline instead of cross-module direct `TaskManager`
+  command usage
 - sdk/server bootstrap should resolve those narrow ports/facades from config-owned
   assembly rather than instantiating `TaskManager*` adapters ad hoc across modules
 - transport/runtime result ingress should be wired through a dedicated `TaskResultIngestFacade`

@@ -231,7 +231,8 @@ runtime-composition object during `MassApplication` construction. Runtime
 assembly then manages only assembled transport components rather than holding a
 live transport config object as the primary composition backbone. That
 composition now consumes one or more adapter bootstrap contributions and uses
-the transport-neutral `WorkerTransportMessage` outbound carrier rather than a
+the transport-neutral `WorkerTransportMessage` outbound carrier keyed by route
+rather than a
 WebSocket-only delivery DTO.
 
 Within that lower-level surface, embedded-runtime mainline snapshots

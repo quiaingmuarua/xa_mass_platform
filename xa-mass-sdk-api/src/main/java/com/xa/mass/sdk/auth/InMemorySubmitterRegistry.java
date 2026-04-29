@@ -1,6 +1,10 @@
 package com.xa.mass.sdk.auth;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Minimal in-memory submitter registry used by the SDK facade.

@@ -6,7 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
@@ -31,7 +31,7 @@ class MassEngineStartRecoveryTest {
     @Test
     void startRecoversRunningTaskWithRuntimeReadyWork() throws Exception {
         EngineConfig config = new EngineConfig();
-        TaskManager taskManager = config.getTaskManager();
+        TaskCommandService taskCommands = config.getTaskCommandService();
         TaskQueryService taskQueries = config.getTaskQueryService();
         WorkerManager workerManager = config.getWorkerManager();
 
@@ -62,13 +62,13 @@ class MassEngineStartRecoveryTest {
         dto.setSharedConfig(Map.of());
         dto.setBatchSize(1);
 
-        Task task = taskManager.createTask(dto);
-        assertTrue(taskManager.approveTask(task.getTid()));
+        Task task = taskCommands.createTask(dto);
+        assertTrue(taskCommands.approveTask(task.getTid()));
 
         Task runningTask = taskQueries.getTask(task.getTid());
         assertNotNull(runningTask);
         assertTrue(runningTask.transitionTo(TaskStatus.RUNNING));
-        assertTrue(taskManager.updateTask(runningTask));
+        assertTrue(taskCommands.updateTask(runningTask));
 
         CountDownLatch dispatchLatch = new CountDownLatch(1);
         AtomicReference<List<TaskDispatchBinding>> dispatchBindingsRef = new AtomicReference<>();

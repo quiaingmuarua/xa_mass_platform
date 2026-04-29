@@ -27,17 +27,17 @@ Current truth for this conservative first slice:
 - `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
 - `mass-runtime-redis` now owns the Redis runtime keyspace/index baseline and remains outside the verified runtime path
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the storage-adjacent rule types referenced by those contracts
-- `mass-storage-memory` owns in-memory control-plane task/worker/rule/submitter storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
+- `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
 - `xa-mass-engine` consumes the runtime contract directly and currently also declares storage-contract plus in-memory storage dependencies in the reactor; do not summarize that as "runtime only" without re-checking the root `pom.xml`
 - `xa-mass-engine` now depends on storage contracts and infra-owned in-memory storage implementations; engine no longer carries Redis storage placeholder classes or shared in-memory storage implementations under its package root
 
 Current implementation drift agents must keep explicit:
 
-- `mass-storage-memory` currently contains `InMemoryRuleStorage`, `QLExpressRuleEvaluator`, and `InMemorySubmitterRegistry` in addition to task/worker storage implementations; this is current code truth, not proof that those ownership boundaries are final
+- `mass-storage-memory` currently contains `InMemoryRuleStorage` and `QLExpressRuleEvaluator` in addition to task/worker storage implementations; this is current code truth, not proof that those ownership boundaries are final
 - `mass-storage-jdbc` currently persists control-plane truth and still exposes `JdbcStorageRuntime` as a convenience bundle for migrations, storage adapters, and residue recovery; it now returns storage contracts to outer layers, but that bundle is still convergence work rather than a long-term product extension point
 - `JdbcTaskStorage`, `JdbcWorkerStorage`, and `JdbcSubmitterRegistry` now each keep JDBC-local process-local compatibility projections for task-message, worker-runtime, and auth residue; those in-process projections are current implementation facts, not target architecture
-- `xa-mass-engine` currently still carries a compile-time dependency on `mass-storage-memory`; verify call sites before assuming that dependency is semantically required
+- `xa-mass-engine` still uses `mass-storage-memory` from tests, but its main sources no longer import that package directly; keep the dependency scoped to tests unless a verified mainline caller requires more
 
 Boundary to keep stable:
 

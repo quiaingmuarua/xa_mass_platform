@@ -20,7 +20,7 @@ Trust: code, [../AGENTS.md](../AGENTS.md), [../TRANSPORT_BOUNDARY_BASELINE.md](.
 | adapter processors | `WebSocketInputProcessor.process(...)`, `WebSocketOutputProcessor.process(...)` | inbound result ingest handoff and outbound endpoint send | yes | explicit adapter processors, not generic middleware |
 | runtime wiring snapshot | `WebSocketDispatcherContext` | expose fixed adapter-local wiring resolved before start | yes | immutable adapter runtime wiring |
 | embedded runtime support | `WebSocketEmbeddedRuntimeSupport.*` | create endpoint registry, dispatcher context, realtime adapter, system-event channel, and transport server defaults | yes | adapter-owned embedded bootstrap helper |
-| outbound carrier | `WorkerTransportMessage` | carry transport-neutral worker addressability plus raw outbound payload | no | converged to `xa-mass-transport-api` mainline |
+| outbound carrier | `WorkerTransportMessage` | carry transport-neutral route addressability plus raw outbound payload | no | converged to `xa-mass-transport-api` mainline |
 
 ## Explicit Non-Findings
 

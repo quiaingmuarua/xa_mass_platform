@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
@@ -88,6 +89,7 @@ public final class TaskFlowLoadModelRunner {
         private LoadReport run() throws Exception {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
             TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
+            TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
@@ -196,10 +198,10 @@ public final class TaskFlowLoadModelRunner {
 
                 assignWorker.start();
 
-                Task task = taskManager.createTask(buildRequest(config));
+                Task task = taskCommands.createTask(buildRequest(config));
                 taskIdRef.set(task.getTid());
                 long wallStartNanos = System.nanoTime();
-                require(taskManager.approveTask(task.getTid()), "task should move NEW -> READY");
+                require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
 
                 require(terminalLatch.await(config.timeoutSeconds(), TimeUnit.SECONDS),
                         "load model timed out before task reached TERMINAL");

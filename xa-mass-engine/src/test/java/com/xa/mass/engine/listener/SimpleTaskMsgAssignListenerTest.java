@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.*;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
@@ -39,6 +40,7 @@ class SimpleTaskMsgAssignListenerTest {
     private AssignmentRecordService recordService;
     private TaskStorage taskStorage;
     private TaskManager taskManager;
+    private TaskCommandService taskCommands;
     private SimpleTaskMsgAssignListener listener;
 
     @BeforeEach
@@ -47,6 +49,7 @@ class SimpleTaskMsgAssignListenerTest {
         recordService = mock(AssignmentRecordService.class);
         taskStorage = new InMemoryTaskStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
+        taskCommands = new TaskCommandService(taskManager);
         listener = newAssignmentListener(taskManager);
     }
 
@@ -206,6 +209,7 @@ class SimpleTaskMsgAssignListenerTest {
     void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, new InMemoryTaskWorkRuntime());
+        taskCommands = new TaskCommandService(taskManager);
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
@@ -410,7 +414,7 @@ class SimpleTaskMsgAssignListenerTest {
         dto.setInputs(IntStream.range(0, messageCount)
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
                 .collect(Collectors.toCollection(ArrayList::new)));
-        return taskManager.createTask(dto);
+        return taskCommands.createTask(dto);
     }
 
     private List<TaskMsg> storedMessages(String taskId) {

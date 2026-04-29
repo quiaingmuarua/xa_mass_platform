@@ -12,7 +12,6 @@ Current scope:
 - `InMemoryWorkerStorage`
 - `InMemoryRuleStorage`
 - `QLExpressRuleEvaluator`
-- `InMemorySubmitterRegistry`
 
 These classes provide in-memory control-plane storage implementations shared by
 engine defaults, focused tests, and storage adapters that still need a
@@ -24,12 +23,11 @@ Current code truth:
   control-plane defaults used by SDK/server embedding and focused tests
 - `InMemoryRuleStorage` and `QLExpressRuleEvaluator` currently live here, so
   rule-evaluator ownership is infra-local in code today
-- `InMemorySubmitterRegistry` currently lives here under `com.xa.mass.sdk.auth`,
-  which means SDK auth surface and infra packaging are coupled in the current
-  implementation
-- other modules should treat those rule/auth placements as current facts to
-  work with, not as a reason to expand this module further into SDK or engine
-  ownership
+- SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do
+  not reintroduce SDK-surface packaging into this module
+- other modules should treat the remaining rule helper placement as current
+  fact to work with, not as a reason to expand this module further into SDK or
+  engine ownership
 
 Read with:
 
