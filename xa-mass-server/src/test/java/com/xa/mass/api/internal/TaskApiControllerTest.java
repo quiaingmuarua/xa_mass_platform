@@ -516,6 +516,90 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void listTasksWithSdkCredentialFiltersToOwnedTasks() throws Exception {
+        Task ownedTask = taskWithStatus(TaskStatus.NEW);
+        ownedTask.setTaskName("owned-task");
+        ownedTask.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
+        ));
+        Task foreignTask = taskWithStatus(TaskStatus.NEW);
+        foreignTask.setTid("task-foreign-001");
+        foreignTask.setTaskName("foreign-task");
+        foreignTask.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
+        ));
+
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
+                "crawler-agent",
+                "crawler-user",
+                "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of()
+        ));
+        when(taskQueries.getAllTasks()).thenReturn(List.of(ownedTask, foreignTask));
+
+        mockMvc.perform(get("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].taskName").value("owned-task"));
+    }
+
+    @Test
+    void getTaskWithSdkCredentialRejectsOwnerMismatch() throws Exception {
+        Task task = taskWithStatus(TaskStatus.READY);
+        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
+        ));
+
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
+                "crawler-agent",
+                "crawler-user",
+                "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of()
+        ));
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+
+        mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID)
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.msg").value("SDK credential owner mismatch: other-agent"));
+    }
+
+    @Test
+    void getTaskMessagesWithSdkCredentialRejectsOwnerMismatch() throws Exception {
+        Task task = taskWithStatus(TaskStatus.READY);
+        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
+                Map.of("source", "sdk"),
+                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
+        ));
+
+        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
+                "crawler-agent",
+                "crawler-user",
+                "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of()
+        ));
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+
+        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.msg").value("SDK credential owner mismatch: other-agent"));
+    }
+
+    @Test
     void deleteTaskReturnsSuccessWhenTaskExists() throws Exception {
         when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
         when(taskAdmin.deleteTask(TASK_ID)).thenReturn(true);

@@ -14,7 +14,9 @@ public class ApiRouteAuthorizationCatalog {
 
         if (uri.equals("/status/api/tasks")) {
             return switch (method) {
-                case "GET" -> route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
                 case "POST" -> sdkCredentialAttempt
                         ? route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                         : route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiPermissionNames.TASK_CREATE);
@@ -28,7 +30,9 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.matches("^/status/api/tasks/[^/]+$")) {
             return switch (method) {
-                case "GET" -> route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
                 case "PUT" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
                 case "DELETE" -> route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
                 default -> null;
@@ -38,7 +42,9 @@ public class ApiRouteAuthorizationCatalog {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/messages$") && "GET".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/audit$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);

@@ -144,6 +144,33 @@ class ApiAuthInterceptorTest {
                 .andExpect(jsonPath("$.ok").value(true));
     }
 
+    @Test
+    void sdkCredentialAttemptCanReachUnifiedTaskListWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(get("/status/api/tasks")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sdkCredentialAttemptCanReachUnifiedTaskDetailWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(get("/status/api/tasks/task-001")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sdkCredentialAttemptCanReachUnifiedTaskMessagesWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(get("/status/api/tasks/task-001/messages")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
     @Controller
     static class ProtectedApiController {
         @GetMapping("/status/api/tasks")
@@ -156,6 +183,18 @@ class ApiAuthInterceptorTest {
         @ResponseBody
         public Map<String, Object> createTask(@RequestBody Map<String, Object> body) {
             return Map.of("ok", true, "body", body);
+        }
+
+        @GetMapping("/status/api/tasks/{taskId}")
+        @ResponseBody
+        public Map<String, Object> taskDetail(@PathVariable String taskId) {
+            return Map.of("ok", true, "taskId", taskId);
+        }
+
+        @GetMapping("/status/api/tasks/{taskId}/messages")
+        @ResponseBody
+        public Map<String, Object> taskMessages(@PathVariable String taskId) {
+            return Map.of("ok", true, "taskId", taskId);
         }
 
         @PostMapping("/status/api/tasks/sync")

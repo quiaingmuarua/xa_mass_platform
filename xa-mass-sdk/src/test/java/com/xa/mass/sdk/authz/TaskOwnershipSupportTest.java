@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskOwnershipSupportTest {
 
@@ -99,5 +101,56 @@ class TaskOwnershipSupportTest {
         assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
         assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
         assertEquals("submitter", stamped.getSharedConfig().get("source"));
+    }
+
+    @Test
+    void authorizeOwnershipAllowsMatchingPrincipal() {
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("crawler-agent")
+                .principalType(PrincipalType.SERVICE)
+                .build();
+
+        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
+                principal,
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of("source", "submitter"),
+                        new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
+                )
+        );
+
+        assertTrue(decision.isAllowed());
+        assertEquals(AuthorizationReasonCode.ALLOWED, decision.getReasonCode());
+    }
+
+    @Test
+    void authorizeOwnershipRejectsMissingStamp() {
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("crawler-agent")
+                .principalType(PrincipalType.SERVICE)
+                .build();
+
+        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(principal, Map.of("source", "submitter"));
+
+        assertFalse(decision.isAllowed());
+        assertEquals(AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING, decision.getReasonCode());
+    }
+
+    @Test
+    void authorizeOwnershipRejectsMismatchedPrincipal() {
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("other-agent")
+                .principalType(PrincipalType.SERVICE)
+                .build();
+
+        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
+                principal,
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of("source", "submitter"),
+                        new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
+                )
+        );
+
+        assertFalse(decision.isAllowed());
+        assertEquals(AuthorizationReasonCode.OWNER_MISMATCH, decision.getReasonCode());
     }
 }

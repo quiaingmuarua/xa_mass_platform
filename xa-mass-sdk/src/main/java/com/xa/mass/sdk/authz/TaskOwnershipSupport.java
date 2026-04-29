@@ -4,6 +4,7 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -52,6 +53,31 @@ public final class TaskOwnershipSupport {
                 .workloadClass(request.getWorkloadClass())
                 .sourceRef(request.getSourceRef())
                 .build();
+    }
+
+    public static AuthorizationDecision authorizeOwnership(PrincipalContext principal,
+                                                           Map<String, Object> sharedConfig) {
+        if (principal == null) {
+            return AuthorizationDecision.deny(AuthorizationReasonCode.PRINCIPAL_REQUIRED, "principal is required");
+        }
+        TaskOwnershipStamp stamp = TaskOwnershipStamp.fromSharedConfig(sharedConfig);
+        if (stamp == null) {
+            return AuthorizationDecision.deny(AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING,
+                    "task ownership stamp missing");
+        }
+        if (!matchesPrincipal(stamp, principal)) {
+            return AuthorizationDecision.deny(AuthorizationReasonCode.OWNER_MISMATCH,
+                    "task owner mismatch: " + stamp.getCreatedByPrincipalId());
+        }
+        return AuthorizationDecision.allow();
+    }
+
+    public static boolean matchesPrincipal(TaskOwnershipStamp stamp, PrincipalContext principal) {
+        if (stamp == null || principal == null) {
+            return false;
+        }
+        return Objects.equals(stamp.getCreatedByPrincipalId(), principal.getPrincipalId())
+                && stamp.getCreatedByPrincipalType() == principal.getPrincipalType();
     }
 
     private static java.util.Map<String, Object> applyStamp(java.util.Map<String, Object> sharedConfig,

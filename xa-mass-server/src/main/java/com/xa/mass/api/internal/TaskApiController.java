@@ -90,19 +90,28 @@ public class TaskApiController {
     }
 
     @GetMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listTasks(@RequestParam(required = false) String keyword,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listTasks(
+                                                                      @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                      @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                      @RequestParam(required = false) String keyword,
                                                                       @RequestParam(required = false) TaskStatus status) {
         try {
+            PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
             List<Map<String, Object>> items = taskQueries.getAllTasks().stream()
+                    .filter(task -> submitterViewer == null || apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, task))
                     .filter(task -> matchesKeyword(task, normalizedKeyword))
                     .filter(task -> status == null || task.getStatus() == status)
                     .sorted(Comparator
                             .comparing(Task::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(Task::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
-                    .map(this::toTaskListItem)
+                              .map(this::toTaskListItem)
                     .collect(Collectors.toList());
             return ok(Map.of("items", items, "total", items.size()));
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
         } catch (Exception e) {
             return badRequest("Task list failed: " + e.getMessage());
         }
@@ -226,7 +235,10 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(@PathVariable String taskId,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(
+                                                                    @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                    @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                    @PathVariable String taskId,
                                                                     @RequestParam(required = false) Integer limit) {
         try {
             int boundedLimit = resolveTaskMessageLimit(limit);
@@ -234,6 +246,7 @@ public class TaskApiController {
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
+            resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
             long itemTotal = taskQueries.countTaskMessages(taskId);
             List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId, boundedLimit).stream()
                     .map(TaskMsg::getInput)
@@ -248,6 +261,10 @@ public class TaskApiController {
             response.put("security", taskSecurityViewSupport.toSecurityView(task));
             response.put("stateValidation", taskQueries.validateTaskState(taskId));
             return ok(response);
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
         } catch (Exception e) {
             return badRequest("Task lookup failed: " + e.getMessage());
         }
@@ -455,9 +472,19 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/messages")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(
+                                                                            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                            @PathVariable String taskId,
                                                                             @RequestParam(required = false) Integer limit) {
         try {
+            if (SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
+                Task task = taskQueries.getTask(taskId);
+                if (task == null) {
+                    return notFound("Task not found: " + taskId);
+                }
+                resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
+            }
             int boundedLimit = resolveTaskMessageLimit(limit);
             long total = taskQueries.countTaskMessages(taskId);
             List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId, boundedLimit);
@@ -470,6 +497,10 @@ public class TaskApiController {
                     "truncated", total > messages.size(),
                     "messages", messages
             ));
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
         } catch (Exception e) {
             return badRequest("Task message lookup failed: " + e.getMessage());
         }
@@ -722,6 +753,39 @@ public class TaskApiController {
                         "payloadType", requestBody != null ? String.valueOf(requestBody.getPayloadType()) : "",
                         "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
                     )
+            );
+        } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
+            throw new SdkUnauthenticatedException(ex.getMessage());
+        }
+    }
+
+    private PrincipalContext resolveTaskViewer(String apiKeyHeader,
+                                               String authorizationHeader,
+                                               Task task) {
+        try {
+            return apiAuthorizationService.resolveAuthorizedTaskViewer(
+                    apiKeyHeader,
+                    authorizationHeader,
+                    task,
+                    Map.of(
+                            "taskId", task != null ? String.valueOf(task.getTid()) : "",
+                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name()
+                    )
+            );
+        } catch (com.xa.mass.api.auth.ApiForbiddenException ex) {
+            throw new SecurityException(ex.getMessage());
+        } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
+            throw new SdkUnauthenticatedException(ex.getMessage());
+        }
+    }
+
+    private PrincipalContext resolveTaskViewerCredential(String apiKeyHeader,
+                                                         String authorizationHeader) {
+        try {
+            return apiAuthorizationService.resolveTaskViewerCredential(
+                    apiKeyHeader,
+                    authorizationHeader,
+                    Map.of("scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name())
             );
         } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
             throw new SdkUnauthenticatedException(ex.getMessage());

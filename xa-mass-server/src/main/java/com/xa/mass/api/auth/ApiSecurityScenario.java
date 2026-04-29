@@ -14,6 +14,13 @@ public enum ApiSecurityScenario {
             PrincipalContext.TASK_CREATE_PERMISSION,
             CredentialAudience.SDK_SUBMITTER
     ),
+    SUBMITTER_TASK_VIEW(
+            "task-view",
+            PlatformResourceType.TASK,
+            PlatformAction.VIEW,
+            null,
+            CredentialAudience.SDK_SUBMITTER
+    ),
     WORKER_REGISTER(
             "worker-register",
             PlatformResourceType.WORKER,
@@ -123,6 +130,14 @@ public enum ApiSecurityScenario {
         if (credentialAudience == CredentialAudience.SDK_SUBMITTER
                 && reasonCode == AuthorizationReasonCode.USER_SCOPE_DENIED) {
             return "SDK credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
+        }
+        if (credentialAudience == CredentialAudience.SDK_SUBMITTER
+                && reasonCode == AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING) {
+            return "Task is missing ownership metadata";
+        }
+        if (credentialAudience == CredentialAudience.SDK_SUBMITTER
+                && reasonCode == AuthorizationReasonCode.OWNER_MISMATCH) {
+            return "SDK credential owner mismatch: " + suffixAfter(reason, "task owner mismatch: ");
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
                 && reasonCode == AuthorizationReasonCode.WORKER_BINDING_MISSING) {

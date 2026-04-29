@@ -11,6 +11,7 @@ import com.xa.mass.sdk.authz.AuthorizationRequest;
 import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
+import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +107,25 @@ public class ApiAuthorizationService {
         return submitter;
     }
 
+    public PrincipalContext resolveAuthorizedTaskViewer(String apiKeyHeader,
+                                                        String authorizationHeader,
+                                                        com.xa.mass.base.model.Task task,
+                                                        Map<String, Object> context) {
+        PrincipalContext submitter =
+                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        if (submitter == null) {
+            return null;
+        }
+        requireTaskOwnershipAccess(submitter, task, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        return submitter;
+    }
+
+    public PrincipalContext resolveTaskViewerCredential(String apiKeyHeader,
+                                                        String authorizationHeader,
+                                                        Map<String, Object> context) {
+        return resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+    }
+
     public void requireOperatorRoutePermission(PrincipalContext principal,
                                                PlatformResourceType resourceType,
                                                PlatformAction action,
@@ -178,6 +198,36 @@ public class ApiAuthorizationService {
         }
     }
 
+    public void requireTaskOwnershipAccess(PrincipalContext principal,
+                                           com.xa.mass.base.model.Task task,
+                                           ApiSecurityScenario scenario,
+                                           Map<String, Object> context) {
+        Map<String, Object> resourceAttributes = taskOwnershipAttributes(task);
+        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
+                principal,
+                task != null ? task.getSharedConfig() : null
+        );
+        if (!decision.isAllowed()) {
+            logDenied(scenario.surface(), principal, scenario.resourceType(), scenario.action(),
+                    task != null ? task.getProject() : null,
+                    null,
+                    null,
+                    resourceAttributes,
+                    decision.getReasonCode(),
+                    decision.getReason(),
+                    context);
+            throw new ApiForbiddenException(scenario.deniedMessage(decision));
+        }
+    }
+
+    public boolean allowsTaskOwnershipAccess(PrincipalContext principal,
+                                             com.xa.mass.base.model.Task task) {
+        return TaskOwnershipSupport.authorizeOwnership(
+                principal,
+                task != null ? task.getSharedConfig() : null
+        ).isAllowed();
+    }
+
     private AuthorizationDecision authorize(PrincipalContext principal,
                                             PlatformResourceType resourceType,
                                             PlatformAction action,
@@ -233,6 +283,22 @@ public class ApiAuthorizationService {
             return Map.of();
         }
         return Map.copyOf(context);
+    }
+
+    private Map<String, Object> taskOwnershipAttributes(com.xa.mass.base.model.Task task) {
+        if (task == null) {
+            return Map.of();
+        }
+        Map<String, Object> attributes = new LinkedHashMap<>();
+        attributes.put("taskId", task.getTid());
+        attributes.put("project", task.getProject());
+        com.xa.mass.sdk.authz.TaskOwnershipStamp stamp =
+                com.xa.mass.sdk.authz.TaskOwnershipStamp.fromSharedConfig(task.getSharedConfig());
+        if (stamp != null) {
+            attributes.put("ownerPrincipalId", stamp.getCreatedByPrincipalId());
+            attributes.put("ownerPrincipalType", stamp.getCreatedByPrincipalType().name());
+        }
+        return Map.copyOf(attributes);
     }
 
     private String resolveSubmitterProject(String requestedProject, PrincipalContext submitter) {

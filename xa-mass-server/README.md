@@ -41,6 +41,7 @@ Controller/console ownership now includes:
 - operator route-to-permission declarations are centralized in `com.xa.mass.api.auth.ApiRouteAuthorizationCatalog`
 - named host-side submitter/worker security scenarios are centralized in `com.xa.mass.api.auth.ApiSecurityScenario`
 - task ownership read-model derivation is centralized in `com.xa.mass.api.auth.TaskSecurityViewSupport`
+- deny diagnostics now consume structured SDK `AuthorizationReasonCode` values instead of parsing string prefixes, while API responses still return explicit human-readable reasons
 - task create paths stamp framework-owned ownership metadata into `Task.sharedConfig._massSecurity`
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
 - default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
