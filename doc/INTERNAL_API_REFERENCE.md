@@ -653,8 +653,8 @@ Response shape:
 {
   "success": true,
   "data": {
-    "inputQueue": 0,
-    "outputQueue": 0
+    "inputQueueSize": 0,
+    "outputQueueSize": 0
   }
 }
 ```
@@ -674,7 +674,7 @@ Response shape:
     "inputQueueSize": 0,
     "outputQueueSize": 0,
     "transporterAvailable": true,
-    "deliveryQueue": {
+    "deliveryDiagnostics": {
       "available": true,
       "queuedItems": 0,
       "queueCount": 0,
@@ -740,13 +740,12 @@ Notes:
 - queue metrics are compatibility/observability data only; they are not the
   transport runtime routing truth
 - queue diagnostics are operator-only read surfaces; they are not a repo-external worker or SDK contract
-- `inputQueue` / `outputQueue` and `inputQueueSize` / `outputQueueSize` currently
-  expose the same values. The shorter keys are compatibility aliases kept for
-  older control-shell consumers; do not infer separate queue concepts from them.
+- `inputQueueSize` / `outputQueueSize` are the only supported root queue size
+  fields on this control-plane surface.
 - `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
   when the embedded runtime is assembled through adapter-native paths without a
   shared message transporter
-- `deliveryQueue` is the runtime delivery-store diagnostic surface. It reports
+- `deliveryDiagnostics` is the runtime delivery-store diagnostic surface. It reports
   shared dispatch backlog and polling waiters, not engine-owned task lifecycle
   or retry state. `oldestQueuedAgeMillis` is for backlog age monitoring only.
   The cumulative counters are process-local diagnostics for accepted, drained,
@@ -754,7 +753,7 @@ Notes:
   outcomes. `queueByAdapter` breaks queue-focused store diagnostics down by
   concrete `adapterId`, and `directByAdapter` breaks direct-send counters down
   by concrete `adapterId` for realtime adapter troubleshooting.
-- `deliveryQueue` is a combined diagnostics envelope, not proof that direct-send
+- `deliveryDiagnostics` is a combined diagnostics envelope, not proof that direct-send
   outcomes are queue-owned. `queueByAdapter` remains queue-path only, while
   `directByAdapter` remains direct-send only.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned

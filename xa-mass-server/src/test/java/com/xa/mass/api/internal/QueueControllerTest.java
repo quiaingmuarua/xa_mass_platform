@@ -32,27 +32,25 @@ class QueueControllerTest {
     @Test
     void queueStatusUsesSdkTransportFacade() throws Exception {
         when(transportOperations.getQueueDetail()).thenReturn(Map.of(
-                "inputQueue", 3,
-                "outputQueue", 7,
+                "inputQueueSize", 3,
+                "outputQueueSize", 7,
                 "transporterAvailable", true
         ));
 
         mockMvc.perform(get("/api/queue/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.inputQueue").value(3))
-                .andExpect(jsonPath("$.data.outputQueue").value(7));
+                .andExpect(jsonPath("$.data.inputQueueSize").value(3))
+                .andExpect(jsonPath("$.data.outputQueueSize").value(7));
     }
 
     @Test
     void queueDetailIncludesRuntimeDeliveryStats() throws Exception {
         when(transportOperations.getQueueDetail()).thenReturn(Map.of(
-                "inputQueue", -1,
-                "outputQueue", -1,
                 "inputQueueSize", -1,
                 "outputQueueSize", -1,
                 "transporterAvailable", false,
-                "deliveryQueue", Map.of(
+                "deliveryDiagnostics", Map.of(
                         "available", true,
                         "queuedItems", 4,
                         "queueCount", 2,
@@ -102,19 +100,17 @@ class QueueControllerTest {
         mockMvc.perform(get("/api/queue/detail"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.inputQueue").value(-1))
                 .andExpect(jsonPath("$.data.inputQueueSize").value(-1))
-                .andExpect(jsonPath("$.data.outputQueue").value(-1))
                 .andExpect(jsonPath("$.data.outputQueueSize").value(-1))
-                .andExpect(jsonPath("$.data.deliveryQueue.available").value(true))
-                .andExpect(jsonPath("$.data.deliveryQueue.queuedItems").value(4))
-                .andExpect(jsonPath("$.data.deliveryQueue.queueCount").value(2))
-                .andExpect(jsonPath("$.data.deliveryQueue.waitingPollers").value(1))
-                .andExpect(jsonPath("$.data.deliveryQueue.maxQueuedItems").value(100000))
-                .andExpect(jsonPath("$.data.deliveryQueue.queueByAdapter.polling.queuedItems").value(4))
-                .andExpect(jsonPath("$.data.deliveryQueue.queueByAdapter.polling.backpressureRejectedItems").value(3))
-                .andExpect(jsonPath("$.data.deliveryQueue.directByAdapter.websocket.sentItems").value(7))
-                .andExpect(jsonPath("$.data.deliveryQueue.directByAdapter.websocket.offlineItems").value(1))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.available").value(true))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.queuedItems").value(4))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.queueCount").value(2))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.waitingPollers").value(1))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.maxQueuedItems").value(100000))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.queueByAdapter.polling.queuedItems").value(4))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.queueByAdapter.polling.backpressureRejectedItems").value(3))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.directByAdapter.websocket.sentItems").value(7))
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.directByAdapter.websocket.offlineItems").value(1))
                 .andExpect(jsonPath("$.data.runtimeExecutors.transport.available").value(true))
                 .andExpect(jsonPath("$.data.runtimeExecutors.transport.rejectedTasks").value(1))
                 .andExpect(jsonPath("$.data.runtimeExecutors.event.available").value(false));

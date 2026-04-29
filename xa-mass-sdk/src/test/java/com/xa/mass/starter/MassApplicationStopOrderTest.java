@@ -200,7 +200,7 @@ class MassApplicationStopOrderTest {
         assertTrue(failure.getMessage().contains("Failed to start Mass Application"));
         assertFalse(app.isRunning());
         assertEquals(List.of("server-start", "server-stop", "adapter-stop"), order);
-        assertEquals(false, ((java.util.Map<?, ?>) app.getTransportQueueDetail().get("deliveryQueue")).get("available"));
+        assertEquals(false, ((java.util.Map<?, ?>) app.getTransportQueueDetail().get("deliveryDiagnostics")).get("available"));
         assertEquals(false, ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) app.getTransportQueueDetail()
                 .get("runtimeExecutors")).get("transport")).get("available"));
     }

@@ -11,15 +11,15 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(TransportDispatchEnvelope envelope, int maxItemsPerRoute);
+    DispatchOutcome enqueue(TransportDispatchEnvelope envelope);
 
     List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems);
 
-    List<TransportDispatchEnvelope> poll(String adapterId,
-                                         String routeKey,
-                                         int maxItems,
-                                         long timeout,
-                                         TimeUnit unit) throws InterruptedException;
+    TransportDeliveryPollResult poll(String adapterId,
+                                     String routeKey,
+                                     int maxItems,
+                                     long timeout,
+                                     TimeUnit unit) throws InterruptedException;
 
     TransportDeliveryStoreStats stats();
 

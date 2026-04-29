@@ -36,13 +36,13 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueue(List<TransportDispatchEnvelope> envelopes, int maxItemsPerRoute) {
+    public List<DispatchOutcome> enqueue(List<TransportDispatchEnvelope> envelopes) {
         if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(envelopes.size());
         for (TransportDispatchEnvelope envelope : envelopes) {
-            outcomes.add(deliveryStore.enqueue(envelope, maxItemsPerRoute));
+            outcomes.add(deliveryStore.enqueue(envelope));
         }
         return List.copyOf(outcomes);
     }
@@ -51,41 +51,34 @@ public final class TransportDeliveryService {
         return deliveryStore.drain(adapterId, routeKey, maxItems);
     }
 
-    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+    public TransportDeliveryPollResult pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
         try {
             return deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return List.of();
+            return TransportDeliveryPollResult.interrupted();
         }
     }
 
     public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        return pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis).stream()
+        TransportDeliveryPollResult result = pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis);
+        if (result.getStatus() != TransportDeliveryPollStatus.DELIVERED) {
+            return List.of();
+        }
+        return result.getEnvelopes().stream()
                 .map(TransportDispatchEnvelope::getPayload)
                 .toList();
     }
 
-    public TransportDeliveryStoreStats stats() {
+    public TransportDeliveryServiceStats stats() {
         TransportDeliveryStoreStats storeStats = deliveryStore.stats();
-        return new TransportDeliveryStoreStats(
-                storeStats.getQueuedItems(),
-                storeStats.getQueueCount(),
-                storeStats.getWaitingPollers(),
-                storeStats.getMaxQueuedItems(),
-                storeStats.getOldestQueuedAgeMillis(),
-                storeStats.getEnqueuedItems(),
-                storeStats.getDrainedItems(),
-                storeStats.getBackpressureRejectedItems(),
-                storeStats.getInvalidItems(),
-                storeStats.getUnavailableItems(),
-                storeStats.getShutdownClearedItems(),
+        return new TransportDeliveryServiceStats(
+                storeStats,
                 directSentItems.get(),
                 directOfflineItems.get(),
                 directFailedItems.get(),
                 directInvalidItems.get(),
-                directUnavailableItems.get(),
-                storeStats.getQueueByAdapter()
+                directUnavailableItems.get()
         );
     }
 

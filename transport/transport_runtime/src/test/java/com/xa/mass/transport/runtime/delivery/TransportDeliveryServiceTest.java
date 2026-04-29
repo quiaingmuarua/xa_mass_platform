@@ -123,7 +123,7 @@ class TransportDeliveryServiceTest {
     void pollReturnsQueuedItems() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", "worker-1");
-        service.enqueue(List.of(envelope(item)), 10);
+        service.enqueue(List.of(envelope(item)));
 
         assertEquals(List.of(item), service.pollPayloads("polling", "worker-1", 10, 0));
     }
@@ -139,7 +139,7 @@ class TransportDeliveryServiceTest {
                 item.attemptId(),
                 item,
                 1L
-        )), 10);
+        )));
 
         assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
                 .map(TaskDispatchItem::getMessageId)
@@ -149,9 +149,9 @@ class TransportDeliveryServiceTest {
     @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
-        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
+        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
 
-        TransportDeliveryStoreStats stats = service.stats();
+        TransportDeliveryServiceStats stats = service.stats();
 
         assertEquals(1, stats.getQueuedItems());
         assertEquals(1, stats.getQueueCount());
@@ -174,7 +174,7 @@ class TransportDeliveryServiceTest {
                 "unavailable"
         );
 
-        TransportDeliveryStoreStats stats = service.stats();
+        TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
         assertEquals(0, stats.getQueuedItems());
         assertEquals(0, stats.getQueueCount());
@@ -187,9 +187,9 @@ class TransportDeliveryServiceTest {
     void queuedDeliveryDoesNotPopulateDirectCounters() {
         TransportDeliveryService service = service();
 
-        List<DispatchOutcome> outcomes = service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
+        List<DispatchOutcome> outcomes = service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
 
-        TransportDeliveryStoreStats stats = service.stats();
+        TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
         assertEquals(1, stats.getQueuedItems());
         assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
@@ -204,14 +204,14 @@ class TransportDeliveryServiceTest {
     @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
-        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))), 10);
+        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
 
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
         assertTrue(service.pollPayloads("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
-                service.enqueue(List.of(envelope(item("msg-2", "worker-1"))), 10).get(0).getStatus());
+                service.enqueue(List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
     }
 
     private TransportDeliveryService service() {

@@ -62,7 +62,12 @@ class PollingWorkerAdapterTest {
     private PollingWorkerAdapter adapter() {
         return new PollingWorkerAdapter(
                 NoopWorkerSystemEventChannel.INSTANCE,
-                new TransportDeliveryService(new InMemoryTransportDeliveryStore())
+                new TransportDeliveryService(
+                        new InMemoryTransportDeliveryStore(
+                                InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
+                                PollingWorkerAdapter.MAX_INBOX_SIZE
+                        )
+                )
         );
     }
 

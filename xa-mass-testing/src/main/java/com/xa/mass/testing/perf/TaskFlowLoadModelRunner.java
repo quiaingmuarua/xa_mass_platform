@@ -10,6 +10,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
@@ -86,6 +87,7 @@ public final class TaskFlowLoadModelRunner {
         private LoadReport run() throws Exception {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
             TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
+            TaskEventService taskEvents = new TaskEventService(taskManager);
             WorkerManager workerManager = new WorkerManager();
             AssignmentRecordService recordService = new AssignmentRecordService();
             CallbackMetrics callbackMetrics = new CallbackMetrics();
@@ -167,7 +169,7 @@ public final class TaskFlowLoadModelRunner {
                             workerManager,
                             msgAssignListener,
                             assignmentRuntimePort,
-                            taskManager.events()
+                            taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             MeasuredTaskResourceReleaseListener releaseListener =
@@ -180,11 +182,11 @@ public final class TaskFlowLoadModelRunner {
             try {
                 registerWorkers(workerManager, config);
 
-                taskManager.events().addTaskReadyListener(assignWorker::submit);
-                taskManager.events().addTaskDispatchListener(assignWorker::submit);
-                taskManager.events().addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
-                taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
-                taskManager.events().addTaskTerminalListener(task -> {
+                taskEvents.addTaskReadyListener(assignWorker::submit);
+                taskEvents.addTaskDispatchListener(assignWorker::submit);
+                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
+                taskEvents.addTaskTerminalListener(task -> {
                     if (Objects.equals(taskIdRef.get(), task.getTid())) {
                         terminalTask.compareAndSet(null, task);
                         terminalLatch.countDown();

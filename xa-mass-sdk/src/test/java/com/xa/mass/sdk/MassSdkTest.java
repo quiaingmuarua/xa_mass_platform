@@ -9,6 +9,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -16,9 +17,17 @@ import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
+import com.xa.mass.engine.TaskResultIngestFacade;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
@@ -45,6 +54,7 @@ import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -594,12 +604,10 @@ class MassSdkTest {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
 
         when(delegate.getTransportQueueDetail()).thenReturn(Map.of(
-                "inputQueue", 2,
-                "outputQueue", 5,
                 "inputQueueSize", 2,
                 "outputQueueSize", 5,
                 "transporterAvailable", true,
-                "deliveryQueue", Map.of(
+                "deliveryDiagnostics", Map.of(
                         "available", true,
                         "queuedItems", 1,
                         "queueCount", 1,
@@ -638,13 +646,13 @@ class MassSdkTest {
         Map<String, Object> sessionStats = app.getSessionStats();
         Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}"));
 
-        assertEquals(2, queueDetail.get("inputQueue"));
-        assertEquals(5, queueDetail.get("outputQueue"));
+        assertEquals(2, queueDetail.get("inputQueueSize"));
+        assertEquals(5, queueDetail.get("outputQueueSize"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
-        assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryQueue")).get("queuedItems"));
-        assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryQueue"))
+        assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryDiagnostics")).get("queuedItems"));
+        assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
                 .get("queueByAdapter")).get("polling")).get("queuedItems"));
-        assertEquals(2L, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryQueue"))
+        assertEquals(2L, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
                 .get("directByAdapter")).get("websocket")).get("sentItems"));
         assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
                 .get("available"));
@@ -686,28 +694,28 @@ class MassSdkTest {
 
             assertTrue(app.isRunning());
             assertEquals(false, app.getQueueDetail().get("transporterAvailable"));
-            assertEquals(-1, app.getQueueDetail().get("inputQueue"));
-            assertEquals(-1, app.getQueueDetail().get("outputQueue"));
-            Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
-            assertEquals(true, deliveryQueue.get("available"));
-            assertEquals(0, deliveryQueue.get("queuedItems"));
-            assertEquals(0, deliveryQueue.get("queueCount"));
-            assertEquals(0, deliveryQueue.get("waitingPollers"));
-            assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
-            assertEquals(0L, deliveryQueue.get("oldestQueuedAgeMillis"));
-            assertEquals(0L, deliveryQueue.get("enqueuedItems"));
-            assertEquals(0L, deliveryQueue.get("drainedItems"));
-            assertEquals(0L, deliveryQueue.get("backpressureRejectedItems"));
-            assertEquals(0L, deliveryQueue.get("invalidItems"));
-            assertEquals(0L, deliveryQueue.get("unavailableItems"));
-            assertEquals(0L, deliveryQueue.get("shutdownClearedItems"));
-            assertEquals(0L, deliveryQueue.get("directSentItems"));
-            assertEquals(0L, deliveryQueue.get("directOfflineItems"));
-            assertEquals(0L, deliveryQueue.get("directFailedItems"));
-            assertEquals(0L, deliveryQueue.get("directInvalidItems"));
-            assertEquals(0L, deliveryQueue.get("directUnavailableItems"));
-            assertEquals(Map.of(), deliveryQueue.get("queueByAdapter"));
-            assertEquals(Map.of(), deliveryQueue.get("directByAdapter"));
+        assertEquals(-1, app.getQueueDetail().get("inputQueueSize"));
+        assertEquals(-1, app.getQueueDetail().get("outputQueueSize"));
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
+        assertEquals(true, deliveryDiagnostics.get("available"));
+        assertEquals(0, deliveryDiagnostics.get("queuedItems"));
+        assertEquals(0, deliveryDiagnostics.get("queueCount"));
+        assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
+        assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
+        assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("backpressureRejectedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
+        assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
+        assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
+        assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
+        assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
+        assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
+        assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
+        assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
+        assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
@@ -729,10 +737,10 @@ class MassSdkTest {
         try {
             app.start();
 
-            Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
-            assertEquals(true, deliveryQueue.get("available"));
-            assertEquals(7, deliveryQueue.get("maxQueuedItems"));
-            assertEquals(Map.of(), deliveryQueue.get("queueByAdapter"));
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
+        assertEquals(true, deliveryDiagnostics.get("available"));
+        assertEquals(7, deliveryDiagnostics.get("maxQueuedItems"));
+        assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
         } finally {
             app.stop();
         }
@@ -975,6 +983,67 @@ class MassSdkTest {
     }
 
     @Test
+    void taskAdminCommandsUseSdkCommandSurface() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        TaskCommandService taskCommands = mock(TaskCommandService.class);
+        TaskQueryService taskQueries = mock(TaskQueryService.class);
+        EngineConfig config = mock(EngineConfig.class);
+        Task task = new Task();
+        task.setTid("task-1");
+        task.setTaskName("before");
+        task.setProject("demoApp");
+        task.setUser(UserRef.of("user-1"));
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommands);
+        when(config.getTaskQueryService()).thenReturn(taskQueries);
+        when(taskQueries.getTask("task-1")).thenReturn(task);
+        when(taskCommands.resumeTaskDetailed("task-1")).thenReturn(TaskResumeResult.resumedToReady());
+        when(taskCommands.updateTask(task)).thenReturn(true);
+        when(taskCommands.deleteTask("task-1")).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        SdkTaskResumeResult resumeResult = app.resumeTaskDetailed("task-1");
+        boolean updated = app.updateTaskDefinition("task-1", MassTaskUpdateRequest.builder()
+                .taskName("after")
+                .build());
+        boolean deleted = app.deleteTask("task-1");
+
+        assertTrue(resumeResult.success());
+        assertEquals("READY", resumeResult.status());
+        assertTrue(updated);
+        assertEquals("after", task.getTaskName());
+        assertTrue(deleted);
+        verify(taskCommands).resumeTaskDetailed("task-1");
+        verify(taskCommands).updateTask(task);
+        verify(taskCommands).deleteTask("task-1");
+    }
+
+    @Test
+    void taskMessageFinalListenerUsesSdkCommandEventSurface() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        TaskEventService taskEvents = mock(TaskEventService.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskMessageLogicallyFinalListener listener = mock(TaskMessageLogicallyFinalListener.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskEventService()).thenReturn(taskEvents);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        app.addTaskMessageLogicallyFinalListener(listener);
+
+        verify(taskEvents).addTaskMessageLogicallyFinalListener(listener);
+    }
+
+    @Test
     void replaceDefaultRulesUsesOpenRuntimeCapability() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -1027,7 +1096,50 @@ class MassSdkTest {
 
         TaskManager taskManager = config.getTaskManager();
 
+        assertSame(runtime, config.getTaskWorkRuntime());
         assertSame(runtime, taskManager.getTaskWorkRuntime());
+    }
+
+    @Test
+    void engineConfigRejectsTaskWorkRuntimeMismatchAfterTaskManagerIsConfigured() {
+        EngineConfig config = new EngineConfig();
+        config.getTaskManager();
+
+        assertThrows(IllegalStateException.class,
+                () -> config.setTaskWorkRuntime(new InMemoryTaskWorkRuntime()));
+    }
+
+    @Test
+    void engineConfigMemoizesRuntimeBoundaries() {
+        EngineConfig config = new EngineConfig();
+
+        TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
+        TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
+        TaskRuntimeMaintenancePort runtimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
+        TaskRuntimeRecoveryPort runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
+
+        assertSame(resultIngestFacade, config.getTaskResultIngestFacade());
+        assertSame(assignmentRuntimePort, config.getTaskAssignmentRuntimePort());
+        assertSame(runtimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
+        assertSame(runtimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
+    }
+
+    @Test
+    void engineConfigResetsRuntimeBoundariesWhenTaskManagerChanges() {
+        EngineConfig config = new EngineConfig();
+
+        TaskResultIngestFacade oldResultIngestFacade = config.getTaskResultIngestFacade();
+        TaskAssignmentRuntimePort oldAssignmentRuntimePort = config.getTaskAssignmentRuntimePort();
+        TaskRuntimeMaintenancePort oldRuntimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
+        TaskRuntimeRecoveryPort oldRuntimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
+
+        TaskManager replacement = new TaskManager(config.getScheduler(), new InMemoryTaskWorkRuntime());
+        config.setTaskManager(replacement);
+
+        assertNotSame(oldResultIngestFacade, config.getTaskResultIngestFacade());
+        assertNotSame(oldAssignmentRuntimePort, config.getTaskAssignmentRuntimePort());
+        assertNotSame(oldRuntimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
+        assertNotSame(oldRuntimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
     }
 
     @Test

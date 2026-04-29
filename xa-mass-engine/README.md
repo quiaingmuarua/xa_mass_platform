@@ -31,8 +31,11 @@ Status: current engine owner README.
 - prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
 - runtime listeners, watchdogs, startup recovery wiring, and transport-ingest glue should depend on narrow engine ports such as
   `TaskResultIngestFacade`, `TaskAssignmentRuntimePort`, `TaskRuntimeMaintenancePort`,
-  `TaskRuntimeRecoveryPort`, and `TaskEventListenerRegistrar`
+  `TaskRuntimeRecoveryPort`, `TaskEventListenerRegistrar`, and the public
+  shell/testing listener surface `TaskEventService`
   instead of taking the full `TaskManager` facade by default
+- sdk/server bootstrap should resolve those narrow ports/facades from config-owned
+  assembly rather than instantiating `TaskManager*` adapters ad hoc across modules
 - transport/runtime result ingress should be wired through a dedicated `TaskResultIngestFacade`
   adapter, not by treating `TaskManager` itself as the transport-facing contract
 - assignment-side runtime ports should expose claim/write operations directly; do not leak the full

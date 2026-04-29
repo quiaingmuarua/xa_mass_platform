@@ -121,12 +121,16 @@ public final class InMemoryKeyedBlockingQueueStore<K, V> implements KeyedBlockin
     }
 
     @Override
-    public List<KeyedQueueEntry<V>> poll(K key, int maxItems, long timeout, TimeUnit unit) throws InterruptedException {
-        if (key == null || maxItems <= 0 || !running.get()) {
-            return List.of();
+    public KeyedQueuePollResult<V> poll(K key, int maxItems, long timeout, TimeUnit unit) throws InterruptedException {
+        if (key == null || maxItems <= 0) {
+            return KeyedQueuePollResult.invalid();
+        }
+        if (!running.get()) {
+            return KeyedQueuePollResult.shutdown();
         }
         if (timeout <= 0) {
-            return drain(key, maxItems);
+            List<KeyedQueueEntry<V>> drained = drain(key, maxItems);
+            return drained.isEmpty() ? KeyedQueuePollResult.empty() : KeyedQueuePollResult.delivered(drained);
         }
         long timeoutMillis = Math.max(1L, unit == null ? timeout : unit.toMillis(timeout));
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
@@ -138,12 +142,12 @@ public final class InMemoryKeyedBlockingQueueStore<K, V> implements KeyedBlockin
                 while (queue.items.isEmpty() && running.get()) {
                     long remainingNanos = deadlineNanos - System.nanoTime();
                     if (remainingNanos <= 0) {
-                        return List.of();
+                        return KeyedQueuePollResult.empty();
                     }
                     queue.wait(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
                 }
                 if (queue.items.isEmpty()) {
-                    return List.of();
+                    return running.get() ? KeyedQueuePollResult.empty() : KeyedQueuePollResult.shutdown();
                 }
                 List<KeyedQueueEntry<V>> drained = drainLocked(queue, maxItems);
                 releaseGlobalSlots(drained.size());
@@ -151,7 +155,7 @@ public final class InMemoryKeyedBlockingQueueStore<K, V> implements KeyedBlockin
                 if (!drained.isEmpty()) {
                     invalidateSnapshot();
                 }
-                return List.copyOf(drained);
+                return KeyedQueuePollResult.delivered(drained);
             } finally {
                 queue.waiters--;
                 invalidateSnapshot();

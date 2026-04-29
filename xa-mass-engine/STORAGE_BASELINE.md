@@ -62,9 +62,11 @@ not a product dependency on one schema flavor's quirks.
 `TaskStorage` owns task truth plus the narrow compatibility projection APIs
 still needed by engine convergence and result repair.
 
-Shell-facing bounded reads should go through `TaskQueryService`, which composes
-query semantics over `TaskStorage` and task-state services without expanding the
-runtime mutation facade on `TaskManager`.
+Shell-facing bounded reads should go through `TaskQueryService`, shell/admin
+task mutations should go through `TaskCommandService`, and shell/testing
+in-process listener registration should go through `TaskEventService`. Those
+services keep query/control/event concerns off the broader `TaskManager`
+runtime facade.
 
 Main responsibilities:
 
@@ -243,7 +245,7 @@ Current `InMemoryTaskStorage` behavior that matters architecturally:
 The active managers still default to factory-created memory storage:
 
 ```java
-TaskManager taskManager = new TaskManager(taskScheduler);
+TaskManager taskManager = new TaskManager(taskScheduler, taskWorkRuntime);
 WorkerManager workerManager = new WorkerManager();
 RuleManager<?> ruleManager = new RuleManager<>();
 ```
@@ -260,6 +262,8 @@ Shell/debug query wiring is separate:
 
 ```java
 TaskManager taskManager = new TaskManager(taskScheduler, taskWorkRuntime);
+TaskCommandService taskCommands = new TaskCommandService(taskManager);
+TaskEventService taskEvents = new TaskEventService(taskManager);
 TaskQueryService taskQueries = new TaskQueryService(taskManager);
 ```
 

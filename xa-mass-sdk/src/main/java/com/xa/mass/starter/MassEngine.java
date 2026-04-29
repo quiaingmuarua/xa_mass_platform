@@ -6,11 +6,10 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
-import com.xa.mass.engine.TaskManagerRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
@@ -30,9 +29,9 @@ import java.util.List;
  *
  * <h3>Two-tier event model</h3>
  * <ul>
- *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskManager#events()}
- *       returns a {@link com.xa.mass.engine.TaskEventPublisher}. Its listeners fire
- *       inline on the calling thread and are used by the engine internals
+ *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskEventService}
+ *       exposes the runtime listener surface. Its listeners fire inline on the
+ *       calling thread and are used by the engine internals
  *       (assignment, resource release, etc.).</li>
  *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a runtime
  *       {@link com.xa.mass.base.channel.eventbus.core.EventBusFacade} that bridges selected
@@ -55,6 +54,7 @@ public class MassEngine {
     private TaskRuntimeRecoveryPort runtimeRecoveryPort;
     private TaskRuntimeMaintenancePort runtimeMaintenancePort;
     private TaskEventListenerRegistrar eventListeners;
+    private TaskEventService taskEvents;
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
     private TaskAssignWorker assignWorker;
@@ -83,11 +83,12 @@ public class MassEngine {
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
             taskManager = config.getTaskManager();
-            runtimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(taskManager);
-            runtimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(taskManager);
-            var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+            runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
+            runtimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
+            TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
             taskManager.setTaskMessageLeaseSeconds(config.getTaskMessageLeaseSeconds());
-            eventListeners = taskManager.events();
+            taskEvents = config.getTaskEventService();
+            eventListeners = taskEvents;
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
@@ -98,8 +99,8 @@ public class MassEngine {
                     taskMsgDispatchListener);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskManager.events())
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskManager.events());
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskEvents)
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskEvents);
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis());
             assignWorker.start();
 
@@ -160,6 +161,7 @@ public class MassEngine {
             runtimeRecoveryPort = null;
             runtimeMaintenancePort = null;
             eventListeners = null;
+            taskEvents = null;
             eventBus = null;
             running = false;
             logger.info("MassEngine stopped successfully");

@@ -35,27 +35,27 @@ public class TaskQueryService {
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskManager.getTaskStorage().getTaskMessages(taskId, limit);
+        return taskManager.getTaskMessages(taskId, limit);
     }
 
     public long countTaskMessages(String taskId) {
-        return taskManager.getTaskStorage().countTaskMessages(taskId);
+        return taskManager.countTaskMessages(taskId);
     }
 
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getTaskMessage(taskId, messageId).orElse(null);
+        return taskManager.getTaskMessage(taskId, messageId);
     }
 
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getTaskMessageAttempts(taskId, messageId);
+        return taskManager.getTaskMessageAttempts(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getTaskStorage().getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

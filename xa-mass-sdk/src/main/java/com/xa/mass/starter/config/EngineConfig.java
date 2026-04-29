@@ -1,7 +1,17 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
+import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskManagerRuntimeRecoveryPort;
+import com.xa.mass.engine.TaskResultIngestFacade;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
@@ -25,7 +35,13 @@ public class EngineConfig {
 
     private TaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager;
+    private TaskCommandService taskCommandService;
+    private TaskEventService taskEventService;
     private TaskQueryService taskQueryService;
+    private TaskResultIngestFacade taskResultIngestFacade;
+    private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
+    private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
+    private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
@@ -44,7 +60,13 @@ public class EngineConfig {
         this.workerThreads = source.workerThreads;
         this.scheduler = source.scheduler;
         this.taskManager = source.taskManager;
+        this.taskCommandService = source.taskCommandService;
+        this.taskEventService = source.taskEventService;
         this.taskQueryService = source.taskQueryService;
+        this.taskResultIngestFacade = source.taskResultIngestFacade;
+        this.taskAssignmentRuntimePort = source.taskAssignmentRuntimePort;
+        this.taskRuntimeMaintenancePort = source.taskRuntimeMaintenancePort;
+        this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerManager = source.workerManager;
@@ -104,14 +126,41 @@ public class EngineConfig {
     public void setTaskManager(TaskManager taskManager) {
         if (taskManager == null) {
             this.taskManager = null;
+            this.taskCommandService = null;
+            this.taskEventService = null;
             this.taskQueryService = null;
+            this.taskResultIngestFacade = null;
+            this.taskAssignmentRuntimePort = null;
+            this.taskRuntimeMaintenancePort = null;
+            this.taskRuntimeRecoveryPort = null;
             return;
         }
         if (taskManager.getScheduler() != scheduler) {
             throw new IllegalArgumentException("Configured taskManager must use the same scheduler as EngineConfig");
         }
         this.taskManager = taskManager;
+        this.taskWorkRuntime = taskManager.getTaskWorkRuntime();
+        this.taskCommandService = null;
+        this.taskEventService = null;
         this.taskQueryService = null;
+        this.taskResultIngestFacade = null;
+        this.taskAssignmentRuntimePort = null;
+        this.taskRuntimeMaintenancePort = null;
+        this.taskRuntimeRecoveryPort = null;
+    }
+
+    public TaskCommandService getTaskCommandService() {
+        if (taskCommandService == null) {
+            taskCommandService = new TaskCommandService(getTaskManager());
+        }
+        return taskCommandService;
+    }
+
+    public TaskEventService getTaskEventService() {
+        if (taskEventService == null) {
+            taskEventService = new TaskEventService(getTaskManager());
+        }
+        return taskEventService;
     }
 
     public TaskQueryService getTaskQueryService() {
@@ -121,6 +170,34 @@ public class EngineConfig {
         return taskQueryService;
     }
 
+    public TaskResultIngestFacade getTaskResultIngestFacade() {
+        if (taskResultIngestFacade == null) {
+            taskResultIngestFacade = new TaskManagerResultIngestFacade(getTaskManager());
+        }
+        return taskResultIngestFacade;
+    }
+
+    public TaskAssignmentRuntimePort getTaskAssignmentRuntimePort() {
+        if (taskAssignmentRuntimePort == null) {
+            taskAssignmentRuntimePort = new TaskManagerAssignmentRuntimePort(getTaskManager());
+        }
+        return taskAssignmentRuntimePort;
+    }
+
+    public TaskRuntimeMaintenancePort getTaskRuntimeMaintenancePort() {
+        if (taskRuntimeMaintenancePort == null) {
+            taskRuntimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(getTaskManager());
+        }
+        return taskRuntimeMaintenancePort;
+    }
+
+    public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {
+        if (taskRuntimeRecoveryPort == null) {
+            taskRuntimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(getTaskManager());
+        }
+        return taskRuntimeRecoveryPort;
+    }
+
     public TaskWorkRuntime getTaskWorkRuntime() {
         return taskWorkRuntime;
     }
@@ -128,6 +205,9 @@ public class EngineConfig {
     public void setTaskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
         if (taskWorkRuntime == null) {
             throw new IllegalArgumentException("taskWorkRuntime must not be null");
+        }
+        if (this.taskManager != null && this.taskManager.getTaskWorkRuntime() != taskWorkRuntime) {
+            throw new IllegalStateException("Cannot replace taskWorkRuntime after taskManager has been configured");
         }
         this.taskWorkRuntime = taskWorkRuntime;
     }

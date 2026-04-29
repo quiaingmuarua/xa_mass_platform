@@ -354,11 +354,11 @@ public class TaskManager {
         return taskStorage.getTaskMessage(taskId, messageId).orElse(null);
     }
 
-    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
+    boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return taskStorage.updateTaskMessage(taskId, taskMsg);
     }
 
-    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskStorage.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
@@ -374,7 +374,7 @@ public class TaskManager {
         return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         return taskStorage.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
@@ -484,7 +484,7 @@ public class TaskManager {
      * Returns the in-process runtime event surface for synchronous engine
      * reactions such as assignment submission and resource release.
      */
-    public TaskEventPublisher events() {
+    TaskEventPublisher events() {
         return eventPublisher;
     }
 

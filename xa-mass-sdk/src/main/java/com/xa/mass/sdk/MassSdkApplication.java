@@ -13,8 +13,9 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -182,7 +183,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
-        TaskResumeResult result = requireStartedTaskManager().resumeTaskDetailed(taskId);
+        TaskResumeResult result = requireStartedTaskCommands().resumeTaskDetailed(taskId);
         return new SdkTaskResumeResult(
                 result.isSuccess(),
                 result.getStatus() != null ? result.getStatus().name() : null,
@@ -274,12 +275,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (request.getBatchSize() != null && request.getBatchSize() > 0) {
             task.setBatchSize(request.getBatchSize());
         }
-        return requireStartedTaskManager().updateTask(task);
+        return requireStartedTaskCommands().updateTask(task);
     }
 
     @Override
     public boolean deleteTask(String taskId) {
-        return requireStartedTaskManager().deleteTask(taskId);
+        return requireStartedTaskCommands().deleteTask(taskId);
     }
 
     @Override
@@ -532,7 +533,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Approve",
                 "Approve a task and move it into scheduling.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().approveTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().approveTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -540,7 +541,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Reject",
                 "Reject a task and block it before scheduling.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().rejectTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().rejectTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -548,7 +549,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Block",
                 "Block an active or ready task.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().blockTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().blockTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -556,7 +557,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Pause",
                 "Pause a running or ready task.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().pauseTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().pauseTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -564,7 +565,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Resume",
                 "Resume a paused task.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().resumeTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().resumeTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -572,7 +573,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Cancel",
                 "Cancel a task and close it to terminal.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().cancelTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().cancelTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -580,7 +581,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Terminate",
                 "Terminate a task with an explicit terminal reason.",
                 (request, principal) -> CoreEventResponse.success(
-                                requireStartedTaskManager().terminateTask(
+                                requireStartedTaskCommands().terminateTask(
                                         readRequiredString(request.getPayload(), "taskId"),
                                 TaskTerminalReason.valueOf(readString(request.getPayload(), "reason", TaskTerminalReason.MANUAL_CANCELLED.name()))
                         ),
@@ -591,7 +592,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Append Items",
                 "Append more inputs to an open-intake task.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().appendTaskItems(
+                        requireStartedTaskCommands().appendTaskItems(
                                 readRequiredString(request.getPayload(), "taskId"),
                                 readInputMaps(request.getPayload().get("inputs"))
                         ),
@@ -602,7 +603,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Platform Task Seal",
                 "Seal an open-intake task against further appends.",
                 (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskManager().sealTask(readRequiredString(request.getPayload(), "taskId")),
+                        requireStartedTaskCommands().sealTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
         registerPlatformEvent(
@@ -1530,28 +1531,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
-     * {@link #start()} — the listener is registered on the TaskManager's event
-     * publisher which exists independent of engine lifecycle.
+     * {@link #start()} — the listener is registered on the engine command/event
+     * surface which exists independent of engine lifecycle.
      */
     public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
         Objects.requireNonNull(listener, "listener");
-        MassEngine engine = delegate.getEngine();
-        if (engine == null) {
-            throw new IllegalStateException("Engine is unavailable for this SDK application");
-        }
-        TaskManager taskManager = engine.getConfig().getTaskManager();
-        if (taskManager == null) {
-            throw new IllegalStateException("TaskManager is unavailable; engine may not have started");
-        }
-        taskManager.events().addTaskMessageLogicallyFinalListener(listener);
+        requireStartedTaskEvents().addTaskMessageLogicallyFinalListener(listener);
     }
 
-    private TaskManager requireStartedTaskManager() {
-        TaskManager taskManager = requireStartedEngine().getConfig().getTaskManager();
-        if (taskManager == null) {
-            throw new IllegalStateException("Task manager is unavailable for this SDK application");
+    private TaskCommandService requireStartedTaskCommands() {
+        TaskCommandService taskCommands = requireStartedEngine().getConfig().getTaskCommandService();
+        if (taskCommands == null) {
+            throw new IllegalStateException("Task command service is unavailable for this SDK application");
         }
-        return taskManager;
+        return taskCommands;
     }
 
     private TaskQueryService requireStartedTaskQueries() {
@@ -1560,6 +1553,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Task query service is unavailable for this SDK application");
         }
         return taskQueries;
+    }
+
+    private TaskEventService requireStartedTaskEvents() {
+        TaskEventService taskEvents = requireStartedEngine().getConfig().getTaskEventService();
+        if (taskEvents == null) {
+            throw new IllegalStateException("Task event service is unavailable for this SDK application");
+        }
+        return taskEvents;
     }
 
     private WorkerManager requireStartedWorkerManager() {

@@ -5,6 +5,8 @@ import com.xa.mass.runtime.queue.KeyedBlockingQueueStore;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.runtime.queue.KeyedQueueKeySnapshot;
 import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollStatus;
 import com.xa.mass.runtime.queue.KeyedQueueSnapshot;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
@@ -25,29 +27,40 @@ import java.util.function.LongSupplier;
 public final class InMemoryTransportDeliveryStore implements TransportDeliveryStore {
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
+    public static final int DEFAULT_MAX_ITEMS_PER_ROUTE = 10_000;
 
     private final KeyedBlockingQueueStore<DeliveryQueueKey, TransportDispatchEnvelope> queueStore;
+    private final int maxItemsPerRoute;
     private final AtomicLong localInvalidItems = new AtomicLong();
     private final Map<String, AtomicLong> backpressureRejectedItemsByAdapter = new ConcurrentHashMap<>();
 
     public InMemoryTransportDeliveryStore() {
-        this(DEFAULT_MAX_QUEUED_ITEMS);
+        this(DEFAULT_MAX_QUEUED_ITEMS, DEFAULT_MAX_ITEMS_PER_ROUTE);
     }
 
     public InMemoryTransportDeliveryStore(int maxQueuedItems) {
-        this(maxQueuedItems, System::currentTimeMillis);
+        this(maxQueuedItems, DEFAULT_MAX_ITEMS_PER_ROUTE, System::currentTimeMillis);
     }
 
-    InMemoryTransportDeliveryStore(int maxQueuedItems, LongSupplier currentTimeMillis) {
-        this(new InMemoryKeyedBlockingQueueStore<>(maxQueuedItems, currentTimeMillis));
+    public InMemoryTransportDeliveryStore(int maxQueuedItems, int maxItemsPerRoute) {
+        this(maxQueuedItems, maxItemsPerRoute, System::currentTimeMillis);
     }
 
-    InMemoryTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, TransportDispatchEnvelope> queueStore) {
+    InMemoryTransportDeliveryStore(int maxQueuedItems, int maxItemsPerRoute, LongSupplier currentTimeMillis) {
+        this(new InMemoryKeyedBlockingQueueStore<>(maxQueuedItems, currentTimeMillis), maxItemsPerRoute);
+    }
+
+    InMemoryTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, TransportDispatchEnvelope> queueStore,
+                                   int maxItemsPerRoute) {
         this.queueStore = Objects.requireNonNull(queueStore, "queueStore");
+        if (maxItemsPerRoute <= 0) {
+            throw new IllegalArgumentException("maxItemsPerRoute must be positive");
+        }
+        this.maxItemsPerRoute = maxItemsPerRoute;
     }
 
     @Override
-    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope, int maxItemsPerRoute) {
+    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope) {
         String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(envelope == null ? null : envelope.getAdapterId());
         String normalizedRouteKey = envelope == null ? null : TransportDeliveryAddressing.normalizeRouteKey(envelope.getRouteKey());
         if (envelope == null || normalizedRouteKey == null) {
@@ -67,7 +80,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         KeyedQueueOfferResult result = queueStore.offer(
                 key,
                 new KeyedQueueEntry<>(normalizedEnvelope, normalizedEnvelope.getCreatedAtEpochMillis()),
-                maxItemsPerRoute
+                this.maxItemsPerRoute
         );
         return switch (result.status()) {
             case ENQUEUED -> DispatchOutcome.queued(normalizedAdapterId, normalizedEnvelope);
@@ -82,7 +95,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 yield DispatchOutcome.backpressureRejected(
                         normalizedAdapterId,
                         normalizedEnvelope,
-                        resolveBackpressureReason(maxItemsPerRoute, result.reason())
+                        resolveBackpressureReason(result.reason())
                 );
             }
         };
@@ -101,20 +114,25 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public List<TransportDispatchEnvelope> poll(String adapterId,
-                                                String routeKey,
-                                                int maxItems,
-                                                long timeout,
-                                                TimeUnit unit) throws InterruptedException {
+    public TransportDeliveryPollResult poll(String adapterId,
+                                            String routeKey,
+                                            int maxItems,
+                                            long timeout,
+                                            TimeUnit unit) throws InterruptedException {
         String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
         String normalizedRouteKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
         if (normalizedAdapterId == null || normalizedRouteKey == null || maxItems <= 0) {
-            return List.of();
+            return TransportDeliveryPollResult.invalidRequest();
         }
-        return queueStore.poll(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems, timeout, unit)
-                .stream()
-                .map(KeyedQueueEntry::value)
-                .toList();
+        KeyedQueuePollResult<TransportDispatchEnvelope> result =
+                queueStore.poll(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems, timeout, unit);
+        return switch (result.status()) {
+            case DELIVERED -> TransportDeliveryPollResult.delivered(result.items().stream().map(KeyedQueueEntry::value).toList());
+            case EMPTY -> TransportDeliveryPollResult.empty();
+            case INVALID_REQUEST -> TransportDeliveryPollResult.invalidRequest();
+            case UNAVAILABLE -> TransportDeliveryPollResult.unavailable();
+            case SHUTDOWN -> TransportDeliveryPollResult.shutdown();
+        };
     }
 
     @Override
@@ -132,11 +150,6 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 snapshot.invalidItems() + localInvalidItems.get(),
                 snapshot.unavailableItems(),
                 snapshot.shutdownClearedItems(),
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
                 queueByAdapter(snapshot.queueByKey())
         );
     }
@@ -183,10 +196,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         return Map.copyOf(result);
     }
 
-    private String resolveBackpressureReason(int maxItemsPerRoute, String primitiveReason) {
-        if (maxItemsPerRoute <= 0) {
-            return "delivery queue capacity is exhausted";
-        }
+    private String resolveBackpressureReason(String primitiveReason) {
         return switch (primitiveReason == null ? "" : primitiveReason) {
             case "runtime backlog is full" -> "runtime delivery backlog is full";
             case "queue is full", "queue capacity is exhausted" -> "delivery queue is full";

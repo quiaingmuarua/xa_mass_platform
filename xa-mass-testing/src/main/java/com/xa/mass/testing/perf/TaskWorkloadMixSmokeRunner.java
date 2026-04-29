@@ -11,6 +11,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -78,6 +79,7 @@ public final class TaskWorkloadMixSmokeRunner {
                     new NoOpTaskScheduler(),
                     new InMemoryTaskStorage(),
                     new InMemoryTaskWorkRuntime());
+            TaskEventService taskEvents = new TaskEventService(taskManager);
             WorkerManager workerManager = new WorkerManager();
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
@@ -112,7 +114,7 @@ public final class TaskWorkloadMixSmokeRunner {
                             workerManager,
                             msgAssignListener,
                             assignmentRuntimePort,
-                            taskManager.events()
+                            taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
@@ -120,11 +122,11 @@ public final class TaskWorkloadMixSmokeRunner {
 
             try {
                 registerWorkers(workerManager, config.workerCount());
-                taskManager.events().addTaskReadyListener(assignWorker::submit);
-                taskManager.events().addTaskDispatchListener(assignWorker::submit);
-                taskManager.events().addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
-                taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
-                taskManager.events().addTaskTerminalListener(task -> {
+                taskEvents.addTaskReadyListener(assignWorker::submit);
+                taskEvents.addTaskDispatchListener(assignWorker::submit);
+                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
+                taskEvents.addTaskTerminalListener(task -> {
                     if (TaskWorkloadClass.BULK == task.getWorkloadClass()) {
                         timing.onTerminal(task);
                         bulkTerminalLatch.countDown();

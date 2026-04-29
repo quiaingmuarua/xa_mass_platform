@@ -32,12 +32,16 @@ class RuntimeTaskResultIngestChannelTest {
     private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
     private TaskQueryService taskQueries;
+    private InMemoryTaskStorage taskStorage;
+    private InMemoryTaskWorkRuntime taskWorkRuntime;
     private RuntimeTaskResultIngestChannel channel;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
-        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+        taskStorage = new InMemoryTaskStorage();
+        taskWorkRuntime = new InMemoryTaskWorkRuntime();
+        taskManager = new TaskManager(scheduler, taskStorage, taskWorkRuntime);
         taskQueries = new TaskQueryService(taskManager);
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
@@ -65,7 +69,7 @@ class RuntimeTaskResultIngestChannelTest {
         Task task = createRunningTask("task-failure");
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
         taskMsg.setMaxRetryCount(0);
-        taskManager.updateTaskMessage(task.getTid(), taskMsg);
+        taskStorage.updateTaskMessage(task.getTid(), taskMsg);
 
         boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
@@ -177,7 +181,7 @@ class RuntimeTaskResultIngestChannelTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
-        taskManager.getTaskWorkRuntime().claimReady(
+        taskWorkRuntime.claimReady(
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
                 1,
@@ -185,7 +189,7 @@ class RuntimeTaskResultIngestChannelTest {
         );
         taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
-        taskManager.updateTaskMessage(task.getTid(), taskMsg);
+        taskStorage.updateTaskMessage(task.getTid(), taskMsg);
 
         TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + taskMsg.getMessageId() + "-1",
                 task.getTid(), taskMsg.getMessageId(), 1);
@@ -194,7 +198,7 @@ class RuntimeTaskResultIngestChannelTest {
         attempt.setBatchId("batch-0");
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
         assertTrue(attempt.markDispatched());
-        taskManager.addTaskMessageAttempt(task.getTid(), taskMsg.getMessageId(), attempt);
+        taskStorage.addTaskMessageAttempt(task.getTid(), taskMsg.getMessageId(), attempt);
         return task;
     }
 

@@ -269,7 +269,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected boolean updateStoredTask(Task task) {
-        return requireDelegate().getEngine().getConfig().getTaskManager().updateTask(task);
+        return requireDelegate().getEngine().getConfig().getTaskCommandService().updateTask(task);
     }
 
     protected <T extends SampleWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,

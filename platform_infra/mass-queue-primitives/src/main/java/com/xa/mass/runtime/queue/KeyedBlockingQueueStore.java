@@ -9,7 +9,7 @@ public interface KeyedBlockingQueueStore<K, V> {
 
     List<KeyedQueueEntry<V>> drain(K key, int maxItems);
 
-    List<KeyedQueueEntry<V>> poll(K key, int maxItems, long timeout, TimeUnit unit) throws InterruptedException;
+    KeyedQueuePollResult<V> poll(K key, int maxItems, long timeout, TimeUnit unit) throws InterruptedException;
 
     KeyedQueueSnapshot<K> snapshot();
 

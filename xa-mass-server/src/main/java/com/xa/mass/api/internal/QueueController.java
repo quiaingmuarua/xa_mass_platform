@@ -29,13 +29,13 @@ public class QueueController {
     public ApiResponse<Map<String, Object>> getQueueStatus() {
         log.info("[QueueController] /api/queue/status requested");
         Map<String, Object> detail = transportOperations.getQueueDetail();
-        Object inputSize = detail.getOrDefault("inputQueue", -1);
-        Object outputSize = detail.getOrDefault("outputQueue", -1);
+        Object inputSize = detail.getOrDefault("inputQueueSize", -1);
+        Object outputSize = detail.getOrDefault("outputQueueSize", -1);
         Map<String, Object> map = Map.of(
-                "inputQueue", inputSize,
-                "outputQueue", outputSize
+                "inputQueueSize", inputSize,
+                "outputQueueSize", outputSize
         );
-        log.info("[QueueController] inputQueue={}, outputQueue={}", inputSize, outputSize);
+        log.info("[QueueController] inputQueueSize={}, outputQueueSize={}", inputSize, outputSize);
         return ApiResponse.success(map);
     }
 

@@ -5,10 +5,8 @@ import java.util.Map;
 /**
  * Runtime transport delivery diagnostics snapshot.
  *
- * <p>Historical name note: this type still exposes both queue-path/store-path
- * metrics and direct-send metrics because SDK/server diagnostics already
- * consume one combined shape. Queue metrics and direct-send metrics must remain
- * semantically separate even though they share this wrapper.</p>
+ * Queue/store-path-only delivery diagnostics. Direct-send counters are owned by
+ * {@link TransportDeliveryService} and assembled above the store boundary.
  */
 public final class TransportDeliveryStoreStats {
 
@@ -23,11 +21,6 @@ public final class TransportDeliveryStoreStats {
     private final long invalidItems;
     private final long unavailableItems;
     private final long shutdownClearedItems;
-    private final long directSentItems;
-    private final long directOfflineItems;
-    private final long directFailedItems;
-    private final long directInvalidItems;
-    private final long directUnavailableItems;
     private final Map<String, TransportDeliveryQueueStats> queueByAdapter;
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -59,28 +52,6 @@ public final class TransportDeliveryStoreStats {
                                        long shutdownClearedItems) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
                 drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
-                0L, 0L, 0L, 0L, 0L, Map.of());
-    }
-
-    public TransportDeliveryStoreStats(int queuedItems,
-                                       int queueCount,
-                                       int waitingPollers,
-                                       int maxQueuedItems,
-                                       long oldestQueuedAgeMillis,
-                                       long enqueuedItems,
-                                       long drainedItems,
-                                       long backpressureRejectedItems,
-                                       long invalidItems,
-                                       long unavailableItems,
-                                       long shutdownClearedItems,
-                                       long directSentItems,
-                                       long directOfflineItems,
-                                       long directFailedItems,
-                                       long directInvalidItems,
-                                       long directUnavailableItems) {
-        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
-                drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
-                directSentItems, directOfflineItems, directFailedItems, directInvalidItems, directUnavailableItems,
                 Map.of());
     }
 
@@ -95,11 +66,6 @@ public final class TransportDeliveryStoreStats {
                                        long invalidItems,
                                        long unavailableItems,
                                        long shutdownClearedItems,
-                                       long directSentItems,
-                                       long directOfflineItems,
-                                       long directFailedItems,
-                                       long directInvalidItems,
-                                       long directUnavailableItems,
                                        Map<String, TransportDeliveryQueueStats> queueByAdapter) {
         this.queuedItems = Math.max(0, queuedItems);
         this.queueCount = Math.max(0, queueCount);
@@ -112,11 +78,6 @@ public final class TransportDeliveryStoreStats {
         this.invalidItems = Math.max(0L, invalidItems);
         this.unavailableItems = Math.max(0L, unavailableItems);
         this.shutdownClearedItems = Math.max(0L, shutdownClearedItems);
-        this.directSentItems = Math.max(0L, directSentItems);
-        this.directOfflineItems = Math.max(0L, directOfflineItems);
-        this.directFailedItems = Math.max(0L, directFailedItems);
-        this.directInvalidItems = Math.max(0L, directInvalidItems);
-        this.directUnavailableItems = Math.max(0L, directUnavailableItems);
         this.queueByAdapter = queueByAdapter == null || queueByAdapter.isEmpty()
                 ? Map.of()
                 : Map.copyOf(queueByAdapter);
@@ -166,30 +127,8 @@ public final class TransportDeliveryStoreStats {
         return shutdownClearedItems;
     }
 
-    public long getDirectSentItems() {
-        return directSentItems;
-    }
-
-    public long getDirectOfflineItems() {
-        return directOfflineItems;
-    }
-
-    public long getDirectFailedItems() {
-        return directFailedItems;
-    }
-
-    public long getDirectInvalidItems() {
-        return directInvalidItems;
-    }
-
-    public long getDirectUnavailableItems() {
-        return directUnavailableItems;
-    }
-
     /**
      * Queue-path only per-adapter breakdown keyed by canonical {@code adapterId}.
-     * Direct-send counters belong in the dedicated direct-delivery diagnostics,
-     * not in this queue-focused map.
      */
     public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;

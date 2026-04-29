@@ -3,7 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 
 import java.util.LinkedHashMap;
@@ -22,7 +22,7 @@ final class TransportQueueDiagnosticsMapper {
                                              int outputSize,
                                              boolean transporterAvailable,
                                              boolean deliveryAvailable,
-                                             TransportDeliveryStoreStats stats,
+                                             TransportDeliveryServiceStats stats,
                                              Map<String, TransportDirectDeliveryStats> directByAdapter,
                                              RuntimeTaskExecutor transportExecutor,
                                              RuntimeTaskExecutor eventExecutor) {
@@ -42,13 +42,11 @@ final class TransportQueueDiagnosticsMapper {
                                                       int outputSize,
                                                       boolean transporterAvailable,
                                                       boolean deliveryAvailable,
-                                                      TransportDeliveryStoreStats stats,
+                                                      TransportDeliveryServiceStats stats,
                                                       Map<String, TransportDirectDeliveryStats> directByAdapter,
                                                       RuntimeTaskExecutor transportExecutor,
                                                       RuntimeTaskExecutor eventExecutor) {
         return new TransportQueueDetailView(
-                inputSize,
-                outputSize,
                 inputSize,
                 outputSize,
                 transporterAvailable,
@@ -58,7 +56,7 @@ final class TransportQueueDiagnosticsMapper {
     }
 
     private static DeliveryQueueDiagnosticsView deliveryQueueDetailView(boolean available,
-                                                                        TransportDeliveryStoreStats stats,
+                                                                        TransportDeliveryServiceStats stats,
                                                                         Map<String, TransportDirectDeliveryStats> directByAdapter) {
         return new DeliveryQueueDiagnosticsView(
                 available,

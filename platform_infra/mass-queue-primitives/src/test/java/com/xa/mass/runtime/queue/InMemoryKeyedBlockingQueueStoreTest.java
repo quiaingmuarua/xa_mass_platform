@@ -40,7 +40,7 @@ class InMemoryKeyedBlockingQueueStoreTest {
         InMemoryKeyedBlockingQueueStore<String, String> store =
                 new InMemoryKeyedBlockingQueueStore<>(10, new SequenceClock());
 
-        CompletableFuture<List<KeyedQueueEntry<String>>> future = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<KeyedQueuePollResult<String>> future = CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("k1", 10, 1000, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
@@ -51,7 +51,9 @@ class InMemoryKeyedBlockingQueueStoreTest {
         Thread.sleep(50L);
         store.offer("k1", new KeyedQueueEntry<>("a", 1L), 10);
 
-        assertEquals(List.of("a"), future.get(2, TimeUnit.SECONDS).stream().map(KeyedQueueEntry::value).toList());
+        KeyedQueuePollResult<String> result = future.get(2, TimeUnit.SECONDS);
+        assertEquals(KeyedQueuePollStatus.DELIVERED, result.status());
+        assertEquals(List.of("a"), result.items().stream().map(KeyedQueueEntry::value).toList());
     }
 
     @Test
@@ -59,7 +61,9 @@ class InMemoryKeyedBlockingQueueStoreTest {
         InMemoryKeyedBlockingQueueStore<String, String> store =
                 new InMemoryKeyedBlockingQueueStore<>(10, new SequenceClock());
 
-        assertTrue(store.poll("k1", 10, 50, TimeUnit.MILLISECONDS).isEmpty());
+        KeyedQueuePollResult<String> result = store.poll("k1", 10, 50, TimeUnit.MILLISECONDS);
+        assertEquals(KeyedQueuePollStatus.EMPTY, result.status());
+        assertTrue(result.items().isEmpty());
     }
 
     @Test

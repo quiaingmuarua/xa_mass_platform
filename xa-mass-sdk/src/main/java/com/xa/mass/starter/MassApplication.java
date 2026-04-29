@@ -6,7 +6,6 @@ import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -29,7 +28,7 @@ import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -205,9 +204,8 @@ public class MassApplication {
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
-            if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                TaskResultIngestFacade taskResultIngestFacade =
-                        new TaskManagerResultIngestFacade(engineConfig.getTaskManager());
+            if (engineConfig.isEnabled()) {
+                TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(taskResultIngestFacade);
                 logger.info("Task result ingest channel initialized");
             }
@@ -226,7 +224,7 @@ public class MassApplication {
                 registerTransportContribution(contribution, adapterBindings);
             }
 
-            if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
+            if (engineConfig.isEnabled()) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getWorkerManager(),
@@ -434,7 +432,7 @@ public class MassApplication {
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
         TransportDeliveryService deliveryService = transportDeliveryService;
-        TransportDeliveryStoreStats stats = deliveryService != null ? deliveryService.stats() : null;
+        TransportDeliveryServiceStats stats = deliveryService != null ? deliveryService.stats() : null;
         Map<String, TransportDirectDeliveryStats> directByAdapter =
                 deliveryService != null ? deliveryService.directStatsByAdapter() : Map.of();
         return TransportQueueDiagnosticsMapper.toQueueDetail(

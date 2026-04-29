@@ -46,7 +46,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueue(envelopes, MAX_INBOX_SIZE);
+        List<DispatchOutcome> outcomes = deliveryService.enqueue(envelopes);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: routeKey={}, deliveryId={}, correlationKey={}, status={}, reason={}",
