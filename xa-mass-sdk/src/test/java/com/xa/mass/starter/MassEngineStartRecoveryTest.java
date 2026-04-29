@@ -7,6 +7,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -31,6 +32,7 @@ class MassEngineStartRecoveryTest {
     void startRecoversRunningTaskWithRuntimeReadyWork() throws Exception {
         EngineConfig config = new EngineConfig();
         TaskManager taskManager = config.getTaskManager();
+        TaskQueryService taskQueries = config.getTaskQueryService();
         WorkerManager workerManager = config.getWorkerManager();
 
         Worker worker = new Worker();
@@ -88,9 +90,9 @@ class MassEngineStartRecoveryTest {
             assertEquals(task.getTid(), dispatchBindings.get(0).taskMsg().getTaskId());
             assertEquals("worker-1", dispatchBindings.get(0).attempt().getWorkerId());
 
-            TaskMsg message = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+            TaskMsg message = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
             assertEquals(TaskMsgStatus.ASSIGNED, message.getStatus());
-            assertNotNull(taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
+            assertNotNull(taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
         } finally {
             engine.stop();
         }

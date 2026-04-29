@@ -1,0 +1,89 @@
+package com.xa.mass.starter;
+
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
+import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class TransportQueueDiagnosticsMapperTest {
+
+    @Test
+    void mapsCombinedQueueAndDirectDiagnosticsIntoStableControlPlaneShape() {
+        TransportDeliveryStoreStats stats = new TransportDeliveryStoreStats(
+                4, 2, 1, 100_000,
+                25L, 10L, 6L, 3L, 1L, 2L, 0L,
+                7L, 1L, 0L, 0L, 0L,
+                Map.of("polling", new TransportDeliveryQueueStats(4, 2, 1, 25L, 3L))
+        );
+        Map<String, Object> detail = TransportQueueDiagnosticsMapper.toQueueDetail(
+                -1,
+                -1,
+                false,
+                true,
+                stats,
+                Map.of("websocket", new TransportDirectDeliveryStats(7L, 1L, 0L, 0L, 0L)),
+                new FixedStatsExecutor(new RuntimeTaskExecutorStatistics(8L, 7L, 1L, 1, 1, 10_000)),
+                null
+        );
+
+        assertEquals(-1, detail.get("inputQueue"));
+        assertEquals(-1, detail.get("inputQueueSize"));
+        assertEquals(-1, detail.get("outputQueue"));
+        assertEquals(-1, detail.get("outputQueueSize"));
+        assertEquals(false, detail.get("transporterAvailable"));
+
+        Map<?, ?> deliveryQueue = (Map<?, ?>) detail.get("deliveryQueue");
+        assertEquals(true, deliveryQueue.get("available"));
+        assertEquals(4, deliveryQueue.get("queuedItems"));
+        assertEquals(3L, ((Map<?, ?>) ((Map<?, ?>) deliveryQueue.get("queueByAdapter")).get("polling"))
+                .get("backpressureRejectedItems"));
+        assertEquals(7L, ((Map<?, ?>) ((Map<?, ?>) deliveryQueue.get("directByAdapter")).get("websocket"))
+                .get("sentItems"));
+
+        Map<?, ?> runtimeExecutors = (Map<?, ?>) detail.get("runtimeExecutors");
+        assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
+        assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
+        assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
+    }
+
+    private static final class FixedStatsExecutor implements RuntimeTaskExecutor {
+        private final RuntimeTaskExecutorStatistics statistics;
+
+        private FixedStatsExecutor(RuntimeTaskExecutorStatistics statistics) {
+            this.statistics = statistics;
+        }
+
+        @Override
+        public Future<?> submit(Runnable task) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> Future<T> submit(Callable<T> task) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
+
+        @Override
+        public RuntimeTaskExecutorStatistics getStatistics() {
+            return statistics;
+        }
+    }
+}

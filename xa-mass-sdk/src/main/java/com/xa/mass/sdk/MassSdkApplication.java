@@ -154,15 +154,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public Task getTask(String taskId) {
-        return requireStartedTaskManager().getTask(taskId);
+        return requireStartedTaskQueries().getTask(taskId);
     }
 
     public List<Task> getAllTasks() {
-        return requireStartedTaskManager().getAllTasks();
+        return requireStartedTaskQueries().getAllTasks();
     }
 
     public List<Task> getTasksByStatus(TaskStatus status) {
-        return requireStartedTaskManager().getTasksByStatus(status);
+        return requireStartedTaskQueries().getTasksByStatus(status);
     }
 
     public boolean approveTask(String taskId) {

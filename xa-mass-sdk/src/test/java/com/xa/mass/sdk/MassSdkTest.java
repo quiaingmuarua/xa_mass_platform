@@ -16,6 +16,7 @@ import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -952,7 +953,7 @@ class MassSdkTest {
     void taskMessageAttemptQueriesUseSdkSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
-        TaskManager taskManager = mock(TaskManager.class);
+        TaskQueryService taskQueries = mock(TaskQueryService.class);
         EngineConfig config = mock(EngineConfig.class);
         TaskMsg message = new TaskMsg();
         TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
@@ -961,10 +962,10 @@ class MassSdkTest {
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
-        when(config.getTaskManager()).thenReturn(taskManager);
-        when(taskManager.getTaskMessage("task-1", "msg-1")).thenReturn(message);
-        when(taskManager.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
-        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
+        when(config.getTaskQueryService()).thenReturn(taskQueries);
+        when(taskQueries.getTaskMessage("task-1", "msg-1")).thenReturn(message);
+        when(taskQueries.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
+        when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 

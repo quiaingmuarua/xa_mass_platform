@@ -366,7 +366,7 @@ public class TaskManager {
         return taskStorage.getTaskMessageAttempts(taskId, messageId);
     }
 
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
         return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 

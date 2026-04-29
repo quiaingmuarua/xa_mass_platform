@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
@@ -30,24 +31,26 @@ class RuntimeTaskResultIngestChannelTest {
 
     private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
+    private TaskQueryService taskQueries;
     private RuntimeTaskResultIngestChannel channel;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskManager = new TaskManager(scheduler, new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+        taskQueries = new TaskQueryService(taskManager);
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
 
     @Test
     void successResponseUpdatesStoredTaskMessage() {
         Task task = createRunningTask("task-success");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
@@ -60,14 +63,14 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleTaskMessageProjection() {
         Task task = createRunningTask("task-failure");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
         boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.INIT, updated.getStatus());
         assertEquals(1, updated.getRetryCount());
         assertNull(updated.getErrorMessage());
@@ -83,14 +86,14 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void duplicateResponseKeepsFirstFinalResultAndStillReturnsHandled() {
         Task task = createRunningTask("task-duplicate");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean firstHandled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
         boolean secondHandled = channel.ingest(report(task, taskMsg, "FAILED", "boom", null));
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
         assertEquals(1, scheduler.completedTaskMsgCount);
@@ -100,7 +103,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void transportNeutralResultReportCanBeIngestedWithoutWebSocketMessageObject() {
         Task task = createRunningTask("task-transport-neutral");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(new TaskResultReport(
                 task.getTid(),
@@ -112,7 +115,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
@@ -121,7 +124,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void resultEnvelopeDelegatesToTaskResultLifecycleWithoutChangingSemantics() {
         Task task = createRunningTask("task-envelope");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
                 "polling",
@@ -131,7 +134,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-envelope", updated.getOutput().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
@@ -140,7 +143,7 @@ class RuntimeTaskResultIngestChannelTest {
     @Test
     void mismatchedEnvelopeAttemptIdentityStillDelegatesDuringLogOnlyStage() {
         Task task = createRunningTask("task-envelope-attempt-mismatch");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
@@ -152,7 +155,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
     }
@@ -173,7 +176,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
         taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
