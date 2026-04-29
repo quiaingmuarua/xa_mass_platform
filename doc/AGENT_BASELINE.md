@@ -63,6 +63,9 @@ Boundary rules:
   - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and backpressure truth
   - `TaskMsg` remains the bounded logical compatibility projection
   - `TaskMsgAttempt` remains the auditable attempt history
+  - `TaskManager` remains the engine-internal orchestration facade; cross-module
+    callers should prefer `TaskCommandService`, `TaskQueryService`,
+    `TaskResultIngestFacade`, `TaskEventService`, and runtime ports
 - core acceptance modules:
   - `xa-mass-testing` for `perf`
   - `xa-mass-engine` for `concurrency`

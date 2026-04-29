@@ -341,6 +341,7 @@ Response notes:
 - `itemsTotal` reports the total task-message count and `itemsTruncated` reports
   whether the bounded snapshot omitted items
 - returns `stateValidation`
+- explicit compatibility/projection audit is available separately at `/status/api/tasks/{taskId}/projection-audit`
 - `task.project` is serialized as the canonical project code
 - `task.user` is serialized as the current business-user binding object
 - task detail returns caller-visible `sharedConfig` only; framework-reserved `_massSecurity` is stripped from the HTTP read model
@@ -384,6 +385,39 @@ Example response shape:
       "valid": true,
       "needsResolution": false,
       "violations": []
+    }
+  }
+}
+```
+
+### 3.3.1 Projection Audit (Diagnostic)
+
+- Method: `GET`
+- Path: `/status/api/tasks/{taskId}/projection-audit`
+- Status: `Implemented`
+
+Response notes:
+
+- returns `taskId`
+- returns `projectionAudit`
+- this is an explicit diagnostic-only compatibility/projection audit
+- unlike `stateValidation`, this path may inspect bounded `TaskMsg` / `TaskMsgAttempt` projection state
+- SDK credential callers may use this route under the same ownership-based task-view gate as task detail
+
+Example response shape:
+
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "taskId": "task-uuid",
+    "projectionAudit": {
+      "valid": false,
+      "scope": "PROJECTION_AUDIT",
+      "violations": [
+        "ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE"
+      ]
     }
   }
 }

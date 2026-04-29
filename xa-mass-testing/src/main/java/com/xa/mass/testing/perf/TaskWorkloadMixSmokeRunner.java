@@ -11,8 +11,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -83,6 +85,7 @@ public final class TaskWorkloadMixSmokeRunner {
                     new InMemoryTaskWorkRuntime());
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
+            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
@@ -97,7 +100,7 @@ public final class TaskWorkloadMixSmokeRunner {
             TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
                 timing.onDispatch(task, dispatchBindings.size());
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    callbackExecutor.submit(() -> handleBinding(taskManager, timing, task, binding.taskMsg()));
+                    callbackExecutor.submit(() -> handleBinding(taskResultIngestFacade, timing, task, binding.taskMsg()));
                 }
             };
 
@@ -180,7 +183,7 @@ public final class TaskWorkloadMixSmokeRunner {
             }
         }
 
-        private void handleBinding(TaskManager taskManager,
+        private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
                                    WorkloadTiming timing,
                                    Task task,
                                    TaskMsg taskMsg) {
@@ -192,7 +195,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
                 }
-                boolean accepted = taskManager.handleTaskMessageResult(
+                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
                         task.getTid(),
                         taskMsg.getMessageId(),
                         true,

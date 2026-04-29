@@ -44,5 +44,10 @@ public interface TaskQueryOperations {
 
     /** Runtime-stats-driven task convergence probe; does not scan full TaskMsg snapshots. */
     Object resolveTaskState(String taskId);
-}
 
+    /**
+     * Explicit compatibility-projection audit. This is diagnostic-only and may
+     * require a bounded TaskMsg / TaskMsgAttempt snapshot.
+     */
+    Object auditTaskProjectionState(String taskId);
+}

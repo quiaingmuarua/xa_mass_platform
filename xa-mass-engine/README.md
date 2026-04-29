@@ -47,6 +47,9 @@ Keep these facts fixed unless the owning global baselines change:
   matching on the hot path
 - `TaskManager` is the engine orchestration entry, not the place to keep raw
   lock bookkeeping or direct runtime-bridge mechanics
+- `TaskManager` remains the engine-internal orchestration facade and
+  composition root; cross-module callers should not treat it as the default
+  engine API
 - `TaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
   reconciliation
 - `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
@@ -62,6 +65,8 @@ Repo-level mainline surfaces:
 
 - shell/admin mutation flows use `TaskCommandService`
 - bounded inspection flows use `TaskQueryService`
+- explicit projection audit stays on `TaskQueryService` as a diagnostic-only
+  path
 - transport/runtime result ingress uses `TaskResultIngestFacade`
 - listeners, watchdogs, and startup recovery should depend on narrow ports, not
   on `TaskManager` plus reach-through getters

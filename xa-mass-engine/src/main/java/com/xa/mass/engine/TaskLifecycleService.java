@@ -423,16 +423,17 @@ class TaskLifecycleService {
         TaskMsgAttempt activeAttempt = null;
         boolean attemptClosed = false;
         if (activeLease != null) {
-            activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(lifecycleRuntime, msg, activeLease);
-            if (activeAttempt != null
-                    && !RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(
-                    lifecycleRuntime,
-                    task.getTid(),
-                    msg,
-                    activeAttempt,
-                    activeLease,
-                    "CANCEL_PENDING_MESSAGES",
-                    "runtime active lease synchronized compatibility projection before terminal cleanup")) {
+            RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
+                    RuntimeLeaseProjectionSupport.recoverAndSynchronizeActiveAttempt(
+                            lifecycleRuntime,
+                            task.getTid(),
+                            msg,
+                            activeLease,
+                            "CANCEL_PENDING_MESSAGES",
+                            "runtime active lease synchronized compatibility projection before terminal cleanup"
+                    );
+            activeAttempt = leaseSync.activeAttempt();
+            if (activeAttempt != null && !leaseSync.synchronizedProjection()) {
                 return;
             }
             status = msg.getStatus();
@@ -529,4 +530,3 @@ class TaskLifecycleService {
         return activeLeaseByMessageId;
     }
 }
-

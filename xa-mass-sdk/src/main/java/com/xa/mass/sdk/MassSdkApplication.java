@@ -259,6 +259,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
+    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return requireStartedTaskQueries().auditTaskProjectionState(taskId);
+    }
+
+    @Override
     public boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request) {
         Objects.requireNonNull(request, "request");
         Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));

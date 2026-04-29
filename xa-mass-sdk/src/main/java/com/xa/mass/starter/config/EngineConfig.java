@@ -33,6 +33,10 @@ import java.util.Map;
 
 /**
  * Runtime engine configuration.
+ *
+ * <p>`TaskManager` injection is kept as an assembly seam. Downstream runtime
+ * code should prefer the derived command/query/facade/port surfaces exposed by
+ * this config rather than carrying the raw manager farther.
  */
 public class EngineConfig {
 

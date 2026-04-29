@@ -7,6 +7,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -34,6 +36,7 @@ class RuntimeTaskResultIngestChannelTest {
     private TaskManager taskManager;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
+    private TaskAssignmentRuntimePort assignmentRuntimePort;
     private InMemoryTaskStorage taskStorage;
     private InMemoryTaskWorkRuntime taskWorkRuntime;
     private RuntimeTaskResultIngestChannel channel;
@@ -46,6 +49,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager = new TaskManager(scheduler, taskStorage, taskWorkRuntime);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
+        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
 
@@ -188,7 +192,7 @@ class RuntimeTaskResultIngestChannelTest {
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
                 1,
-                taskManager.getTaskMessageLeaseSeconds()
+                assignmentRuntimePort.getTaskMessageLeaseSeconds()
         );
         taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
@@ -269,5 +273,4 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
-
 

@@ -271,6 +271,30 @@ public class TaskApiController {
         }
     }
 
+    @GetMapping("/{taskId}/projection-audit")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskProjectionAudit(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        try {
+            Task task = taskQueries.getTask(taskId);
+            if (task == null) {
+                return notFound("Task not found: " + taskId);
+            }
+            resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
+            return ok(Map.of(
+                    "taskId", taskId,
+                    "projectionAudit", taskQueries.auditTaskProjectionState(taskId)
+            ));
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest("Task projection audit failed: " + e.getMessage());
+        }
+    }
+
     @PutMapping("/{taskId}/status")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTaskStatus(@PathVariable String taskId,
                                                                              @RequestParam TaskStatus status) {

@@ -10,8 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
@@ -91,6 +93,7 @@ public final class TaskFlowLoadModelRunner {
             TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
+            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             CallbackMetrics callbackMetrics = new CallbackMetrics();
@@ -130,7 +133,7 @@ public final class TaskFlowLoadModelRunner {
                                 callbackMetrics.recordSyntheticRetry();
                             }
                             long startNanos = System.nanoTime();
-                            boolean accepted = taskManager.handleTaskMessageResult(
+                            boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
                                     taskId,
                                     messageId,
                                     !failFirstAttempt,
