@@ -16,8 +16,8 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -529,3 +529,4 @@ class TaskLifecycleService {
         return activeLeaseByMessageId;
     }
 }
+

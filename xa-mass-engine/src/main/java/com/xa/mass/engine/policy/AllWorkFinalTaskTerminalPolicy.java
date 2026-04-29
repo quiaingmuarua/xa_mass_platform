@@ -5,7 +5,7 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 /**
  * Mainline policy: a task reaches TERMINAL only when all engine work items
@@ -41,3 +41,4 @@ public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         return TaskTerminalReason.MIXED_MESSAGE_RESULTS;
     }
 }
+

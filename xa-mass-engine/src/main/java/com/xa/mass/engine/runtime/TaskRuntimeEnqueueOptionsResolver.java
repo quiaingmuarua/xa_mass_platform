@@ -1,7 +1,7 @@
 package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.work.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
 
 /**
  * Resolves workload-aware ready-backlog limits for runtime enqueue.
@@ -44,3 +44,4 @@ public class TaskRuntimeEnqueueOptionsResolver {
         return value <= 0 ? WorkEnqueueOptions.UNLIMITED : value;
     }
 }
+

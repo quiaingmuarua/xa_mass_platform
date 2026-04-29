@@ -11,9 +11,9 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.ClaimedTaskWork;
-import com.xa.mass.engine.work.TaskWorkClaimOptions;
-import com.xa.mass.engine.work.WorkerClaimTarget;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -366,3 +366,4 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         return !changed || workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
     }
 }
+

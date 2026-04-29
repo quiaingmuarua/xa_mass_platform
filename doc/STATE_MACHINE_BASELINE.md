@@ -27,7 +27,7 @@ Use with:
 5. `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
 7. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-8. `TaskWorkRuntime` is the current engine hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMsg` remains the compatibility read projection for logical work-item status and payload. `TaskMsgAttempt` remains the auditable execution history for concrete dispatch attempts.
+8. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMsg` remains the compatibility read projection for logical work-item status and payload. `TaskMsgAttempt` remains the auditable execution history for concrete dispatch attempts.
 9. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 10. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted `TaskMsg.maxRetryCount` must not redefine retry scheduling or finalization.
 

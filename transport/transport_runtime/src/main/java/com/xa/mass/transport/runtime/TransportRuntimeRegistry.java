@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -157,3 +157,4 @@ public final class TransportRuntimeRegistry {
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 }
+

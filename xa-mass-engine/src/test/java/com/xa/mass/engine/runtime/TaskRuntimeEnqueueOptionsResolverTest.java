@@ -2,7 +2,7 @@ package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.work.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,3 +39,4 @@ class TaskRuntimeEnqueueOptionsResolverTest {
         assertEquals(4_096, options.maxReadyItemsPerTask());
     }
 }
+

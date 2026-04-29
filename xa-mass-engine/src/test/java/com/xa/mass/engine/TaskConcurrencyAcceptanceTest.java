@@ -11,20 +11,20 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.ClaimedTaskWork;
-import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
-import com.xa.mass.engine.work.ResultApplyOutcome;
-import com.xa.mass.engine.work.TaskWorkClaimOptions;
-import com.xa.mass.engine.work.TaskWorkEnvelope;
-import com.xa.mass.engine.work.TaskWorkResult;
-import com.xa.mass.engine.work.TaskWorkRuntime;
-import com.xa.mass.engine.work.TaskWorkRuntimeStats;
-import com.xa.mass.engine.work.TaskWorkStats;
-import com.xa.mass.engine.work.WorkEnqueueOptions;
-import com.xa.mass.engine.work.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.engine.work.WorkerClaimTarget;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -781,3 +781,5 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 }
+
+

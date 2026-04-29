@@ -26,6 +26,8 @@ Status: current engine owner README.
 
 - do not reconstruct removed `v2` / archive code as current regression
 - do not assume scheduler stubs represent the current runtime path for `READY -> RUNNING`
+- shared runtime queue/lease/counter contracts now live outside engine in `../platform_infra/mass-runtime-api`; the current in-memory implementation lives in `../platform_infra/mass-runtime-memory`
+- engine still defaults `TaskManager` constructors to `InMemoryTaskWorkRuntime`; that fallback is current truth, not the long-term assembly target
 - prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
 - runtime listeners, watchdogs, startup recovery wiring, and transport-ingest glue should depend on narrow engine ports such as
   `TaskResultIngestFacade`, `TaskAssignmentRuntimePort`, `TaskRuntimeMaintenancePort`,
@@ -42,6 +44,7 @@ Status: current engine owner README.
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+  - [`../platform_infra/README.md`](../platform_infra/README.md)
   - [`TASK_EXECUTION_FLOW.md`](./TASK_EXECUTION_FLOW.md)
   - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md) for engine-owned design/refactor notes only
   - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md)

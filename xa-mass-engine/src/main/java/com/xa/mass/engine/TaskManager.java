@@ -20,16 +20,16 @@ import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
-import com.xa.mass.engine.work.ResultApplyOutcome;
-import com.xa.mass.engine.work.TaskWorkEnvelope;
-import com.xa.mass.engine.work.TaskWorkResult;
-import com.xa.mass.engine.work.TaskWorkRuntime;
-import com.xa.mass.engine.work.TaskWorkStats;
-import com.xa.mass.engine.work.WorkEnqueueOutcome;
-import com.xa.mass.engine.work.WorkEnqueueOptions;
-import com.xa.mass.engine.work.WorkEnqueueStatus;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -898,3 +898,5 @@ public class TaskManager {
         private int referenceCount;
     }
 }
+
+

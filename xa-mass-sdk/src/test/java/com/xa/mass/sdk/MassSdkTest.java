@@ -66,7 +66,7 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -2665,3 +2665,4 @@ class MassSdkTest {
     }
 
 }
+

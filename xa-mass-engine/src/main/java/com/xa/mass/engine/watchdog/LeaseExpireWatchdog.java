@@ -3,7 +3,7 @@ package com.xa.mass.engine.watchdog;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,3 +99,4 @@ public class LeaseExpireWatchdog {
         }
     }
 }
+

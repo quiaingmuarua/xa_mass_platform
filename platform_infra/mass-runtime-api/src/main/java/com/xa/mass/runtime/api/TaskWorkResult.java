@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -57,3 +57,4 @@ public record TaskWorkResult(String taskId,
                 output, outputRef, retryVisibleAt, completedAt, retryable);
     }
 }
+

@@ -9,7 +9,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,3 +124,4 @@ public class TaskResourceReleaseListener {
                 workerContextId, workerId, workerContext.getStatus(), taskId);
     }
 }
+

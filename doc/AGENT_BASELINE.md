@@ -99,8 +99,9 @@ Rules:
 - Runtime executor boundary: `com.xa.mass.base.runtime.RuntimeTaskExecutor`
 - SDK control-plane event dispatch is synchronous by default; bounded virtual-thread isolation is optional in SDK embedding
 - Embedded runtime composition lives in `xa-mass-sdk`; `xa-mass-server` consumes it and owns the current HTTP/control-console/frontend shell
+- shared runtime queue/lease/counter contracts now live in `platform_infra/mass-runtime-api`; the current in-memory runtime implementation lives in `platform_infra/mass-runtime-memory`
 - Transport modules: `transport/transport_api`, `transport/transport_runtime`, `transport/polling-adapter`, `transport/websocket-adapter`, `transport/socket-adapter`
-- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-transport-socket`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-worker-pack`, and `xa-mass-server`
+- Reactor truth comes from the root `pom.xml`; current active modules are `xa-mass-base`, `platform_infra/mass-runtime-api`, `platform_infra/mass-runtime-memory`, `transport/transport_api`, `transport/polling-adapter`, `transport/transport_runtime`, `transport/socket-adapter`, `xa-mass-engine`, `transport/websocket-adapter`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-worker-pack`, and `xa-mass-server`
 - Core acceptance modules: `xa-mass-testing` for `perf` and SDK transport probes, `xa-mass-engine` for `concurrency`, `xa-mass-server` for Boot-shell E2E
 
 ## 6. Current Contract Summary
@@ -116,7 +117,7 @@ Task and payload summary:
 - per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
 - `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
 - engine runtime policy normalization goes through `TaskRuntimeProfile`; enqueue backpressure, assignment, ready-work claim, and trace consume the resolved profile, while assignment retry delay plus runtime retry visibility delay are unified under engine-internal `TaskRuntimeRetryPolicy` instead of reinterpreting `sharedConfig`
-- create-time `defaultMsgMaxRetryCount` seeds runtime retry budget inside `TaskWorkRuntime`; retry-scheduled vs retry-exhausted branching now follows runtime result application instead of re-reading persisted `TaskMsg.maxRetryCount`
+- create-time `defaultMsgMaxRetryCount` seeds runtime retry budget inside `TaskWorkRuntime` in `platform_infra/mass-runtime-api`; retry-scheduled vs retry-exhausted branching now follows runtime result application instead of re-reading persisted `TaskMsg.maxRetryCount`
 - delayed runtime retry wakeups are task-level dispatch signals; the engine coalesces them per task instead of spawning one sleeping redispatch wakeup per retrying `TaskMsg`
 - public create/update/read contracts do not define a dedicated routing-code field
 - engine-provided `TaskMsg` reads remain bounded compatibility helpers; production-scale detail should flow through structured trace or downstream audit storage

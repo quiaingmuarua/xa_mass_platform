@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public record ResultApplyOutcome(ResultApplyStatus status,
                                  String taskId,
@@ -48,3 +48,4 @@ public record ResultApplyOutcome(ResultApplyStatus status,
                 reason);
     }
 }
+

@@ -2,7 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -29,3 +29,4 @@ public interface TaskRuntimeMaintenancePort {
 
     boolean terminateTask(String taskId, TaskTerminalReason reason);
 }
+

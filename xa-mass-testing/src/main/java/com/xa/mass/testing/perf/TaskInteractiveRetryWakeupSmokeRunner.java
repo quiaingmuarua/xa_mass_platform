@@ -23,7 +23,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
@@ -755,3 +755,4 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
+

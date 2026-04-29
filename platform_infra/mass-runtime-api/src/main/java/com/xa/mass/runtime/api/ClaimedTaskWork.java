@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -20,3 +20,4 @@ public record ClaimedTaskWork(String taskId,
         payload = payload == null || payload.isEmpty() ? Map.of() : Map.copyOf(new LinkedHashMap<>(payload));
     }
 }
+

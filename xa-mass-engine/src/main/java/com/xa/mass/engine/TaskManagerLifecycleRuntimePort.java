@@ -4,8 +4,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.List;
 
@@ -131,3 +131,4 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
         return taskManager.getTaskStorage().getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 }
+

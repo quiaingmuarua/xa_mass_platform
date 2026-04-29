@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public record TaskWorkStats(long totalCount,
                             long readyCount,
@@ -29,3 +29,4 @@ public record TaskWorkStats(long totalCount,
         return totalCount == 0 ? 0.0 : (double) (failedCount + expiredCount) / totalCount * 100.0;
     }
 }
+

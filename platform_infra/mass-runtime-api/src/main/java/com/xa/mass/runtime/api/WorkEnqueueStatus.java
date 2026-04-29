@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public enum WorkEnqueueStatus {
     ENQUEUED,
@@ -9,3 +9,4 @@ public enum WorkEnqueueStatus {
     STORE_UNAVAILABLE,
     FAILED
 }
+

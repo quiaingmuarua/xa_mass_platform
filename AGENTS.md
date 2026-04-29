@@ -40,6 +40,7 @@ Canonical trust order:
 
 Start here based on the change:
 
+- runtime queue/lease/counter ownership or runtime implementation extraction: [platform_infra/README.md](platform_infra/README.md), [platform_infra/mass-runtime-api/README.md](platform_infra/mass-runtime-api/README.md), [platform_infra/mass-runtime-memory/README.md](platform_infra/mass-runtime-memory/README.md)
 - transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
 - websocket adapter/transport: [transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)

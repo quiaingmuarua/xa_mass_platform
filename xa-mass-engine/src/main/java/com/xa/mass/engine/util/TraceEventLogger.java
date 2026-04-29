@@ -8,7 +8,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.*;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -827,3 +827,4 @@ public final class TraceEventLogger {
         fields.put("backpressureClass", enumName(profile.backpressureClass()));
     }
 }
+

@@ -10,10 +10,10 @@ import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.ResultApplyOutcome;
-import com.xa.mass.engine.work.ResultApplyStatus;
-import com.xa.mass.engine.work.TaskWorkResult;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -511,3 +511,4 @@ class TaskResultService {
         }
     }
 }
+

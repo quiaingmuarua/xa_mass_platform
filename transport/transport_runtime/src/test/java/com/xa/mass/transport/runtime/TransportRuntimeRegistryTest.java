@@ -35,7 +35,7 @@ class TransportRuntimeRegistryTest {
                 error.getMessage());
     }
 
-    private static final class StubWorkerAdapter implements com.xa.mass.engine.worker.WorkerAdapter {
+    private static final class StubWorkerAdapter implements com.xa.mass.runtime.apier.WorkerAdapter {
         private final String protocol;
         private final String transportHint;
 
@@ -63,3 +63,4 @@ class TransportRuntimeRegistryTest {
         }
     }
 }
+

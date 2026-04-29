@@ -1,7 +1,7 @@
 package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.work.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 
 /**
  * Resolves workload-aware ready-claim options from the normalized runtime
@@ -38,3 +38,4 @@ public class TaskRuntimeClaimOptionsResolver {
         return TaskWorkClaimOptions.of(perWorkerCapacity, workerCount, leaseSeconds);
     }
 }
+

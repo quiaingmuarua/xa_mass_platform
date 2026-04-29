@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public record TaskWorkRuntimeStats(long readyItems,
                                    long inflightItems,
@@ -16,3 +16,4 @@ public record TaskWorkRuntimeStats(long readyItems,
                                    long discardedItems,
                                    long shutdownClearedItems) {
 }
+

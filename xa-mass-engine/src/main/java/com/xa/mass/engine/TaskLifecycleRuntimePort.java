@@ -4,8 +4,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.List;
 
@@ -53,3 +53,4 @@ interface TaskLifecycleRuntimePort extends TaskLeaseProjectionPort {
 
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 }
+

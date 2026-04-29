@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public record WorkEnqueueOutcome(WorkEnqueueStatus status, String taskId, String messageId, boolean retryable, String reason) {
 
@@ -34,3 +34,4 @@ public record WorkEnqueueOutcome(WorkEnqueueStatus status, String taskId, String
                 reason);
     }
 }
+

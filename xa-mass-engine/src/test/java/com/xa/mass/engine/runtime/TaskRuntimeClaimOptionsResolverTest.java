@@ -2,7 +2,7 @@ package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.work.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -50,3 +50,4 @@ class TaskRuntimeClaimOptionsResolverTest {
         assertEquals(120L, options.leaseSeconds());
     }
 }
+

@@ -1,4 +1,16 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.memory;
+
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.WorkEnqueueStatus;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 
 import org.junit.jupiter.api.Test;
 
@@ -224,3 +236,5 @@ class InMemoryTaskWorkRuntimeTest {
                 Instant.parse("2026-04-27T00:00:00Z"));
     }
 }
+
+

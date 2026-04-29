@@ -9,7 +9,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -224,3 +224,4 @@ class TaskStateValidator {
         );
     }
 }
+

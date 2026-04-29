@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.apier;
 
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
@@ -49,3 +49,4 @@ public interface WorkerAdapter extends TaskDispatchChannel {
     }
 
 }
+

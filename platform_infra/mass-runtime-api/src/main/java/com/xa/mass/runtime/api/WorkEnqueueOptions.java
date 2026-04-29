@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public record WorkEnqueueOptions(int maxReadyItemsPerTask) {
     public static final int UNLIMITED = Integer.MAX_VALUE;
@@ -8,3 +8,4 @@ public record WorkEnqueueOptions(int maxReadyItemsPerTask) {
         maxReadyItemsPerTask = maxReadyItemsPerTask <= 0 ? UNLIMITED : maxReadyItemsPerTask;
     }
 }
+

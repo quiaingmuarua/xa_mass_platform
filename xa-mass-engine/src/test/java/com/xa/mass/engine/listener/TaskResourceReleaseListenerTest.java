@@ -10,10 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
-import com.xa.mass.engine.work.TaskWorkEnvelope;
-import com.xa.mass.engine.work.WorkEnqueueOptions;
-import com.xa.mass.engine.work.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -261,7 +261,7 @@ class TaskResourceReleaseListenerTest {
         return attempt;
     }
 
-    private List<com.xa.mass.engine.work.ActiveLeaseRecord> activeLeases(String taskId,
+    private List<com.xa.mass.runtime.api.ActiveLeaseRecord> activeLeases(String taskId,
                                                                          String messageId,
                                                                          String workerId,
                                                                          String workerContextId) {
@@ -276,3 +276,5 @@ class TaskResourceReleaseListenerTest {
         return runtime.activeLeases(taskId);
     }
 }
+
+

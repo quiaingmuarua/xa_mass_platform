@@ -1,6 +1,6 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -78,3 +78,4 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
 }
+

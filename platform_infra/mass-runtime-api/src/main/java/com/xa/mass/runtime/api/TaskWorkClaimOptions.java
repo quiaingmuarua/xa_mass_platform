@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 /**
  * Claim options for one task-level ready-work claim round.
@@ -25,3 +25,4 @@ public record TaskWorkClaimOptions(int perWorkerCapacity, int maxItems, long lea
         );
     }
 }
+

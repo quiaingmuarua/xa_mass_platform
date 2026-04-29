@@ -22,6 +22,8 @@
     </developers>
     <modules>
         <module>xa-mass-base</module>
+        <module>platform_infra/mass-runtime-api</module>
+        <module>platform_infra/mass-runtime-memory</module>
         <module>transport/transport_api</module>
         <module>transport/polling-adapter</module>
         <module>transport/transport_runtime</module>

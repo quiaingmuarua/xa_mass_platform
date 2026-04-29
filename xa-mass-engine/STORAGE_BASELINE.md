@@ -78,7 +78,7 @@ What `TaskStorage` does not own anymore:
 - per-worker active-dispatch truth
 - durable hot-path task-message or attempt history
 
-Those hot-path concerns belong to `TaskWorkRuntime`, not to `TaskStorage` scans.
+Those hot-path concerns belong to `TaskWorkRuntime` in `platform_infra/mass-runtime-api`, not to `TaskStorage` scans.
 
 Current interface shape:
 

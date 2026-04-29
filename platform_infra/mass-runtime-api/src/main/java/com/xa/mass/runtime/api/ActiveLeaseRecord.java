@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 import java.time.Instant;
 
@@ -12,3 +12,4 @@ public record ActiveLeaseRecord(String taskId,
                                 Instant leaseExpireAt,
                                 Instant leasedAt) {
 }
+

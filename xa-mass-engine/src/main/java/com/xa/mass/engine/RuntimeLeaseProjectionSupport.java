@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -95,3 +95,4 @@ final class RuntimeLeaseProjectionSupport {
         return projectionPort.updateTaskMessage(taskId, taskMsg);
     }
 }
+

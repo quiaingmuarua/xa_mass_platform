@@ -3,9 +3,9 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.work.ActiveLeaseRecord;
-import com.xa.mass.engine.work.ResultApplyOutcome;
-import com.xa.mass.engine.work.TaskWorkResult;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkResult;
 
 import java.util.Optional;
 
@@ -96,3 +96,4 @@ final class TaskManagerResultRuntimePort implements TaskResultRuntimePort {
         return taskManager.getTaskStorage().updateTaskMessage(taskId, taskMsg);
     }
 }
+

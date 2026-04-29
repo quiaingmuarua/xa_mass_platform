@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -34,3 +34,4 @@ public record TaskWorkEnvelope(String taskId,
         return Map.copyOf(new LinkedHashMap<>(values));
     }
 }
+

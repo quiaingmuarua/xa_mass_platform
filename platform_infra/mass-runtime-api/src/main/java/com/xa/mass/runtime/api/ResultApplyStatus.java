@@ -1,4 +1,4 @@
-package com.xa.mass.engine.work;
+package com.xa.mass.runtime.api;
 
 public enum ResultApplyStatus {
     SUCCESS_APPLIED,
@@ -11,3 +11,4 @@ public enum ResultApplyStatus {
     INVALID_ITEM,
     FAILED
 }
+

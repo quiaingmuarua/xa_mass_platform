@@ -3,9 +3,9 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.work.ClaimedTaskWork;
-import com.xa.mass.engine.work.TaskWorkClaimOptions;
-import com.xa.mass.engine.work.WorkerClaimTarget;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 
 import java.util.List;
 
@@ -32,3 +32,4 @@ public interface TaskAssignmentRuntimePort {
                                      List<WorkerClaimTarget> claimTargets,
                                      TaskWorkClaimOptions claimOptions);
 }
+
