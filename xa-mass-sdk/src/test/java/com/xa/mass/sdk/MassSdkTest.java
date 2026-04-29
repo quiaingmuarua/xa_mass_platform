@@ -28,6 +28,7 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -59,6 +60,8 @@ import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.sdk.auth.PrincipalType;
+import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -877,7 +880,13 @@ class MassSdkTest {
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
         Assertions.assertEquals("sdk-task", dto.getTaskName());
-        Assertions.assertEquals(Map.of("textContent", "hello", "routingCode", "us"), dto.getSharedConfig());
+        Assertions.assertEquals(
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of("textContent", "hello", "routingCode", "us"),
+                        new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
+                ),
+                dto.getSharedConfig()
+        );
         Assertions.assertEquals(List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
@@ -967,6 +976,18 @@ class MassSdkTest {
         TaskMsg message = new TaskMsg();
         TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
         List<TaskMsgAttempt> attempts = List.of(activeAttempt);
+        TaskStateValidationResult projectionAudit = new TaskStateValidationResult(
+                true,
+                false,
+                TaskStatus.READY,
+                null,
+                0,
+                0,
+                0,
+                0,
+                TaskStateValidationResult.Scope.PROJECTION_AUDIT,
+                List.of()
+        );
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -975,12 +996,14 @@ class MassSdkTest {
         when(taskQueries.getTaskMessage("task-1", "msg-1")).thenReturn(message);
         when(taskQueries.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
         when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
+        when(taskQueries.auditTaskProjectionState("task-1")).thenReturn(projectionAudit);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertSame(message, app.getTaskMessage("task-1", "msg-1"));
         assertSame(attempts, app.getTaskMessageAttempts("task-1", "msg-1"));
         assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
+        assertSame(projectionAudit, app.auditTaskProjectionState("task-1"));
     }
 
     @Test
@@ -1188,14 +1211,20 @@ class MassSdkTest {
         Assertions.assertEquals("demoApp", dto.getProject());
         Assertions.assertEquals("crawler-stream", dto.getTaskName());
         Assertions.assertTrue(dto.isOpenEnded());
-        Assertions.assertEquals(Map.of(
-                "routingCode", "us",
-                "_sdk", Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "payloadType", "JSON",
-                        "taskMode", "STREAMING"
-                )
-        ), dto.getSharedConfig());
+        Assertions.assertEquals(
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of(
+                                "routingCode", "us",
+                                "_sdk", Map.of(
+                                        "eventCode", "crawler.fetch-page",
+                                        "payloadType", "JSON",
+                                        "taskMode", "STREAMING"
+                                )
+                        ),
+                        new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
+                ),
+                dto.getSharedConfig()
+        );
         Assertions.assertEquals(List.of(
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
@@ -2534,6 +2563,7 @@ class MassSdkTest {
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
+                () -> app.auditTaskProjectionState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
                 app::getAllWorkerContexts,
@@ -2816,5 +2846,3 @@ class MassSdkTest {
     }
 
 }
-
-

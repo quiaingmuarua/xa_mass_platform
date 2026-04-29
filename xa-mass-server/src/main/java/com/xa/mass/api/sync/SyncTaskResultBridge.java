@@ -25,7 +25,7 @@ import java.util.concurrent.TimeoutException;
  * waiting HTTP thread unblocks.
  *
  * <p>The listener is registered after {@link ApplicationReadyEvent} so the
- * engine and TaskManager are fully started before we hook in.
+ * engine and task event surface are fully started before we hook in.
  */
 @Component
 @Profile("dev")

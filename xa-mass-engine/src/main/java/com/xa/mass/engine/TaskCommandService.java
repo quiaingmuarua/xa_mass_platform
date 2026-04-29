@@ -10,8 +10,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Engine write/control surface for task lifecycle and task-owned intake
- * mutations. This keeps shell/admin command flows off the task query surface.
+ * Preferred engine write/control surface for cross-module task lifecycle and
+ * task-owned intake mutations.
+ *
+ * <p>Shell, SDK, transport, and testing flows should use this surface instead
+ * of carrying the broader {@link TaskManager} orchestration facade.
  */
 public class TaskCommandService {
 

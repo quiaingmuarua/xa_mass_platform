@@ -56,12 +56,20 @@ class TaskResultService {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
             return TaskMessageMutationOutcome.rejected();
         }
-        TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(resultRuntime, taskMsg, activeLease);
-        if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(resultRuntime, taskId, taskMsg, activeAttempt, activeLease,
-                "EXPIRE_TASK_MESSAGE", "runtime active lease synchronized compatibility projection")) {
+        RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
+                RuntimeLeaseProjectionSupport.recoverAndSynchronizeActiveAttempt(
+                        resultRuntime,
+                        taskId,
+                        taskMsg,
+                        activeLease,
+                        "EXPIRE_TASK_MESSAGE",
+                        "runtime active lease synchronized compatibility projection"
+                );
+        if (!leaseSync.synchronizedProjection()) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message projection synchronization failed", 0);
             return TaskMessageMutationOutcome.rejected();
         }
+        TaskMsgAttempt activeAttempt = leaseSync.activeAttempt();
         if (activeAttempt != null) {
             if (!TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
@@ -193,7 +201,16 @@ class TaskResultService {
             logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
-        TaskMsgAttempt activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(resultRuntime, taskMsg, activeLease);
+        RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
+                RuntimeLeaseProjectionSupport.recoverAndSynchronizeActiveAttempt(
+                        resultRuntime,
+                        taskId,
+                        taskMsg,
+                        activeLease,
+                        "HANDLE_TASK_MESSAGE_RESULT",
+                        "runtime active lease synchronized compatibility projection"
+                );
+        TaskMsgAttempt activeAttempt = leaseSync.activeAttempt();
         if (activeAttempt == null) {
             TraceEventLogger.callbackRejectedNoActiveAttempt(
                     taskId,
@@ -204,8 +221,7 @@ class TaskResultService {
             logger.error("Cannot handle task message result because msg {} in task {} has no recoverable active attempt", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
-        if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(resultRuntime, taskId, taskMsg, activeAttempt, activeLease,
-                "HANDLE_TASK_MESSAGE_RESULT", "runtime active lease synchronized compatibility projection")) {
+        if (!leaseSync.synchronizedProjection()) {
             logger.warn("Failed to synchronize task message {} projection from runtime active lease", messageId);
             return TaskMessageMutationOutcome.rejected();
         }
@@ -511,4 +527,3 @@ class TaskResultService {
         }
     }
 }
-

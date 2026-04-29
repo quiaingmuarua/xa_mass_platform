@@ -11,8 +11,12 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Engine read surface for bounded task inspection and compatibility projection
- * access. This keeps shell/debug query flows off the runtime mutation facade.
+ * Preferred engine bounded-read surface for cross-module task inspection.
+ *
+ * <p>Read tiers exposed here are intentionally narrow:
+ * task shell / aggregate reads are mainline, bounded {@link TaskMsg} /
+ * {@link TaskMsgAttempt} reads remain shell/debug compatibility helpers, and
+ * projection audit stays diagnostic-only.
  */
 public class TaskQueryService {
 
@@ -64,5 +68,9 @@ public class TaskQueryService {
 
     public TaskStateValidationResult validateTaskState(String taskId) {
         return taskManager.validateTaskState(taskId);
+    }
+
+    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return taskManager.auditTaskProjectionState(taskId);
     }
 }

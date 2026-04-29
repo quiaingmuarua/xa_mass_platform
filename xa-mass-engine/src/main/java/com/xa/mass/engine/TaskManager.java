@@ -38,7 +38,15 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
+ * Internal engine orchestration facade and composition root for task lifecycle,
+ * compatibility projection, and runtime-bridge wiring.
+ *
+ * <p>This remains the owner of engine assembly semantics, but it is not the
+ * preferred cross-module caller surface for shell, SDK, transport, or testing
+ * flows. Downstream callers should prefer {@link TaskCommandService},
+ * {@link TaskQueryService}, {@link TaskResultIngestFacade},
+ * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
+ * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
 public class TaskManager {
 
@@ -100,7 +108,13 @@ public class TaskManager {
     }
 
     /**
-     * Creates a task plus one persisted {@link TaskMsg} per work-item input.
+     * Creates the task shell, initializes intake/source/runtime truth, ingests
+     * initial inputs, enqueues runtime work, and writes bounded compatibility
+     * {@link TaskMsg} projection rows.
+     *
+     * <p>This path is intentionally kept stable in this round. It is the next
+     * internal split candidate, but should not accumulate more unrelated
+     * responsibilities.
      */
     Task createTask(TaskCreateRequestDto dto) {
         validateCreateRequest(dto);
@@ -672,5 +686,4 @@ public class TaskManager {
         return taskRuntimeBridge.enqueueTaskWork(taskId, taskMsg);
     }
 }
-
 

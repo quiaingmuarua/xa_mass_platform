@@ -10,8 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -88,6 +90,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     taskWorkRuntime);
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
+            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
@@ -114,7 +117,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                             ? interactiveCallbackExecutor
                             : bulkCallbackExecutor;
                     callbackExecutor.submit(() -> handleBinding(
-                            taskManager,
+                            taskResultIngestFacade,
                             taskWorkRuntime,
                             timing,
                             interactiveAttempts,
@@ -222,7 +225,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private void handleBinding(TaskManager taskManager,
+        private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
                                    InMemoryTaskWorkRuntime taskWorkRuntime,
                                    RetryTiming timing,
                                    Map<String, AtomicInteger> interactiveAttempts,
@@ -247,7 +250,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 boolean success = !interactive || attemptNo > 1;
                 String detail = success ? "ok" : "synthetic retryable failure";
                 String errorCode = success ? null : "SYNTHETIC_RETRY";
-                boolean accepted = taskManager.handleTaskMessageResult(
+                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
                         task.getTid(),
                         taskMsg.getMessageId(),
                         success,
@@ -767,4 +770,3 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
-

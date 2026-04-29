@@ -19,6 +19,29 @@ final class RuntimeLeaseProjectionSupport {
     private RuntimeLeaseProjectionSupport() {
     }
 
+    static ProjectionLeaseSyncResult recoverAndSynchronizeActiveAttempt(TaskLeaseProjectionPort projectionPort,
+                                                                        String taskId,
+                                                                        TaskMsg taskMsg,
+                                                                        ActiveLeaseRecord activeLease,
+                                                                        String trigger,
+                                                                        String reason) {
+        if (projectionPort == null || taskMsg == null || activeLease == null) {
+            return ProjectionLeaseSyncResult.rejected(null);
+        }
+        TaskMsgAttempt activeAttempt = resolveOrRecoverActiveAttempt(projectionPort, taskMsg, activeLease);
+        if (!synchronizeProjectionFromRuntimeLease(
+                projectionPort,
+                taskId,
+                taskMsg,
+                activeAttempt,
+                activeLease,
+                trigger,
+                reason)) {
+            return ProjectionLeaseSyncResult.rejected(activeAttempt);
+        }
+        return ProjectionLeaseSyncResult.accepted(activeAttempt);
+    }
+
     static TaskMsgAttempt resolveOrRecoverActiveAttempt(TaskLeaseProjectionPort projectionPort,
                                                         TaskMsg taskMsg,
                                                         ActiveLeaseRecord activeLease) {
@@ -94,5 +117,30 @@ final class RuntimeLeaseProjectionSupport {
         }
         return projectionPort.updateTaskMessage(taskId, taskMsg);
     }
-}
 
+    static final class ProjectionLeaseSyncResult {
+        private final TaskMsgAttempt activeAttempt;
+        private final boolean synchronizedProjection;
+
+        private ProjectionLeaseSyncResult(TaskMsgAttempt activeAttempt, boolean synchronizedProjection) {
+            this.activeAttempt = activeAttempt;
+            this.synchronizedProjection = synchronizedProjection;
+        }
+
+        static ProjectionLeaseSyncResult accepted(TaskMsgAttempt activeAttempt) {
+            return new ProjectionLeaseSyncResult(activeAttempt, true);
+        }
+
+        static ProjectionLeaseSyncResult rejected(TaskMsgAttempt activeAttempt) {
+            return new ProjectionLeaseSyncResult(activeAttempt, false);
+        }
+
+        TaskMsgAttempt activeAttempt() {
+            return activeAttempt;
+        }
+
+        boolean synchronizedProjection() {
+            return synchronizedProjection;
+        }
+    }
+}

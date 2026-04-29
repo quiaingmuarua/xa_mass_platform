@@ -497,6 +497,27 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void getTaskProjectionAuditReturnsExplicitDiagnosticSurface() throws Exception {
+        Task task = taskWithStatus(TaskStatus.READY);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskQueries.auditTaskProjectionState(TASK_ID)).thenReturn(Map.of(
+                "valid", false,
+                "scope", "PROJECTION_AUDIT",
+                "violations", List.of("ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE")
+        ));
+
+        mockMvc.perform(get("/status/api/tasks/{taskId}/projection-audit", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.projectionAudit.valid").value(false))
+                .andExpect(jsonPath("$.data.projectionAudit.scope").value("PROJECTION_AUDIT"))
+                .andExpect(jsonPath("$.data.projectionAudit.violations[0]").value("ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE"));
+
+        verify(taskQueries).auditTaskProjectionState(TASK_ID);
+    }
+
+    @Test
     void listTasksExposesDerivedSecurityView() throws Exception {
         Task task = taskWithStatus(TaskStatus.NEW);
         task.setTaskName("secured-task");
