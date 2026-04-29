@@ -2,7 +2,6 @@ package com.xa.mass.api.auth;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
-import com.xa.mass.sdk.auth.PrincipalType;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -26,14 +25,18 @@ public class ApiAuthService {
     public static final String USER_PERMISSIONS_HEADER = "X-Mass-Permissions";
 
     private final PrincipalDirectory principalDirectory;
+    private final HeaderPrincipalContextFactory headerPrincipalContextFactory;
 
     public ApiAuthService() {
-        this(new CompositePrincipalDirectory(List.of(new DefaultOperatorPrincipalDirectory())));
+        this(new CompositePrincipalDirectory(List.of(new DefaultOperatorPrincipalDirectory())),
+                new HeaderPrincipalContextFactory());
     }
 
     @Autowired
-    public ApiAuthService(PrincipalDirectory principalDirectory) {
+    public ApiAuthService(PrincipalDirectory principalDirectory,
+                          HeaderPrincipalContextFactory headerPrincipalContextFactory) {
         this.principalDirectory = Objects.requireNonNull(principalDirectory, "principalDirectory");
+        this.headerPrincipalContextFactory = Objects.requireNonNull(headerPrincipalContextFactory, "headerPrincipalContextFactory");
     }
 
     public PrincipalContext resolveCurrentPrincipal(HttpServletRequest request) {
@@ -103,22 +106,7 @@ public class ApiAuthService {
     }
 
     private PrincipalContext buildCustomPrincipal(HttpServletRequest request) {
-        List<String> roles = parseCsvHeader(request.getHeader(USER_ROLES_HEADER));
-        List<String> permissions = parseCsvHeader(request.getHeader(USER_PERMISSIONS_HEADER));
-        String principalId = defaultIfBlank(readTrimmed(request.getHeader(USER_ID_HEADER)), "custom-user");
-        return PrincipalContext.builder()
-                .principalId(principalId)
-                .principalType(PrincipalType.OPERATOR)
-                .userId(principalId)
-                .permissions(permissions)
-                .attributes(java.util.Map.of(
-                        ATTR_DISPLAY_NAME, defaultIfBlank(readTrimmed(request.getHeader(USER_NAME_HEADER)), "Custom User"),
-                        ATTR_EMAIL, defaultIfBlank(readTrimmed(request.getHeader(USER_EMAIL_HEADER)), "custom-user@example.internal"),
-                        ATTR_ROLES, roles.isEmpty() ? "CUSTOM" : String.join(",", roles)
-                ))
-                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .build();
+        return headerPrincipalContextFactory.buildOperatorPrincipal(request);
     }
 
     private PrincipalContext requireKnownPrincipal(String principalId) {
@@ -137,17 +125,6 @@ public class ApiAuthService {
         return List.of(defaultValue);
     }
 
-    private List<String> parseCsvHeader(String headerValue) {
-        if (headerValue == null || headerValue.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(headerValue.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
     private String readTrimmed(String value) {
         if (value == null) {
             return null;
@@ -158,5 +135,16 @@ public class ApiAuthService {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private List<String> parseCsvHeader(String headerValue) {
+        if (headerValue == null || headerValue.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(headerValue.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
     }
 }
