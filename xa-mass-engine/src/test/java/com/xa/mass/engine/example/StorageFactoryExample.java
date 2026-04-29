@@ -8,12 +8,11 @@ import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.InMemoryRuleStorage;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Demonstrates the active storage factory truth.
+ * Demonstrates the active explicit storage wiring truth.
  */
 public class StorageFactoryExample {
 
@@ -30,7 +29,7 @@ public class StorageFactoryExample {
 
     public static void main(String[] args) {
         testInMemoryStorage();
-        testStorageFactory();
+        testExplicitStorageWiring();
     }
 
     public static void testInMemoryStorage() {
@@ -78,23 +77,11 @@ public class StorageFactoryExample {
         log.info("=== testInMemoryStorage complete ===");
     }
 
-    public static void testStorageFactory() {
-        log.info("=== testStorageFactory ===");
+    public static void testExplicitStorageWiring() {
+        log.info("=== testExplicitStorageWiring ===");
 
-        TaskStorage inMemoryStorage = TaskStorageFactory.createTaskStorage("memory");
+        TaskStorage inMemoryStorage = new InMemoryTaskStorage();
         log.info("In-memory storage created: {}", inMemoryStorage.getClass().getSimpleName());
-
-        try {
-            TaskStorageFactory.createTaskStorage("redis");
-        } catch (Exception e) {
-            log.info("Redis storage path correctly fails fast: {}", e.getMessage());
-        }
-
-        try {
-            TaskStorageFactory.createTaskStorage("unknown");
-        } catch (IllegalArgumentException e) {
-            log.info("Unknown storage type correctly rejected: {}", e.getMessage());
-        }
 
         UserRef user1 = UserRef.of("factoryUser1");
         UserRef user2 = UserRef.of("factoryUser2");
@@ -130,6 +117,6 @@ public class StorageFactoryExample {
             );
         }
 
-        log.info("=== testStorageFactory complete ===");
+        log.info("=== testExplicitStorageWiring complete ===");
     }
 }

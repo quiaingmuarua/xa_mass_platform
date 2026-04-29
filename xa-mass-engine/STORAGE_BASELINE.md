@@ -21,7 +21,7 @@ These interfaces are used by:
 Those shared storage contracts now live in
 `platform_infra/mass-storage-api`. `platform_infra/mass-storage-memory` now
 owns the active in-memory task/worker implementations, while
-`xa-mass-engine` still owns `InMemoryRuleStorage` plus `TaskStorageFactory`.
+`xa-mass-engine` still owns `InMemoryRuleStorage`.
 
 The storage boundary now has three distinct roles:
 
@@ -39,22 +39,18 @@ The storage boundary now has three distinct roles:
 
 Do not collapse these back into one "storage owns everything" model.
 
-## Current Factory Reality
-
-`TaskStorageFactory` is still the central creation point for storage implementations.
+## Current Wiring Reality
 
 Current behavior:
 
-- `MEMORY` is the default implemented runtime path
+- engine default constructors wire memory-backed task/worker/rule storage directly
 - `xa-mass-server` can opt into JDBC-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
-  with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a `platform_infra/mass-storage-jdbc` adapter path, not a
-  `TaskStorageFactory` default
-- `REDIS` exists as a type, but factory methods fail fast with `UnsupportedOperationException`
-- `DATABASE` exists as a type, but engine factory methods still fail fast with
-  `UnsupportedOperationException`
+  with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a `platform_infra/mass-storage-jdbc` adapter path, not an engine storage default
+- Redis placeholder storage classes still exist under engine legacy storage code, but they are not part of the active wiring path
 
-That means the SDK/engine default mainline is memory-backed storage, while the
-server shell has a focused H2 path for local and CI persistence verification.
+That means the SDK/engine default mainline is explicit memory-backed storage,
+while the server shell has a focused H2 path for local and CI persistence
+verification.
 
 ## JDBC Adapter Boundary
 
@@ -336,12 +332,12 @@ WorkerManager workerManager = new WorkerManager();
 RuleManager<?> ruleManager = new RuleManager<>();
 ```
 
-Custom storage wiring is still constructor-based:
+Custom storage wiring is constructor-based:
 
 ```java
-TaskStorage taskStorage = TaskStorageFactory.createTaskStorage("memory");
-WorkerStorage workerStorage = TaskStorageFactory.createWorkerStorage("memory");
-RuleStorage ruleStorage = TaskStorageFactory.createRuleStorage("memory");
+TaskStorage taskStorage = new InMemoryTaskStorage();
+WorkerStorage workerStorage = new InMemoryWorkerStorage();
+RuleStorage ruleStorage = new InMemoryRuleStorage();
 ```
 
 Shell/debug query wiring is separate:
@@ -358,7 +354,7 @@ TaskQueryService taskQueries = new TaskQueryService(taskManager);
 When extending storage behavior, keep these rules fixed unless the kernel itself changes:
 
 - do not reintroduce `Device` / `Token` terminology in active storage docs
-- do not document unsupported Redis or Database paths as if they were production-ready
+- do not document placeholder Redis storage classes as if they were active engine wiring
 - do not add APIs that collapse `WorkerContext` back to `0..1`
 - do not duplicate `workerId` ownership across method parameters when the `WorkerContext` already carries it
 - do not move online truth or lifecycle truth into `attributes`

@@ -11,8 +11,8 @@ import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +30,7 @@ public class RuleDebugExample {
     public static void main(String[] args) {
         System.out.println("=== Rule Debug Example ===");
 
-        WorkerStorage workerStorage = TaskStorageFactory.createDefaultWorkerStorage();
+        WorkerStorage workerStorage = new InMemoryWorkerStorage();
         WorkerManager workerManager = new WorkerManager(workerStorage);
         RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getDefaultRuleManager();
 

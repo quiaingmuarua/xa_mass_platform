@@ -14,10 +14,15 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.storage.*;
+import com.xa.mass.engine.storage.InMemoryRuleStorage;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

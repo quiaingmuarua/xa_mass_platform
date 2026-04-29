@@ -9,8 +9,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +30,7 @@ public class WorkerManager {
     private final WorkerStorage workerStorage;
 
     public WorkerManager() {
-        this(TaskStorageFactory.createDefaultWorkerStorage());
+        this(new InMemoryWorkerStorage());
     }
 
     public WorkerManager(WorkerStorage workerStorage) {

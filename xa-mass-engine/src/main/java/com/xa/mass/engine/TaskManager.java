@@ -16,8 +16,8 @@ import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
-import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -69,7 +69,7 @@ public class TaskManager {
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler, TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+        this(taskScheduler, new InMemoryTaskStorage(), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
     }
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
