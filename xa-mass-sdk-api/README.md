@@ -8,6 +8,7 @@ embedding callers without pulling in runtime composition internals.
 ## Role
 
 - public SDK auth types under `com.xa.mass.sdk.auth`
+- public SDK authorization and ownership contract types under `com.xa.mass.sdk.authz`
 - public SDK catalog/event/model contracts under `com.xa.mass.sdk.catalog`,
   `com.xa.mass.sdk.event`, and `com.xa.mass.sdk.model`
 - shared SDK contract surface used by `xa-mass-sdk`, `xa-mass-server`, and
@@ -17,6 +18,7 @@ embedding callers without pulling in runtime composition internals.
 
 - request/response and registration models intended for SDK callers
 - submitter/principal contract types and small in-memory SDK-local helpers
+- platform-level authorization request/policy contracts and minimal ownership metadata contracts
 - catalog metadata and event-definition contract types
 
 ## What Does Not Belong Here
@@ -31,12 +33,22 @@ embedding callers without pulling in runtime composition internals.
 
 - `xa-mass-sdk-api` is the contract artifact
 - `xa-mass-sdk` is the embedding/runtime-composition artifact
+- security model ownership starts here: `PrincipalContext`, submitter credentials, `AuthorizationRequest`, `AuthorizationPolicy`, and `TaskOwnershipStamp` are SDK contracts, not server-only types
 - infra modules must not export `com.xa.mass.sdk.*` ownership back out of this
   module family
+
+## Security Contract Surface
+
+- `com.xa.mass.sdk.auth.PrincipalContext` is the shared authenticated caller shape
+- `com.xa.mass.sdk.authz.AuthorizationRequest` + `AuthorizationPolicy` are the unified control-plane authorization entrypoint
+- `PlatformResourceType` and `PlatformAction` provide the current minimal platform resource/action vocabulary
+- `TaskOwnershipStamp` is the minimal framework-owned task ownership envelope currently persisted under `Task.sharedConfig._massSecurity`
+- `xa-mass-server` and other hosts should adapt transport or HTTP details into these contracts instead of inventing host-local permission truth
 
 ## Start Here
 
 - `src/main/java/com/xa/mass/sdk/auth`
+- `src/main/java/com/xa/mass/sdk/authz`
 - `src/main/java/com/xa/mass/sdk/catalog`
 - `src/main/java/com/xa/mass/sdk/event`
 - `src/main/java/com/xa/mass/sdk/model`

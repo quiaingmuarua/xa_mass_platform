@@ -182,7 +182,7 @@ public class MassEngine {
      * <p>Useful for bootstrapping: newly registered EventBus subscribers can receive
      * a synthetic "created" signal for tasks that were created before they subscribed.
      * Tasks created after engine start already fire this event in real time via
-     * {@link com.xa.mass.engine.TaskManager#createTask}.
+     * .
      */
     @SuppressWarnings("unchecked")
     public void publishTaskEvents() {

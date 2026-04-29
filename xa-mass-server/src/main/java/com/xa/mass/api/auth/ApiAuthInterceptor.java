@@ -3,8 +3,16 @@ package com.xa.mass.api.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.AuthorizationDecision;
+import com.xa.mass.sdk.authz.AuthorizationPolicy;
+import com.xa.mass.sdk.authz.AuthorizationRequest;
+import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
+import com.xa.mass.sdk.authz.PlatformAction;
+import com.xa.mass.sdk.authz.PlatformResourceType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -17,28 +25,49 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
     private final ApiAuthService apiAuthService;
     private final ObjectMapper objectMapper;
+    private final AuthorizationPolicy authorizationPolicy;
 
     public ApiAuthInterceptor(ApiAuthService apiAuthService, ObjectMapper objectMapper) {
+        this(apiAuthService, objectMapper, new DefaultAuthorizationPolicy());
+    }
+
+    @Autowired
+    public ApiAuthInterceptor(ApiAuthService apiAuthService,
+                              ObjectMapper objectMapper,
+                              AuthorizationPolicy authorizationPolicy) {
         this.apiAuthService = apiAuthService;
         this.objectMapper = objectMapper;
+        this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String requiredPermission = resolveRequiredPermission(request);
+        OperatorRouteAuthorization routeAuthorization = resolveRequiredPermission(request);
         boolean requiresAuthenticationOnly = requiresAuthenticationOnly(request);
-        if (SDK_CREDENTIAL_BYPASS.equals(requiredPermission)) {
+        if (routeAuthorization != null && SDK_CREDENTIAL_BYPASS.equals(routeAuthorization.requiredPermission())) {
             return true;
         }
-        if (requiredPermission == null && !requiresAuthenticationOnly) {
+        if (routeAuthorization == null && !requiresAuthenticationOnly) {
             writeError(response, HttpServletResponse.SC_FORBIDDEN,
                     "API route is not enabled for anonymous or implicit access: " + request.getRequestURI());
             return false;
         }
 
         try {
-            if (requiredPermission != null) {
-                apiAuthService.requirePermission(request, requiredPermission);
+            if (routeAuthorization != null) {
+                PrincipalContext principal = apiAuthService.requireAuthenticated(request);
+                AuthorizationDecision decision = authorizationPolicy.authorize(AuthorizationRequest.builder()
+                        .principal(principal)
+                        .resourceType(routeAuthorization.resourceType())
+                        .action(routeAuthorization.action())
+                        .resourceAttributes(java.util.Map.of(
+                                DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION,
+                                routeAuthorization.requiredPermission()
+                        ))
+                        .build());
+                if (!decision.isAllowed()) {
+                    throw new ApiForbiddenException(decision.getReason());
+                }
             } else {
                 apiAuthService.requireAuthenticated(request);
             }
@@ -62,77 +91,87 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                 || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri));
     }
 
-    private String resolveRequiredPermission(HttpServletRequest request) {
+    private OperatorRouteAuthorization resolveRequiredPermission(HttpServletRequest request) {
         String uri = request.getRequestURI();
         String method = request.getMethod().toUpperCase();
 
         if (uri.equals("/status/api/tasks")) {
             return switch (method) {
-                case "GET" -> ApiPermissionNames.TASK_VIEW;
-                case "POST" -> hasSdkCredentialAttempt(request) ? SDK_CREDENTIAL_BYPASS : ApiPermissionNames.TASK_CREATE;
+                case "GET" -> route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                case "POST" -> hasSdkCredentialAttempt(request)
+                        ? route(PlatformResourceType.TASK, PlatformAction.CREATE, SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiPermissionNames.TASK_CREATE);
                 default -> null;
             };
         }
         if (uri.equals("/status/api/tasks/sync") && "POST".equals(method)) {
-            return hasSdkCredentialAttempt(request) ? SDK_CREDENTIAL_BYPASS : ApiPermissionNames.TASK_CREATE;
+            return hasSdkCredentialAttempt(request)
+                    ? route(PlatformResourceType.TASK, PlatformAction.CREATE, SDK_CREDENTIAL_BYPASS)
+                    : route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiPermissionNames.TASK_CREATE);
         }
         if (uri.matches("^/status/api/tasks/[^/]+$")) {
             return switch (method) {
-                case "GET" -> ApiPermissionNames.TASK_VIEW;
-                case "PUT" -> ApiPermissionNames.TASK_EDIT;
-                case "DELETE" -> ApiPermissionNames.TASK_TERMINATE;
+                case "GET" -> route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                case "PUT" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                case "DELETE" -> route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
                 default -> null;
             };
         }
         if (uri.matches("^/status/api/tasks/[^/]+/status$") && "PUT".equals(method)) {
-            return ApiPermissionNames.TASK_EDIT;
+            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/messages$") && "GET".equals(method)) {
-            return ApiPermissionNames.TASK_VIEW;
+            return route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/audit$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_APPROVE;
+            return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/pause$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_PAUSE;
+            return route(PlatformResourceType.TASK, PlatformAction.PAUSE, ApiPermissionNames.TASK_PAUSE);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/resume$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_RESUME;
+            return route(PlatformResourceType.TASK, PlatformAction.RESUME, ApiPermissionNames.TASK_RESUME);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/terminate$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_TERMINATE;
+            return route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/block$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_EDIT;
+            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/items$") && "POST".equals(method)) {
-            return ApiPermissionNames.TASK_EDIT;
+            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
         if (uri.matches("^/status/api/tasks/[^/]+/seal$") && "PUT".equals(method)) {
-            return ApiPermissionNames.TASK_EDIT;
+            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
         if (uri.startsWith("/api/queue/") && "GET".equals(method)) {
-            return ApiPermissionNames.WORKER_VIEW;
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
         if (uri.startsWith("/api/session/") && "GET".equals(method)) {
-            return ApiPermissionNames.WORKER_VIEW;
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
         if (uri.equals("/api/config/projects") && "GET".equals(method)) {
-            return ApiPermissionNames.WORKER_VIEW;
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
         if (uri.equals("/status/api/workers") && "GET".equals(method)) {
-            return ApiPermissionNames.WORKER_VIEW;
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
         if (uri.equals("/status/api/worker-contexts") && "GET".equals(method)) {
-            return ApiPermissionNames.WORKER_VIEW;
+            return route(PlatformResourceType.WORKER_CONTEXT, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
         if (uri.equals("/status/api/rules") && "GET".equals(method)) {
-            return ApiPermissionNames.RULE_VIEW;
+            return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
         if (uri.equals("/status/api/rules/meta") && "GET".equals(method)) {
-            return ApiPermissionNames.RULE_VIEW;
+            return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
         return null;
+    }
+
+    private OperatorRouteAuthorization route(PlatformResourceType resourceType,
+                                             PlatformAction action,
+                                             String requiredPermission) {
+        return new OperatorRouteAuthorization(resourceType, action, requiredPermission);
     }
 
     private boolean hasSdkCredentialAttempt(HttpServletRequest request) {
@@ -147,5 +186,10 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
         objectMapper.writeValue(response.getWriter(), ApiResponse.error(statusCode, message));
+    }
+
+    private record OperatorRouteAuthorization(PlatformResourceType resourceType,
+                                              PlatformAction action,
+                                              String requiredPermission) {
     }
 }

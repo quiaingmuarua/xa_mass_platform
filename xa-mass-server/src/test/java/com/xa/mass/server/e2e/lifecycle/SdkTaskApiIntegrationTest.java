@@ -93,11 +93,14 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> task = task(detailResponse);
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
         Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
+        Map<String, Object> securityMetadata = (Map<String, Object>) sharedConfig.get("_massSecurity");
 
         assertEquals("demo.dispatch", sdkMetadata.get("eventCode"));
         assertEquals("JSON", sdkMetadata.get("payloadType"));
         assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
+        assertEquals("crawler-agent", securityMetadata.get("createdByPrincipalId"));
+        assertEquals("SERVICE", securityMetadata.get("createdByPrincipalType"));
     }
 
     @Test

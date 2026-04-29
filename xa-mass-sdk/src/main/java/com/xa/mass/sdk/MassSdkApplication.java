@@ -56,7 +56,7 @@ import java.util.*;
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
-        ExternalWorkerOperations,
+        ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations, TransportOperations {
 
     private static final Gson GSON = new Gson();
@@ -65,6 +65,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
     private final SubmitterRegistry submitterRegistry;
     private final EventPermissionService eventPermissionService;
+    private final AuthorizationPolicy authorizationPolicy;
     private final MassEventRuntime eventRuntime;
     private final EventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, EventHandler> eventHandlerCache;
@@ -102,6 +103,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEventsForProject
         );
         this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
+        this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
         registerControlPlaneEventHandlers();
@@ -132,23 +134,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public Task createTask(MassTaskCreateRequest request) {
         MassEngine engine = requireStartedEngine();
-        return engine.createTask(SdkResourceMapper.toEngineRequest(request));
+        return engine.createTask(SdkResourceMapper.toEngineRequest(
+                TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()))
+        ));
     }
 
     @Override
     public Task createTask(MassTaskRequest request) {
-        validateTaskCatalogContract(request);
-        if (request.getEventCode() == null || request.getEventCode().isBlank()) {
-            return requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(request));
+        MassTaskRequest stampedRequest = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
+        validateTaskCatalogContract(stampedRequest);
+        if (stampedRequest.getEventCode() == null || stampedRequest.getEventCode().isBlank()) {
+            return requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(stampedRequest));
         }
         EventResponse response = dispatchEventInternal(
                 EventRequest.builder()
-                        .event(request.getEventCode())
-                        .project(request.getProject())
+                        .event(stampedRequest.getEventCode())
+                        .project(stampedRequest.getProject())
                         .requestId(UUID.randomUUID().toString())
-                        .payload(Map.of("request", request))
+                        .payload(Map.of("request", stampedRequest))
                         .build(),
-                internalPrincipal(request.getUserId())
+                internalPrincipal(stampedRequest.getUserId())
         );
         requireSuccessfulEventResponse(response);
         return (Task) response.getData();
@@ -507,6 +512,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return authenticateSubmitter(credential);
     }
 
+    @Override
+    public AuthorizationDecision authorize(AuthorizationRequest request) {
+        return authorizationPolicy.authorize(request);
+    }
+
     private void registerControlPlaneEventHandlers() {
         registerPlatformEvent(
                 PlatformEventCodes.WORKER_REGISTER,
@@ -805,7 +815,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private EventResponse dispatchCatalogTaskEvent(EventRequest request,
                                                    PrincipalContext principal,
                                                    EventDefinition definition) {
-        MassTaskRequest taskRequest = resolveTaskRequest(request, principal, definition);
+        MassTaskRequest taskRequest = TaskOwnershipSupport.stamp(
+                resolveTaskRequest(request, principal, definition),
+                principal == null ? internalPrincipal(null) : principal
+        );
         validateTaskCatalogContract(taskRequest);
         Task task = requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(taskRequest));
         return EventResponse.success(task, request.getRequestId());

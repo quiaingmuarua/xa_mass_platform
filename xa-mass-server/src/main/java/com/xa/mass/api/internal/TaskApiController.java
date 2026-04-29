@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthService;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
@@ -17,8 +18,16 @@ import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.AuthorizationDecision;
+import com.xa.mass.sdk.authz.AuthorizationPolicy;
+import com.xa.mass.sdk.authz.AuthorizationRequest;
+import com.xa.mass.sdk.authz.DefaultAuthorizationPolicy;
+import com.xa.mass.sdk.authz.PlatformAction;
+import com.xa.mass.sdk.authz.PlatformResourceType;
+import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.model.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,29 +52,45 @@ public class TaskApiController {
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final AuthProvider authProvider;
+    private final AuthorizationPolicy authorizationPolicy;
+    private final ApiAuthService apiAuthService;
 
     @Autowired(required = false)
     private SyncTaskResultBridge syncBridge;
 
     public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
+                new DefaultAuthorizationPolicy(), new ApiAuthService());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, null);
+        this(taskQueries, taskAdmin, metadataCatalog, null,
+                new DefaultAuthorizationPolicy(), new ApiAuthService());
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
+                             SdkMetadataCatalog metadataCatalog,
+                             AuthProvider authProvider) {
+        this(taskQueries, taskAdmin, metadataCatalog, authProvider,
+                new DefaultAuthorizationPolicy(), new ApiAuthService());
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
-                             AuthProvider authProvider) {
+                             AuthProvider authProvider,
+                             AuthorizationPolicy authorizationPolicy,
+                             ApiAuthService apiAuthService) {
         this.taskQueries = taskQueries;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
         this.authProvider = authProvider;
+        this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
+        this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
     }
 
     @GetMapping("")
@@ -91,17 +116,20 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            HttpServletRequest httpRequest,
             @RequestBody TaskCreateApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task create");
 
             PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
             if (submitter != null) {
-                requireSubmitterPermission(submitter, PrincipalContext.TASK_CREATE_PERMISSION);
+                authorizeSubmitterTaskCreate(submitter, requestBody);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
-                requireSubmitterEventScope(requestBody, submitter);
-                Task task = taskAdmin.createTask(toMassTaskRequest(requestBody, resolvedProject, resolvedUserId));
+                Task task = taskAdmin.createTask(TaskOwnershipSupport.stamp(
+                        toMassTaskRequest(requestBody, resolvedProject, resolvedUserId),
+                        submitter
+                ));
                 return ok(Map.of(
                         "taskId", task.getTid(),
                         "project", task.getProject(),
@@ -111,9 +139,10 @@ public class TaskApiController {
                 ));
             }
 
+            PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
             Task task = hasEventCode(requestBody)
-                    ? taskAdmin.createTask(toMassTaskRequest(requestBody))
-                    : taskAdmin.createTask(toTaskCreateRequest(requestBody));
+                    ? taskAdmin.createTask(TaskOwnershipSupport.stamp(toMassTaskRequest(requestBody), operator))
+                    : taskAdmin.createTask(TaskOwnershipSupport.stamp(toTaskCreateRequest(requestBody), operator));
             return ok(Map.of("taskId", task.getTid(), "message", "Task created"));
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());
@@ -129,6 +158,7 @@ public class TaskApiController {
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestParam(required = false) Long timeoutMs,
+            HttpServletRequest httpRequest,
             @RequestBody TaskCreateApiRequest requestBody) {
         if (syncBridge == null) {
             return badRequest("Sync task API is not available in this runtime profile");
@@ -146,15 +176,24 @@ public class TaskApiController {
             PrincipalContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
             Task task;
             if (submitter != null) {
-                requireSubmitterPermission(submitter, PrincipalContext.TASK_CREATE_PERMISSION);
+                authorizeSubmitterTaskCreate(submitter, requestBody);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
-                requireSubmitterEventScope(requestBody, submitter);
-                task = taskAdmin.createTask(toMassTaskRequestWithSyncKey(requestBody, resolvedProject, resolvedUserId, correlationId));
+                task = taskAdmin.createTask(TaskOwnershipSupport.stamp(
+                        toMassTaskRequestWithSyncKey(requestBody, resolvedProject, resolvedUserId, correlationId),
+                        submitter
+                ));
             } else {
+                PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = hasEventCode(requestBody)
-                        ? taskAdmin.createTask(toMassTaskRequestWithSyncKey(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId))
-                        : taskAdmin.createTask(toTaskCreateRequestWithSyncKey(requestBody, correlationId));
+                        ? taskAdmin.createTask(TaskOwnershipSupport.stamp(
+                                toMassTaskRequestWithSyncKey(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
+                                operator
+                        ))
+                        : taskAdmin.createTask(TaskOwnershipSupport.stamp(
+                                toTaskCreateRequestWithSyncKey(requestBody, correlationId),
+                                operator
+                        ));
             }
 
             String taskId = task.getTid();
@@ -680,13 +719,29 @@ public class TaskApiController {
         return submitter;
     }
 
+    private void authorizeSubmitterTaskCreate(PrincipalContext submitter, TaskCreateApiRequest requestBody) {
+        Map<String, Object> resourceAttributes = new LinkedHashMap<>();
+        resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, PrincipalContext.TASK_CREATE_PERMISSION);
+        if (requestBody.getUserId() != null) {
+            resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, requestBody.getUserId());
+        }
+        AuthorizationDecision decision = authorizationPolicy.authorize(AuthorizationRequest.builder()
+                .principal(submitter)
+                .resourceType(PlatformResourceType.TASK)
+                .action(PlatformAction.CREATE)
+                .project(requestBody.getProject())
+                .eventCode(requestBody.getEventCode())
+                .resourceAttributes(resourceAttributes)
+                .build());
+        if (!decision.isAllowed()) {
+            throw new SecurityException(toSdkCredentialMessage(decision.getReason()));
+        }
+    }
+
     private String resolveSubmitterProject(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
         String requestedProject = SdkCredentialAuthSupport.firstNonBlank(requestBody.getProject());
         String scopedProject = SdkCredentialAuthSupport.firstNonBlank(submitter.getProjectScope());
         if (scopedProject != null) {
-            if (requestedProject != null && !scopedProject.equals(requestedProject)) {
-                throw new SecurityException("SDK credential project scope denied: " + requestedProject);
-            }
             return scopedProject;
         }
         if (requestedProject == null && submitter.getProjectScopes().size() == 1
@@ -694,9 +749,6 @@ public class TaskApiController {
             return submitter.getProjectScopes().get(0);
         }
         if (requestedProject != null) {
-            if (!submitter.allowsProject(requestedProject)) {
-                throw new SecurityException("SDK credential project scope denied: " + requestedProject);
-            }
             return requestedProject;
         }
         throw new IllegalArgumentException("project is required when submitter has no project scope");
@@ -706,9 +758,6 @@ public class TaskApiController {
         String requestedUserId = SdkCredentialAuthSupport.firstNonBlank(requestBody.getUserId());
         String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
         if (scopedUserId != null) {
-            if (requestedUserId != null && !scopedUserId.equals(requestedUserId)) {
-                throw new SecurityException("SDK credential user scope denied: " + requestedUserId);
-            }
             return UserRef.requireUserId(scopedUserId);
         }
         if (requestedUserId != null) {
@@ -717,21 +766,27 @@ public class TaskApiController {
         return UserRef.requireUserId(submitter.getPrincipalId());
     }
 
-    private void requireSubmitterPermission(PrincipalContext submitter, String permission) {
-        if (!submitter.hasPermission(permission)) {
-            throw new SecurityException("SDK credential permission denied: " + permission);
-        }
-    }
-
-    private void requireSubmitterEventScope(TaskCreateApiRequest requestBody, PrincipalContext submitter) {
-        String eventCode = SdkCredentialAuthSupport.firstNonBlank(requestBody.getEventCode());
-        if (eventCode != null && !submitter.allowsEvent(eventCode)) {
-            throw new SecurityException("SDK credential event scope denied: " + eventCode);
-        }
-    }
-
     private boolean hasEventCode(TaskCreateApiRequest requestBody) {
         return requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank();
+    }
+
+    private String toSdkCredentialMessage(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "SDK credential authorization denied";
+        }
+        if (reason.startsWith("permission denied: ")) {
+            return "SDK credential permission denied: " + reason.substring("permission denied: ".length());
+        }
+        if (reason.startsWith("project scope denied: ")) {
+            return "SDK credential project scope denied: " + reason.substring("project scope denied: ".length());
+        }
+        if (reason.startsWith("user scope denied: ")) {
+            return "SDK credential user scope denied: " + reason.substring("user scope denied: ".length());
+        }
+        if (reason.startsWith("event scope denied: ")) {
+            return "SDK credential event scope denied: " + reason.substring("event scope denied: ".length());
+        }
+        return reason;
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

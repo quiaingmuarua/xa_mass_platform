@@ -10,6 +10,8 @@ import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.PrincipalType;
+import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -159,6 +161,10 @@ class TaskApiControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals("agent", request.getUserId());
         org.junit.jupiter.api.Assertions.assertEquals(2, request.getBatchSize());
         org.junit.jupiter.api.Assertions.assertEquals(TaskWorkloadClass.INTERACTIVE, request.getWorkloadClass());
+        TaskOwnershipStamp ownershipStamp = TaskOwnershipStamp.fromSharedConfig(request.getSharedConfig());
+        org.junit.jupiter.api.Assertions.assertNotNull(ownershipStamp);
+        org.junit.jupiter.api.Assertions.assertEquals("ops-admin", ownershipStamp.getCreatedByPrincipalId());
+        org.junit.jupiter.api.Assertions.assertEquals(PrincipalType.OPERATOR, ownershipStamp.getCreatedByPrincipalType());
         org.junit.jupiter.api.Assertions.assertEquals(List.of(
                 Map.of("target", "alpha"),
                 Map.of("target", "beta")
@@ -253,6 +259,10 @@ class TaskApiControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals("crawlerApp", request.getProject());
         org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", request.getUserId());
         org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
+        TaskOwnershipStamp ownershipStamp = TaskOwnershipStamp.fromSharedConfig(request.getSharedConfig());
+        org.junit.jupiter.api.Assertions.assertNotNull(ownershipStamp);
+        org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
+        org.junit.jupiter.api.Assertions.assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
     }
 
     @Test

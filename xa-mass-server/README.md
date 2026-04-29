@@ -16,6 +16,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
 - starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
+- acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
 - default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
 - JSON fixture bootstrap remains a test-only input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from packaged fixture files
@@ -29,6 +30,16 @@ Controller/console ownership now includes:
 - DTO / request-response boundary
 - backend-hosted control console shell
 - frontend route serving from built `frontend/dist`
+
+## Security Wiring
+
+- operator, SDK submitter, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
+- `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
+- `TaskApiController` keeps the existing HTTP contract but routes SDK submitter create checks through the shared policy
+- `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
+- task create paths stamp framework-owned ownership metadata into `Task.sharedConfig._massSecurity`
+- current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
+- default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
 
 ## Port Model
 

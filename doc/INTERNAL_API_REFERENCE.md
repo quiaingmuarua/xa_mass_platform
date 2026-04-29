@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-27
+Last updated: 2026-04-29
 
 Status: current global HTTP/API reference.
 
@@ -34,9 +34,11 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `/sdk/meta/**` is read-only metadata discovery, not a second task domain.
 - SDK credential callers use the same `POST /status/api/tasks` route as console/operator callers; `/sdk/submitters/me` is credential introspection only.
 - control-console mock auth still uses request headers, but those headers now resolve to built-in operator `PrincipalContext` definitions instead of a separate permission truth model.
+- unified control-plane authorization now flows through `AuthorizationPolicy` from `xa-mass-sdk-api` / `xa-mass-sdk`; `xa-mass-server` is the HTTP host adapter that resolves principals and forwards authorization requests.
 - `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
 - `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
+- framework-owned task-create ownership metadata is currently stored in `Task.sharedConfig._massSecurity` with `createdByPrincipalId` and `createdByPrincipalType`.
 - `Task.workloadClass` is an explicit task-level create field; current values are `INTERACTIVE` and `BULK`, and omission defaults to `BULK`.
 - `TaskMsg.output` is the canonical logical success payload for one work item; `result` remains a summary/string read-model field.
 - `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
@@ -49,6 +51,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - Stable event invocation contract: `EventRequest`, `EventResponse`, and `PrincipalContext`.
 - Control-plane authorization resolves one unified `PrincipalContext` and then applies direct permissions plus `projectScopes` / `eventScopes`.
+- `AuthorizationPolicy` is the current shared authorization entrypoint for operator routes, SDK submitter task create, and external worker HTTP access.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
@@ -61,6 +64,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - External worker capability must be declared through `eventBindings`; external worker registration does not define a second capability identity model.
 - Realtime adapter frame shapes remain adapter-local compatibility seams. Do not treat them as the stable public non-Java worker protocol.
 - `/worker-api/*` is authenticated with SDK credentials, not operator user-mode headers.
+- `/worker-api/*` authorization is evaluated through the shared `AuthorizationPolicy`; the HTTP layer only adapts headers and request fields into that contract.
 - required worker credential rules:
   - permission must include `worker:poll`
   - credential attributes must bind `workerId`
@@ -237,6 +241,8 @@ Contract rules:
 - when an SDK submitter has `userId`, the request `userId` may be omitted or must match that scope; mismatches return HTTP 403
 - when an SDK submitter has no scoped `userId`, user resolution order is request `userId`, then submitter `principalId`
 - invalid or missing SDK credentials return HTTP 401
+- successful task create writes framework-owned ownership metadata to `sharedConfig._massSecurity`
+- `sharedConfig._massSecurity` currently contains `createdByPrincipalId` and `createdByPrincipalType`
 - `mode` defaults to `SINGLE_RUN`, or `STREAMING` when `openEnded=true` and `mode` is omitted
 - `payloadType` defaults to `JSON`
 - `defaultMsgMaxRetryCount` defaults to `3`
@@ -323,6 +329,7 @@ Response notes:
 - returns `stateValidation`
 - `task.project` is serialized as the canonical project code
 - `task.user` is serialized as the current business-user binding object
+- `task.sharedConfig` may include framework-owned `_massSecurity` ownership metadata in addition to caller-provided keys
 - returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
 Example response shape:
