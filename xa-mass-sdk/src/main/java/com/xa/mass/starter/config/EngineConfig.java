@@ -22,6 +22,12 @@ import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.engine.storage.InMemoryRuleStorage;
 
 import java.util.Map;
 
@@ -42,10 +48,13 @@ public class EngineConfig {
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
+    private TaskStorage taskStorage = new InMemoryTaskStorage();
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
-    private WorkerManager workerManager = new WorkerManager();
+    private WorkerStorage workerStorage = new InMemoryWorkerStorage();
+    private WorkerManager workerManager;
     private AssignmentRecordService recordService = new AssignmentRecordService();
+    private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private RuleManager<Map<String, Object>> ruleManager;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
@@ -67,10 +76,13 @@ public class EngineConfig {
         this.taskAssignmentRuntimePort = source.taskAssignmentRuntimePort;
         this.taskRuntimeMaintenancePort = source.taskRuntimeMaintenancePort;
         this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
+        this.taskStorage = source.taskStorage;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
+        this.workerStorage = source.workerStorage;
         this.workerManager = source.workerManager;
         this.recordService = source.recordService;
+        this.ruleStorage = source.ruleStorage;
         this.ruleManager = source.ruleManager;
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
@@ -118,7 +130,7 @@ public class EngineConfig {
 
     public TaskManager getTaskManager() {
         if (taskManager == null) {
-            taskManager = new TaskManager(scheduler, getTaskWorkRuntime());
+            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskWorkRuntime());
         }
         return taskManager;
     }
@@ -212,12 +224,43 @@ public class EngineConfig {
         this.taskWorkRuntime = taskWorkRuntime;
     }
 
+    public TaskStorage getTaskStorage() {
+        return taskStorage;
+    }
+
+    public void setTaskStorage(TaskStorage taskStorage) {
+        if (taskStorage == null) {
+            throw new IllegalArgumentException("taskStorage must not be null");
+        }
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace taskStorage after taskManager has been configured");
+        }
+        this.taskStorage = taskStorage;
+    }
+
     public WorkerManager getWorkerManager() {
+        if (workerManager == null) {
+            workerManager = new WorkerManager(getWorkerStorage());
+        }
         return workerManager;
     }
 
     public void setWorkerManager(WorkerManager workerManager) {
         this.workerManager = workerManager;
+    }
+
+    public WorkerStorage getWorkerStorage() {
+        return workerStorage;
+    }
+
+    public void setWorkerStorage(WorkerStorage workerStorage) {
+        if (workerStorage == null) {
+            throw new IllegalArgumentException("workerStorage must not be null");
+        }
+        if (this.workerManager != null) {
+            throw new IllegalStateException("Cannot replace workerStorage after workerManager has been configured");
+        }
+        this.workerStorage = workerStorage;
     }
 
     public AssignmentRecordService getRecordService() {
@@ -230,13 +273,27 @@ public class EngineConfig {
 
     public RuleManager<Map<String, Object>> getRuleManager() {
         if (ruleManager == null) {
-            ruleManager = RuleManagerFactory.getDefaultRuleManager();
+            ruleManager = RuleManagerFactory.getDefaultRuleManager(getRuleStorage());
         }
         return ruleManager;
     }
 
     public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) {
         this.ruleManager = ruleManager;
+    }
+
+    public RuleStorage getRuleStorage() {
+        return ruleStorage;
+    }
+
+    public void setRuleStorage(RuleStorage ruleStorage) {
+        if (ruleStorage == null) {
+            throw new IllegalArgumentException("ruleStorage must not be null");
+        }
+        if (this.ruleManager != null) {
+            throw new IllegalStateException("Cannot replace ruleStorage after ruleManager has been configured");
+        }
+        this.ruleStorage = ruleStorage;
     }
 
     public MassBootstrapDataProvider getBootstrapDataProvider() {

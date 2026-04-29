@@ -28,6 +28,7 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
@@ -1070,7 +1071,11 @@ class MassSdkTest {
         EngineConfig config = new EngineConfig();
         SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
         config.setScheduler(scheduler);
-        config.setTaskManager(new com.xa.mass.engine.TaskManager(scheduler, new InMemoryTaskWorkRuntime()));
+        config.setTaskManager(new com.xa.mass.engine.TaskManager(
+                scheduler,
+                new InMemoryTaskStorage(),
+                new InMemoryTaskWorkRuntime()
+        ));
 
         assertThrows(IllegalStateException.class,
                 () -> config.setScheduler(new SimpleTaskScheduler()));
@@ -1084,6 +1089,7 @@ class MassSdkTest {
         assertThrows(IllegalArgumentException.class,
                 () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(
                         new SimpleTaskScheduler(),
+                        new InMemoryTaskStorage(),
                         new InMemoryTaskWorkRuntime())));
     }
 
@@ -1133,7 +1139,11 @@ class MassSdkTest {
         TaskRuntimeMaintenancePort oldRuntimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
         TaskRuntimeRecoveryPort oldRuntimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
 
-        TaskManager replacement = new TaskManager(config.getScheduler(), new InMemoryTaskWorkRuntime());
+        TaskManager replacement = new TaskManager(
+                config.getScheduler(),
+                new InMemoryTaskStorage(),
+                new InMemoryTaskWorkRuntime()
+        );
         config.setTaskManager(replacement);
 
         assertNotSame(oldResultIngestFacade, config.getTaskResultIngestFacade());

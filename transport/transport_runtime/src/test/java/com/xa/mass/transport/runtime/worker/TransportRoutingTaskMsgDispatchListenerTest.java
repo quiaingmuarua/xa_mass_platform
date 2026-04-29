@@ -6,6 +6,7 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.runtime.apier.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -14,11 +15,13 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -28,7 +31,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
     @Test
     void routesDispatchByWorkerOnlineStrategy() {
-        WorkerManager workerManager = new WorkerManager();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
         Worker webSocketWorker = new Worker();
         webSocketWorker.setWorkerId("ws-worker");
@@ -71,7 +74,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
     @Test
     void routesDispatchByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        WorkerManager workerManager = new WorkerManager();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
         Worker worker = new Worker();
         worker.setWorkerId("ws-worker");
@@ -100,7 +103,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
     @Test
     void rejectsDispatchWhenWorkerTransportIsMissing() {
-        WorkerManager workerManager = new WorkerManager();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
         Worker worker = new Worker();
         worker.setWorkerId("missing-transport-worker");
@@ -130,7 +133,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
     @Test
     void rejectsDispatchWhenWorkerTransportIsUnsupported() {
-        WorkerManager workerManager = new WorkerManager();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
         Worker worker = new Worker();
         worker.setWorkerId("unsupported-transport-worker");
@@ -161,7 +164,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
     @Test
     void nonSuccessDispatchOutcomesDoNotMutateTaskMessageStatus() {
-        WorkerManager workerManager = new WorkerManager();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
@@ -190,11 +193,43 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         assertTrue(taskMsg.getStatus() == null || !taskMsg.getStatus().isFinal());
     }
 
+    @Test
+    void runtimeOwnsEnvelopeIdentityAndCreatedTime() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+
+        Worker worker = new Worker();
+        worker.setWorkerId("poll-worker");
+        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
+        workerManager.addWorker(worker);
+
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
+        AtomicLong now = new AtomicLong(123456789L);
+        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                workerManager,
+                runtimeRegistry(workerManager, pollingAdapter),
+                new TransportDispatchEnvelopeFactory(() -> "delivery-1", now::get)
+        );
+
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskMsg taskMsg = new TaskMsg();
+        taskMsg.setTaskId("task-1");
+        taskMsg.setMessageId("msg-1");
+        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-1");
+
+        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+
+        assertEquals("delivery-1", pollingAdapter.outcomes.get(0).getDeliveryId());
+        assertEquals(123456789L, pollingAdapter.lastEnvelopes.get(0).getCreatedAtEpochMillis());
+    }
+
     private static final class RecordingAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
         private final List<String> dispatchedMessageIds = new ArrayList<>();
         private final List<DispatchOutcome> outcomes = new ArrayList<>();
+        private final List<TransportDispatchEnvelope> lastEnvelopes = new ArrayList<>();
         private DispatchOutcomeStatus overrideStatus;
 
         private RecordingAdapter(String protocol) {
@@ -218,6 +253,8 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         @Override
         public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+            lastEnvelopes.clear();
+            lastEnvelopes.addAll(envelopes);
             List<DispatchOutcome> currentOutcomes = new ArrayList<>();
             for (TransportDispatchEnvelope envelope : envelopes) {
                 TaskDispatchItem item = envelope.getPayload();

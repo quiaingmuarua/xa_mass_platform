@@ -1,6 +1,5 @@
 package com.xa.mass.engine.rules;
 
-import com.xa.mass.engine.storage.InMemoryRuleStorage;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleEvaluator;
@@ -20,10 +19,6 @@ public class RuleManager<T> {
     private static final Logger log = LoggerFactory.getLogger(RuleManager.class);
 
     private final RuleStorage ruleStorage;
-
-    public RuleManager() {
-        this(new InMemoryRuleStorage());
-    }
 
     public RuleManager(RuleStorage ruleStorage) {
         this.ruleStorage = ruleStorage;

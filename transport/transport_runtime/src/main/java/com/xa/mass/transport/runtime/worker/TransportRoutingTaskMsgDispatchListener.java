@@ -11,6 +11,7 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskDispatchRuntimeMetadata;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,11 +27,19 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
 
     private final WorkerManager workerManager;
     private final TransportRuntimeRegistry transportRuntimeRegistry;
+    private final TransportDispatchEnvelopeFactory envelopeFactory;
 
     public TransportRoutingTaskMsgDispatchListener(WorkerManager workerManager,
                                                    TransportRuntimeRegistry transportRuntimeRegistry) {
+        this(workerManager, transportRuntimeRegistry, new TransportDispatchEnvelopeFactory());
+    }
+
+    TransportRoutingTaskMsgDispatchListener(WorkerManager workerManager,
+                                            TransportRuntimeRegistry transportRuntimeRegistry,
+                                            TransportDispatchEnvelopeFactory envelopeFactory) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
         this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
+        this.envelopeFactory = Objects.requireNonNull(envelopeFactory, "envelopeFactory");
     }
 
     @Override
@@ -45,12 +54,11 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt());
             TaskDispatchRuntimeMetadata runtimeMetadata = payload.runtimeMetadata();
             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
-                    .add(TransportDispatchEnvelope.create(
+                    .add(envelopeFactory.create(
                             adapter.adapterId(),
                             runtimeMetadata.workerId(),
                             runtimeMetadata.attemptId(),
-                            payload,
-                            System.currentTimeMillis()
+                            payload
                     ));
         }
 

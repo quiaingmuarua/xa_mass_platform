@@ -58,6 +58,8 @@ behavior that cannot fit one of these concepts.
 - canonical transport-hint resolution; adapter labels such as `websocket`,
   `ws`, `push`, `pull`, or `queue` are not family aliases
 - delivery service and delivery store
+- runtime-owned envelope identity/timestamp generation for queued or direct
+  dispatch handoff
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result-envelope validation and runtime logging

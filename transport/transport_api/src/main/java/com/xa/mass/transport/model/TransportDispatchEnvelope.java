@@ -1,7 +1,6 @@
 package com.xa.mass.transport.model;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Transport-owned carrier for one dispatch payload moving through runtime
@@ -28,21 +27,6 @@ public final class TransportDispatchEnvelope {
         this.correlationKey = TransportDeliveryAddressing.normalizeText(correlationKey);
         this.payload = Objects.requireNonNull(payload, "payload");
         this.createdAtEpochMillis = createdAtEpochMillis;
-    }
-
-    public static TransportDispatchEnvelope create(String adapterId,
-                                                   String routeKey,
-                                                   String correlationKey,
-                                                   TaskDispatchItem payload,
-                                                   long createdAtEpochMillis) {
-        return new TransportDispatchEnvelope(
-                UUID.randomUUID().toString(),
-                adapterId,
-                routeKey,
-                correlationKey,
-                payload,
-                createdAtEpochMillis
-        );
     }
 
     public String getDeliveryId() {
