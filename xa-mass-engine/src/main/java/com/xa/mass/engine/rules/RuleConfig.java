@@ -1,5 +1,8 @@
 package com.xa.mass.engine.rules;
 
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleType;
+
 import java.util.ArrayList;
 import java.util.List;
 

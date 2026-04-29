@@ -26,6 +26,7 @@
         <module>platform_infra/mass-runtime-api</module>
         <module>platform_infra/mass-runtime-memory</module>
         <module>platform_infra/mass-runtime-redis</module>
+        <module>platform_infra/mass-storage-api</module>
         <module>platform_infra/mass-storage-memory</module>
         <module>platform_infra/mass-storage-jdbc</module>
         <module>transport/transport_api</module>

@@ -20,6 +20,33 @@ A field or table belongs in DB only if at least one of these is true:
 If queue replay, logs, trace, or runtime projection can recover it, do not put
 it in the control-plane DB by default.
 
+## Three Truth Layers
+
+Treat storage decisions through these three layers:
+
+1. control-plane storage truth
+   - durable `Task` shell truth
+   - durable worker / worker-context registration truth
+   - durable rule / principal / submitter truth
+2. runtime hot-path truth
+   - ready queue membership
+   - delayed visibility / retry timing
+   - lease ownership and expiry
+   - worker lock / occupancy churn
+   - runtime counters and backpressure state
+3. async audit / trace truth
+   - high-volume task-message detail
+   - attempt history and callback timelines
+   - downstream analytics and failure analysis
+
+The control-plane DB owns only the first layer.
+
+The runtime layer belongs in queue/lease/counter modules such as
+`TaskWorkRuntime`, whether the implementation is memory or Redis.
+
+The audit/trace layer should be exported asynchronously. It must not redefine
+the control-plane DB into a hot-path event store.
+
 ## What Belongs In DB
 
 Current default scope:
@@ -27,6 +54,7 @@ Current default scope:
 - `Task` main truth
   - task identity
   - project
+  - task source/workload intent carried by task truth
   - eventCode and shared config carried by task truth
   - task status and terminal reason
   - bounded task aggregates already stored on the task model
@@ -46,6 +74,9 @@ Current default scope:
   - credential hash / key prefix
   - direct permissions, project scopes, and event scopes
   - stable principal attributes used for binding checks
+- optional bounded task-level read models
+  - lagging summary counters or summary snapshots are acceptable only when they
+    stay task-level and are not treated as queue/lease truth
 
 This is the intended long-term role for PostgreSQL as well.
 
@@ -55,6 +86,12 @@ Do not use the control-plane DB for:
 
 - `TaskMsg` hot-path persistence
 - `TaskMsgAttempt` hot-path persistence
+- ready queue membership
+- delayed/retry scheduling indexes
+- active lease ownership or lease-token truth
+- lane dispatch state
+- backpressure state
+- inflight retry-budget consumption
 - heartbeat streams
 - worker online/offline churn
 - worker lock churn
@@ -68,6 +105,7 @@ These belong in some combination of:
 
 - queue replay
 - in-memory runtime projection
+- runtime queue/lease implementations
 - logs
 - trace / audit sinks
 - metrics
@@ -82,6 +120,8 @@ The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 - JDBC persists principal credential truth
 - runtime message/attempt detail stays process-local
 - runtime worker online/lock/context occupancy state stays process-local
+- startup cleanup may repair runtime residue, but it does not make JDBC the
+  owner of queue, lease, or inflight execution truth
 
 This is true for both `jdbc-h2` and future `jdbc-postgres`.
 

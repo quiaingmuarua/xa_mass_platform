@@ -1,8 +1,8 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;

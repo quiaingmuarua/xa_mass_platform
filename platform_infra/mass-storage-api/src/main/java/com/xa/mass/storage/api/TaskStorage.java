@@ -1,13 +1,13 @@
-package com.xa.mass.engine.storage;
+package com.xa.mass.storage.api;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
 
 /** Storage abstraction for tasks and task messages. */
 public interface TaskStorage {

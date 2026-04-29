@@ -1,6 +1,6 @@
 package com.xa.mass.workerpack.sample.api.model;
 
-import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.storage.rule.RuleDefinition;
 
 import java.util.List;
 

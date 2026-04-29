@@ -1,9 +1,10 @@
 package com.xa.mass.engine.storage;
 
 import com.xa.mass.engine.rules.QLExpressRuleEvaluator;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleEvaluator;
-import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.storage.rule.RuleType;
 
 import java.util.ArrayList;
 import java.util.Collection;

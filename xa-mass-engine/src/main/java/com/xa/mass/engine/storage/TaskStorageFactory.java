@@ -1,5 +1,9 @@
 package com.xa.mass.engine.storage;
 
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
+
 /**
  * Factory for engine storage implementations.
  *

@@ -18,6 +18,26 @@ These interfaces are used by:
 - `WorkerManager`
 - `RuleManager`
 
+Those shared storage contracts now live in
+`platform_infra/mass-storage-api`. `xa-mass-engine` still owns the active
+in-memory/placeholder implementations plus `TaskStorageFactory`.
+
+The storage boundary now has three distinct roles:
+
+- control-plane storage truth
+  - durable `Task` shell truth
+  - durable worker / worker-context definition truth
+  - durable rule truth
+- runtime truth
+  - ready work, delayed work, lease ownership, expiry, counters, and
+    backpressure owned by `TaskWorkRuntime`
+- compatibility projection and audit helpers
+  - bounded `TaskMsg` / `TaskMsgAttempt` views still used by engine
+    convergence, validation, tests, and shell/demo surfaces while the kernel
+    continues to shrink away from full message-owned storage
+
+Do not collapse these back into one "storage owns everything" model.
+
 ## Current Factory Reality
 
 `TaskStorageFactory` is still the central creation point for storage implementations.
@@ -73,8 +93,10 @@ Main responsibilities:
 - save and load `Task`
 - update and delete `Task`
 - query tasks by status
-- expose bounded `TaskMsg` projection reads needed by runtime convergence
-- expose bounded `TaskMsgAttempt` projection reads needed by result handling
+- expose narrow `TaskMsg` projection helpers still needed by runtime
+  convergence
+- expose narrow `TaskMsgAttempt` projection helpers still needed by result
+  handling
 - expose task-message statistics for lifecycle convergence and audit checks
 
 What `TaskStorage` does not own anymore:
@@ -117,6 +139,62 @@ public interface TaskStorage {
 }
 ```
 
+## Projection Classification
+
+Not every `TaskStorage` message-facing method has the same architectural weight.
+
+Keep these distinctions explicit:
+
+- durable task truth
+  - `saveTask`, `getTask`, `updateTask`, `deleteTask`
+  - `getTasksByStatus`, `getTasksByProject`, `getSchedulableTasks`
+  - `pollExpiredMaxRuntimeTasks`
+- runtime convergence helpers that still exist on the storage seam
+  - `addTaskMessage`, `updateTaskMessage`
+  - `addTaskMessageAttempt`, `updateTaskMessageAttempt`
+  - `getNonFinalTaskMessages`
+  - `getLatestActiveTaskMessageAttempt`
+  - `getTaskMessageStats`
+  - `getTaskMessageAttemptStats`
+- compatibility/demo/audit reads that must stay bounded and must not drive DB
+  expansion
+  - `getTaskMessages(...)`
+  - `countTaskMessages`
+  - `getTaskMessage`
+  - `getTaskMessageAttempts`
+  - `getLatestTaskMessageAttempt`
+
+The second group is still active engine runtime residue. The third group is
+shell/test compatibility residue.
+
+Neither group should be used to justify turning JDBC into a hot-path
+`TaskMsg`/`TaskMsgAttempt` store.
+
+## Shortest Convergence Path
+
+From the current codebase to a more realistic runtime mainline, the shortest
+storage/query convergence path is:
+
+1. keep runtime-essential projection helpers
+   - preserve the narrow helpers still used by result handling, runtime lease
+     repair, cleanup, and bounded validation
+   - examples: `getNonFinalTaskMessages(...)`,
+     `getLatestActiveTaskMessageAttempt(...)`,
+     `addTaskMessageAttempt(...)`, `updateTaskMessageAttempt(...)`
+2. stop treating shell/debug snapshots as a growth surface
+   - `TaskQueryService`, SDK query wrappers, and server task-detail endpoints
+     may continue to expose bounded compatibility snapshots for now
+   - do not expand those reads into pagination, cross-task search, or durable
+     JDBC-backed message history
+3. move future detail demand off the engine mainline
+   - task-detail reconstruction, attempt timelines, and large-scale analytics
+     should come from trace or async audit/export sinks
+   - task-level shell reads may keep bounded summary/detail snapshots only as
+     an operator validation surface
+
+That means the next convergence target is not "make `TaskStorage` query more
+message detail". It is "shrink who depends on compatibility projection reads".
+
 Important current usage notes:
 
 - task completion is driven from runtime counters plus persisted logical message outcomes, not just task status
@@ -130,6 +208,11 @@ Important current usage notes:
 - bounded runtime validation should stay on task/runtime aggregates; explicit `TaskMsg` projection audits are diagnostic-only and may traverse compatibility snapshots
 - the in-memory pending-message index updates on every `TaskMsg` status write, removes entries when a message becomes final, and is dropped wholesale when the owning task is deleted; it is a helper index, not a second lifecycle truth
 - future task detail should bias toward logs or async write-behind sinks instead of engine-owned full-message query surfaces
+- runtime recovery and redispatch should continue to consume explicit runtime
+  indexes plus narrow projection helpers such as
+  `getNonFinalTaskMessages(...)`, not full task-message enumeration
+- shell/admin/detail reads remain validation surfaces. They are not evidence
+  that engine needs a durable cross-task message query model
 
 ## WorkerStorage
 
@@ -282,6 +365,6 @@ When extending storage behavior, keep these rules fixed unless the kernel itself
 - [`../AGENTS.md`](../AGENTS.md)
 - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
 - [`../platform_infra/README.md`](../platform_infra/README.md)
-- [`src/main/java/com/xa/mass/engine/storage/TaskStorage.java`](src/main/java/com/xa/mass/engine/storage/TaskStorage.java)
-- [`src/main/java/com/xa/mass/engine/storage/WorkerStorage.java`](src/main/java/com/xa/mass/engine/storage/WorkerStorage.java)
-- [`src/main/java/com/xa/mass/engine/storage/RuleStorage.java`](src/main/java/com/xa/mass/engine/storage/RuleStorage.java)
+- [`../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskStorage.java`](../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskStorage.java)
+- [`../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerStorage.java`](../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerStorage.java)
+- [`../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/RuleStorage.java`](../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/RuleStorage.java)

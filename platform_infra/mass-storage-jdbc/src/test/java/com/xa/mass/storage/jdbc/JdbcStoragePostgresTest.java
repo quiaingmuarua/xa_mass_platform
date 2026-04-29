@@ -12,8 +12,8 @@ import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleConfig;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleType;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;

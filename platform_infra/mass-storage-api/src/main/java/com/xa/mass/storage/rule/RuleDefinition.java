@@ -1,4 +1,4 @@
-package com.xa.mass.engine.rules;
+package com.xa.mass.storage.rule;
 
 /**
  * Worker-matching rule definition.

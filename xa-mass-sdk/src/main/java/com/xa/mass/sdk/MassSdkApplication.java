@@ -21,9 +21,9 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
-import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
@@ -1531,7 +1531,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
-     * {@link #start()} — the listener is registered on the engine command/event
+     * {@link #start()} 鈥?the listener is registered on the engine command/event
      * surface which exists independent of engine lifecycle.
      */
     public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {

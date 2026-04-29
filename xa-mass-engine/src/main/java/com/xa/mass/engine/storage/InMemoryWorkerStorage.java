@@ -2,6 +2,7 @@ package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.storage.api.WorkerStorage;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

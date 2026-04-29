@@ -1,8 +1,8 @@
-package com.xa.mass.engine.storage;
+package com.xa.mass.storage.api;
 
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleEvaluator;
-import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.storage.rule.RuleType;
 
 import java.util.Collection;
 import java.util.List;

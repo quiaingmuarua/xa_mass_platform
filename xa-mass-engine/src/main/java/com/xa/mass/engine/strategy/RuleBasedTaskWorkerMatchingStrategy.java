@@ -9,7 +9,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
-import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.TraceEventLogger;

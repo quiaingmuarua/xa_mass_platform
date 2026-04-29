@@ -10,7 +10,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.TaskStorageFactory;
-import com.xa.mass.engine.storage.WorkerStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,10 +1,10 @@
 package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.engine.rules.QLExpressRuleEvaluator;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleEvaluator;
-import com.xa.mass.engine.rules.RuleType;
-import com.xa.mass.engine.storage.RuleStorage;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.storage.api.RuleStorage;
 
 import javax.sql.DataSource;
 import java.sql.ResultSet;

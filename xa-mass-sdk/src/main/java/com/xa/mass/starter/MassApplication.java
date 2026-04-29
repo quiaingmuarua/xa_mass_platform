@@ -8,7 +8,7 @@ import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
-import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.worker.PullWorkerSession;

@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.storage.rule.RuleDefinition;
 
 import java.util.Collection;
 import java.util.List;

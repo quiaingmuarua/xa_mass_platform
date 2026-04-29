@@ -12,7 +12,7 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
-import com.xa.mass.engine.storage.TaskStorage;
+import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;

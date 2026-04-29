@@ -1,7 +1,10 @@
 package com.xa.mass.engine.rules;
 
-import com.xa.mass.engine.storage.RuleStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.storage.rule.RuleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

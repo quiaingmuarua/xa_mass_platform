@@ -10,10 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.InMemoryRuleStorage;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.InMemoryWorkerStorage;
-import com.xa.mass.engine.storage.RuleStorage;
-import com.xa.mass.engine.storage.TaskStorage;
-import com.xa.mass.engine.storage.TaskStorageFactory;
-import com.xa.mass.engine.storage.WorkerStorage;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskStorageFactory;
+import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
