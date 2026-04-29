@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,13 +39,17 @@ class InMemoryKeyedBlockingQueueStoreTest {
         InMemoryKeyedBlockingQueueStore<String, String> store =
                 new InMemoryKeyedBlockingQueueStore<>(10, new SequenceClock());
 
-        CompletableFuture<KeyedQueuePollResult<String>> future = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<KeyedQueuePollResult<String>> future = new CompletableFuture<>();
+        Thread poller = new Thread(() -> {
             try {
-                return store.poll("k1", 10, 1000, TimeUnit.MILLISECONDS);
+                future.complete(store.poll("k1", 10, 1000, TimeUnit.MILLISECONDS));
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
+                future.completeExceptionally(e);
             }
-        });
+        }, "keyed-queue-poller");
+        poller.setDaemon(true);
+        poller.start();
 
         Thread.sleep(50L);
         store.offer("k1", new KeyedQueueEntry<>("a", 1L), 10);

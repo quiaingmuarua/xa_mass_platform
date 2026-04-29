@@ -78,6 +78,12 @@ Concrete adapters own protocol I/O only:
 - worker-facing payload fields: task id, message id, event code, input, shared config
 - runtime metadata fields: worker id, worker-context id, batch id, internal attempt id
 
+Transport internals should prefer the explicit projections already exposed on
+the hybrid:
+
+- `wireView()` for adapter codec / worker-facing canonical frame assembly
+- `runtimeMetadata()` for routing and internal result correlation
+
 The internal attempt identity is intentionally exposed through `attemptId()`, not
 `getAttemptId()`, so JSON serializers do not add it to worker API responses by
 JavaBean convention. Do not add JavaBean getters for internal metadata unless
@@ -148,8 +154,12 @@ maps beyond the immutable copies already owned by `TaskDispatchItem`.
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has both per-worker queue caps and a configurable total
 queued-item cap; Redis or JDBC replacements should preserve equivalent
-backpressure and expose the same `TransportDeliveryStoreStats` shape for
-backlog, queue, backlog age, and waiting-poller diagnostics. Store shutdown is
+backpressure. `TransportDeliveryStoreStats` is queue/store-path only; direct-send
+diagnostics are assembled above the store boundary by
+`TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
+distinguish delivered, empty, invalid-request, unavailable, and shutdown
+results without forcing callers to treat every non-delivery outcome as an empty
+queue. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.

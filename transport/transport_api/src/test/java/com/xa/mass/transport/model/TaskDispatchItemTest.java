@@ -63,6 +63,26 @@ class TaskDispatchItemTest {
         assertEquals("batch-1", item.getBatchId());
     }
 
+    @Test
+    void exposesSeparatedRuntimeMetadataAndWireView() {
+        Task task = taskWithSdkPayloadType("JSON");
+        TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", Map.of(
+                "type", "json",
+                "data", Map.of("url", "https://example.test/page-1")
+        ));
+
+        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt());
+
+        assertEquals("attempt-1", item.runtimeMetadata().attemptId());
+        assertEquals("worker-1", item.runtimeMetadata().workerId());
+        assertEquals("msg-1", item.wireView().messageId());
+        assertEquals("task-1", item.wireView().taskId());
+        assertEquals("worker-1", item.wireView().workerId());
+        assertEquals("ctx-1", item.wireView().workerContextId());
+        assertEquals("batch-1", item.wireView().batchId());
+        assertEquals("https://example.test/page-1", item.wireView().input().get("url"));
+    }
+
     private Task taskWithSdkPayloadType(String payloadType) {
         Task task = new Task();
         task.setTid("task-1");

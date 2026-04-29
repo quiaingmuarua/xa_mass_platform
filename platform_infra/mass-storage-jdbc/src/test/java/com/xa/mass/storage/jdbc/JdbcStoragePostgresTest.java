@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -14,7 +14,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleType;
-import com.xa.mass.server.test.EmbeddedPostgresSupport;
+
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
@@ -125,3 +125,4 @@ class JdbcStoragePostgresTest {
         }
     }
 }
+

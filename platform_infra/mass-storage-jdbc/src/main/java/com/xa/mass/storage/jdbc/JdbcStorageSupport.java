@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -43,3 +43,4 @@ abstract class JdbcStorageSupport {
         }
     }
 }
+

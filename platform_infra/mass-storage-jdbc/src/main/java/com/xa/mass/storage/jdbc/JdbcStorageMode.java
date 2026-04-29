@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 public enum JdbcStorageMode {
     MEMORY(false),
@@ -35,3 +35,4 @@ public enum JdbcStorageMode {
         };
     }
 }
+

@@ -169,8 +169,10 @@ Durable store requirements:
 
 - preserve `TransportDeliveryStore` API shape
 - enforce the same admission semantics
-- expose `TransportDeliveryStoreStats`
+- expose queue/store metrics through `TransportDeliveryStoreStats`
+- expose direct-send metrics above the store boundary through `TransportDeliveryServiceStats`
 - support wake/drain for polling workers
+- preserve explicit poll outcomes for delivered vs empty vs shutdown/unavailable
 - model wake/drain as single-consumer delivery per queued item; shutdown may wake all waiters for cleanup
 - support shutdown/recovery without mutating engine lifecycle directly
 - provide indexed lookup by `(adapterId, workerId)`

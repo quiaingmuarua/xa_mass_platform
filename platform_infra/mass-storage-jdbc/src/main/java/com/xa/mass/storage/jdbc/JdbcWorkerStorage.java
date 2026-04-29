@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -308,3 +308,4 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         }
     }
 }
+

@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 interface JdbcDialect {
 
@@ -12,3 +12,4 @@ interface JdbcDialect {
 
     String principalUpsertSql();
 }
+

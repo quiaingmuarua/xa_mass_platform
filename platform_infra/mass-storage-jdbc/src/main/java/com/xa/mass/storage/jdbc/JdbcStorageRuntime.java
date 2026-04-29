@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -119,3 +119,4 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         }
     }
 }
+

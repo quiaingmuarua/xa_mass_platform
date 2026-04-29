@@ -154,6 +154,32 @@ public final class TaskDispatchItem {
         return sharedConfig;
     }
 
+    public TaskDispatchRuntimeMetadata runtimeMetadata() {
+        return new TaskDispatchRuntimeMetadata(
+                attemptId,
+                workerId,
+                workerContextId,
+                batchId
+        );
+    }
+
+    public TaskDispatchWireView wireView() {
+        return new TaskDispatchWireView(
+                taskId,
+                messageId,
+                eventCode,
+                taskName,
+                project,
+                userId,
+                retryCount,
+                workerId,
+                workerContextId,
+                batchId,
+                input,
+                sharedConfig
+        );
+    }
+
     public Map<String, Object> mergedPayload() {
         Map<String, Object> payload = new LinkedHashMap<>(input);
         payload.putAll(sharedConfig);

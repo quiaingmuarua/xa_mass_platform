@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 final class PostgresJdbcDialect implements JdbcDialect {
 
@@ -65,3 +65,4 @@ final class PostgresJdbcDialect implements JdbcDialect {
                 """;
     }
 }
+

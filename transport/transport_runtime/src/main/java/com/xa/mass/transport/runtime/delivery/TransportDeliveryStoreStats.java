@@ -52,7 +52,7 @@ public final class TransportDeliveryStoreStats {
                                        long shutdownClearedItems) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
                 drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
-                Map.of());
+                Map.<String, TransportDeliveryQueueStats>of());
     }
 
     public TransportDeliveryStoreStats(int queuedItems,

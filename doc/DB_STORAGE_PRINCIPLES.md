@@ -72,9 +72,9 @@ These belong in some combination of:
 - trace / audit sinks
 - metrics
 
-## Current Server-Owned JDBC Boundary
+## Current JDBC Boundary
 
-The active `xa-mass-server` JDBC path is intentionally narrow:
+The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 
 - JDBC persists task truth
 - JDBC persists worker/worker-context registration truth

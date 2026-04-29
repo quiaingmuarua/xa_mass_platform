@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.engine.rules.QLExpressRuleEvaluator;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -151,3 +151,4 @@ public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
         }
     }
 }
+

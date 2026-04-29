@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
@@ -61,3 +61,4 @@ final class JdbcRuntimeResidueRecovery {
         }
     }
 }
+

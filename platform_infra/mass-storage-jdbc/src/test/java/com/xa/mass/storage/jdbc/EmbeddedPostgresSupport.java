@@ -1,4 +1,4 @@
-package com.xa.mass.server.test;
+package com.xa.mass.storage.jdbc;
 
 import com.opentable.db.postgres.embedded.EmbeddedPostgres;
 
@@ -47,3 +47,4 @@ public final class EmbeddedPostgresSupport {
         return input.replace('-', '_').replaceAll("[^a-zA-Z0-9_]", "").toLowerCase();
     }
 }
+

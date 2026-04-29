@@ -53,6 +53,8 @@ The shared kernel is:
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
 - `platform_infra/mass-runtime-redis`: Redis runtime keyspace/index baseline plus future `TaskWorkRuntime` module; not part of the current verified runtime path
+- `platform_infra/mass-storage-memory`: in-memory control-plane submitter storage used by the SDK/server default embedded path
+- `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth
 - `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
 - `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
 - `xa-mass-sdk` + `xa-mass-sdk-api`: embedding entry, runtime composition, and public SDK types

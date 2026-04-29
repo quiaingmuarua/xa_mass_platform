@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskDispatchWireView;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,31 +70,32 @@ public final class SocketTransportFrameCodec {
     }
 
     public String encodeCanonicalTaskDispatch(TaskDispatchItem item) {
+        TaskDispatchWireView view = item.wireView();
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", item.getMessageId());
-        frame.addProperty("workerId", item.getWorkerId());
-        if (item.getProject() != null) {
-            frame.addProperty("project", item.getProject());
+        frame.addProperty("messageId", view.messageId());
+        frame.addProperty("workerId", view.workerId());
+        if (view.project() != null) {
+            frame.addProperty("project", view.project());
         }
-        if (item.getEventCode() != null) {
-            frame.addProperty("eventCode", item.getEventCode());
+        if (view.eventCode() != null) {
+            frame.addProperty("eventCode", view.eventCode());
         }
-        frame.addProperty("taskId", item.getTaskId());
-        if (item.getTaskName() != null) {
-            frame.addProperty("taskName", item.getTaskName());
+        frame.addProperty("taskId", view.taskId());
+        if (view.taskName() != null) {
+            frame.addProperty("taskName", view.taskName());
         }
-        if (item.getUserId() != null) {
-            frame.addProperty("userId", item.getUserId());
+        if (view.userId() != null) {
+            frame.addProperty("userId", view.userId());
         }
-        frame.addProperty("retryCount", item.getRetryCount());
-        if (item.getWorkerContextId() != null) {
-            frame.addProperty("workerContextId", item.getWorkerContextId());
+        frame.addProperty("retryCount", view.retryCount());
+        if (view.workerContextId() != null) {
+            frame.addProperty("workerContextId", view.workerContextId());
         }
-        if (item.getBatchId() != null) {
-            frame.addProperty("batchId", item.getBatchId());
+        if (view.batchId() != null) {
+            frame.addProperty("batchId", view.batchId());
         }
-        frame.add("input", gson.toJsonTree(item.getInput() != null ? item.getInput() : Map.of()));
-        frame.add("sharedConfig", gson.toJsonTree(item.getSharedConfig() != null ? item.getSharedConfig() : Map.of()));
+        frame.add("input", gson.toJsonTree(view.input() != null ? view.input() : Map.of()));
+        frame.add("sharedConfig", gson.toJsonTree(view.sharedConfig() != null ? view.sharedConfig() : Map.of()));
         return gson.toJson(frame);
     }
 

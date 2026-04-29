@@ -9,6 +9,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskDispatchRuntimeMetadata;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,11 +43,12 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         for (TaskDispatchBinding binding : dispatchBindings) {
             WorkerAdapter adapter = resolveAdapter(binding);
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt());
+            TaskDispatchRuntimeMetadata runtimeMetadata = payload.runtimeMetadata();
             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
                     .add(TransportDispatchEnvelope.create(
                             adapter.adapterId(),
-                            payload.getWorkerId(),
-                            payload.attemptId(),
+                            runtimeMetadata.workerId(),
+                            runtimeMetadata.attemptId(),
                             payload,
                             System.currentTimeMillis()
                     ));

@@ -188,7 +188,7 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
-| `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` for durable control-plane storage |
+| `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` through `mass-storage-jdbc` for durable control-plane storage |
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |

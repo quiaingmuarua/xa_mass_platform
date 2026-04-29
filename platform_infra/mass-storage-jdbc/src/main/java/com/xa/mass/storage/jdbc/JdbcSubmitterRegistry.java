@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.sdk.auth.CredentialHashing;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
@@ -169,3 +169,4 @@ public final class JdbcSubmitterRegistry extends JdbcStorageSupport implements S
         }
     }
 }
+

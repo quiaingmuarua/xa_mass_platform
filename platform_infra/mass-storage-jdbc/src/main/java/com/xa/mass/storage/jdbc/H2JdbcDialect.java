@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 final class H2JdbcDialect implements JdbcDialect {
 
@@ -42,3 +42,4 @@ final class H2JdbcDialect implements JdbcDialect {
                 """;
     }
 }
+

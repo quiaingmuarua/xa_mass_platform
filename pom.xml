@@ -26,6 +26,8 @@
         <module>platform_infra/mass-runtime-api</module>
         <module>platform_infra/mass-runtime-memory</module>
         <module>platform_infra/mass-runtime-redis</module>
+        <module>platform_infra/mass-storage-memory</module>
+        <module>platform_infra/mass-storage-jdbc</module>
         <module>transport/transport_api</module>
         <module>transport/polling-adapter</module>
         <module>transport/transport_runtime</module>

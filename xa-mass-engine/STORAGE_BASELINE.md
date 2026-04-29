@@ -26,7 +26,7 @@ Current behavior:
 
 - `MEMORY` is the default implemented runtime path
 - `xa-mass-server` can opt into JDBC-backed `TaskStorage`, `WorkerStorage`, and `RuleStorage`
-  with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a server-owned JDBC adapter path, not a
+  with `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres`; this is a `platform_infra/mass-storage-jdbc` adapter path, not a
   `TaskStorageFactory` default
 - `REDIS` exists as a type, but factory methods fail fast with `UnsupportedOperationException`
 - `DATABASE` exists as a type, but engine factory methods still fail fast with
@@ -35,15 +35,15 @@ Current behavior:
 That means the SDK/engine default mainline is memory-backed storage, while the
 server shell has a focused H2 path for local and CI persistence verification.
 
-## JDBC Server Adapter Boundary
+## JDBC Adapter Boundary
 
-The server-owned JDBC path is for durable control-plane truth. H2 is the
+The JDBC path owned by `platform_infra/mass-storage-jdbc` is for durable control-plane truth. H2 is the
 local/CI verification dialect; PostgreSQL is the intended durable mainline. It
 is not a task-message analytics backend.
 
 Keep this boundary narrow:
 
-- dialect-specific behavior must stay behind server-owned adapter classes
+- dialect-specific behavior must stay behind JDBC adapter classes
 - upper layers should depend on storage interfaces and JDBC-style semantics, not
   dialect-specific SQL behavior
 - the server JDBC adapter persists `Task` truth only; `TaskMsg` and
@@ -124,7 +124,7 @@ Important current usage notes:
 - `TaskMessageStats` and `TaskMessageAttemptStats` are read-model and audit surfaces, not queue/lease ownership
 - scan-heavy fallback default methods were intentionally removed from the interface; each backend must now opt into these behaviors explicitly instead of inheriting silent O(n) scans
 - `getTaskMessages(...)` is a storage-level compatibility/demo snapshot plus temporary internal cleanup helper; shell-facing bounded reads should flow through a dedicated query/read surface rather than expanding the `TaskManager` runtime facade
-- the server JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
+- the JDBC adapter intentionally keeps `TaskMsg` and `TaskMsgAttempt`
   process-local; after restart, only `Task` truth is recovered from DB
 - runtime cleanup paths that only need pending logical messages should use `getNonFinalTaskMessages(...)` instead of materializing the full task-message snapshot
 - bounded runtime validation should stay on task/runtime aggregates; explicit `TaskMsg` projection audits are diagnostic-only and may traverse compatibility snapshots
@@ -281,6 +281,7 @@ When extending storage behavior, keep these rules fixed unless the kernel itself
 
 - [`../AGENTS.md`](../AGENTS.md)
 - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
+- [`../platform_infra/README.md`](../platform_infra/README.md)
 - [`src/main/java/com/xa/mass/engine/storage/TaskStorage.java`](src/main/java/com/xa/mass/engine/storage/TaskStorage.java)
 - [`src/main/java/com/xa/mass/engine/storage/WorkerStorage.java`](src/main/java/com/xa/mass/engine/storage/WorkerStorage.java)
 - [`src/main/java/com/xa/mass/engine/storage/RuleStorage.java`](src/main/java/com/xa/mass/engine/storage/RuleStorage.java)

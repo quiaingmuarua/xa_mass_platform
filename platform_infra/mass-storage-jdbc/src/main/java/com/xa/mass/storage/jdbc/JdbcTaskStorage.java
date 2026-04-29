@@ -1,4 +1,4 @@
-package com.xa.mass.server.storage;
+package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Server-owned JDBC adapter for durable task truth.
+ * JDBC adapter for durable task truth.
  *
  * <p>High-frequency message and attempt detail stays in a process-local
  * compatibility projection. Do not expand this adapter into a cross-task
@@ -275,3 +275,4 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage {
         }
     }
 }
+
