@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,7 @@ class InMemoryTaskStorageTest {
         storage.addTaskMessageAttempt("task-1", "msg-1", runningAttempt);
         storage.addTaskMessageAttempt("task-1", "msg-1", failedAttempt);
 
-        TaskStorage.TaskMessageAttemptStats initialStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
+        TaskDetailStore.TaskMessageAttemptStats initialStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
         assertEquals(2, initialStats.getTotalAttempts());
         assertEquals(1, initialStats.getActiveAttempts());
         assertEquals(1, initialStats.getRunningAttempts());
@@ -56,7 +57,7 @@ class InMemoryTaskStorageTest {
         runningAttempt.setStatus(TaskMsgAttemptStatus.SUCCEEDED);
         assertTrue(storage.updateTaskMessageAttempt("task-1", "msg-1", runningAttempt));
 
-        TaskStorage.TaskMessageAttemptStats updatedStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
+        TaskDetailStore.TaskMessageAttemptStats updatedStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
         assertEquals(2, updatedStats.getTotalAttempts());
         assertEquals(0, updatedStats.getActiveAttempts());
         assertEquals(0, updatedStats.getRunningAttempts());

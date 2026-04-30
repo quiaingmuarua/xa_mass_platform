@@ -15,6 +15,7 @@ import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
@@ -55,6 +56,7 @@ public class TaskManager {
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
+    private final TaskDetailStore taskDetailStore;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -69,15 +71,31 @@ public class TaskManager {
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskWorkRuntime taskWorkRuntime) {
+        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
                        TaskStorage taskStorage,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
+        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), taskTerminalPolicy, taskWorkRuntime);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
+        this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.eventPublisher = new TaskEventPublisher();
@@ -325,7 +343,7 @@ public class TaskManager {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        taskStorage.addTaskMessage(taskId, taskMsg);
+        taskDetailStore.addTaskMessage(taskId, taskMsg);
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -336,7 +354,7 @@ public class TaskManager {
      * business-detail path.
      */
     List<TaskMsg> getTaskMessages(String taskId) {
-        return taskStorage.getTaskMessages(taskId);
+        return taskDetailStore.getTaskMessages(taskId);
     }
 
     /**
@@ -344,39 +362,39 @@ public class TaskManager {
      * analysis contract.
      */
     List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskStorage.getTaskMessages(taskId, limit);
+        return taskDetailStore.getTaskMessages(taskId, limit);
     }
 
     long countTaskMessages(String taskId) {
-        return taskStorage.countTaskMessages(taskId);
+        return taskDetailStore.countTaskMessages(taskId);
     }
 
     TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskStorage.getTaskMessage(taskId, messageId).orElse(null);
+        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskStorage.updateTaskMessage(taskId, taskMsg);
+        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskStorage.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskStorage.getTaskMessageAttempts(taskId, messageId);
+        return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
     }
 
     TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskStorage.updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     public long getTaskMessageLeaseSeconds() {
@@ -405,12 +423,12 @@ public class TaskManager {
     /**
      * Returns the current persisted task-message aggregate for a task.
      */
-    TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
-        return taskStorage.getTaskMessageStats(taskId);
+    TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
+        return taskDetailStore.getTaskMessageStats(taskId);
     }
 
     List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskStorage.getNonFinalTaskMessages(taskId);
+        return taskDetailStore.getNonFinalTaskMessages(taskId);
     }
 
     int countPendingDispatchableMessages(String taskId) {
@@ -445,8 +463,16 @@ public class TaskManager {
         eventPublisher.publishTaskDispatchRequested(task);
     }
 
-    TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskStorage.getTaskMessageAttemptStats(taskId, messageId);
+    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+    }
+
+    private static TaskDetailStore requireDetailStore(TaskStorage taskStorage) {
+        if (taskStorage instanceof TaskDetailStore tds) {
+            return tds;
+        }
+        throw new IllegalArgumentException(
+                "taskStorage must implement TaskDetailStore; use the explicit constructor to provide a separate TaskDetailStore");
     }
 
     boolean deleteTaskRecord(String taskId) {

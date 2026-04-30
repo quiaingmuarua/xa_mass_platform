@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 
 import java.util.ArrayList;
@@ -105,9 +106,9 @@ final class JdbcTaskCompatibilityProjection {
         return bucket != null ? bucket.latestActive() : Optional.empty();
     }
 
-    TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.stats() : new TaskStorage.TaskMessageAttemptStats(0, 0, 0, 0, 0);
+        return bucket != null ? bucket.stats() : new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
     }
 
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
@@ -115,12 +116,12 @@ final class JdbcTaskCompatibilityProjection {
         return bucket != null && attempt != null && attempt.getAttemptId() != null && bucket.update(attempt);
     }
 
-    TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
+    TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         if (bucket == null) {
-            return new TaskStorage.TaskMessageStats(0, 0, 0, 0, 0);
+            return new TaskDetailStore.TaskMessageStats(0, 0, 0, 0, 0);
         }
-        return new TaskStorage.TaskMessageStats(
+        return new TaskDetailStore.TaskMessageStats(
                 bucket.size(),
                 bucket.successCount(),
                 bucket.failedCount(),
@@ -129,10 +130,10 @@ final class JdbcTaskCompatibilityProjection {
         );
     }
 
-    TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
+    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
         Map<String, AttemptBucket> attemptsByMsg = taskMessageAttempts.get(taskId);
         if (attemptsByMsg == null) {
-            return new TaskStorage.TaskMessageAttemptStats(0, 0, 0, 0, 0);
+            return new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
         }
 
         long totalAttempts = 0;
@@ -142,7 +143,7 @@ final class JdbcTaskCompatibilityProjection {
         long expiredAttempts = 0;
 
         for (AttemptBucket bucket : attemptsByMsg.values()) {
-            TaskStorage.TaskMessageAttemptStats stats = bucket.stats();
+            TaskDetailStore.TaskMessageAttemptStats stats = bucket.stats();
             totalAttempts += stats.getTotalAttempts();
             activeAttempts += stats.getActiveAttempts();
             runningAttempts += stats.getRunningAttempts();
@@ -150,7 +151,7 @@ final class JdbcTaskCompatibilityProjection {
             expiredAttempts += stats.getExpiredAttempts();
         }
 
-        return new TaskStorage.TaskMessageAttemptStats(
+        return new TaskDetailStore.TaskMessageAttemptStats(
                 totalAttempts,
                 activeAttempts,
                 runningAttempts,
@@ -379,8 +380,8 @@ final class JdbcTaskCompatibilityProjection {
             return Optional.ofNullable(attemptsById.get(latestActiveAttemptId));
         }
 
-        private synchronized TaskStorage.TaskMessageAttemptStats stats() {
-            return new TaskStorage.TaskMessageAttemptStats(
+        private synchronized TaskDetailStore.TaskMessageAttemptStats stats() {
+            return new TaskDetailStore.TaskMessageAttemptStats(
                     attemptsById.size(),
                     activeAttemptCount,
                     runningAttemptCount,

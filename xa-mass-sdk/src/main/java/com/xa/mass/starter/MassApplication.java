@@ -22,6 +22,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
@@ -64,6 +65,7 @@ public class MassApplication {
     private TransportDeliveryService transportDeliveryService;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
+    private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -112,12 +114,13 @@ public class MassApplication {
 
         try {
             try {
+                stopTransportServers();
+                stopManagedTransportAdapters();
+                drainResultIngestBuffer();
+
                 if (engine != null && engineConfig.isEnabled()) {
                     engine.stop();
                 }
-
-                stopTransportServers();
-                stopManagedTransportAdapters();
             } finally {
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
@@ -152,6 +155,12 @@ public class MassApplication {
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop managed transport adapters after startup failure", cleanupError);
+        }
+        try {
+            drainResultIngestBuffer();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to drain result ingest buffer after startup failure", cleanupError);
         }
         try {
             stopTransportDeliveryService();
@@ -206,8 +215,11 @@ public class MassApplication {
             List<TransportBinding> adapterBindings = new ArrayList<>();
             if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
-                taskResultIngestChannel = new RuntimeTaskResultIngestChannel(taskResultIngestFacade);
-                logger.info("Task result ingest channel initialized");
+                BufferedTaskResultIngestChannel buffer = new BufferedTaskResultIngestChannel(
+                        new RuntimeTaskResultIngestChannel(taskResultIngestFacade));
+                bufferedResultIngestChannel = buffer;
+                taskResultIngestChannel = buffer;
+                logger.info("Task result ingest channel initialized (buffered async)");
             }
 
             for (TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap
@@ -301,6 +313,16 @@ public class MassApplication {
     private void stopTransportServers() throws Exception {
         for (TransportServer transportServer : transportServers) {
             transportServer.stop();
+        }
+    }
+
+    private void drainResultIngestBuffer() {
+        BufferedTaskResultIngestChannel buffer = bufferedResultIngestChannel;
+        bufferedResultIngestChannel = null;
+        if (buffer != null) {
+            logger.info("Draining result ingest buffer");
+            buffer.shutdown();
+            logger.info("Result ingest buffer drained");
         }
     }
 

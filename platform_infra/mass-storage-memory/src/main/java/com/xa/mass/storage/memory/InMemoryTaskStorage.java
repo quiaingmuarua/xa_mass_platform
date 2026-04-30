@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 
 import java.time.LocalDateTime;
@@ -22,7 +23,7 @@ import java.util.stream.Collectors;
 /**
  * In-memory task storage optimized for frequent task-message writes.
  */
-public class InMemoryTaskStorage implements TaskStorage {
+public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private final Map<TaskStatus, java.util.LinkedHashSet<String>> taskIdsByStatus = new ConcurrentHashMap<>();

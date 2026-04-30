@@ -49,7 +49,7 @@ class MassApplicationStopOrderTest {
     }
 
     @Test
-    void engineStopsBeforeTransportServerAndManagedAdapter() throws Exception {
+    void transportAndAdapterStopBeforeEngine() throws Exception {
         List<String> order = new ArrayList<>();
 
         ManagedTransportAdapter adapter = new RecordingManagedTransportAdapter(order, "websocket");
@@ -69,8 +69,8 @@ class MassApplicationStopOrderTest {
 
         app.stop();
 
-        assertEquals(List.of("engine", "transport", "websocket"), order,
-                "Stop order must be: engine -> transport server -> managed adapter");
+        assertEquals(List.of("transport", "websocket", "engine"), order,
+                "Stop order must be: transport server -> managed adapter -> engine (so buffer drains before engine stops)");
     }
 
     @Test

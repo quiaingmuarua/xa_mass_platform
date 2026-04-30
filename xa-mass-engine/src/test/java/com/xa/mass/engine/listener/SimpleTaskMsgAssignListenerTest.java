@@ -13,7 +13,6 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -38,7 +37,7 @@ class SimpleTaskMsgAssignListenerTest {
 
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
-    private TaskStorage taskStorage;
+    private InMemoryTaskStorage taskStorage;
     private TaskManager taskManager;
     private TaskCommandService taskCommands;
     private SimpleTaskMsgAssignListener listener;

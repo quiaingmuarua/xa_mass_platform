@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.List;
@@ -29,6 +29,6 @@ public interface TaskStateRuntimePort {
      */
     List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId);
 
-    TaskStorage.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
+    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
 }
 
