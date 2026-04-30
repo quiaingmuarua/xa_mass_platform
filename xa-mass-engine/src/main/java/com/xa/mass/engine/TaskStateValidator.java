@@ -7,7 +7,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
@@ -175,7 +175,7 @@ class TaskStateValidator {
             if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
-            TaskStorage.TaskMessageAttemptStats attemptStats =
+            TaskDetailStore.TaskMessageAttemptStats attemptStats =
                     stateRuntime.getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;

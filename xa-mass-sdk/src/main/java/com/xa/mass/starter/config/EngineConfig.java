@@ -23,6 +23,7 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
@@ -53,6 +54,7 @@ public class EngineConfig {
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private TaskStorage taskStorage = new InMemoryTaskStorage();
+    private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
@@ -81,6 +83,7 @@ public class EngineConfig {
         this.taskRuntimeMaintenancePort = source.taskRuntimeMaintenancePort;
         this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
         this.taskStorage = source.taskStorage;
+        this.taskDetailStore = source.taskDetailStore;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerStorage = source.workerStorage;
@@ -240,6 +243,27 @@ public class EngineConfig {
         this.taskStorage = taskStorage;
     }
 
+    public TaskDetailStore getTaskDetailStore() {
+        if (taskDetailStore != null) {
+            return taskDetailStore;
+        }
+        if (taskStorage instanceof TaskDetailStore tds) {
+            return tds;
+        }
+        throw new IllegalStateException(
+                "taskStorage does not implement TaskDetailStore; provide an explicit taskDetailStore via setTaskDetailStore()");
+    }
+
+    public void setTaskDetailStore(TaskDetailStore taskDetailStore) {
+        if (taskDetailStore == null) {
+            throw new IllegalArgumentException("taskDetailStore must not be null");
+        }
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace taskDetailStore after taskManager has been configured");
+        }
+        this.taskDetailStore = taskDetailStore;
+    }
+
     public WorkerManager getWorkerManager() {
         if (workerManager == null) {
             workerManager = new WorkerManager(getWorkerStorage());
@@ -341,7 +365,7 @@ public class EngineConfig {
 
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
-            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskWorkRuntime());
+            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskDetailStore(), getTaskWorkRuntime());
         }
         taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         return taskManager;

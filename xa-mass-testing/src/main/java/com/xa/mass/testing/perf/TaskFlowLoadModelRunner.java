@@ -26,6 +26,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
@@ -222,8 +223,8 @@ public final class TaskFlowLoadModelRunner {
                 require(finalTask != null, "task should be captured on terminal transition");
 
                 long totalWallNanos = System.nanoTime() - wallStartNanos;
-                TaskStorage.TaskMessageStats finalMessageStats = taskStorage.getTaskMessageStats(task.getTid());
-                TaskStorage.TaskMessageAttemptStats finalAttemptStats = taskStorage.getTaskMessageAttemptStats(task.getTid());
+                TaskDetailStore.TaskMessageStats finalMessageStats = taskStorage.getTaskMessageStats(task.getTid());
+                TaskDetailStore.TaskMessageAttemptStats finalAttemptStats = taskStorage.getTaskMessageAttemptStats(task.getTid());
 
                 require(finalMessageStats.getTotal() == config.messageCount(),
                         "unexpected final logical message count");
@@ -315,8 +316,8 @@ public final class TaskFlowLoadModelRunner {
                                         DispatchMetrics dispatchMetrics,
                                         CallbackMetrics callbackMetrics,
                                         ReleaseMetrics releaseMetrics,
-                                        TaskStorage.TaskMessageStats finalMessageStats,
-                                        TaskStorage.TaskMessageAttemptStats finalAttemptStats,
+                                        TaskDetailStore.TaskMessageStats finalMessageStats,
+                                        TaskDetailStore.TaskMessageAttemptStats finalAttemptStats,
                                         StorageProbe storageProbe) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>();
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -676,7 +677,7 @@ public final class TaskFlowLoadModelRunner {
                                      long failedMessages,
                                      long expiredMessages,
                                      long processingMessages) {
-        private static FinalMessageStats from(TaskStorage.TaskMessageStats stats) {
+        private static FinalMessageStats from(TaskDetailStore.TaskMessageStats stats) {
             return new FinalMessageStats(
                     stats.getTotal(),
                     stats.getSuccess(),
@@ -702,7 +703,7 @@ public final class TaskFlowLoadModelRunner {
                                      long runningAttempts,
                                      long failedAttempts,
                                      long expiredAttempts) {
-        private static FinalAttemptStats from(TaskStorage.TaskMessageAttemptStats stats) {
+        private static FinalAttemptStats from(TaskDetailStore.TaskMessageAttemptStats stats) {
             return new FinalAttemptStats(
                     stats.getTotalAttempts(),
                     stats.getActiveAttempts(),
