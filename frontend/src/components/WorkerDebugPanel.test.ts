@@ -4,7 +4,7 @@ import {mockAdminUser, mockViewerUser} from '@/auth/mock-user'
 import {setMockCurrentUser} from '@/auth/use-auth'
 import WorkerDebugPanel from '@/components/WorkerDebugPanel.vue'
 
-const createTask = vi.fn()
+const createTask = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/tasks', () => ({
     createTask,
