@@ -58,7 +58,7 @@ class TaskApiListControllerTest {
         pausedTask.setBatchSize(1);
         pausedTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 8, 0));
 
-        when(taskQueries.getAllTasks()).thenReturn(List.of(runningTask, pausedTask));
+        when(taskQueries.getTasksByStatus(TaskStatus.RUNNING)).thenReturn(List.of(runningTask));
 
         mockMvc.perform(get("/status/api/tasks")
                         .param("keyword", "warm")

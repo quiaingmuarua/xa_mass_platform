@@ -528,7 +528,7 @@ class TaskApiControllerTest {
                 new TaskOwnershipStamp("ops-admin", PrincipalType.OPERATOR)
         ));
 
-        when(taskQueries.getAllTasks()).thenReturn(List.of(task));
+        when(taskQueries.listTasksPaged(0, 500)).thenReturn(List.of(task));
 
         mockMvc.perform(get("/status/api/tasks"))
                 .andExpect(status().isOk())
@@ -563,7 +563,7 @@ class TaskApiControllerTest {
                 List.of("crawler.fetch-page"),
                 Map.of()
         ));
-        when(taskQueries.getAllTasks()).thenReturn(List.of(ownedTask, foreignTask));
+        when(taskQueries.listTasksPaged(0, 500)).thenReturn(List.of(ownedTask, foreignTask));
 
         mockMvc.perform(get("/status/api/tasks")
                         .header("X-Mass-Api-Key", "sdk-key"))
