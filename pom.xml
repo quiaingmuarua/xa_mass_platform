@@ -29,6 +29,7 @@
         <module>platform_infra/mass-storage-api</module>
         <module>platform_infra/mass-storage-memory</module>
         <module>platform_infra/mass-storage-jdbc</module>
+        <module>platform_infra/mass-trace-sink</module>
         <module>transport/transport_api</module>
         <module>transport/polling-adapter</module>
         <module>transport/transport_runtime</module>
