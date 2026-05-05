@@ -92,11 +92,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public List<Task> getAllTasks() {
-        return queryTasks("SELECT json FROM xa_task");
-    }
-
-    @Override
     public List<Task> listTasksPaged(int offset, int limit) {
         if (limit <= 0) {
             return List.of();

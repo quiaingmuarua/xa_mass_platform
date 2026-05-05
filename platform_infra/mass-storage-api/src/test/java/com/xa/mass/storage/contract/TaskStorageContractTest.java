@@ -84,14 +84,6 @@ public abstract class TaskStorageContractTest {
         assertThat(storage.getTask("t1")).isEmpty();
     }
 
-    @Test
-    void getAllTasks_includesAllSaved() {
-        storage.saveTask(readyTask("t1", "proj-a"));
-        storage.saveTask(readyTask("t2", "proj-b"));
-        assertThat(storage.getAllTasks()).extracting(Task::getTid)
-                .containsExactlyInAnyOrder("t1", "t2");
-    }
-
     // ── status filter ─────────────────────────────────────────────────────────
 
     @Test

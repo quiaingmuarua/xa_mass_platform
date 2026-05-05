@@ -77,11 +77,6 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public List<Task> getAllTasks() {
-        return new ArrayList<>(tasks.values());
-    }
-
-    @Override
     public List<Task> listTasksPaged(int offset, int limit) {
         if (limit <= 0) {
             return List.of();

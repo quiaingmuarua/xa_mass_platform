@@ -163,10 +163,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return requireStartedTaskQueries().getTask(taskId);
     }
 
-    public List<Task> getAllTasks() {
-        return requireStartedTaskQueries().getAllTasks();
-    }
-
     public List<Task> listTasksPaged(int offset, int limit) {
         return requireStartedTaskQueries().listTasksPaged(offset, limit);
     }
@@ -260,11 +256,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public TaskStateValidationResult validateTaskState(String taskId) {
         return requireStartedTaskQueries().validateTaskState(taskId);
-    }
-
-    @Override
-    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return requireStartedTaskQueries().auditTaskProjectionState(taskId);
     }
 
     @Override

@@ -10,6 +10,4 @@ import java.util.List;
 public interface TaskRuntimeRecoveryPort {
 
     List<Task> getRuntimeDispatchableTasks(int limit);
-
-    List<Task> getAllTasks();
 }

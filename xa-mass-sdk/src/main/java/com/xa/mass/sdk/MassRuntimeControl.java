@@ -49,8 +49,6 @@ public interface MassRuntimeControl {
 
     Task getTask(String taskId);
 
-    List<Task> getAllTasks();
-
     /**
      * Approve a NEW task, moving it to READY for dispatch.
      */

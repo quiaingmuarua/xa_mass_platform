@@ -234,18 +234,6 @@ public class TaskManager {
         return withTaskLock(taskId, () -> lifecycleService.deleteTask(taskId));
     }
 
-    /**
-     * Returns all persisted tasks.
-     */
-    List<Task> getAllTasks() {
-        LogUtils.logOperationStart("GET_ALL_TASKS", "TaskManager");
-
-        List<Task> tasks = taskStorage.getAllTasks();
-
-        LogUtils.logOperationSuccess("loaded all tasks: count=" + tasks.size(), 0);
-        return tasks;
-    }
-
     List<Task> listTasksPaged(int offset, int limit) {
         return taskStorage.listTasksPaged(offset, limit);
     }
