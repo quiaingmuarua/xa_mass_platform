@@ -31,6 +31,8 @@ import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class AbstractSampleE2eTest {
+    private static final int MIN_TEST_WEBSOCKET_PORT = 20_000;
+    private static final int MAX_TEST_WEBSOCKET_PORT = 65_000;
 
     private static final AtomicInteger NEXT_WEBSOCKET_PORT = new AtomicInteger(initialPortSeed());
 
@@ -70,22 +72,32 @@ public abstract class AbstractSampleE2eTest {
 
     protected static int findFreePort() {
         while (true) {
-            int candidate = NEXT_WEBSOCKET_PORT.getAndIncrement();
+            int candidate = NEXT_WEBSOCKET_PORT.getAndUpdate(AbstractSampleE2eTest::nextCandidatePort);
             try (ServerSocket socket = new ServerSocket(candidate)) {
                 return socket.getLocalPort();
             } catch (IOException ignored) {
-                // Try the next candidate. Tests run in one JVM, so monotonic allocation
-                // avoids reusing a just-released WebSocket port in later contexts.
+                // Try the next candidate. Tests run in one JVM, so bounded monotonic
+                // allocation still avoids immediate reuse without overflowing port range.
             }
         }
     }
 
     private static int initialPortSeed() {
         try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
+            int allocated = socket.getLocalPort();
+            return allocated >= MIN_TEST_WEBSOCKET_PORT && allocated <= MAX_TEST_WEBSOCKET_PORT
+                    ? allocated
+                    : MIN_TEST_WEBSOCKET_PORT;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to allocate initial free port seed", e);
         }
+    }
+
+    private static int nextCandidatePort(int current) {
+        if (current < MIN_TEST_WEBSOCKET_PORT || current >= MAX_TEST_WEBSOCKET_PORT) {
+            return MIN_TEST_WEBSOCKET_PORT;
+        }
+        return current + 1;
     }
 
     @SuppressWarnings("unchecked")
@@ -429,4 +441,3 @@ public abstract class AbstractSampleE2eTest {
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
 }
-

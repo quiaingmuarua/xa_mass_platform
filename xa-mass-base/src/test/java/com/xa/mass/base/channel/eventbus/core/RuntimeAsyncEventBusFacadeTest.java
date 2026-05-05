@@ -32,6 +32,7 @@ class RuntimeAsyncEventBusFacadeTest {
             assertTrue(handled.await(1, TimeUnit.SECONDS));
             assertTrue(listener.wasHandledOnAsyncThread());
             assertTrue(listener.wasHandledOnVirtualThread());
+            assertTrue(waitForCompletedEvents(eventBus, 1));
             assertEquals(1, eventBus.getStatistics().getCompletedEvents());
         } finally {
             eventBus.shutdown();
@@ -103,6 +104,18 @@ class RuntimeAsyncEventBusFacadeTest {
             Thread.sleep(25L);
         }
         return false;
+    }
+
+    private static boolean waitForCompletedEvents(RuntimeAsyncEventBusFacade eventBus,
+                                                  long expectedCompletedEvents) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (System.nanoTime() < deadline) {
+            if (eventBus.getStatistics().getCompletedEvents() >= expectedCompletedEvents) {
+                return true;
+            }
+            Thread.sleep(10L);
+        }
+        return eventBus.getStatistics().getCompletedEvents() >= expectedCompletedEvents;
     }
 
     public static final class RuntimeTestListener {
