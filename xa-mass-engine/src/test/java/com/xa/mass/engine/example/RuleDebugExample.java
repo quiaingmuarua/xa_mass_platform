@@ -131,7 +131,7 @@ public class RuleDebugExample {
         for (RuleDefinition rule : rules) {
             try {
                 boolean result = ruleManager.evaluate(rule, context);
-                System.out.println("  - " + rule.getId() + " (" + rule.getDesc() + "): " + (result ? "PASS" : "FAIL"));
+                System.out.println("  - " + rule.getId() + " (" + rule.getDescription() + "): " + (result ? "PASS" : "FAIL"));
                 System.out.println("    expression: " + rule.getContent());
                 if (result) {
                     passedRules++;

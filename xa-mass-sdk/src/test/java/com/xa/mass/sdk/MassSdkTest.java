@@ -976,18 +976,6 @@ class MassSdkTest {
         TaskMsg message = new TaskMsg();
         TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
         List<TaskMsgAttempt> attempts = List.of(activeAttempt);
-        TaskStateValidationResult projectionAudit = new TaskStateValidationResult(
-                true,
-                false,
-                TaskStatus.READY,
-                null,
-                0,
-                0,
-                0,
-                0,
-                TaskStateValidationResult.Scope.PROJECTION_AUDIT,
-                List.of()
-        );
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -996,14 +984,12 @@ class MassSdkTest {
         when(taskQueries.getTaskMessage("task-1", "msg-1")).thenReturn(message);
         when(taskQueries.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
         when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
-        when(taskQueries.auditTaskProjectionState("task-1")).thenReturn(projectionAudit);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertSame(message, app.getTaskMessage("task-1", "msg-1"));
         assertSame(attempts, app.getTaskMessageAttempts("task-1", "msg-1"));
         assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
-        assertSame(projectionAudit, app.auditTaskProjectionState("task-1"));
     }
 
     @Test
@@ -2545,7 +2531,6 @@ class MassSdkTest {
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {
         List<Executable> operations = List.of(
                 () -> app.getTask("task-1"),
-                app::getAllTasks,
                 () -> app.getTasksByStatus(TaskStatus.READY),
                 () -> app.approveTask("task-1"),
                 () -> app.rejectTask("task-1"),
@@ -2563,7 +2548,6 @@ class MassSdkTest {
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
-                () -> app.auditTaskProjectionState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
                 app::getAllWorkerContexts,

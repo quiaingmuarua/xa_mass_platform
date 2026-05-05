@@ -408,9 +408,6 @@ class MockRuntimeDataLoaderTest {
         public Task getTask(String taskId) { return null; }
 
         @Override
-        public List<Task> getAllTasks() { return List.of(); }
-
-        @Override
         public boolean approveTask(String taskId) { return false; }
 
         @Override

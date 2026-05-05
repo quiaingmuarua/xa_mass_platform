@@ -20,9 +20,4 @@ public final class TaskManagerRuntimeRecoveryPort implements TaskRuntimeRecovery
     public List<Task> getRuntimeDispatchableTasks(int limit) {
         return taskManager.getRuntimeDispatchableTasks(limit);
     }
-
-    @Override
-    public List<Task> getAllTasks() {
-        return taskManager.getAllTasks();
-    }
 }

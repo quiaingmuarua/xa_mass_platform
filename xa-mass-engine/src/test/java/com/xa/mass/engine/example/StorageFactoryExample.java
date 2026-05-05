@@ -106,9 +106,9 @@ public class StorageFactoryExample {
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);
 
-        List<Task> allTasks = inMemoryStorage.getAllTasks();
-        log.info("Tasks in storage: {}", allTasks.size());
-        for (Task task : allTasks) {
+        List<Task> pagedTasks = inMemoryStorage.listTasksPaged(0, 100);
+        log.info("Tasks in storage: {}", pagedTasks.size());
+        for (Task task : pagedTasks) {
             log.info(
                     "Task: {} (routingCode: {}, project: {})",
                     task.getTid(),
