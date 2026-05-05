@@ -1,7 +1,6 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
@@ -21,7 +20,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -65,7 +63,14 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalNodeWorkerProcess workerProcess =
                      ExternalNodeWorkerProcess.startPollingSample(baseUrl, WORKER_ID, WORKER_KEY)) {
-            waitForWorkerOnline(WORKER_ID, workerProcess);
+            waitForWorkerStatus(
+                    WORKER_ID,
+                    "ONLINE",
+                    40,
+                    250L,
+                    () -> workerProcess.assertAlive("External Node polling worker exited before reaching ONLINE"),
+                    workerProcess::capturedOutput
+            );
             assertSdkMetadataProjection(WORKER_ID);
 
             Map<String, Object> createBody = new LinkedHashMap<>();
@@ -109,7 +114,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertTrue(output.containsKey("fetchedAt"));
             assertTrue(output.containsKey("elapsedMs"));
         }
-        waitUntil(() -> !app.isWorkerOnline(WORKER_ID), "external node polling worker should go offline after shutdown");
+        waitForWorkerOffline(WORKER_ID, "external node polling worker should go offline after shutdown");
     }
 
     private void assertSdkMetadataProjection(String workerId) {
@@ -146,30 +151,6 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         return headers;
     }
 
-    private void waitForWorkerOnline(String workerId,
-                                     ExternalNodeWorkerProcess workerProcess) throws InterruptedException {
-        Worker latestWorker = null;
-        for (int attempt = 0; attempt < 40; attempt++) {
-            workerProcess.assertAlive("External Node polling worker exited before reaching ONLINE");
-            latestWorker = app.getAllWorkers().stream()
-                    .filter(worker -> workerId.equals(worker.getWorkerId()))
-                    .findFirst()
-                    .orElse(null);
-            if (latestWorker != null
-                    && latestWorker.getStatus() != null
-                    && "ONLINE".equals(latestWorker.getStatus().name())) {
-                return;
-            }
-            Thread.sleep(250L);
-        }
-
-        workerProcess.assertAlive("External Node polling worker exited while waiting for ONLINE");
-        assertNotNull(latestWorker, "Worker should have been registered in runtime");
-        throw new AssertionError("Worker " + workerId + " did not reach ONLINE"
-                + ". Last runtime worker=" + latestWorker
-                + "\nNode worker output:\n" + workerProcess.capturedOutput());
-    }
-
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -178,15 +159,5 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         rule.setContent(content);
         rule.setEnabled(true);
         return rule;
-    }
-
-    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            Thread.sleep(100L);
-        }
-        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }

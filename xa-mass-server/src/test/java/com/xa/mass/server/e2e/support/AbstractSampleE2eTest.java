@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -334,6 +335,60 @@ public abstract class AbstractSampleE2eTest {
         }
     }
 
+    protected Worker waitForWorkerStatus(String workerId,
+                                         String expectedStatus,
+                                         int maxAttempts,
+                                         long sleepMillis,
+                                         Runnable livenessCheck,
+                                         Supplier<String> diagnosticsSupplier) throws InterruptedException {
+        try {
+            return awaitValue(
+                    "Worker " + workerId + " did not reach status " + expectedStatus,
+                    maxAttempts,
+                    sleepMillis,
+                    () -> {
+                        if (livenessCheck != null) {
+                            livenessCheck.run();
+                        }
+                        return fetchRuntimeWorker(workerId);
+                    },
+                    worker -> worker != null
+                            && worker.getStatus() != null
+                            && expectedStatus.equals(worker.getStatus().name()),
+                    worker -> worker == null ? "<not-registered>" : worker.toString()
+            );
+        } catch (AssertionError error) {
+            if (livenessCheck != null) {
+                livenessCheck.run();
+            }
+            String diagnostics = diagnosticsSupplier == null ? "" : diagnosticsSupplier.get();
+            if (diagnostics == null || diagnostics.isBlank()) {
+                throw error;
+            }
+            throw new AssertionError(error.getMessage() + System.lineSeparator()
+                    + "Process output:" + System.lineSeparator() + diagnostics, error);
+        }
+    }
+
+    protected void waitForWorkerOffline(String workerId, String failureMessage) throws InterruptedException {
+        assertTrue(awaitCondition(() -> !requireSdkApp().isWorkerOnline(workerId), 20, 100L), failureMessage);
+    }
+
+    protected int waitForPositiveIntSystemProperty(String propertyName,
+                                                   String failureMessage,
+                                                   int maxAttempts,
+                                                   long sleepMillis) throws InterruptedException {
+        Integer resolvedValue = awaitValue(
+                failureMessage,
+                maxAttempts,
+                sleepMillis,
+                () -> parsePositiveInt(System.getProperty(propertyName)),
+                value -> value != null,
+                value -> value == null ? "<unset>" : value.toString()
+        );
+        return resolvedValue;
+    }
+
     protected boolean awaitCondition(BooleanSupplier condition, int maxAttempts, long sleepMillis) throws InterruptedException {
         for (int i = 0; i < maxAttempts; i++) {
             if (condition.getAsBoolean()) {
@@ -383,6 +438,25 @@ public abstract class AbstractSampleE2eTest {
         return (int) list.stream()
                 .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
                 .count();
+    }
+
+    private Worker fetchRuntimeWorker(String workerId) {
+        return requireSdkApp().getAllWorkers().stream()
+                .filter(worker -> workerId.equals(worker.getWorkerId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Integer parsePositiveInt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag) {
