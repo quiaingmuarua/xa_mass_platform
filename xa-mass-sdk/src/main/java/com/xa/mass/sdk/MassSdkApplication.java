@@ -167,6 +167,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return requireStartedTaskQueries().getAllTasks();
     }
 
+    public List<Task> listTasksPaged(int offset, int limit) {
+        return requireStartedTaskQueries().listTasksPaged(offset, limit);
+    }
+
     public List<Task> getTasksByStatus(TaskStatus status) {
         return requireStartedTaskQueries().getTasksByStatus(status);
     }

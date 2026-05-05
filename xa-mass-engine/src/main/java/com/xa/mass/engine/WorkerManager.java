@@ -109,6 +109,10 @@ public class WorkerManager {
         return workerStorage.getAllWorkerContexts();
     }
 
+    public List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
+        return workerStorage.getWorkerContextsByWorkerIds(workerIds);
+    }
+
     public List<String> getLockedWorkers() {
         return workerStorage.getLockedWorkers();
     }

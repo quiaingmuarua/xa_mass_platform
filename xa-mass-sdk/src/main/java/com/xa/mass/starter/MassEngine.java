@@ -177,22 +177,10 @@ public class MassEngine {
     }
 
     /**
-     * Replays a {@link TaskCreatedEvent} for every existing task to the runtime EventBus.
-     *
-     * <p>Useful for bootstrapping: newly registered EventBus subscribers can receive
-     * a synthetic "created" signal for tasks that were created before they subscribed.
-     * Tasks created after engine start already fire this event in real time via
-     * .
+     * No-op. Full-table replay of TaskCreatedEvent is not supported at scale.
+     * Subscribers that need historical state should query storage directly via TaskQueryService.
      */
-    @SuppressWarnings("unchecked")
     public void publishTaskEvents() {
-        if (taskCommands != null && eventBus != null) {
-            EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
-            List<Task> allTasks = runtimeRecoveryPort != null ? runtimeRecoveryPort.getAllTasks() : List.of();
-            for (Task task : allTasks) {
-                bus.post(new TaskCreatedEvent(task, null, null));
-            }
-        }
     }
 
     public boolean isRunning() {

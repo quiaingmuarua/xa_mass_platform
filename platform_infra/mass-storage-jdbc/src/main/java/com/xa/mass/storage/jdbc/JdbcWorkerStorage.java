@@ -167,6 +167,12 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
     }
 
     @Override
+    public List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
+        ensureLoaded();
+        return runtimeProjection.getWorkerContextsByWorkerIds(workerIds);
+    }
+
+    @Override
     public synchronized boolean tryLockWorker(String workerId) {
         ensureLoaded();
         return runtimeProjection.tryLockWorker(workerId);

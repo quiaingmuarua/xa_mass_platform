@@ -98,7 +98,7 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         if (!isEnabled()) {
             return;
         }
-        residueRecovery.recover(taskStorage, workerStorage);
+        residueRecovery.recover(workerStorage);
     }
 
     @Override

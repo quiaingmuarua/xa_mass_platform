@@ -97,6 +97,21 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
+    public List<Task> listTasksPaged(int offset, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        try (var conn = connection(); var ps = conn.prepareStatement(
+                "SELECT json FROM xa_task ORDER BY create_time DESC LIMIT ? OFFSET ?")) {
+            ps.setInt(1, limit);
+            ps.setInt(2, Math.max(0, offset));
+            return readTasks(ps);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to list tasks paged", e);
+        }
+    }
+
+    @Override
     public List<Task> getTasksByStatus(TaskStatus status) {
         return queryTasks("SELECT json FROM xa_task WHERE status = ?", status == null ? null : status.name());
     }

@@ -30,8 +30,13 @@ public class TaskQueryService {
         return taskManager.getTask(taskId);
     }
 
+    @Deprecated
     public List<Task> getAllTasks() {
         return taskManager.getAllTasks();
+    }
+
+    public List<Task> listTasksPaged(int offset, int limit) {
+        return taskManager.listTasksPaged(offset, limit);
     }
 
     public List<Task> getTasksByStatus(TaskStatus status) {

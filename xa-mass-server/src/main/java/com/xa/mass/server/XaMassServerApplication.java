@@ -187,15 +187,6 @@ public class XaMassServerApplication {
 
                 Thread.sleep(1000L);
 
-                try {
-                    app.publishTaskEvents();
-                    LogUtils.clearMdc();
-                    log.info("Initial task events published");
-                } catch (Exception e) {
-                    LogUtils.clearMdc();
-                    log.warn("Initial task event publish failed: {}", e.getMessage());
-                }
-
                 LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");
                 log.info("Embedded transport adapters configured: {}", describeConfiguredTransportAdapters(

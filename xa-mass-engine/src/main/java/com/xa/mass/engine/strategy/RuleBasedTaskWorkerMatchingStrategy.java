@@ -53,7 +53,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
         }
 
-        Map<String, List<WorkerContext>> contextsByWorkerId = workerManager.getAllWorkerContexts().stream()
+        List<String> candidateIds = candidates.stream().map(Worker::getWorkerId).toList();
+        Map<String, List<WorkerContext>> contextsByWorkerId = workerManager.getWorkerContextsByWorkerIds(candidateIds).stream()
                 .collect(Collectors.groupingBy(WorkerContext::getWorkerId));
 
         for (Worker worker : candidates) {

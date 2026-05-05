@@ -246,6 +246,10 @@ public class TaskManager {
         return tasks;
     }
 
+    List<Task> listTasksPaged(int offset, int limit) {
+        return taskStorage.listTasksPaged(offset, limit);
+    }
+
     List<Task> getRuntimeDispatchableTasks(int limit) {
         return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
     }

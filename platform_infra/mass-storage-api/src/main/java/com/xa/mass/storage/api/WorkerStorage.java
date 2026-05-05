@@ -35,6 +35,8 @@ public interface WorkerStorage {
 
     List<WorkerContext> getWorkerContexts(String workerId);
 
+    List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds);
+
     Optional<WorkerContext> getWorkerContextById(String workerContextId);
 
     boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext);

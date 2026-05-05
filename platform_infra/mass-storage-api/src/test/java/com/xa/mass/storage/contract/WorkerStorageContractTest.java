@@ -209,6 +209,36 @@ public abstract class WorkerStorageContractTest {
                 .containsExactlyInAnyOrder("ctx-1", "ctx-2");
     }
 
+    @Test
+    void getWorkerContextsByWorkerIds_returnsOnlyRequestedWorkers() {
+        storage.addWorker(worker("w1", "grp"));
+        storage.addWorker(worker("w2", "grp"));
+        storage.addWorker(worker("w3", "grp"));
+        storage.addWorkerContext(context("ctx-1", "w1"));
+        storage.addWorkerContext(context("ctx-2", "w2"));
+        storage.addWorkerContext(context("ctx-3", "w3"));
+
+        assertThat(storage.getWorkerContextsByWorkerIds(List.of("w1", "w3")))
+                .extracting(WorkerContext::getWorkerContextId)
+                .containsExactlyInAnyOrder("ctx-1", "ctx-3");
+    }
+
+    @Test
+    void getWorkerContextsByWorkerIds_returnsEmpty_whenListIsEmpty() {
+        storage.addWorker(worker("w1", "grp"));
+        storage.addWorkerContext(context("ctx-1", "w1"));
+        assertThat(storage.getWorkerContextsByWorkerIds(List.of())).isEmpty();
+    }
+
+    @Test
+    void getWorkerContextsByWorkerIds_excludesUnknownWorkers() {
+        storage.addWorker(worker("w1", "grp"));
+        storage.addWorkerContext(context("ctx-1", "w1"));
+        assertThat(storage.getWorkerContextsByWorkerIds(List.of("w1", "ghost")))
+                .extracting(WorkerContext::getWorkerContextId)
+                .containsExactly("ctx-1");
+    }
+
     // ── locking — most critical cross-impl contract ───────────────────────────
 
     @Test
