@@ -11,7 +11,6 @@ Current phase-1 scope:
 - `mass-storage-api`
 - `mass-storage-memory`
 - `mass-storage-jdbc`
-- `mass-trace-sink`
 
 These modules host platform-level runtime semantics and implementations that are
 shared by engine, transport, server, and test shells. They do not own business
@@ -23,7 +22,10 @@ Think about infra through three truth layers:
 2. runtime state
 3. trace / audit stream
 
-This directory currently contains modules for all three layers.
+This directory currently contains modules for the first two layers. The third
+layer is still mostly a contract and design direction rather than a landed
+module family. That absence is not permission to promote trace-shaped data into
+JDBC tables or hot runtime state.
 
 Use [../doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md) as the dense
 placement matrix. This README stays an index and owner-summary layer, not the
@@ -42,7 +44,6 @@ Current truth for this conservative first slice:
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the storage-adjacent rule types referenced by those contracts
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
-- `mass-trace-sink` owns the `ExecutionEventSink` interface plus the async JSONL rotating file sink (MVP implementation); engine and transport emit events through the interface; wiring to callers is a follow-up
 - `xa-mass-engine` consumes the runtime contract directly and currently also declares storage-contract plus in-memory storage dependencies in the reactor; do not summarize that as "runtime only" without re-checking the root `pom.xml`
 - `xa-mass-engine` now depends on storage contracts and infra-owned in-memory storage implementations; engine no longer carries Redis storage placeholder classes or shared in-memory storage implementations under its package root
 
