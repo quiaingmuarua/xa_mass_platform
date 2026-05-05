@@ -2,9 +2,9 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -111,7 +110,14 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
-            waitForWorkerStatus(WORKER_ID, "ONLINE", worker);
+            waitForWorkerStatus(
+                    WORKER_ID,
+                    "ONLINE",
+                    20,
+                    250L,
+                    () -> worker.assertAlive("External Node worker exited before reaching status ONLINE"),
+                    worker::capturedOutput
+            );
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
@@ -133,7 +139,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertEquals("node-websocket-worker", workerProfile.get("runtime"));
             assertEquals(WORKER_ID, workerProfile.get("workerId"));
         }
-        waitUntil(() -> !app.isWorkerOnline(WORKER_ID), "realtime websocket worker should go offline after disconnect");
+        waitForWorkerOffline(WORKER_ID, "realtime websocket worker should go offline after disconnect");
     }
 
     @Test
@@ -196,7 +202,14 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(STOCK_WORKER_ID, wsUri)) {
-            waitForWorkerStatus(STOCK_WORKER_ID, "ONLINE", worker);
+            waitForWorkerStatus(
+                    STOCK_WORKER_ID,
+                    "ONLINE",
+                    20,
+                    250L,
+                    () -> worker.assertAlive("External Node worker exited before reaching status ONLINE"),
+                    worker::capturedOutput
+            );
 
             String successRequestId = "stockreq-async-0002";
             assertApiOk(exchange("/status/api/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
@@ -256,32 +269,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertTrue(List.of("MIXED_MESSAGE_RESULTS", "ALL_MESSAGES_FAILED", "ALL_MESSAGES_SUCCEEDED")
                     .contains(String.valueOf(sealedTerminal.task().get("terminalReason"))));
         }
-        waitUntil(() -> !app.isWorkerOnline(STOCK_WORKER_ID), "stock websocket worker should go offline after disconnect");
-    }
-
-    private void waitForWorkerStatus(String workerId,
-                                     String expectedStatus,
-                                     ExternalNodeWorkerProcess workerProcess) throws InterruptedException {
-        Worker latestWorker = null;
-        for (int attempt = 0; attempt < 20; attempt++) {
-            workerProcess.assertAlive("External Node worker exited before reaching status " + expectedStatus);
-            latestWorker = app.getAllWorkers().stream()
-                    .filter(worker -> workerId.equals(worker.getWorkerId()))
-                    .findFirst()
-                    .orElse(null);
-            if (latestWorker != null
-                    && latestWorker.getStatus() != null
-                    && expectedStatus.equals(latestWorker.getStatus().name())) {
-                return;
-            }
-            Thread.sleep(250L);
-        }
-
-        workerProcess.assertAlive("External Node worker exited while waiting for worker status");
-        assertNotNull(latestWorker, "Worker should have been registered in runtime");
-        throw new AssertionError("Worker " + workerId + " did not reach status " + expectedStatus
-                + ". Last runtime worker=" + latestWorker
-                + "\nNode worker output:\n" + workerProcess.capturedOutput());
+        waitForWorkerOffline(STOCK_WORKER_ID, "stock websocket worker should go offline after disconnect");
     }
 
     private HttpHeaders sdkCredentialHeaders(String credential) {
@@ -302,15 +290,5 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             }
         }
         return null;
-    }
-
-    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            Thread.sleep(100L);
-        }
-        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }

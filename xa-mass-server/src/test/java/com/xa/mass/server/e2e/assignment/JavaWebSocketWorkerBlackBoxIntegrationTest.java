@@ -1,7 +1,6 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
@@ -21,12 +20,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -109,7 +106,14 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalJavaWorkerProcess worker = ExternalJavaWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
-            waitForWorkerStatus(WORKER_ID, "ONLINE", worker);
+            waitForWorkerStatus(
+                    WORKER_ID,
+                    "ONLINE",
+                    20,
+                    250L,
+                    () -> worker.assertAlive("External Java worker exited before reaching status ONLINE"),
+                    worker::capturedOutput
+            );
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
@@ -131,47 +135,12 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertEquals("java-websocket-worker", workerProfile.get("runtime"));
             assertEquals(WORKER_ID, workerProfile.get("workerId"));
         }
-        waitUntil(() -> !app.isWorkerOnline(WORKER_ID), "realtime java websocket worker should go offline after disconnect");
-    }
-
-    private void waitForWorkerStatus(String workerId,
-                                     String expectedStatus,
-                                     ExternalJavaWorkerProcess workerProcess) throws InterruptedException {
-        Worker latestWorker = null;
-        for (int attempt = 0; attempt < 20; attempt++) {
-            workerProcess.assertAlive("External Java worker exited before reaching status " + expectedStatus);
-            latestWorker = app.getAllWorkers().stream()
-                    .filter(worker -> workerId.equals(worker.getWorkerId()))
-                    .findFirst()
-                    .orElse(null);
-            if (latestWorker != null
-                    && latestWorker.getStatus() != null
-                    && expectedStatus.equals(latestWorker.getStatus().name())) {
-                return;
-            }
-            Thread.sleep(250L);
-        }
-
-        workerProcess.assertAlive("External Java worker exited while waiting for worker status");
-        assertNotNull(latestWorker, "Worker should have been registered in runtime");
-        throw new AssertionError("Worker " + workerId + " did not reach status " + expectedStatus
-                + ". Last runtime worker=" + latestWorker
-                + "\nJava worker output:\n" + workerProcess.capturedOutput());
+        waitForWorkerOffline(WORKER_ID, "realtime java websocket worker should go offline after disconnect");
     }
 
     private HttpHeaders sdkCredentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
-    }
-
-    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            Thread.sleep(100L);
-        }
-        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }

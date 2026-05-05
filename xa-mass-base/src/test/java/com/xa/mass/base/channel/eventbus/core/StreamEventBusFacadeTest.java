@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,7 +110,7 @@ public class StreamEventBusFacadeTest {
     public void testRegisterAndPost() throws Exception {
         eventBus.register(testListener);
         eventBus.post(new TestEvent("hello"));
-        Thread.sleep(200);
+        assertTrue(awaitCondition(() -> received.contains("Test:hello")));
         assertTrue(received.contains("Test:hello"));
     }
 
@@ -116,10 +118,10 @@ public class StreamEventBusFacadeTest {
     public void testUnregister() throws Exception {
         eventBus.register(testListener);
         eventBus.post(new TestEvent("before"));
-        Thread.sleep(100);
+        assertTrue(awaitCondition(() -> received.contains("Test:before")));
         eventBus.unregister(testListener);
         eventBus.post(new TestEvent("after"));
-        Thread.sleep(200);
+        assertTrue(awaitCondition(() -> received.size() == 1));
         assertTrue(received.contains("Test:before"));
         assertFalse(received.contains("Test:after"));
     }
@@ -130,7 +132,7 @@ public class StreamEventBusFacadeTest {
         eventBus.register(anotherListener);
         eventBus.post(new TestEvent("foo"));
         eventBus.post(new AnotherEvent(123));
-        Thread.sleep(200);
+        assertTrue(awaitCondition(() -> received.contains("Test:foo") && received.contains("Another:123")));
         assertTrue(received.contains("Test:foo"));
         assertTrue(received.contains("Another:123"));
     }
@@ -141,7 +143,7 @@ public class StreamEventBusFacadeTest {
         for (int i = 0; i < 10; i++) {
             eventBus.post(new TestEvent("batch-" + i));
         }
-        Thread.sleep(500);
+        assertTrue(awaitCondition(() -> received.size() == 10));
         for (int i = 0; i < 10; i++) {
             assertTrue(received.contains("Test:batch-" + i));
         }
@@ -151,11 +153,22 @@ public class StreamEventBusFacadeTest {
     public void testListenerNotReceiveAfterUnregister() throws Exception {
         eventBus.register(testListener);
         eventBus.post(new TestEvent("first"));
-        Thread.sleep(100);
+        assertTrue(awaitCondition(() -> received.contains("Test:first")));
         eventBus.unregister(testListener);
         eventBus.post(new TestEvent("second"));
-        Thread.sleep(200);
+        assertTrue(awaitCondition(() -> received.size() == 1));
         assertTrue(received.contains("Test:first"));
         assertFalse(received.contains("Test:second"));
+    }
+
+    private boolean awaitCondition(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            TimeUnit.MILLISECONDS.sleep(10L);
+        }
+        return condition.getAsBoolean();
     }
 }

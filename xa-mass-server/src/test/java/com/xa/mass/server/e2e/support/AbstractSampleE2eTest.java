@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -25,12 +26,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class AbstractSampleE2eTest {
+    private static final int MIN_TEST_WEBSOCKET_PORT = 20_000;
+    private static final int MAX_TEST_WEBSOCKET_PORT = 65_000;
 
     private static final AtomicInteger NEXT_WEBSOCKET_PORT = new AtomicInteger(initialPortSeed());
 
@@ -70,22 +75,32 @@ public abstract class AbstractSampleE2eTest {
 
     protected static int findFreePort() {
         while (true) {
-            int candidate = NEXT_WEBSOCKET_PORT.getAndIncrement();
+            int candidate = NEXT_WEBSOCKET_PORT.getAndUpdate(AbstractSampleE2eTest::nextCandidatePort);
             try (ServerSocket socket = new ServerSocket(candidate)) {
                 return socket.getLocalPort();
             } catch (IOException ignored) {
-                // Try the next candidate. Tests run in one JVM, so monotonic allocation
-                // avoids reusing a just-released WebSocket port in later contexts.
+                // Try the next candidate. Tests run in one JVM, so bounded monotonic
+                // allocation still avoids immediate reuse without overflowing port range.
             }
         }
     }
 
     private static int initialPortSeed() {
         try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
+            int allocated = socket.getLocalPort();
+            return allocated >= MIN_TEST_WEBSOCKET_PORT && allocated <= MAX_TEST_WEBSOCKET_PORT
+                    ? allocated
+                    : MIN_TEST_WEBSOCKET_PORT;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to allocate initial free port seed", e);
         }
+    }
+
+    private static int nextCandidatePort(int current) {
+        if (current < MIN_TEST_WEBSOCKET_PORT || current >= MAX_TEST_WEBSOCKET_PORT) {
+            return MIN_TEST_WEBSOCKET_PORT;
+        }
+        return current + 1;
     }
 
     @SuppressWarnings("unchecked")
@@ -213,17 +228,15 @@ public abstract class AbstractSampleE2eTest {
                                                String expectation,
                                                int maxAttempts,
                                                long sleepMillis) throws InterruptedException {
-        TaskSnapshot latestSnapshot = null;
-        for (int i = 0; i < maxAttempts; i++) {
-            latestSnapshot = fetchTaskSnapshot(taskId);
-            if (condition.test(latestSnapshot)) {
-                return latestSnapshot;
-            }
-            Thread.sleep(sleepMillis);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach expected snapshot: " + expectation
-                + ". Last status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
-                + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size()));
+        return awaitValue(
+                "Task " + taskId + " did not reach expected snapshot: " + expectation,
+                maxAttempts,
+                sleepMillis,
+                () -> fetchTaskSnapshot(taskId),
+                condition,
+                latestSnapshot -> "status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
+                        + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size())
+        );
     }
 
     protected TaskSnapshot waitForTerminalTask(String taskId) throws InterruptedException {
@@ -236,14 +249,14 @@ public abstract class AbstractSampleE2eTest {
 
     protected Map<String, Object> waitForTaskDetail(String taskId, String expectedStatus, int maxAttempts, long sleepMillis)
             throws InterruptedException {
-        for (int i = 0; i < maxAttempts; i++) {
-            Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-            if (expectedStatus.equals(task(detailResponse).get("status"))) {
-                return detailResponse;
-            }
-            Thread.sleep(sleepMillis);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
+        return awaitValue(
+                "Task " + taskId + " did not reach " + expectedStatus + " within timeout",
+                maxAttempts,
+                sleepMillis,
+                () -> exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null),
+                detailResponse -> expectedStatus.equals(task(detailResponse).get("status")),
+                detailResponse -> "status=" + task(detailResponse).get("status")
+        );
     }
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
@@ -257,15 +270,14 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
-        boolean connected = false;
-        for (int i = 0; i < 3; i++) {
-            if (client.connectBlocking(3, TimeUnit.SECONDS)) {
-                connected = true;
-                break;
+        assertTrue(awaitCondition(() -> {
+            try {
+                return client.connectBlocking(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
             }
-            Thread.sleep(250L);
-        }
-        assertTrue(connected, failureMessage);
+        }, 3, 250L), failureMessage);
     }
 
     protected boolean updateStoredTask(Task task) {
@@ -290,7 +302,7 @@ public abstract class AbstractSampleE2eTest {
                     // Best-effort cleanup for failed connection attempts.
                 }
             }
-            Thread.sleep(250L);
+            TimeUnit.MILLISECONDS.sleep(250L);
         }
         if (lastError != null) {
             throw new AssertionError(failureMessage, lastError);
@@ -308,26 +320,143 @@ public abstract class AbstractSampleE2eTest {
      */
     @SuppressWarnings("unchecked")
     protected void assertMinOnlineWorkers(int minExpected) throws InterruptedException {
-        int online = 0;
-        for (int i = 0; i < 20; i++) {
-            Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
-            if (isApiOk(response)) {
-                Object data = response.get("data");
-                if (data instanceof Map<?, ?> dataMap) {
-                    Object items = dataMap.get("items");
-                    if (items instanceof List<?> list) {
-                        online = (int) list.stream()
-                                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
-                                .count();
-                        if (online >= minExpected) return;
-                    }
-                }
-            }
-            Thread.sleep(250L);
+        int online = awaitValue(
+                "Expected at least " + minExpected + " ONLINE worker(s)",
+                20,
+                250L,
+                this::fetchOnlineWorkerCount,
+                count -> count >= minExpected,
+                Object::toString
+        );
+        if (online < minExpected) {
+            throw new AssertionError(
+                    "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
+                            + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
         }
-        throw new AssertionError(
-                "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
+    }
+
+    protected Worker waitForWorkerStatus(String workerId,
+                                         String expectedStatus,
+                                         int maxAttempts,
+                                         long sleepMillis,
+                                         Runnable livenessCheck,
+                                         Supplier<String> diagnosticsSupplier) throws InterruptedException {
+        try {
+            return awaitValue(
+                    "Worker " + workerId + " did not reach status " + expectedStatus,
+                    maxAttempts,
+                    sleepMillis,
+                    () -> {
+                        if (livenessCheck != null) {
+                            livenessCheck.run();
+                        }
+                        return fetchRuntimeWorker(workerId);
+                    },
+                    worker -> worker != null
+                            && worker.getStatus() != null
+                            && expectedStatus.equals(worker.getStatus().name()),
+                    worker -> worker == null ? "<not-registered>" : worker.toString()
+            );
+        } catch (AssertionError error) {
+            if (livenessCheck != null) {
+                livenessCheck.run();
+            }
+            String diagnostics = diagnosticsSupplier == null ? "" : diagnosticsSupplier.get();
+            if (diagnostics == null || diagnostics.isBlank()) {
+                throw error;
+            }
+            throw new AssertionError(error.getMessage() + System.lineSeparator()
+                    + "Process output:" + System.lineSeparator() + diagnostics, error);
+        }
+    }
+
+    protected void waitForWorkerOffline(String workerId, String failureMessage) throws InterruptedException {
+        assertTrue(awaitCondition(() -> !requireSdkApp().isWorkerOnline(workerId), 20, 100L), failureMessage);
+    }
+
+    protected int waitForPositiveIntSystemProperty(String propertyName,
+                                                   String failureMessage,
+                                                   int maxAttempts,
+                                                   long sleepMillis) throws InterruptedException {
+        Integer resolvedValue = awaitValue(
+                failureMessage,
+                maxAttempts,
+                sleepMillis,
+                () -> parsePositiveInt(System.getProperty(propertyName)),
+                value -> value != null,
+                value -> value == null ? "<unset>" : value.toString()
+        );
+        return resolvedValue;
+    }
+
+    protected boolean awaitCondition(BooleanSupplier condition, int maxAttempts, long sleepMillis) throws InterruptedException {
+        for (int i = 0; i < maxAttempts; i++) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            if (i + 1 < maxAttempts) {
+                TimeUnit.MILLISECONDS.sleep(sleepMillis);
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
+    protected <T> T awaitValue(String failureMessage,
+                               int maxAttempts,
+                               long sleepMillis,
+                               Supplier<T> supplier,
+                               Predicate<T> condition,
+                               Function<T, String> latestStateRenderer) throws InterruptedException {
+        T latestValue = null;
+        for (int i = 0; i < maxAttempts; i++) {
+            latestValue = supplier.get();
+            if (condition.test(latestValue)) {
+                return latestValue;
+            }
+            if (i + 1 < maxAttempts) {
+                TimeUnit.MILLISECONDS.sleep(sleepMillis);
+            }
+        }
+        throw new AssertionError(failureMessage + ". Last state="
+                + (latestValue == null ? "<none>" : latestStateRenderer.apply(latestValue)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private int fetchOnlineWorkerCount() {
+        Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
+        if (!isApiOk(response)) {
+            return 0;
+        }
+        Object data = response.get("data");
+        if (!(data instanceof Map<?, ?> dataMap)) {
+            return 0;
+        }
+        Object items = dataMap.get("items");
+        if (!(items instanceof List<?> list)) {
+            return 0;
+        }
+        return (int) list.stream()
+                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
+                .count();
+    }
+
+    private Worker fetchRuntimeWorker(String workerId) {
+        return requireSdkApp().getAllWorkers().stream()
+                .filter(worker -> workerId.equals(worker.getWorkerId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Integer parsePositiveInt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag) {
@@ -429,4 +558,3 @@ public abstract class AbstractSampleE2eTest {
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
 }
-

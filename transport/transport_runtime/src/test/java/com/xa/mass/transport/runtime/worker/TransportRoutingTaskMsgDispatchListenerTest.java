@@ -7,7 +7,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.runtime.apier.WorkerAdapter;
+import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -354,4 +354,3 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         }
     }
 }
-

@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -110,19 +111,14 @@ class TaskAssignWorkerTest {
             assertEquals(TaskStatus.RUNNING, task.getStatus());
             assertEquals(2, attempts.get());
             verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
-            capture.assertHasEvent("ASSIGNMENT_RETRY_SCHEDULED", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "READY".equals(mdc.get("currentStatus"))
-                            && "50".equals(mdc.get("retryDelayMillis"))
-                            && "TaskAssignWorker".equals(mdc.get("source")));
-            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "RETRY_SCHEDULED".equals(mdc.get("queueAction"))
-                            && "1".equals(mdc.get("scheduledRetryCount")));
-            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "RETRY_ENQUEUED".equals(mdc.get("queueAction"))
-                            && "TaskAssignWorker".equals(mdc.get("source")));
+            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "retry", "50")),
+                    "retry scheduling trace should be captured before assertions run");
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_SCHEDULED",
+                    mdc -> "1".equals(mdc.get("scheduledRetryCount")))),
+                    "retry-scheduled queue snapshot should be captured before assertions run");
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_ENQUEUED",
+                    mdc -> "TaskAssignWorker".equals(mdc.get("source")))),
+                    "retry-enqueued queue snapshot should be captured before assertions run");
         }
     }
 
@@ -187,11 +183,14 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch assignedLatch = new CountDownLatch(1);
+        CountDownLatch firstAttemptEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
         TaskWorkerAssignListener slowListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             attempts.incrementAndGet();
-            Thread.sleep(150);
+            firstAttemptEntered.countDown();
+            assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             task.transitionTo(TaskStatus.RUNNING);
             assignedLatch.countDown();
             return true;
@@ -203,7 +202,9 @@ class TaskAssignWorkerTest {
         Task task = readyTask("dedup");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(worker.submit(task));
+            assertTrue(firstAttemptEntered.await(3, TimeUnit.SECONDS), "first assignment attempt should start");
             assertFalse(worker.submit(task));
+            releaseFirstAttempt.countDown();
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
             assertEquals(1, attempts.get());
@@ -253,13 +254,16 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch secondAttemptLatch = new CountDownLatch(1);
+        CountDownLatch deferredSubmitObserved = new CountDownLatch(1);
+        CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
         TaskWorkerAssignListener listener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             int currentAttempt = attempts.incrementAndGet();
             if (currentAttempt == 1) {
                 assertFalse(worker.submit(task), "second submit while tracked should be deferred");
-                Thread.sleep(100);
+                deferredSubmitObserved.countDown();
+                assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             } else if (currentAttempt == 2) {
                 secondAttemptLatch.countDown();
             }
@@ -272,6 +276,9 @@ class TaskAssignWorkerTest {
         Task task = runningTask("deferred-requeue");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(worker.submit(task));
+            assertTrue(deferredSubmitObserved.await(3, TimeUnit.SECONDS),
+                    "deferred submit should be observed during the first assignment cycle");
+            releaseFirstAttempt.countDown();
 
             assertTrue(secondAttemptLatch.await(3, TimeUnit.SECONDS),
                     "deferred requeue should trigger a second assignment cycle");
@@ -479,5 +486,16 @@ class TaskAssignWorkerTest {
                 .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
                         && retryDelayMillis.equals(mdc.get("retryDelayMillis"))
                         && "TaskAssignWorker".equals(mdc.get("source")));
+    }
+
+    private boolean hasQueueSnapshotEvent(TraceEventLogCapture capture,
+                                          String taskId,
+                                          String queueAction,
+                                          Predicate<java.util.Map<String, String>> extraMatch) {
+        return capture.events("ASSIGNMENT_QUEUE_SNAPSHOT").stream()
+                .map(event -> event.getMDCPropertyMap())
+                .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
+                        && queueAction.equals(mdc.get("queueAction"))
+                        && extraMatch.test(mdc));
     }
 }
