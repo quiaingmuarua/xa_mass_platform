@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -225,17 +227,15 @@ public abstract class AbstractSampleE2eTest {
                                                String expectation,
                                                int maxAttempts,
                                                long sleepMillis) throws InterruptedException {
-        TaskSnapshot latestSnapshot = null;
-        for (int i = 0; i < maxAttempts; i++) {
-            latestSnapshot = fetchTaskSnapshot(taskId);
-            if (condition.test(latestSnapshot)) {
-                return latestSnapshot;
-            }
-            Thread.sleep(sleepMillis);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach expected snapshot: " + expectation
-                + ". Last status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
-                + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size()));
+        return awaitValue(
+                "Task " + taskId + " did not reach expected snapshot: " + expectation,
+                maxAttempts,
+                sleepMillis,
+                () -> fetchTaskSnapshot(taskId),
+                condition,
+                latestSnapshot -> "status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
+                        + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size())
+        );
     }
 
     protected TaskSnapshot waitForTerminalTask(String taskId) throws InterruptedException {
@@ -248,14 +248,14 @@ public abstract class AbstractSampleE2eTest {
 
     protected Map<String, Object> waitForTaskDetail(String taskId, String expectedStatus, int maxAttempts, long sleepMillis)
             throws InterruptedException {
-        for (int i = 0; i < maxAttempts; i++) {
-            Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-            if (expectedStatus.equals(task(detailResponse).get("status"))) {
-                return detailResponse;
-            }
-            Thread.sleep(sleepMillis);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
+        return awaitValue(
+                "Task " + taskId + " did not reach " + expectedStatus + " within timeout",
+                maxAttempts,
+                sleepMillis,
+                () -> exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null),
+                detailResponse -> expectedStatus.equals(task(detailResponse).get("status")),
+                detailResponse -> "status=" + task(detailResponse).get("status")
+        );
     }
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
@@ -269,15 +269,14 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
-        boolean connected = false;
-        for (int i = 0; i < 3; i++) {
-            if (client.connectBlocking(3, TimeUnit.SECONDS)) {
-                connected = true;
-                break;
+        assertTrue(awaitCondition(() -> {
+            try {
+                return client.connectBlocking(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
             }
-            Thread.sleep(250L);
-        }
-        assertTrue(connected, failureMessage);
+        }, 3, 250L), failureMessage);
     }
 
     protected boolean updateStoredTask(Task task) {
@@ -302,7 +301,7 @@ public abstract class AbstractSampleE2eTest {
                     // Best-effort cleanup for failed connection attempts.
                 }
             }
-            Thread.sleep(250L);
+            TimeUnit.MILLISECONDS.sleep(250L);
         }
         if (lastError != null) {
             throw new AssertionError(failureMessage, lastError);
@@ -320,26 +319,70 @@ public abstract class AbstractSampleE2eTest {
      */
     @SuppressWarnings("unchecked")
     protected void assertMinOnlineWorkers(int minExpected) throws InterruptedException {
-        int online = 0;
-        for (int i = 0; i < 20; i++) {
-            Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
-            if (isApiOk(response)) {
-                Object data = response.get("data");
-                if (data instanceof Map<?, ?> dataMap) {
-                    Object items = dataMap.get("items");
-                    if (items instanceof List<?> list) {
-                        online = (int) list.stream()
-                                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
-                                .count();
-                        if (online >= minExpected) return;
-                    }
-                }
-            }
-            Thread.sleep(250L);
+        int online = awaitValue(
+                "Expected at least " + minExpected + " ONLINE worker(s)",
+                20,
+                250L,
+                this::fetchOnlineWorkerCount,
+                count -> count >= minExpected,
+                Object::toString
+        );
+        if (online < minExpected) {
+            throw new AssertionError(
+                    "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
+                            + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
         }
-        throw new AssertionError(
-                "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
+    }
+
+    protected boolean awaitCondition(BooleanSupplier condition, int maxAttempts, long sleepMillis) throws InterruptedException {
+        for (int i = 0; i < maxAttempts; i++) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            if (i + 1 < maxAttempts) {
+                TimeUnit.MILLISECONDS.sleep(sleepMillis);
+            }
+        }
+        return condition.getAsBoolean();
+    }
+
+    protected <T> T awaitValue(String failureMessage,
+                               int maxAttempts,
+                               long sleepMillis,
+                               Supplier<T> supplier,
+                               Predicate<T> condition,
+                               Function<T, String> latestStateRenderer) throws InterruptedException {
+        T latestValue = null;
+        for (int i = 0; i < maxAttempts; i++) {
+            latestValue = supplier.get();
+            if (condition.test(latestValue)) {
+                return latestValue;
+            }
+            if (i + 1 < maxAttempts) {
+                TimeUnit.MILLISECONDS.sleep(sleepMillis);
+            }
+        }
+        throw new AssertionError(failureMessage + ". Last state="
+                + (latestValue == null ? "<none>" : latestStateRenderer.apply(latestValue)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private int fetchOnlineWorkerCount() {
+        Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
+        if (!isApiOk(response)) {
+            return 0;
+        }
+        Object data = response.get("data");
+        if (!(data instanceof Map<?, ?> dataMap)) {
+            return 0;
+        }
+        Object items = dataMap.get("items");
+        if (!(items instanceof List<?> list)) {
+            return 0;
+        }
+        return (int) list.stream()
+                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
+                .count();
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag) {

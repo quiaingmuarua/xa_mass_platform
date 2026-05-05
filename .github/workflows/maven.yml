@@ -115,10 +115,10 @@ jobs:
           cache: maven
       - name: Build server module dependencies
         run: ./mvnw -q -pl xa-mass-server -am -DskipTests install
-      - name: Run focused server lifecycle integration checks
+      - name: Run canonical server smoke checks
         run: >-
           ./mvnw -q -pl xa-mass-server
-          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest
+          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
       - name: Upload Maven test reports

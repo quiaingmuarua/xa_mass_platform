@@ -183,11 +183,14 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch assignedLatch = new CountDownLatch(1);
+        CountDownLatch firstAttemptEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
         TaskWorkerAssignListener slowListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             attempts.incrementAndGet();
-            Thread.sleep(150);
+            firstAttemptEntered.countDown();
+            assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             task.transitionTo(TaskStatus.RUNNING);
             assignedLatch.countDown();
             return true;
@@ -199,7 +202,9 @@ class TaskAssignWorkerTest {
         Task task = readyTask("dedup");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(worker.submit(task));
+            assertTrue(firstAttemptEntered.await(3, TimeUnit.SECONDS), "first assignment attempt should start");
             assertFalse(worker.submit(task));
+            releaseFirstAttempt.countDown();
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
             assertEquals(1, attempts.get());
@@ -249,13 +254,16 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch secondAttemptLatch = new CountDownLatch(1);
+        CountDownLatch deferredSubmitObserved = new CountDownLatch(1);
+        CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
         TaskWorkerAssignListener listener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             int currentAttempt = attempts.incrementAndGet();
             if (currentAttempt == 1) {
                 assertFalse(worker.submit(task), "second submit while tracked should be deferred");
-                Thread.sleep(100);
+                deferredSubmitObserved.countDown();
+                assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             } else if (currentAttempt == 2) {
                 secondAttemptLatch.countDown();
             }
@@ -268,6 +276,9 @@ class TaskAssignWorkerTest {
         Task task = runningTask("deferred-requeue");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(worker.submit(task));
+            assertTrue(deferredSubmitObserved.await(3, TimeUnit.SECONDS),
+                    "deferred submit should be observed during the first assignment cycle");
+            releaseFirstAttempt.countDown();
 
             assertTrue(secondAttemptLatch.await(3, TimeUnit.SECONDS),
                     "deferred requeue should trigger a second assignment cycle");
