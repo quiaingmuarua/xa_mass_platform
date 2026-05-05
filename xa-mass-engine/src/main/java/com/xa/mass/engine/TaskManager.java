@@ -66,7 +66,7 @@ public class TaskManager {
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
     private final TaskRuntimeBridge taskRuntimeBridge;
-    private final TaskConcurrencyCoordinator concurrencyCoordinator;
+    private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private long taskMessageLeaseSeconds = 300L;
 
@@ -106,14 +106,15 @@ public class TaskManager {
                 requiredTaskWorkRuntime,
                 new com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver()
         );
-        this.concurrencyCoordinator = new TaskConcurrencyCoordinator();
+        this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
         );
         this.dispatchRequestService = new TaskDispatchRequestService(
                 new TaskManagerDispatchRequestRuntimePort(this),
-                retryWakeupExecutor
+                retryWakeupExecutor,
+                new LocalDelayedDispatchSchedule()
         );
         this.lifecycleService = new TaskLifecycleService(
                 new TaskManagerLifecycleRuntimePort(this),
