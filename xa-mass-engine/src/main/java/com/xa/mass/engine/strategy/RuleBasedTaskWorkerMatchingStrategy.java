@@ -53,6 +53,9 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
         }
 
+        Map<String, List<WorkerContext>> contextsByWorkerId = workerManager.getAllWorkerContexts().stream()
+                .collect(Collectors.groupingBy(WorkerContext::getWorkerId));
+
         for (Worker worker : candidates) {
             if (matchedWorkers.size() >= maxWorkerCount) {
                 log.info("[WorkerAssign] Max worker count {} reached for task {}, stopping matching",
@@ -60,7 +63,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 break;
             }
 
-            List<WorkerContext> workerContexts = workerManager.getWorkerContexts(worker.getWorkerId());
+            List<WorkerContext> workerContexts = contextsByWorkerId.getOrDefault(worker.getWorkerId(), List.of());
             if (workerContexts.isEmpty()) {
                 workerContexts = new ArrayList<>();
                 workerContexts.add(null);
@@ -77,7 +80,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                             new ArrayList<>(), prefilterDecision.contextSnapshot(),
                             prefilterDecision.workerLocked()
                     );
-                    log.info("Worker candidate rejected before rule evaluation: {} context {} ({})",
+                    log.debug("Worker candidate rejected before rule evaluation: {} context {} ({})",
                             worker.getWorkerId(),
                             workerContext != null ? workerContext.getWorkerContextId() : "null",
                             prefilterDecision.reason());
@@ -101,7 +104,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 }
 
                 try {
-                    List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext);
+                    List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext, rules);
                     long hitCount = ruleEvaluations.stream().filter(RuleEvaluationDetail::isPassed).count();
 
                     log.debug("[WorkerAssign] Worker {} context {} - Hit rules: {}/{}",
@@ -136,7 +139,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                     ruleEvaluations, matchContext.getContext(),
                                     workerManager.isLocked(worker.getWorkerId())
                             );
-                            log.info("Worker locked: {}", worker.getWorkerId());
+                            log.debug("Worker locked: {}", worker.getWorkerId());
                         }
                         break;
                     }
@@ -153,7 +156,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                             ruleEvaluations, matchContext.getContext(),
                             workerManager.isLocked(worker.getWorkerId())
                     );
-                    log.info("Rule not matched: {} context {} (failed rules: {})",
+                    log.debug("Rule not matched: {} context {} (failed rules: {})",
                             worker.getWorkerId(),
                             workerContext != null ? workerContext.getWorkerContextId() : "null",
                             failedRules);
@@ -189,21 +192,20 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     }
 
     private PrefilterDecision prefilterCandidate(Task task, Worker worker, WorkerContext workerContext) {
+        if (!worker.isAvailable()) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "worker unavailable", Map.of(), false);
+        }
         boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
-        Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, workerLocked);
+        if (workerLocked) {
+            return PrefilterDecision.reject(AssignmentResult.CONFLICT,
+                    "worker locked", Map.of(), true);
+        }
+        Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, false);
         String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
         boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
-
-        if (!worker.isAvailable()) {
-            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker unavailable", contextSnapshot, workerLocked);
-        }
-        if (workerLocked) {
-            return PrefilterDecision.reject(AssignmentResult.CONFLICT,
-                    "worker locked", contextSnapshot, true);
-        }
         if (targetWorkerId != null && !targetWorkerId.equals(worker.getWorkerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker mismatch", contextSnapshot, false);
@@ -341,9 +343,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         return true;
     }
 
-    private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext) {
+    private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext, List<RuleDefinition> rules) {
         List<RuleEvaluationDetail> evaluations = new ArrayList<>();
-        List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
         for (RuleDefinition rule : rules) {
             long startTime = System.currentTimeMillis();
@@ -355,13 +356,13 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 result = String.valueOf(passed);
 
                 if (!passed) {
-                    log.info("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDescription());
+                    log.debug("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDescription());
                 } else {
                     log.debug("[Debug] Rule: {} ({}), result: PASS", rule.getId(), rule.getDescription());
                 }
             } catch (Exception e) {
                 result = "Exception: " + e.getMessage();
-                log.info("[Debug] Rule: {} ({}), result: EXCEPTION - {}",
+                log.debug("[Debug] Rule: {} ({}), result: EXCEPTION - {}",
                         rule.getId(), rule.getDescription(), e.getMessage());
             }
 
