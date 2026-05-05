@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.runtime.apier.WorkerAdapter;
+import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
@@ -70,4 +70,3 @@ public class DelegatingWorkerAdapter implements WorkerAdapter {
         return value.trim();
     }
 }
-

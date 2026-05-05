@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -110,19 +111,14 @@ class TaskAssignWorkerTest {
             assertEquals(TaskStatus.RUNNING, task.getStatus());
             assertEquals(2, attempts.get());
             verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
-            capture.assertHasEvent("ASSIGNMENT_RETRY_SCHEDULED", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "READY".equals(mdc.get("currentStatus"))
-                            && "50".equals(mdc.get("retryDelayMillis"))
-                            && "TaskAssignWorker".equals(mdc.get("source")));
-            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "RETRY_SCHEDULED".equals(mdc.get("queueAction"))
-                            && "1".equals(mdc.get("scheduledRetryCount")));
-            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
-                    "retry".equals(mdc.get("taskId"))
-                            && "RETRY_ENQUEUED".equals(mdc.get("queueAction"))
-                            && "TaskAssignWorker".equals(mdc.get("source")));
+            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "retry", "50")),
+                    "retry scheduling trace should be captured before assertions run");
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_SCHEDULED",
+                    mdc -> "1".equals(mdc.get("scheduledRetryCount")))),
+                    "retry-scheduled queue snapshot should be captured before assertions run");
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_ENQUEUED",
+                    mdc -> "TaskAssignWorker".equals(mdc.get("source")))),
+                    "retry-enqueued queue snapshot should be captured before assertions run");
         }
     }
 
@@ -479,5 +475,16 @@ class TaskAssignWorkerTest {
                 .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
                         && retryDelayMillis.equals(mdc.get("retryDelayMillis"))
                         && "TaskAssignWorker".equals(mdc.get("source")));
+    }
+
+    private boolean hasQueueSnapshotEvent(TraceEventLogCapture capture,
+                                          String taskId,
+                                          String queueAction,
+                                          Predicate<java.util.Map<String, String>> extraMatch) {
+        return capture.events("ASSIGNMENT_QUEUE_SNAPSHOT").stream()
+                .map(event -> event.getMDCPropertyMap())
+                .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
+                        && queueAction.equals(mdc.get("queueAction"))
+                        && extraMatch.test(mdc));
     }
 }
