@@ -3,8 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -20,19 +18,21 @@ class TaskDispatchRequestService {
 
     private final TaskDispatchRequestRuntimePort dispatchRuntime;
     private final RuntimeTaskExecutor retryWakeupExecutor;
-    private final Map<String, Long> delayedDispatchDueAtMillisByTask = new ConcurrentHashMap<>();
+    private final DelayedDispatchSchedule delayedDispatchSchedule;
 
     TaskDispatchRequestService(TaskDispatchRequestRuntimePort dispatchRuntime,
-                               RuntimeTaskExecutor retryWakeupExecutor) {
+                               RuntimeTaskExecutor retryWakeupExecutor,
+                               DelayedDispatchSchedule delayedDispatchSchedule) {
         this.dispatchRuntime = dispatchRuntime;
         this.retryWakeupExecutor = retryWakeupExecutor;
+        this.delayedDispatchSchedule = delayedDispatchSchedule;
     }
 
     void requestImmediate(Task task) {
         if (!isUsable(task)) {
             return;
         }
-        delayedDispatchDueAtMillisByTask.remove(task.getTid());
+        delayedDispatchSchedule.remove(task.getTid());
         dispatchRuntime.publishTaskDispatchRequested(task);
     }
 
@@ -48,9 +48,9 @@ class TaskDispatchRequestService {
         String taskId = task.getTid();
         long dueAtMillis = System.currentTimeMillis() + delayMillis;
         while (true) {
-            Long currentDueAt = delayedDispatchDueAtMillisByTask.get(taskId);
+            Long currentDueAt = delayedDispatchSchedule.getDueAt(taskId);
             if (currentDueAt == null) {
-                if (delayedDispatchDueAtMillisByTask.putIfAbsent(taskId, dueAtMillis) == null) {
+                if (delayedDispatchSchedule.insertIfAbsent(taskId, dueAtMillis)) {
                     submitDelayedWakeup(taskId, dueAtMillis);
                     return;
                 }
@@ -59,7 +59,7 @@ class TaskDispatchRequestService {
             if (dueAtMillis >= currentDueAt) {
                 return;
             }
-            if (delayedDispatchDueAtMillisByTask.replace(taskId, currentDueAt, dueAtMillis)) {
+            if (delayedDispatchSchedule.replaceIfEqual(taskId, currentDueAt, dueAtMillis)) {
                 submitDelayedWakeup(taskId, dueAtMillis);
                 return;
             }
@@ -67,14 +67,14 @@ class TaskDispatchRequestService {
     }
 
     void shutdown() {
-        delayedDispatchDueAtMillisByTask.clear();
+        delayedDispatchSchedule.clear();
     }
 
     private void submitDelayedWakeup(String taskId, long scheduledDueAtMillis) {
         try {
             retryWakeupExecutor.submit(() -> runDelayedWakeup(taskId, scheduledDueAtMillis));
         } catch (RejectedExecutionException ignored) {
-            delayedDispatchDueAtMillisByTask.remove(taskId, scheduledDueAtMillis);
+            delayedDispatchSchedule.removeIfEqual(taskId, scheduledDueAtMillis);
         }
     }
 
@@ -89,11 +89,11 @@ class TaskDispatchRequestService {
             return;
         }
 
-        Long currentDueAtMillis = delayedDispatchDueAtMillisByTask.get(taskId);
+        Long currentDueAtMillis = delayedDispatchSchedule.getDueAt(taskId);
         if (currentDueAtMillis == null || currentDueAtMillis.longValue() != scheduledDueAtMillis) {
             return;
         }
-        if (!delayedDispatchDueAtMillisByTask.remove(taskId, currentDueAtMillis)) {
+        if (!delayedDispatchSchedule.removeIfEqual(taskId, currentDueAtMillis)) {
             return;
         }
 

@@ -8,18 +8,20 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
 /**
- * Owns task/message locking and coalesced task-progress reconciliation.
+ * JVM-local implementation of {@link TaskConcurrencyStrategy}.
  *
- * <p>This keeps concurrency bookkeeping out of {@link TaskManager} so the
- * manager can stay focused on engine-facing orchestration responsibilities.
+ * <p>Uses per-task {@link ReentrantReadWriteLock}s and coalesced condition-based
+ * reconciliation, all scoped to this JVM instance. Replace with a distributed
+ * implementation (e.g. Redisson, ZooKeeper) when the engine runs multi-node.
  */
-final class TaskConcurrencyCoordinator {
+final class LocalTaskConcurrencyCoordinator implements TaskConcurrencyStrategy {
 
     private final Map<String, TaskLockHandle> taskLocks = new ConcurrentHashMap<>();
     private final Map<String, MessageLockHandle> taskMessageLocks = new ConcurrentHashMap<>();
     private final Map<String, TaskProgressReconcileHandle> taskProgressReconcileHandles = new ConcurrentHashMap<>();
 
-    <T> T withTaskWriteLock(String taskId, Supplier<T> action) {
+    @Override
+    public <T> T withTaskWriteLock(String taskId, Supplier<T> action) {
         if (taskId == null || taskId.isBlank()) {
             return action.get();
         }
@@ -33,7 +35,8 @@ final class TaskConcurrencyCoordinator {
         }
     }
 
-    <T> T withTaskReadLock(String taskId, Supplier<T> action) {
+    @Override
+    public <T> T withTaskReadLock(String taskId, Supplier<T> action) {
         if (taskId == null || taskId.isBlank()) {
             return action.get();
         }
@@ -47,14 +50,16 @@ final class TaskConcurrencyCoordinator {
         }
     }
 
-    <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
+    @Override
+    public <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
         if (messageId == null || messageId.isBlank()) {
             return withTaskReadLock(taskId, action);
         }
         return withTaskReadLock(taskId, () -> withMessageLock(taskId, messageId, action));
     }
 
-    void reconcileTaskProgress(String taskId, Runnable reconcileAction) {
+    @Override
+    public void reconcileTaskProgress(String taskId, Runnable reconcileAction) {
         if (taskId == null || taskId.isBlank()) {
             withTaskWriteLock(taskId, () -> {
                 reconcileAction.run();
