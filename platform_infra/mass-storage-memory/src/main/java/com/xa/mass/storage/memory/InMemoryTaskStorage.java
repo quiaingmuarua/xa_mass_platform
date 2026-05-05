@@ -82,6 +82,17 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
+    public List<Task> listTasksPaged(int offset, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return tasks.values().stream()
+                .skip(Math.max(0, offset))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
     public List<Task> getTasksByStatus(TaskStatus status) {
         synchronized (this) {
             return tasksByIds(taskIdsByStatus.get(status));

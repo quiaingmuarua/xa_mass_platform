@@ -95,18 +95,23 @@ public class TaskApiController {
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                       @RequestParam(required = false) String keyword,
-                                                                      @RequestParam(required = false) TaskStatus status) {
+                                                                      @RequestParam(required = false) TaskStatus status,
+                                                                      @RequestParam(defaultValue = "0") int offset,
+                                                                      @RequestParam(defaultValue = "500") int limit) {
         try {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
-            List<Map<String, Object>> items = taskQueries.getAllTasks().stream()
+            // push status filter to storage when provided; otherwise use bounded page scan
+            List<Task> candidates = status != null
+                    ? taskQueries.getTasksByStatus(status)
+                    : taskQueries.listTasksPaged(offset, Math.min(limit, 1000));
+            List<Map<String, Object>> items = candidates.stream()
                     .filter(task -> submitterViewer == null || apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, task))
                     .filter(task -> matchesKeyword(task, normalizedKeyword))
-                    .filter(task -> status == null || task.getStatus() == status)
                     .sorted(Comparator
                             .comparing(Task::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(Task::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
-                              .map(this::toTaskListItem)
+                    .map(this::toTaskListItem)
                     .collect(Collectors.toList());
             return ok(Map.of("items", items, "total", items.size()));
         } catch (SdkUnauthenticatedException e) {

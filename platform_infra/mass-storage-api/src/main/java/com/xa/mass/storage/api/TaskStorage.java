@@ -20,6 +20,8 @@ public interface TaskStorage {
 
     List<Task> getAllTasks();
 
+    List<Task> listTasksPaged(int offset, int limit);
+
     List<Task> getTasksByStatus(TaskStatus status);
 
     List<Task> getTasksByProject(String project);

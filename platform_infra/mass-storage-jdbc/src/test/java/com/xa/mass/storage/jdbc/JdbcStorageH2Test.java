@@ -127,7 +127,7 @@ class JdbcStorageH2Test {
             task.setStatus(TaskStatus.RUNNING);
             taskStorage.saveTask(task);
 
-            new JdbcRuntimeResidueRecovery().recover(taskStorage, workerStorage);
+            new JdbcRuntimeResidueRecovery().recover(workerStorage);
 
             assertThat(workerStorage.getWorker("worker-2")).get().extracting(Worker::getStatus).isEqualTo(WorkerStatus.OFFLINE);
             assertThat(workerStorage.getWorkerContextById("ctx-2")).get().extracting(WorkerContext::getStatus).isEqualTo(WorkerContextStatus.IDLE);

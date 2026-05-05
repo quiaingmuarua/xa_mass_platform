@@ -7,6 +7,7 @@ import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -122,7 +123,8 @@ public class XaMassServerApplication {
     @Bean(destroyMethod = "stop")
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
-                                                          JdbcStorageRuntime jdbcStorageRuntime) {
+                                                          JdbcStorageRuntime jdbcStorageRuntime,
+                                                          ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
             builder.submitterRegistry(new JdbcSubmitterRegistry(
@@ -150,12 +152,13 @@ public class XaMassServerApplication {
                 .engine(engine -> {
                     engine.enabled(true).workerThreads(workerThreads);
                     if (jdbcStorageRuntime.isEnabled()) {
+                        TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                         TaskScheduler scheduler = new SimpleTaskScheduler();
                         engine.scheduler(scheduler)
                                 .taskManager(new TaskManager(
                                         scheduler,
                                         jdbcStorageRuntime.taskStorage(),
-                                        new InMemoryTaskWorkRuntime()))
+                                        taskWorkRuntime))
                                 .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
                                 .ruleManager(RuleManagerFactory.getDefaultRuleManager(jdbcStorageRuntime.ruleStorage()));
                     }
@@ -183,15 +186,6 @@ public class XaMassServerApplication {
                 }
 
                 Thread.sleep(1000L);
-
-                try {
-                    app.publishTaskEvents();
-                    LogUtils.clearMdc();
-                    log.info("Initial task events published");
-                } catch (Exception e) {
-                    LogUtils.clearMdc();
-                    log.warn("Initial task event publish failed: {}", e.getMessage());
-                }
 
                 LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");

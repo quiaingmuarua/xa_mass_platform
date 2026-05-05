@@ -202,6 +202,22 @@ final class JdbcWorkerCompatibilityProjection {
         }
     }
 
+    List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
+        if (workerIds == null || workerIds.isEmpty()) {
+            return List.of();
+        }
+        synchronized (this) {
+            List<WorkerContext> result = new ArrayList<>();
+            for (String workerId : workerIds) {
+                LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
+                if (contexts != null) {
+                    result.addAll(contexts.values());
+                }
+            }
+            return result;
+        }
+    }
+
     boolean tryLockWorker(String workerId) {
         return lockedWorkers.add(workerId);
     }
