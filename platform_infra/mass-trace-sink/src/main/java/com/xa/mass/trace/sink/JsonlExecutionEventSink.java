@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * </ul>
  *
  * <p>Output files rotate when {@code rotateAfterLines} lines have been written.
- * File names follow the pattern {@code events-<timestamp>-<seq>.jsonl}.
+ * File names follow the pattern {@code events-<yyyyMMddTHHmmssZ>-<seq>.jsonl}.
  */
 public final class JsonlExecutionEventSink implements ExecutionEventSink, Closeable {
 

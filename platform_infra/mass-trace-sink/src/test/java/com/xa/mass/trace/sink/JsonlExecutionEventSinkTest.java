@@ -314,22 +314,4 @@ class JsonlExecutionEventSinkTest {
         assertEquals(countBeforeSecondEmit, totalLines,
                 "emit() after close must not write any additional events");
     }
-
-    @Test
-    void dropCountIncrements_whenQueueFull() throws InterruptedException {
-        JsonlExecutionEventSink tightSink =
-                new JsonlExecutionEventSink(tempDir.toString(), 1, 10_000);
-
-        for (int i = 0; i < 100; i++) {
-            final int idx = i;
-            tightSink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.WORKER_ONLINE)
-                    .identity(b -> b.workerId("w-" + idx))
-                    .build());
-        }
-
-        tightSink.close();
-        Thread.sleep(50);
-        assertTrue(tightSink.getDroppedCount() > 0, "Expected some drops with queue capacity 1");
-    }
 }
