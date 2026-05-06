@@ -8,7 +8,6 @@ import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRunti
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
-import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +59,7 @@ public final class WebSocketInputProcessor {
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
             context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
-                    WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                    context.getAdapterId(),
                     WebSocketStringValues.firstNonBlank(
                             context.getFrameCodec().extractWorkerId(frame),
                             inboundMessage.getWorkerId()

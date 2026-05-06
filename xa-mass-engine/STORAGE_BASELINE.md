@@ -1,25 +1,29 @@
 # Storage Baseline
 
-Status: current engine storage baseline.
+Status: current engine storage/runtime boundary.
 
-This file records the engine-facing storage/runtime boundary only. It should
-stay short: storage owns durable control-plane truth, runtime owns hot-path
-queue/lease/counter truth, and bounded `TaskMsg` / `TaskMsgAttempt`
-compatibility projections remain temporary engine residue rather than a growth
-surface.
+This file records the engine-facing split only. Keep it short and current:
+storage owns durable control-plane truth, runtime owns hot-path
+queue/lease/retry/backpressure truth, and bounded `TaskMsg` /
+`TaskMsgAttempt` projections remain temporary compatibility residue rather
+than a growth surface.
 
 ## Boundary
 
-The active engine boundary is split in two:
+The active engine boundary has three explicit contracts:
 
 - control-plane storage contracts in `platform_infra/mass-storage-api`
   - `TaskStorage`
   - `WorkerStorage`
   - `RuleStorage`
+- bounded compatibility projection seam in `platform_infra/mass-storage-api`
+  - `TaskDetailStore`
 - hot-path runtime contract in `platform_infra/mass-runtime-api`
   - `TaskWorkRuntime`
 
 Do not collapse them back into one "storage owns everything" model.
+
+## Engine Assumptions
 
 What the engine assumes today:
 
@@ -27,83 +31,46 @@ What the engine assumes today:
   definitions come from storage
 - ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime
-- `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections
-  still used by result repair, convergence checks, focused tests, and shell/demo
-  reads
+- `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility projections used
+  by result repair, attempt identity validation, focused tests, and explicit
+  projection audit
+- engine assembly wires `TaskStorage` and `TaskDetailStore` explicitly; there
+  is no implicit "task storage also means detail store" fallback in the mainline
 
-## TaskStorage
+## TaskDetailStore
 
-`TaskStorage` owns:
+`TaskDetailStore` is not control-plane storage truth. It is the bounded
+projection seam that still carries compatibility reads and result/repair
+helpers.
 
-- durable `Task` shell CRUD and indexed task lookups
-- bounded `taskId + messageId` lookup support needed by result write-back
-- narrow message/attempt projection helpers still used by convergence and
-  repair
-- task-level message/attempt summary stats used by terminal policy and audits
+Current runtime-essential helpers:
 
-`TaskStorage` does not own:
+- `addTaskMessage(...)`
+- `updateTaskMessage(...)`
+- `getTaskMessage(...)`
+- `getNonFinalTaskMessages(...)`
+- `addTaskMessageAttempt(...)`
+- `updateTaskMessageAttempt(...)`
+- `getLatestTaskMessageAttempt(...)`
+- `getLatestActiveTaskMessageAttempt(...)`
+- `getTaskMessageStats(...)`
+- `getTaskMessageAttemptStats(...)`
 
-- ready-work admission
-- in-flight lease ownership
-- retry scheduling
-- expiry polling for logical messages
-- queue/backpressure truth
+Current shell/debug compatibility reads:
 
-Current helper classes and methods worth treating as deliberate residue:
-
-- runtime-essential projection helpers
-  - `getNonFinalTaskMessages(...)`
-  - `getLatestActiveTaskMessageAttempt(...)`
-  - `addTaskMessageAttempt(...)`
-  - `updateTaskMessageAttempt(...)`
-  - `getTaskMessageStats(...)`
-  - `getTaskMessageAttemptStats(...)`
-- bounded compatibility reads
-  - `getTaskMessages(...)`
-  - `getTaskMessage(...)`
-  - `getTaskMessageAttempts(...)`
-  - `getLatestTaskMessageAttempt(...)`
-  - `countTaskMessages(...)`
+- `getTaskMessages(...)`
+- `getTaskMessageAttempts(...)`
+- `countTaskMessages(...)`
 
 Rules:
 
-- do not expand bounded compatibility reads into pagination, cross-task
-  analytics, or a product-detail query model
-- if a runtime path only needs pending work, prefer `getNonFinalTaskMessages(...)`
-  over full message snapshots
-- `getLatestActiveTaskMessageAttempt(...)` exists so result/expiry paths can
-  reconcile one logical message's active attempt without scanning its full
-  attempt history
-
-## WorkerStorage
-
-`WorkerStorage` owns:
-
-- durable `Worker` and `WorkerContext` definitions
-- indexed worker candidate lookups
-- runtime worker-lock truth
-
-Rules:
-
-- `Worker.status` remains the online truth
-- `WorkerContext.workerId` is the single ownership truth
-- do not collapse the active `0..n` worker-context model back to single-context
-  helpers
-- worker candidate composition stays in `WorkerManager`; storage only provides
-  indexed lookup primitives
-
-## RuleStorage
-
-`RuleStorage` owns:
-
-- `RuleDefinition` CRUD
-- evaluator registration and resolution
-
-Rules:
-
-- rule contracts must stay aligned with the live `WorkerMatchContext` keys
-- do not move matching semantics into transport payloads or storage-side hidden
-  heuristics
+- do not expand shell/debug reads into pagination, analytics, or a product
+  detail-query model
+- runtime mainline must not depend on full-message scans
+- full `TaskMsg` scans are allowed only in explicit projection-audit paths
+- `getLatestActiveTaskMessageAttempt(...)` remains mainline only because
+  transport result ingest still validates envelope attempt identity against the
+  active compatibility attempt
 
 ## Wiring Reality
 
@@ -115,31 +82,23 @@ Current mainline implementations:
   - `InMemoryRuleStorage`
 - `platform_infra/mass-storage-jdbc`
   - JDBC control-plane storage adapter for task/worker/rule truth
+  - process-local compatibility projection for `TaskMsg` / `TaskMsgAttempt`
 
 Current implementation facts that matter architecturally:
 
 - SDK/server embed the storage implementations explicitly
-- engine depends on the contracts only
+- engine depends on contracts only
 - the JDBC path is a control-plane adapter, not a `TaskMsg` analytics backend
-- `TaskMsg` and `TaskMsgAttempt` remain process-local compatibility projection
-  state in the current JDBC path
 - in-memory helper indexes are allowed when they protect hot paths from full
-  scans, but they are helper indexes rather than second lifecycle truth
+  scans, but they remain helper indexes rather than second lifecycle truth
 
 ## Convergence Direction
 
-The shortest storage-side convergence path is:
+The shortest convergence path remains:
 
 1. keep runtime-critical projection helpers narrow
 2. stop growing shell/debug message reads
 3. move future detail, analytics, and timelines into trace or async audit sinks
 
-That means the next step is not "make engine storage query richer". It is
-"reduce who depends on compatibility projection reads at all".
-
-## Read Next
-
-- [`README.md`](./README.md)
-- [`../platform_infra/README.md`](../platform_infra/README.md)
-- [`../doc/DB_STORAGE_PRINCIPLES.md`](../doc/DB_STORAGE_PRINCIPLES.md)
-- [`../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskStorage.java`](../platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskStorage.java)
+The next step is not "make engine storage query richer". It is "reduce who
+depends on compatibility projection reads at all".

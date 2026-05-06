@@ -9,11 +9,11 @@ import com.xa.mass.transport.runtime.DelegatingWorkerAdapter;
  */
 public final class SocketRealtimeWorkerAdapter extends DelegatingWorkerAdapter {
 
-    public static final String PROTOCOL = "socket";
+    public static final String DEFAULT_ADAPTER_ID = "socket";
 
-    public SocketRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
+    public SocketRealtimeWorkerAdapter(String adapterId, TaskDispatchChannel taskDispatchChannel) {
         super(
-                PROTOCOL,
+                adapterId,
                 WorkerTransportHints.REALTIME,
                 taskDispatchChannel,
                 "socket dispatch channel is unavailable"

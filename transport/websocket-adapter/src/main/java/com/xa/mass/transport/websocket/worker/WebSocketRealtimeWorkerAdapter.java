@@ -12,11 +12,11 @@ import com.xa.mass.transport.runtime.DelegatingWorkerAdapter;
  */
 public final class WebSocketRealtimeWorkerAdapter extends DelegatingWorkerAdapter {
 
-    public static final String PROTOCOL = "websocket";
+    public static final String DEFAULT_ADAPTER_ID = "websocket";
 
-    public WebSocketRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
+    public WebSocketRealtimeWorkerAdapter(String adapterId, TaskDispatchChannel taskDispatchChannel) {
         super(
-                PROTOCOL,
+                adapterId,
                 WorkerTransportHints.REALTIME,
                 taskDispatchChannel,
                 "WebSocket dispatch channel is unavailable"

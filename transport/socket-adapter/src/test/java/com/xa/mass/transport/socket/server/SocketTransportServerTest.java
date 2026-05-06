@@ -23,6 +23,7 @@ class SocketTransportServerTest {
     void startAndClientHandlingUseRuntimeExecutor() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,
@@ -58,6 +59,7 @@ class SocketTransportServerTest {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager = new SocketSessionManager(null);
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,
@@ -94,6 +96,7 @@ class SocketTransportServerTest {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 1);
         executor.shutdown();
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,

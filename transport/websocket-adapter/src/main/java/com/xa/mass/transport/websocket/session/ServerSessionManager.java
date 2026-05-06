@@ -5,6 +5,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -19,9 +20,21 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
+    private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
+
+    public ServerSessionManager() {
+        this(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
+    }
+
+    public ServerSessionManager(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+    }
 
     public synchronized void addSession(String routeKey, String workerId, Channel channel, ChannelHandlerContext ctx) {
         boolean wasRouteOnline = hasActiveChannel(routeKey);
@@ -90,7 +103,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     @Override
     public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
-        if (adapterId != null && !"websocket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
         return sendToRoute(routeKey, message);
@@ -98,7 +111,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     @Override
     public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-        if (adapterId != null && !"websocket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
         return isRouteOnline(routeKey);
@@ -149,9 +162,17 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         this.systemEventChannel = systemEventChannel != null ? systemEventChannel : new EventBusWorkerSystemEventChannel();
     }
 
+    public String getAdapterId() {
+        return adapterId;
+    }
+
     private boolean hasActiveChannel(String routeKey) {
         WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         return endpoint != null && endpoint.isActive();
+    }
+
+    private boolean matchesAdapter(String adapterId) {
+        return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
     @Override
@@ -165,7 +186,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                         entry.workerId(),
                         endpoint != null && endpoint.isActive(),
                         endpoint != null ? endpoint.channel().id().asShortText() : null,
-                        "websocket"
+                        adapterId
                 )
             );
         }

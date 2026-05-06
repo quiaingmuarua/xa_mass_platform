@@ -86,15 +86,33 @@ public class MassApplicationBuilder {
         WebSocketAdapterConfig webSocket = transportConfig.getBundledWebSocketAdapterConfig();
         SocketAdapterConfig socket = transportConfig.getBundledSocketAdapterConfig();
         summaries.add("websocket(enabled=" + webSocket.isEnabled()
+                + ",adapterId=" + webSocket.getAdapterId()
                 + ",serverEnabled=" + webSocket.isServerEnabled()
                 + ",port=" + webSocket.getServerPort()
                 + ",path=" + webSocket.getEndpointPath()
                 + ")");
         summaries.add("socket(enabled=" + socket.isEnabled()
+                + ",adapterId=" + socket.getAdapterId()
                 + ",serverEnabled=" + socket.isServerEnabled()
                 + ",host=" + socket.getBindHost()
                 + ",port=" + socket.getServerPort()
                 + ")");
+        for (WebSocketAdapterConfig extra : transportConfig.getSupplementalWebSocketAdapterConfigs()) {
+            summaries.add("websocket+(" + extra.getAdapterId()
+                    + ",enabled=" + extra.isEnabled()
+                    + ",serverEnabled=" + extra.isServerEnabled()
+                    + ",port=" + extra.getServerPort()
+                    + ",path=" + extra.getEndpointPath()
+                    + ")");
+        }
+        for (SocketAdapterConfig extra : transportConfig.getSupplementalSocketAdapterConfigs()) {
+            summaries.add("socket+(" + extra.getAdapterId()
+                    + ",enabled=" + extra.isEnabled()
+                    + ",serverEnabled=" + extra.isServerEnabled()
+                    + ",host=" + extra.getBindHost()
+                    + ",port=" + extra.getServerPort()
+                    + ")");
+        }
 
         TransportAdapterBootstrap<TransportOutboundMessage> primaryBootstrap =
                 transportConfig.getPrimaryTransportAdapterBootstrap();
@@ -134,9 +152,25 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder addWebSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
+            WebSocketAdapterConfig extra = new WebSocketAdapterConfig();
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(extra);
+            webSocketAdapterConfigurator.accept(builder);
+            config.addSupplementalWebSocketAdapterConfig(extra);
+            return this;
+        }
+
         public TransportBuilder socketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
             SocketAdapterBuilder builder = new SocketAdapterBuilder(config.getBundledSocketAdapterConfig());
             socketAdapterConfigurator.accept(builder);
+            return this;
+        }
+
+        public TransportBuilder addSocketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
+            SocketAdapterConfig extra = new SocketAdapterConfig();
+            SocketAdapterBuilder builder = new SocketAdapterBuilder(extra);
+            socketAdapterConfigurator.accept(builder);
+            config.addSupplementalSocketAdapterConfig(extra);
             return this;
         }
 
@@ -208,6 +242,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public WebSocketAdapterBuilder adapterId(String adapterId) {
+            config.setAdapterId(adapterId);
+            return this;
+        }
+
         public WebSocketAdapterBuilder serverEnabled(boolean enabled) {
             config.setServerEnabled(enabled);
             return this;
@@ -249,6 +288,11 @@ public class MassApplicationBuilder {
 
         public SocketAdapterBuilder enabled(boolean enabled) {
             config.setEnabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterBuilder adapterId(String adapterId) {
+            config.setAdapterId(adapterId);
             return this;
         }
 

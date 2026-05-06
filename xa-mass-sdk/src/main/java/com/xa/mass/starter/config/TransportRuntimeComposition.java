@@ -46,6 +46,8 @@ public class TransportRuntimeComposition {
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
+    private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
+    private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps;
@@ -67,6 +69,12 @@ public class TransportRuntimeComposition {
         this.systemEventChannelResolver = source.systemEventChannelResolver();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
+        this.supplementalWebSocketAdapterConfigs = source.getSupplementalWebSocketAdapterConfigs().stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+        this.supplementalSocketAdapterConfigs = source.getSupplementalSocketAdapterConfigs().stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
@@ -81,6 +89,8 @@ public class TransportRuntimeComposition {
                 || bundledWebSocketAdapterConfig.isServerEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isServerEnabled()
+                || hasAnyEnabledWebSocketConfig(supplementalWebSocketAdapterConfigs)
+                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
     }
@@ -114,6 +124,18 @@ public class TransportRuntimeComposition {
 
     public SocketAdapterConfig getBundledSocketAdapterConfig() {
         return new SocketAdapterConfig(bundledSocketAdapterConfig);
+    }
+
+    public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
+        return supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+    }
+
+    public List<SocketAdapterConfig> getSupplementalSocketAdapterConfigs() {
+        return supplementalSocketAdapterConfigs.stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
     }
 
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
@@ -164,7 +186,10 @@ public class TransportRuntimeComposition {
         List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps = new ArrayList<>();
         bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
         bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
+        bootstraps.addAll(resolveSupplementalBundledWebSocketTransportAdapterBootstraps());
+        bootstraps.addAll(resolveSupplementalBundledSocketTransportAdapterBootstraps());
         bootstraps.addAll(supplementalTransportAdapterBootstraps);
+        validateUniqueAdapterIds(bootstraps);
         return List.copyOf(bootstraps);
     }
 
@@ -192,6 +217,20 @@ public class TransportRuntimeComposition {
 
     TransportAdapterBootstrap<TransportOutboundMessage> resolveBundledSocketTransportAdapterBootstrap() {
         return new SocketTransportAdapterBootstrap(bundledSocketAdapterConfig);
+    }
+
+    List<TransportAdapterBootstrap<TransportOutboundMessage>> resolveSupplementalBundledWebSocketTransportAdapterBootstraps() {
+        return supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketTransportAdapterBootstrap::new)
+                .map(bootstrap -> (TransportAdapterBootstrap<TransportOutboundMessage>) bootstrap)
+                .toList();
+    }
+
+    List<TransportAdapterBootstrap<TransportOutboundMessage>> resolveSupplementalBundledSocketTransportAdapterBootstraps() {
+        return supplementalSocketAdapterConfigs.stream()
+                .map(SocketTransportAdapterBootstrap::new)
+                .map(bootstrap -> (TransportAdapterBootstrap<TransportOutboundMessage>) bootstrap)
+                .toList();
     }
 
     private TransportRegistrationResolver registrationResolver() {
@@ -225,18 +264,67 @@ public class TransportRuntimeComposition {
                 descriptors.add(socketDescriptor);
             }
         }
+        for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
+            if (config.isEnabled()) {
+                TransportAdapterDescriptor descriptor = new WebSocketTransportAdapterBootstrap(config).descriptor();
+                if (descriptor != null) {
+                    descriptors.add(descriptor);
+                }
+            }
+        }
+        for (SocketAdapterConfig config : supplementalSocketAdapterConfigs) {
+            if (config.isEnabled()) {
+                TransportAdapterDescriptor descriptor = new SocketTransportAdapterBootstrap(config).descriptor();
+                if (descriptor != null) {
+                    descriptors.add(descriptor);
+                }
+            }
+        }
         for (TransportAdapterBootstrap<TransportOutboundMessage> bootstrap : supplementalTransportAdapterBootstraps) {
             TransportAdapterDescriptor descriptor = bootstrap.descriptor();
             if (descriptor != null) {
                 descriptors.add(descriptor);
             }
         }
+        validateUniqueDescriptorIds(descriptors);
         return List.copyOf(descriptors);
     }
 
     private boolean usesDefaultWorkerTransportRuntimeFactory() {
         return workerTransportRuntimeFactory == null
                 || workerTransportRuntimeFactory instanceof DefaultWorkerTransportRuntimeFactory;
+    }
+
+    private static boolean hasAnyEnabledWebSocketConfig(List<WebSocketAdapterConfig> configs) {
+        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
+        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private static void validateUniqueAdapterIds(List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps) {
+        List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
+        for (TransportAdapterBootstrap<TransportOutboundMessage> bootstrap : bootstraps) {
+            TransportAdapterDescriptor descriptor = bootstrap.descriptor();
+            if (descriptor != null) {
+                descriptors.add(descriptor);
+            }
+        }
+        validateUniqueDescriptorIds(descriptors);
+    }
+
+    private static void validateUniqueDescriptorIds(List<TransportAdapterDescriptor> descriptors) {
+        java.util.Set<String> adapterIds = new java.util.LinkedHashSet<>();
+        for (TransportAdapterDescriptor descriptor : descriptors) {
+            if (descriptor == null || descriptor.getAdapterId() == null || descriptor.getAdapterId().isBlank()) {
+                continue;
+            }
+            String normalized = descriptor.getAdapterId().trim().toLowerCase(java.util.Locale.ROOT);
+            if (!adapterIds.add(normalized)) {
+                throw new IllegalStateException("Duplicate transport adapterId configured: " + normalized);
+            }
+        }
     }
 }
 

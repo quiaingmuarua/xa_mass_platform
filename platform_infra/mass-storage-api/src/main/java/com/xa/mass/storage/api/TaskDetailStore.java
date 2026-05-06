@@ -14,6 +14,11 @@ import java.util.Optional;
  * trace/audit module) without touching the control-plane task storage or the
  * engine orchestration code. The current in-memory and JDBC implementations
  * implement both interfaces; future trace sinks implement only this one.
+ *
+ * <p>Callers should treat this seam in two tiers:
+ * runtime-essential compatibility projection helpers used by result repair and
+ * bounded convergence, and shell/debug reads that must not grow into
+ * pagination, analytics, or durable-history contracts.</p>
  */
 public interface TaskDetailStore {
 

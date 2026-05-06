@@ -26,7 +26,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     @Override
     public TransportAdapterDescriptor descriptor() {
         return new TransportAdapterDescriptor(
-                com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                config.getAdapterId(),
                 com.xa.mass.transport.WorkerTransportHints.REALTIME
         );
     }
@@ -36,6 +36,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         com.xa.mass.transport.websocket.session.ServerSessionManager endpointRegistry =
                 resolveEndpointRegistry(context);
         WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
+                config.getAdapterId(),
                 endpointRegistry,
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel()
@@ -45,10 +46,11 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
                     WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(
+                            config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
             ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
-            contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(endpointRegistry));
+            contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 
         TransportServer transportServer = WebSocketEmbeddedRuntimeSupport.createTransportServer(
@@ -66,14 +68,18 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     private com.xa.mass.transport.websocket.session.ServerSessionManager resolveEndpointRegistry(
             TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         if (context.getEndpointRegistry() instanceof com.xa.mass.transport.websocket.session.ServerSessionManager sessionManager) {
+            if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
+                throw new IllegalStateException("WebSocket transport requires endpoint registry adapterId '"
+                        + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
+            }
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
             com.xa.mass.transport.websocket.session.ServerSessionManager sessionManager =
                     composite.getOrRegister(
-                            com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.PROTOCOL,
-                            com.xa.mass.transport.websocket.session.ServerSessionManager::new
+                            config.getAdapterId(),
+                            () -> new com.xa.mass.transport.websocket.session.ServerSessionManager(config.getAdapterId())
                     );
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
@@ -84,16 +90,19 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     private static final class WebSocketRawWorkerMessageChannel
             implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
 
+        private final String adapterId;
         private final com.xa.mass.transport.WorkerEndpointRegistry endpointRegistry;
 
         private WebSocketRawWorkerMessageChannel(
+                String adapterId,
                 com.xa.mass.transport.WorkerEndpointRegistry endpointRegistry) {
+            this.adapterId = adapterId;
             this.endpointRegistry = endpointRegistry;
         }
 
         @Override
         public String adapterId() {
-            return com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.PROTOCOL;
+            return adapterId;
         }
 
         @Override

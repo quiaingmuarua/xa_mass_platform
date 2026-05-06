@@ -12,6 +12,9 @@ import java.util.List;
 /**
  * Assignment-side adapter that keeps runtime listeners off the full TaskManager
  * facade while preserving the current storage/runtime ownership.
+ *
+ * <p>This remains the concrete {@link TaskAssignmentRuntimePort}
+ * implementation used by in-process engine listeners.</p>
  */
 public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRuntimePort {
 

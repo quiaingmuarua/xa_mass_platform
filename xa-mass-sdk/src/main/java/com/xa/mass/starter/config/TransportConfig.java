@@ -40,6 +40,8 @@ public class TransportConfig {
     private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
+    private List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs = List.of();
+    private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps = List.of();
@@ -66,6 +68,12 @@ public class TransportConfig {
         this.systemEventChannelResolver = source.systemEventChannelResolver;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
+        this.supplementalWebSocketAdapterConfigs = source.supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+        this.supplementalSocketAdapterConfigs = source.supplementalSocketAdapterConfigs.stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
@@ -80,6 +88,8 @@ public class TransportConfig {
                 || bundledWebSocketAdapterConfig.isServerEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isServerEnabled()
+                || hasAnyEnabledAdapterConfig(supplementalWebSocketAdapterConfigs)
+                || hasAnyEnabledAdapterConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
     }
@@ -166,6 +176,36 @@ public class TransportConfig {
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(
                 java.util.Objects.requireNonNull(bundledSocketAdapterConfig, "bundledSocketAdapterConfig")
         );
+    }
+
+    public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
+        return supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+    }
+
+    public void addSupplementalWebSocketAdapterConfig(WebSocketAdapterConfig config) {
+        if (config == null) {
+            return;
+        }
+        List<WebSocketAdapterConfig> updated = new ArrayList<>(supplementalWebSocketAdapterConfigs);
+        updated.add(new WebSocketAdapterConfig(config));
+        supplementalWebSocketAdapterConfigs = List.copyOf(updated);
+    }
+
+    public List<SocketAdapterConfig> getSupplementalSocketAdapterConfigs() {
+        return supplementalSocketAdapterConfigs.stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
+    }
+
+    public void addSupplementalSocketAdapterConfig(SocketAdapterConfig config) {
+        if (config == null) {
+            return;
+        }
+        List<SocketAdapterConfig> updated = new ArrayList<>(supplementalSocketAdapterConfigs);
+        updated.add(new SocketAdapterConfig(config));
+        supplementalSocketAdapterConfigs = List.copyOf(updated);
     }
 
     public WorkerTransportRuntimeFactory getWorkerTransportRuntimeFactory() {
@@ -261,6 +301,20 @@ public class TransportConfig {
 
     public TransportRuntimeComposition snapshotRuntimeComposition() {
         return new TransportRuntimeComposition(this);
+    }
+
+    private static boolean hasAnyEnabledAdapterConfig(List<?> configs) {
+        for (Object config : configs) {
+            if (config instanceof WebSocketAdapterConfig webSocket
+                    && (webSocket.isEnabled() || webSocket.isServerEnabled())) {
+                return true;
+            }
+            if (config instanceof SocketAdapterConfig socket
+                    && (socket.isEnabled() || socket.isServerEnabled())) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 

@@ -16,7 +16,8 @@ import java.util.Objects;
  * <p>Read tiers exposed here are intentionally narrow:
  * task shell / aggregate reads are mainline, bounded {@link TaskMsg} /
  * {@link TaskMsgAttempt} reads remain shell/debug compatibility helpers, and
- * projection audit stays diagnostic-only.
+ * projection audit stays diagnostic-only. This surface must not become a
+ * pagination/history or runtime-correctness contract.
  */
 public class TaskQueryService {
 

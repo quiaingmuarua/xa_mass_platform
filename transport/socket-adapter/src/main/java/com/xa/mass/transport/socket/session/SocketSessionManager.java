@@ -21,10 +21,19 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     private static final Logger logger = LoggerFactory.getLogger(SocketSessionManager.class);
 
+    private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private volatile WorkerSystemEventChannel systemEventChannel;
 
     public SocketSessionManager(WorkerSystemEventChannel systemEventChannel) {
+        this(com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, systemEventChannel);
+    }
+
+    public SocketSessionManager(String adapterId, WorkerSystemEventChannel systemEventChannel) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
         this.systemEventChannel = systemEventChannel;
     }
 
@@ -98,7 +107,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     @Override
     public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
-        if (adapterId != null && !"socket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
         return sendToRoute(routeKey, message);
@@ -106,7 +115,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     @Override
     public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-        if (adapterId != null && !"socket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
         return isRouteOnline(routeKey);
@@ -141,14 +150,22 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                     entry.workerId(),
                     endpoint != null && endpoint.isActive(),
                     endpoint != null ? endpoint.endpointId() : null,
-                    "socket"
+                    adapterId
             ));
         }
         return List.copyOf(snapshots);
     }
 
+    public String getAdapterId() {
+        return adapterId;
+    }
+
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel;
+    }
+
+    private boolean matchesAdapter(String adapterId) {
+        return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

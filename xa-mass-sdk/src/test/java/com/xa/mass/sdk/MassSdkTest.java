@@ -485,11 +485,77 @@ class MassSdkTest {
     }
 
     @Test
+    void runtimeCompositionWebSocketBootstrapUsesConfiguredAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
+        config.getBundledWebSocketAdapterConfig().setEnabled(true);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        TransportAdapterContribution contribution;
+        try {
+            contribution = adapterBootstrap(runtimeComposition, "ws-public").create(
+                    new TransportAdapterBootstrapContext<>(
+                            new CompositeWorkerEndpointRegistry(),
+                            mock(TaskResultIngestChannel.class),
+                            new RuntimeEventBusWorkerSystemEventChannel(),
+                            deliveryService(),
+                            runtimeTaskExecutor
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
+        assertNotNull(contribution.getTransportBinding());
+        assertEquals("ws-public", contribution.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("ws-public", contribution.getRawWorkerMessageChannel().adapterId());
+        assertEquals("ws-public",
+                runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
+    }
+
+    @Test
+    void runtimeCompositionSocketBootstrapUsesConfiguredAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
+        config.getBundledSocketAdapterConfig().setEnabled(true);
+        config.getBundledSocketAdapterConfig().setServerEnabled(false);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        TransportAdapterContribution contribution;
+        try {
+            contribution = adapterBootstrap(runtimeComposition, "socket-edge").create(
+                    new TransportAdapterBootstrapContext<>(
+                            new CompositeWorkerEndpointRegistry(),
+                            mock(TaskResultIngestChannel.class),
+                            new RuntimeEventBusWorkerSystemEventChannel(),
+                            deliveryService(),
+                            runtimeTaskExecutor
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertNotNull(contribution.getTransportBinding());
+        assertEquals("socket-edge", contribution.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("socket-edge", contribution.getRawWorkerMessageChannel().adapterId());
+        assertEquals("socket-edge",
+                runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
+    }
+
+    @Test
     void bundledWebSocketTransportBootstrapRejectsNonSessionRegistry() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
+                config.getBundledWebSocketAdapterConfig().getAdapterId(),
                 endpointRegistry,
                 null,
                 runtimeComposition.resolveSystemEventChannel()
@@ -505,6 +571,65 @@ class MassSdkTest {
         );
 
         assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
+    }
+
+    @Test
+    void bundledWebSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, "ws-public").create(
+                            new TransportAdapterBootstrapContext<>(
+                                    new ServerSessionManager("websocket"),
+                                    mock(TaskResultIngestChannel.class),
+                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertTrue(error.getMessage().contains("endpoint registry adapterId 'ws-public'"));
+    }
+
+    @Test
+    void bundledSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
+        config.getBundledSocketAdapterConfig().setEnabled(true);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, "socket-edge").create(
+                            new TransportAdapterBootstrapContext<>(
+                                    new com.xa.mass.transport.socket.session.SocketSessionManager("socket", null),
+                                    mock(TaskResultIngestChannel.class),
+                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertTrue(error.getMessage().contains("endpoint registry adapterId 'socket-edge'"));
     }
 
     @Test
@@ -558,6 +683,50 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
+    }
+
+    @Test
+    void runtimeCompositionCanAppendAdditionalBundledRealtimeAdapterInstances() {
+        TransportConfig config = new TransportConfig();
+        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
+                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        extraWebSocket.setAdapterId("ws-internal");
+        extraWebSocket.setEnabled(true);
+        extraWebSocket.setServerEnabled(false);
+        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+
+        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
+                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        extraSocket.setAdapterId("socket-edge");
+        extraSocket.setEnabled(true);
+        extraSocket.setServerEnabled(false);
+        config.addSupplementalSocketAdapterConfig(extraSocket);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertNotNull(adapterBootstrap(runtimeComposition, "websocket"));
+        assertNotNull(adapterBootstrap(runtimeComposition, "socket"));
+        assertNotNull(adapterBootstrap(runtimeComposition, "ws-internal"));
+        assertNotNull(adapterBootstrap(runtimeComposition, "socket-edge"));
+        assertEquals(4, runtimeComposition.resolveTransportAdapterBootstraps().size());
+    }
+
+    @Test
+    void runtimeCompositionRejectsDuplicateAdapterIdsAcrossBundledInstances() {
+        TransportConfig config = new TransportConfig();
+        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
+                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        extraWebSocket.setAdapterId("websocket");
+        extraWebSocket.setEnabled(true);
+        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                runtimeComposition::resolveTransportAdapterBootstraps
+        );
+        assertTrue(error.getMessage().contains("Duplicate transport adapterId configured: websocket"));
     }
 
     @Test
@@ -1079,10 +1248,12 @@ class MassSdkTest {
     void engineConfigRejectsSchedulerMismatchAfterTaskManagerIsConfigured() {
         EngineConfig config = new EngineConfig();
         SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
         config.setScheduler(scheduler);
         config.setTaskManager(new com.xa.mass.engine.TaskManager(
                 scheduler,
-                new InMemoryTaskStorage(),
+                storage,
+                storage,
                 new InMemoryTaskWorkRuntime()
         ));
 
@@ -1094,11 +1265,13 @@ class MassSdkTest {
     void engineConfigRejectsTaskManagerSchedulerMismatchAfterSchedulerIsConfigured() {
         EngineConfig config = new EngineConfig();
         config.setScheduler(new SimpleTaskScheduler());
+        InMemoryTaskStorage storage = new InMemoryTaskStorage();
 
         assertThrows(IllegalArgumentException.class,
                 () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(
                         new SimpleTaskScheduler(),
-                        new InMemoryTaskStorage(),
+                        storage,
+                        storage,
                         new InMemoryTaskWorkRuntime())));
     }
 

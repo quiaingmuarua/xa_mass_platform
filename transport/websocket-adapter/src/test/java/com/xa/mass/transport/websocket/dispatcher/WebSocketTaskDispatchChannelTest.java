@@ -34,6 +34,7 @@ class WebSocketTaskDispatchChannelTest {
         when(endpointRegistry.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
+                "websocket",
                 endpointRegistry,
                 codec,
                 null,
@@ -77,6 +78,7 @@ class WebSocketTaskDispatchChannelTest {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+                "websocket",
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 null,
@@ -93,6 +95,7 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsAdapterUnavailableWhenRuntimeContextIsIncomplete() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+                "websocket",
                 null,
                 new WebSocketTransportFrameCodec(),
                 null,

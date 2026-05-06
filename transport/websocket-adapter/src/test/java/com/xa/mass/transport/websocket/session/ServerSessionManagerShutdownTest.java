@@ -49,6 +49,20 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void adapterScopedLookupsUseConfiguredAdapterId() {
+        manager = new ServerSessionManager("ws-public");
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertTrue(manager.isAdapterRouteOnline("ws-public", "route-1"));
+        assertFalse(manager.isAdapterRouteOnline("websocket", "route-1"));
+        assertEquals("ws-public", manager.getAdapterId());
+        assertEquals("ws-public", manager.listWorkerEndpoints().get(0).getTransport());
+    }
+
+    @Test
     void workerOnlineOfflineSignalsTrackWorkerLevelReachability() {
         WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
         manager.setSystemEventChannel(systemEventChannel);

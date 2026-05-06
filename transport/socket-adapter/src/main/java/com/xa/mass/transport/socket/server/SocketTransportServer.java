@@ -9,7 +9,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
-import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +38,7 @@ public final class SocketTransportServer implements TransportServer {
     private static final Logger logger = LoggerFactory.getLogger(SocketTransportServer.class);
     public static final String BOUND_PORT_PROPERTY = "mass.socket.bound-port";
 
+    private final String adapterId;
     private final String bindHost;
     private final int port;
     private final int maxConnections;
@@ -53,7 +53,8 @@ public final class SocketTransportServer implements TransportServer {
     private volatile ServerSocket serverSocket;
     private volatile Future<?> acceptTask;
 
-    public SocketTransportServer(String bindHost,
+    public SocketTransportServer(String adapterId,
+                                 String bindHost,
                                  int port,
                                  int maxConnections,
                                  SocketSessionManager sessionManager,
@@ -61,6 +62,7 @@ public final class SocketTransportServer implements TransportServer {
                                  TaskResultIngestChannel taskResultIngestChannel,
                                  WorkerSystemEventChannel systemEventChannel,
                                  RuntimeTaskExecutor runtimeTaskExecutor) {
+        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.bindHost = bindHost;
         this.port = port;
         this.maxConnections = maxConnections;
@@ -189,7 +191,7 @@ public final class SocketTransportServer implements TransportServer {
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
                     taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
-                            SocketRealtimeWorkerAdapter.PROTOCOL,
+                            adapterId,
                             boundWorkerId,
                             endpointId,
                             report

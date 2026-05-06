@@ -29,7 +29,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     @Override
     public TransportAdapterDescriptor descriptor() {
         return new TransportAdapterDescriptor(
-                SocketRealtimeWorkerAdapter.PROTOCOL,
+                config.getAdapterId(),
                 com.xa.mass.transport.WorkerTransportHints.REALTIME
         );
     }
@@ -42,16 +42,18 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
-                    new SocketRealtimeWorkerAdapter(new SocketTaskDispatchChannel(
+                    new SocketRealtimeWorkerAdapter(config.getAdapterId(), new SocketTaskDispatchChannel(
+                            config.getAdapterId(),
                             sessionManager,
                             frameCodec,
                             context.getDeliveryService()
                     ))
             ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
-            contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(sessionManager));
+            contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {
             contribution.transportServer(new SocketTransportServer(
+                    config.getAdapterId(),
                     config.getBindHost(),
                     config.getServerPort(),
                     config.getMaxConnections(),
@@ -67,13 +69,17 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
         if (context.getEndpointRegistry() instanceof SocketSessionManager sessionManager) {
+            if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
+                throw new IllegalStateException("Socket transport requires endpoint registry adapterId '"
+                        + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
+            }
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
             SocketSessionManager sessionManager = composite.getOrRegister(
-                    SocketRealtimeWorkerAdapter.PROTOCOL,
-                    () -> new SocketSessionManager(context.getSystemEventChannel())
+                    config.getAdapterId(),
+                    () -> new SocketSessionManager(config.getAdapterId(), context.getSystemEventChannel())
             );
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
@@ -83,15 +89,17 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {
 
+        private final String adapterId;
         private final SocketSessionManager sessionManager;
 
-        private SocketRawWorkerMessageChannel(SocketSessionManager sessionManager) {
+        private SocketRawWorkerMessageChannel(String adapterId, SocketSessionManager sessionManager) {
+            this.adapterId = adapterId;
             this.sessionManager = sessionManager;
         }
 
         @Override
         public String adapterId() {
-            return SocketRealtimeWorkerAdapter.PROTOCOL;
+            return adapterId;
         }
 
         @Override

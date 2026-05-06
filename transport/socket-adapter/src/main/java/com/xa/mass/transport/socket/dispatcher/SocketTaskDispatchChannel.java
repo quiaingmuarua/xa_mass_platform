@@ -6,7 +6,6 @@ import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
-import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,13 +19,16 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketTaskDispatchChannel.class);
 
+    private final String adapterId;
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
     private final TransportDeliveryService deliveryService;
 
-    public SocketTaskDispatchChannel(SocketSessionManager sessionManager,
+    public SocketTaskDispatchChannel(String adapterId,
+                                     SocketSessionManager sessionManager,
                                      SocketTransportFrameCodec frameCodec,
                                      TransportDeliveryService deliveryService) {
+        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
@@ -38,7 +40,7 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
             return List.of();
         }
         return deliveryService.sendDirect(
-                SocketRealtimeWorkerAdapter.PROTOCOL,
+                adapterId,
                 envelopes,
                 envelope -> {
                     String rawJson = frameCodec.encodeCanonicalTaskDispatch(envelope.getPayload());

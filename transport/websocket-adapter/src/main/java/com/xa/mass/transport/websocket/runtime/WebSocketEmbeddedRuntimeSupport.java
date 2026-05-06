@@ -35,11 +35,17 @@ public final class WebSocketEmbeddedRuntimeSupport {
         return new ServerSessionManager();
     }
 
+    public static ServerSessionManager createEndpointRegistry(String adapterId) {
+        return new ServerSessionManager(adapterId);
+    }
+
     public static WebSocketDispatchRuntimeContext createDispatcherContext(
+            String adapterId,
             WorkerEndpointRegistry endpointRegistry,
             TaskResultIngestChannel taskResultIngestChannel,
             WorkerSystemEventChannel systemEventChannel) {
         return new WebSocketDispatcherContext(
+                adapterId,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 taskResultIngestChannel,
@@ -54,8 +60,8 @@ public final class WebSocketEmbeddedRuntimeSupport {
         return new EventBusWorkerSystemEventChannel();
     }
 
-    public static WorkerAdapter createRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
-        return new WebSocketRealtimeWorkerAdapter(taskDispatchChannel);
+    public static WorkerAdapter createRealtimeWorkerAdapter(String adapterId, TaskDispatchChannel taskDispatchChannel) {
+        return new WebSocketRealtimeWorkerAdapter(adapterId, taskDispatchChannel);
     }
 
     public static TransportServer createTransportServer(int port,

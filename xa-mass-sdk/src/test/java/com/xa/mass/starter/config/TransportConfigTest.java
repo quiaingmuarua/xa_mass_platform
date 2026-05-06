@@ -37,6 +37,25 @@ class TransportConfigTest {
         assertTrue(config.snapshotRuntimeComposition().isEnabled());
     }
 
+    @Test
+    void isEnabledRecognizesSupplementalBundledAdapterState() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledSocketAdapterConfig().setEnabled(false);
+        config.getBundledSocketAdapterConfig().setServerEnabled(false);
+
+        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
+                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        extraSocket.setAdapterId("socket-edge");
+        extraSocket.setEnabled(false);
+        extraSocket.setServerEnabled(true);
+        config.addSupplementalSocketAdapterConfig(extraSocket);
+
+        assertTrue(config.isEnabled());
+        assertTrue(config.snapshotRuntimeComposition().isEnabled());
+    }
+
     private record StubBootstrap(String adapterId, String transportHint)
             implements TransportAdapterBootstrap<TransportOutboundMessage> {
 

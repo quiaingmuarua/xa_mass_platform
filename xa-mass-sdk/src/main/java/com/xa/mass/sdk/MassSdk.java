@@ -100,9 +100,21 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions addWebSocketAdapter(Consumer<WebSocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.addWebSocketAdapter(inner -> configurator.accept(new WebSocketAdapterOptions(inner)));
+            return this;
+        }
+
         public TransportOptions socketAdapter(Consumer<SocketAdapterOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
             delegate.socketAdapter(inner -> configurator.accept(new SocketAdapterOptions(inner)));
+            return this;
+        }
+
+        public TransportOptions addSocketAdapter(Consumer<SocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.addSocketAdapter(inner -> configurator.accept(new SocketAdapterOptions(inner)));
             return this;
         }
 
@@ -170,6 +182,11 @@ public final class MassSdk {
             return this;
         }
 
+        public WebSocketAdapterOptions adapterId(String adapterId) {
+            delegate.adapterId(adapterId);
+            return this;
+        }
+
         public WebSocketAdapterOptions serverEnabled(boolean enabled) {
             delegate.serverEnabled(enabled);
             return this;
@@ -211,6 +228,11 @@ public final class MassSdk {
 
         public SocketAdapterOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterOptions adapterId(String adapterId) {
+            delegate.adapterId(adapterId);
             return this;
         }
 

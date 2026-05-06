@@ -10,19 +10,27 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
  * Concrete WebSocket adapter dispatch runtime context.
  */
 public class WebSocketDispatcherContext implements WebSocketDispatchRuntimeContext {
+    private final String adapterId;
     private final WorkerEndpointRegistry endpointRegistry;
     private final WebSocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
 
-    public WebSocketDispatcherContext(WorkerEndpointRegistry endpointRegistry,
+    public WebSocketDispatcherContext(String adapterId,
+                             WorkerEndpointRegistry endpointRegistry,
                              WebSocketTransportFrameCodec frameCodec,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel) {
+        this.adapterId = adapterId;
         this.endpointRegistry = endpointRegistry;
         this.frameCodec = frameCodec;
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = systemEventChannel;
+    }
+
+    @Override
+    public String getAdapterId() {
+        return adapterId;
     }
 
     @Override

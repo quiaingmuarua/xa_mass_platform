@@ -10,6 +10,7 @@ import java.util.Objects;
  */
 public final class WebSocketAdapterConfig {
 
+    private String adapterId = com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
     private boolean enabled = true;
     private boolean serverEnabled = true;
     private int serverPort = 8080;
@@ -22,6 +23,7 @@ public final class WebSocketAdapterConfig {
 
     public WebSocketAdapterConfig(WebSocketAdapterConfig source) {
         Objects.requireNonNull(source, "source");
+        this.adapterId = source.adapterId;
         this.enabled = source.enabled;
         this.serverEnabled = source.serverEnabled;
         this.serverPort = source.serverPort;
@@ -32,6 +34,17 @@ public final class WebSocketAdapterConfig {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public String getAdapterId() {
+        return adapterId;
+    }
+
+    public void setAdapterId(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     public void setEnabled(boolean enabled) {

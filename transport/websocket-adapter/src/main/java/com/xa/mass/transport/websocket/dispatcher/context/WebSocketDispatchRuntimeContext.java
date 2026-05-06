@@ -10,6 +10,8 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
  */
 public interface WebSocketDispatchRuntimeContext {
 
+    String getAdapterId();
+
     WorkerEndpointRegistry getEndpointRegistry();
 
     WebSocketTransportFrameCodec getFrameCodec();

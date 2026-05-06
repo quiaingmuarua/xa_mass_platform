@@ -36,14 +36,14 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
         if (context == null || context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return deliveryService.sendDirect(
-                    WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                    adapterId(),
                     envelopes,
                     null,
                     "dispatcher context or endpoint registry is unavailable"
             );
         }
         return deliveryService.sendDirect(
-                WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                adapterId(),
                 envelopes,
                 envelope -> {
                     String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(envelope.getPayload());
@@ -57,5 +57,16 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
                 },
                 "dispatcher context or endpoint registry is unavailable"
         );
+    }
+
+    private String adapterId() {
+        if (context == null) {
+            return WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
+        }
+        String adapterId = context.getAdapterId();
+        if (adapterId == null || adapterId.isBlank()) {
+            return WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
+        }
+        return adapterId;
     }
 }

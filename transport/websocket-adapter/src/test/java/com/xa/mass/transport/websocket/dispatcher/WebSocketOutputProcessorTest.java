@@ -21,6 +21,7 @@ class WebSocketOutputProcessorTest {
     void setUp() {
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
+                "websocket",
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 null,

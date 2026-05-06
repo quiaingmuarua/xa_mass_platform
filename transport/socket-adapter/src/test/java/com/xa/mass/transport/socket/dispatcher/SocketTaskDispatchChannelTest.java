@@ -67,6 +67,7 @@ class SocketTaskDispatchChannelTest {
 
     private SocketTaskDispatchChannel channel(SocketSessionManager sessionManager) {
         return new SocketTaskDispatchChannel(
+                "socket",
                 sessionManager,
                 new SocketTransportFrameCodec(),
                 new TransportDeliveryService(new InMemoryTransportDeliveryStore())

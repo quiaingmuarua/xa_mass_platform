@@ -160,6 +160,7 @@ class WebSocketInputProcessorTest {
 
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
+                "websocket",
                 endpointRegistry,
                 codec,
                 taskResultIngestChannel,
