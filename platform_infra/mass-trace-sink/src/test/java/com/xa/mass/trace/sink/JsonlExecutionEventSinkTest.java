@@ -216,9 +216,10 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
-    void dropCountIncrements_whenQueueFull() throws InterruptedException {
-        JsonlExecutionEventSink tightSink =
-                new JsonlExecutionEventSink(tempDir.toString(), 1, 10_000);
+    void dropCountIncrements_whenQueueFull_dropPolicy() throws InterruptedException {
+        // Explicitly uses DROP policy (the default); verifies droppedCount increments.
+        JsonlExecutionEventSink tightSink = new JsonlExecutionEventSink(
+                tempDir.toString(), 1, 10_000, OverflowPolicy.DROP, 5_000);
 
         for (int i = 0; i < 100; i++) {
             final int idx = i;
@@ -230,6 +231,87 @@ class JsonlExecutionEventSinkTest {
 
         tightSink.close();
         Thread.sleep(50);
-        assertTrue(tightSink.getDroppedCount() > 0, "Expected some drops with queue capacity 1");
+        assertTrue(tightSink.getDroppedCount() > 0,
+                "Expected some drops with DROP policy and queue capacity 1");
+    }
+
+    @Test
+    void overflowFallbackSync_writesEventSynchronously() throws Exception {
+        // Queue capacity 1 with FALLBACK_SYNC: events that don't fit the queue are
+        // written synchronously on the caller thread and must appear in the output file.
+        JsonlExecutionEventSink fallbackSink = new JsonlExecutionEventSink(
+                tempDir.toString(), 1, 10_000, OverflowPolicy.FALLBACK_SYNC, 5_000);
+
+        // Emit enough events to guarantee at least one hits the FALLBACK_SYNC path.
+        for (int i = 0; i < 20; i++) {
+            final int idx = i;
+            fallbackSink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_ONLINE)
+                    .identity(b -> b.workerId("w-" + idx))
+                    .build());
+        }
+
+        fallbackSink.close();
+        Thread.sleep(50);
+
+        List<Path> files = Files.list(tempDir)
+                .filter(p -> p.getFileName().toString().endsWith(".jsonl"))
+                .toList();
+        assertFalse(files.isEmpty(), "No JSONL file was created");
+
+        long totalLines = files.stream()
+                .mapToLong(f -> {
+                    try { return Files.readAllLines(f).size(); } catch (IOException e) { return 0; }
+                })
+                .sum();
+        // All 20 events must be persisted (queued or fallback-sync path).
+        assertEquals(20, totalLines, "FALLBACK_SYNC must write all events to file");
+    }
+
+    @Test
+    void shutdownDrain_doesNotLoseEnqueuedEvents() throws Exception {
+        // Emit an event and immediately close — the event must not be lost.
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .identity(b -> b.taskId("t-drain"))
+                .transition("READY", "RUNNING", null)
+                .build());
+
+        List<String> lines = drainLines();
+        assertFalse(lines.isEmpty(), "Event enqueued before close must appear in the output file");
+
+        JsonNode n = mapper.readTree(lines.get(0));
+        assertEquals("t-drain", n.get("identity").get("taskId").asText());
+    }
+
+    @Test
+    void emitAfterClose_silentlyDropped() throws Exception {
+        // Emit one event, close, then emit another — the second must not appear in the file.
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.WORKER_ONLINE)
+                .identity(b -> b.workerId("w-before-close"))
+                .build());
+
+        List<String> lines = drainLines();  // calls sink.close() internally
+        int countBeforeSecondEmit = lines.size();
+
+        // Must not throw, and must not write anything new.
+        assertDoesNotThrow(() -> sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.WORKER_ONLINE)
+                .identity(b -> b.workerId("w-after-close"))
+                .build()));
+
+        Thread.sleep(50);
+        List<Path> files = Files.list(tempDir)
+                .filter(p -> p.getFileName().toString().endsWith(".jsonl"))
+                .sorted()
+                .toList();
+        long totalLines = files.stream()
+                .mapToLong(f -> {
+                    try { return Files.readAllLines(f).size(); } catch (IOException e) { return 0; }
+                })
+                .sum();
+        assertEquals(countBeforeSecondEmit, totalLines,
+                "emit() after close must not write any additional events");
     }
 }

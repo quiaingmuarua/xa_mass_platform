@@ -25,7 +25,9 @@ public class MassTraceSinkConfig {
         return new JsonlExecutionEventSink(
                 props.getOutputDir(),
                 props.getQueueCapacity(),
-                props.getRotateAfterLines());
+                props.getRotateAfterLines(),
+                props.getOverflowPolicy(),
+                props.getShutdownDrainTimeoutMs());
     }
 
     @Bean
