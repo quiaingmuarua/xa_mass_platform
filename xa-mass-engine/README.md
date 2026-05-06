@@ -87,6 +87,9 @@ Repo-level mainline surfaces:
 - dispatch-ready bindings and result-ingest seams used across engine, SDK,
   transport runtime, and tests now live in shared base runtime contracts rather
   than engine-owned package paths
+- process-local EventBus forwarding is optional shell wiring outside the engine
+  kernel; default engine startup should not imply a distributed event
+  propagation contract
 - engine emits dispatch-ready bindings into a neutral handoff/listener seam; it
   must not grow a direct dependency on transport routing/runtime classes, and
   transport-side consumption now happens through the batch handoff seam rather

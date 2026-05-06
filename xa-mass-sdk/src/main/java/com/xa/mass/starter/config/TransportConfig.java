@@ -6,6 +6,7 @@ import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -43,6 +44,7 @@ public class TransportConfig {
     private List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs = List.of();
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
+    private Supplier<TransportDeliveryStore> deliveryStoreFactory;
     private TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
@@ -75,6 +77,7 @@ public class TransportConfig {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
+        this.deliveryStoreFactory = source.deliveryStoreFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
@@ -216,6 +219,14 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
     }
 
+    public Supplier<TransportDeliveryStore> getDeliveryStoreFactory() {
+        return deliveryStoreFactory;
+    }
+
+    public void setDeliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
+        this.deliveryStoreFactory = deliveryStoreFactory;
+    }
+
     public TransportAdapterBootstrap<TransportOutboundMessage> getPrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap;
     }
@@ -293,6 +304,10 @@ public class TransportConfig {
 
     Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {
         return endpointRegistryFactory;
+    }
+
+    Supplier<TransportDeliveryStore> deliveryStoreFactory() {
+        return deliveryStoreFactory;
     }
 
     Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver() {

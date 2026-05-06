@@ -15,10 +15,12 @@ import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Consumer-facing SDK facade for embedding XA Mass Platform.
@@ -125,6 +127,16 @@ public final class MassSdk {
          */
         public TransportOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
+            return this;
+        }
+
+        public TransportOptions deliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
+            delegate.deliveryStoreFactory(deliveryStoreFactory);
+            return this;
+        }
+
+        public TransportOptions redisDeliveryStore(String redisUri) {
+            delegate.redisDeliveryStore(redisUri);
             return this;
         }
 

@@ -30,6 +30,7 @@ import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
 
@@ -66,6 +67,7 @@ public class EngineConfig {
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
+    private EngineRuntimeBridge runtimeBridge = EngineRuntimeBridge.noop();
     private boolean defaultRulesInitialized;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
@@ -98,6 +100,7 @@ public class EngineConfig {
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
         this.executionEventSink = source.executionEventSink;
+        this.runtimeBridge = source.runtimeBridge;
         this.defaultRulesInitialized = source.defaultRulesInitialized;
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
@@ -321,6 +324,17 @@ public class EngineConfig {
             throw new IllegalArgumentException("executionEventSink must not be null");
         }
         this.executionEventSink = executionEventSink;
+    }
+
+    public EngineRuntimeBridge getRuntimeBridge() {
+        return runtimeBridge;
+    }
+
+    public void setRuntimeBridge(EngineRuntimeBridge runtimeBridge) {
+        if (runtimeBridge == null) {
+            throw new IllegalArgumentException("runtimeBridge must not be null");
+        }
+        this.runtimeBridge = runtimeBridge;
     }
 
     public MassBootstrapDataProvider getBootstrapDataProvider() {

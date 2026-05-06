@@ -19,6 +19,8 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -28,7 +30,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Builds {@link MassApplication} instances from transport and engine configuration.
@@ -177,6 +181,25 @@ public class MassApplicationBuilder {
 
         public TransportBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
+            return this;
+        }
+
+        public TransportBuilder deliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
+            config.setDeliveryStoreFactory(Objects.requireNonNull(deliveryStoreFactory, "deliveryStoreFactory"));
+            return this;
+        }
+
+        public TransportBuilder redisDeliveryStore(String redisUri) {
+            String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
+            if (normalizedRedisUri.isBlank()) {
+                throw new IllegalArgumentException("redisUri must not be blank");
+            }
+            config.setDeliveryStoreFactory(() -> new RedisTransportDeliveryStore(
+                    normalizedRedisUri,
+                    RedisTransportDeliveryStore.DEFAULT_NAMESPACE_PREFIX,
+                    config.getMaxDeliveryQueuedItems(),
+                    RedisTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE
+            ));
             return this;
         }
 

@@ -170,6 +170,20 @@ mass:
 
 When disabled, the platform uses `NoopExecutionEventSink`.
 
+Local-debug example:
+
+```yaml
+mass:
+  trace:
+    sink:
+      enabled: true
+      output-dir: trace-events
+      overflow-policy: FALLBACK_SYNC
+```
+
+For local issue diagnosis, `FALLBACK_SYNC` is acceptable because the goal is to
+preserve trace evidence, not to protect a production hot path.
+
 ---
 
 ## Overflow Policies
@@ -197,6 +211,10 @@ FROM read_ndjson('trace-events/events-*.jsonl')
 WHERE identity.taskId = 't-xxx'
 ORDER BY ts;
 ```
+
+A ready-to-run local smoke query also lives at:
+
+- [duckdb/trace_local_smoke.sql](./duckdb/trace_local_smoke.sql)
 
 ```sql
 SELECT

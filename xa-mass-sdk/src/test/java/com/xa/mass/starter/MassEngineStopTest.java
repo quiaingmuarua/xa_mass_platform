@@ -4,6 +4,8 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -62,6 +64,67 @@ class MassEngineStopTest {
         engine.stop();
     }
 
+    @Test
+    void startDoesNotInstallRuntimeEventBusBridgeByDefault() {
+        EngineConfig config = new EngineConfig();
+        MassEngine engine = new MassEngine(config);
+
+        try {
+            engine.start();
+
+            assertEquals(0, listenerCount(config, "taskCreatedListeners"));
+            assertEquals(0, listenerCount(config, "taskAssignedListeners"));
+            assertEquals(1, listenerCount(config, "taskReadyListeners"));
+            assertEquals(1, listenerCount(config, "taskDispatchListeners"));
+            assertEquals(1, listenerCount(config, "taskTerminalListeners"));
+            assertEquals(1, listenerCount(config, "taskMessageAttemptClosedListeners"));
+        } finally {
+            engine.stop();
+        }
+    }
+
+    @Test
+    void stopRemovesEngineRuntimeListenersSoRestartDoesNotAccumulate() {
+        EngineConfig config = new EngineConfig();
+        MassEngine engine = new MassEngine(config);
+
+        engine.start();
+        engine.stop();
+
+        assertEquals(0, listenerCount(config, "taskReadyListeners"));
+        assertEquals(0, listenerCount(config, "taskDispatchListeners"));
+        assertEquals(0, listenerCount(config, "taskTerminalListeners"));
+        assertEquals(0, listenerCount(config, "taskMessageAttemptClosedListeners"));
+
+        engine.start();
+        try {
+            assertEquals(1, listenerCount(config, "taskReadyListeners"));
+            assertEquals(1, listenerCount(config, "taskDispatchListeners"));
+            assertEquals(1, listenerCount(config, "taskTerminalListeners"));
+            assertEquals(1, listenerCount(config, "taskMessageAttemptClosedListeners"));
+        } finally {
+            engine.stop();
+        }
+    }
+
+    @Test
+    void explicitRuntimeEventBusBridgeAddsAndRemovesShellBridgeListeners() {
+        EngineConfig config = new EngineConfig();
+        config.setRuntimeBridge(RuntimeEventBusEngineBridge.runtimeBus());
+        MassEngine engine = new MassEngine(config);
+
+        engine.start();
+        try {
+            assertEquals(1, listenerCount(config, "taskCreatedListeners"));
+            assertEquals(1, listenerCount(config, "taskAssignedListeners"));
+        } finally {
+            engine.stop();
+        }
+
+        assertEquals(0, listenerCount(config, "taskCreatedListeners"));
+        assertEquals(0, listenerCount(config, "taskAssignedListeners"));
+    }
+
     // ---- helpers ----
 
     /** Returns a MassEngine that has been put into running=true via reflection. */
@@ -89,6 +152,13 @@ class MassEngineStopTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private int listenerCount(EngineConfig config, String fieldName) {
+        Object taskManager = config.getTaskManager();
+        Object eventPublisher = readField(taskManager, "eventPublisher");
+        return ((List<Object>) readField(eventPublisher, fieldName)).size();
     }
 
     private void setField(Object target, String fieldName, Object value) {

@@ -31,7 +31,7 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.dispatch.TaskDispatchHandoffPump;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
@@ -219,10 +219,8 @@ public class MassApplication {
                     transportRuntimeComposition.resolveSystemEventChannel(),
                     engineConfig.getExecutionEventSink()
             );
-            TransportDeliveryService deliveryService =
-                    new TransportDeliveryService(new InMemoryTransportDeliveryStore(
-                            transportRuntimeComposition.getMaxDeliveryQueuedItems()
-                    ));
+            TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
+            TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
             transportDeliveryService = deliveryService;
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",

@@ -2,8 +2,12 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.runtime.queue.InMemoryKeyedBlockingQueueStore;
 import com.xa.mass.runtime.queue.KeyedBlockingQueueStore;
+import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.TransportDispatchEnvelope;
+
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
@@ -41,12 +45,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public com.xa.mass.transport.model.DispatchOutcome enqueue(com.xa.mass.transport.model.TransportDispatchEnvelope envelope) {
+    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope) {
         return delegate.enqueue(envelope);
     }
 
     @Override
-    public List<com.xa.mass.transport.model.TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
+    public List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
         return delegate.drain(adapterId, routeKey, maxItems);
     }
 
@@ -55,7 +59,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                                             String routeKey,
                                             int maxItems,
                                             long timeout,
-                                            java.util.concurrent.TimeUnit unit) throws InterruptedException {
+                                            TimeUnit unit) throws InterruptedException {
         return delegate.poll(adapterId, routeKey, maxItems, timeout, unit);
     }
 

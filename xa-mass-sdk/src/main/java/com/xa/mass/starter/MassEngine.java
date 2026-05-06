@@ -1,9 +1,5 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
-import com.xa.mass.base.channel.eventbus.core.EventBusFactory;
-import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
-import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
@@ -15,7 +11,6 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.EventListenerRegistry;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
@@ -30,22 +25,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Assembles and starts the task-scheduling engine for an embedded runtime.
  *
- * <h3>Two-tier event model</h3>
+ * <h3>Event Model</h3>
  * <ul>
  *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskEventService}
  *       exposes the runtime listener surface. Its listeners fire inline on the
  *       calling thread and are used by the engine internals
  *       (assignment, resource release, etc.).</li>
- *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a runtime
- *       {@link com.xa.mass.base.channel.eventbus.core.EventBusFacade} that bridges selected
- *       in-process events ({@code TaskCreated}, {@code TaskAssigned}, worker status changes)
- *       to external subscribers. Subscribe to the EventBus when loose coupling or
- *       async delivery is needed; use the in-process listeners when reactions must be
- *       synchronous with the engine operation.</li>
+ *   <li><b>Optional shell bridge:</b> process-local bridge wiring such as
+ *       runtime EventBus forwarding is configured outside the kernel through
+ *       {@link EngineRuntimeBridge}. It is not part of the default engine
+ *       runtime truth.</li>
  * </ul>
  */
 public class MassEngine {
@@ -64,8 +58,12 @@ public class MassEngine {
     private TaskEventService taskEvents;
     private TaskAssignWorker assignWorker;
     private LeaseExpireWatchdog leaseWatchdog;
-    private EventBusFacade<?> eventBus;
-    private WorkerManager.WorkerStatusEventListener workerStatusEventListener;
+    private TaskResourceReleaseListener resourceReleaseListener;
+    private EngineRuntimeBridge runtimeBridge;
+    private Consumer<Task> taskReadyListener;
+    private Consumer<Task> taskDispatchListener;
+    private Consumer<Task> taskTerminalListener;
+    private com.xa.mass.engine.TaskMessageAttemptClosedListener taskMessageAttemptClosedListener;
 
     public MassEngine(EngineConfig config) {
         this.config = config;
@@ -93,6 +91,7 @@ public class MassEngine {
             TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
+            runtimeBridge = config.getRuntimeBridge();
             WorkerManager workerManager = config.getWorkerManager();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
@@ -110,23 +109,21 @@ public class MassEngine {
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
 
-            TaskResourceReleaseListener resourceReleaseListener =
-                    new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
-            eventListeners.addTaskReadyListener(assignWorker::submit);
-            eventListeners.addTaskDispatchListener(assignWorker::submit);
-            eventListeners.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
-            eventListeners.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
+            resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
+            taskReadyListener = assignWorker::submit;
+            taskDispatchListener = assignWorker::submit;
+            taskMessageAttemptClosedListener = resourceReleaseListener::onTaskMessageAttemptClosed;
+            taskTerminalListener = resourceReleaseListener::onTaskTerminal;
+            eventListeners.addTaskReadyListener(taskReadyListener);
+            eventListeners.addTaskDispatchListener(taskDispatchListener);
+            eventListeners.addTaskMessageAttemptClosedListener(taskMessageAttemptClosedListener);
+            eventListeners.addTaskTerminalListener(taskTerminalListener);
             recoverRuntimeReadyTasks();
 
             leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
 
-            eventBus = EventBusFactory.get("runtime");
-            @SuppressWarnings("unchecked")
-            EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
-            eventListeners.addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
-            eventListeners.addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
-            workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
+            runtimeBridge.start(eventListeners, workerManager);
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {
@@ -144,14 +141,25 @@ public class MassEngine {
         }
         logger.info("Stopping MassEngine...");
         try {
-            if (eventBus != null && workerStatusEventListener != null) {
-                try {
-                    eventBus.unregister(workerStatusEventListener);
-                } catch (RuntimeException e) {
-                    logger.warn("Failed to unregister worker status event listener cleanly: {}", e.getMessage());
-                } finally {
-                    workerStatusEventListener = null;
+            if (eventListeners != null) {
+                if (taskReadyListener != null) {
+                    eventListeners.removeTaskReadyListener(taskReadyListener);
                 }
+                if (taskDispatchListener != null) {
+                    eventListeners.removeTaskDispatchListener(taskDispatchListener);
+                }
+            }
+            if (eventListeners != null) {
+                if (taskMessageAttemptClosedListener != null) {
+                    eventListeners.removeTaskMessageAttemptClosedListener(taskMessageAttemptClosedListener);
+                }
+                if (taskTerminalListener != null) {
+                    eventListeners.removeTaskTerminalListener(taskTerminalListener);
+                }
+            }
+            if (runtimeBridge != null) {
+                runtimeBridge.stop();
+                runtimeBridge = null;
             }
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
@@ -161,13 +169,17 @@ public class MassEngine {
                 assignWorker.stop();
                 assignWorker = null;
             }
+            resourceReleaseListener = null;
+            taskReadyListener = null;
+            taskDispatchListener = null;
+            taskMessageAttemptClosedListener = null;
+            taskTerminalListener = null;
             config.shutdownTaskRuntime();
             taskCommands = null;
             runtimeRecoveryPort = null;
             runtimeMaintenancePort = null;
             eventListeners = null;
             taskEvents = null;
-            eventBus = null;
             running = false;
             logger.info("MassEngine stopped successfully");
         } catch (Exception e) {

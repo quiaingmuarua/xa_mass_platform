@@ -255,7 +255,9 @@ public final class RedisKeyedBlockingQueueStore<K, V> implements KeyedBlockingQu
                 Map.of()
         );
         if (closed.compareAndSet(false, true)) {
-            connection.close();
+            if (connection.isOpen()) {
+                connection.close();
+            }
             if (ownsClient && redisClient != null) {
                 redisClient.shutdown();
             }

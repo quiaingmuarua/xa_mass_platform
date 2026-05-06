@@ -22,6 +22,7 @@ flows, commands, and module-local inventories.
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
+- process-local EventBus bridging is optional shell wiring, not default engine runtime truth
 
 Canonical slots:
 

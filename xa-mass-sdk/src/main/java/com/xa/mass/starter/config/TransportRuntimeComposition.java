@@ -10,6 +10,8 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -49,6 +51,7 @@ public class TransportRuntimeComposition {
     private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
+    private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
     private final TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
@@ -76,6 +79,7 @@ public class TransportRuntimeComposition {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
+        this.deliveryStoreFactory = source.deliveryStoreFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
@@ -169,6 +173,12 @@ public class TransportRuntimeComposition {
         return workerTransportRuntimeFactory != null
                 ? workerTransportRuntimeFactory
                 : new DefaultWorkerTransportRuntimeFactory();
+    }
+
+    public TransportDeliveryStore resolveTransportDeliveryStore() {
+        return deliveryStoreFactory != null
+                ? deliveryStoreFactory.get()
+                : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems);
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {

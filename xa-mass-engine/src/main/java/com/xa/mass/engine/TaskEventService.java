@@ -30,8 +30,18 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
+    public void removeTaskCreatedListener(Consumer<Task> listener) {
+        registrar.removeTaskCreatedListener(listener);
+    }
+
+    @Override
     public void addTaskAssignedListener(Consumer<Task> listener) {
         registrar.addTaskAssignedListener(listener);
+    }
+
+    @Override
+    public void removeTaskAssignedListener(Consumer<Task> listener) {
+        registrar.removeTaskAssignedListener(listener);
     }
 
     @Override
@@ -40,8 +50,18 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
+    public void removeTaskReadyListener(Consumer<Task> listener) {
+        registrar.removeTaskReadyListener(listener);
+    }
+
+    @Override
     public void addTaskDispatchListener(Consumer<Task> listener) {
         registrar.addTaskDispatchListener(listener);
+    }
+
+    @Override
+    public void removeTaskDispatchListener(Consumer<Task> listener) {
+        registrar.removeTaskDispatchListener(listener);
     }
 
     @Override
@@ -50,13 +70,28 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
+    public void removeTaskTerminalListener(Consumer<Task> listener) {
+        registrar.removeTaskTerminalListener(listener);
+    }
+
+    @Override
     public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
         registrar.addTaskMessageAttemptClosedListener(listener);
     }
 
     @Override
+    public void removeTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+        registrar.removeTaskMessageAttemptClosedListener(listener);
+    }
+
+    @Override
     public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
         registrar.addTaskMessageLogicallyFinalListener(listener);
+    }
+
+    @Override
+    public void removeTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+        registrar.removeTaskMessageLogicallyFinalListener(listener);
     }
 
     @Override

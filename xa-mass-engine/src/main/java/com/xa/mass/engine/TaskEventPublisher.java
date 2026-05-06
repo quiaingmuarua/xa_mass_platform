@@ -37,9 +37,21 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
+    public void removeTaskCreatedListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskCreatedListeners.remove(listener);
+        }
+    }
+
     public void addTaskAssignedListener(Consumer<Task> listener) {
         if (listener != null) {
             taskAssignedListeners.add(listener);
+        }
+    }
+
+    public void removeTaskAssignedListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskAssignedListeners.remove(listener);
         }
     }
 
@@ -49,9 +61,21 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
+    public void removeTaskReadyListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskReadyListeners.remove(listener);
+        }
+    }
+
     public void addTaskDispatchListener(Consumer<Task> listener) {
         if (listener != null) {
             taskDispatchListeners.add(listener);
+        }
+    }
+
+    public void removeTaskDispatchListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskDispatchListeners.remove(listener);
         }
     }
 
@@ -61,15 +85,33 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
+    public void removeTaskTerminalListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskTerminalListeners.remove(listener);
+        }
+    }
+
     public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
         if (listener != null) {
             taskMessageAttemptClosedListeners.add(listener);
         }
     }
 
+    public void removeTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+        if (listener != null) {
+            taskMessageAttemptClosedListeners.remove(listener);
+        }
+    }
+
     public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
         if (listener != null) {
             taskMessageLogicallyFinalListeners.add(listener);
+        }
+    }
+
+    public void removeTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+        if (listener != null) {
+            taskMessageLogicallyFinalListeners.remove(listener);
         }
     }
 
