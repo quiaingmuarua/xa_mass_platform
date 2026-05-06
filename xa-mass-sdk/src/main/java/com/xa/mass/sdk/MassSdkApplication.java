@@ -21,9 +21,9 @@ import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
@@ -1400,7 +1400,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<Map<String, Object>> listDefaultRules() {
-        return requireStartedRuleManager().getDefaultRules().stream()
+        return requireStartedRuleStorage().getAllRules().stream()
                 .sorted(Comparator.comparing(RuleDefinition::getId, Comparator.nullsLast(String::compareTo)))
                 .map(this::toRuleItem)
                 .toList();
@@ -1413,15 +1413,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<String> listRegisteredEvaluatorTypes() {
-        return requireStartedRuleManager().getRegisteredEvaluatorTypes().stream().map(Enum::name).toList();
+        return requireStartedRuleStorage().getRegisteredEvaluatorTypes().stream().map(Enum::name).toList();
     }
 
     @Override
     public void replaceDefaultRules(Collection<RuleDefinition> rules) {
         Objects.requireNonNull(rules, "rules");
-        RuleManager<Map<String, Object>> ruleManager = requireStartedRuleManager();
-        ruleManager.clear();
-        ruleManager.addDefaultRules(List.copyOf(rules));
+        RuleStorage ruleStorage = requireStartedRuleStorage();
+        ruleStorage.clear();
+        ruleStorage.addRules(List.copyOf(rules));
     }
 
     @Override
@@ -1602,12 +1602,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return workerStorage;
     }
 
-    private RuleManager<Map<String, Object>> requireStartedRuleManager() {
-        RuleManager<Map<String, Object>> ruleManager = requireStartedEngine().getConfig().getRuleManager();
-        if (ruleManager == null) {
-            throw new IllegalStateException("Rule manager is unavailable for this SDK application");
+    private RuleStorage requireStartedRuleStorage() {
+        RuleStorage ruleStorage = requireStartedEngine().getConfig().getRuleStorage();
+        if (ruleStorage == null) {
+            throw new IllegalStateException("Rule storage is unavailable for this SDK application");
         }
-        return ruleManager;
+        return ruleStorage;
     }
 
     private WorkerEndpointRegistry resolveEndpointRegistry() {

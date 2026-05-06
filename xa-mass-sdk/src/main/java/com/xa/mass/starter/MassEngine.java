@@ -61,8 +61,6 @@ public class MassEngine {
     private TaskRuntimeMaintenancePort runtimeMaintenancePort;
     private TaskEventListenerRegistrar eventListeners;
     private TaskEventService taskEvents;
-    private WorkerManager workerManager;
-    private AssignmentRecordService recordService;
     private TaskAssignWorker assignWorker;
     private LeaseExpireWatchdog leaseWatchdog;
     private EventBusFacade<?> eventBus;
@@ -94,8 +92,8 @@ public class MassEngine {
             TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
-            workerManager = config.getWorkerManager();
-            recordService = config.getRecordService();
+            WorkerManager workerManager = config.getWorkerManager();
+            AssignmentRecordService recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             var msgAssignListener = new SimpleTaskMsgAssignListener(
                     assignmentRuntimePort,

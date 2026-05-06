@@ -5,5 +5,9 @@ public enum EventCategory {
     MSG,
     LEASE,
     WORKER,
-    DISPATCH
+    DISPATCH,
+    ASSIGNMENT,
+    CALLBACK,
+    RESOURCE,
+    VALIDATION
 }

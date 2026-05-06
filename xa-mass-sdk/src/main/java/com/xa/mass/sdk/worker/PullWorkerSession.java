@@ -112,10 +112,11 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromDispatchItem(
+        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromDispatchContext(
                 adapterId,
+                dispatchItem.getWorkerId(),
                 workerId,
-                dispatchItem,
+                dispatchItem.attemptId(),
                 report
         ));
     }

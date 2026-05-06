@@ -65,6 +65,9 @@ Keep these facts fixed unless the owning global baselines change:
   business-detail query model
 - cross-module callers that only need worker registration lookup should depend
   on storage lookup contracts rather than carrying `WorkerManager`
+- cross-module callers that only need rule definition/evaluator registration
+  should depend on `RuleStorage`; keep `RuleManager` scoped to engine matching
+  and rule-evaluation orchestration
 
 Repo-level mainline surfaces:
 
@@ -92,6 +95,9 @@ Infra ownership:
 - primary SDK/server builders should wire `TaskStorage`, `TaskDetailStore`,
   `TaskWorkRuntime`, `WorkerStorage`, and `RuleStorage` rather than
   constructing `TaskManager` / `WorkerManager` in outer modules
+- starter assembly should treat `WorkerManager` and `RuleManager` as derived
+  helpers over storage contracts, not as parallel config truth carried beside
+  `WorkerStorage` / `RuleStorage`
 
 ## Rule-Matching Surface
 

@@ -18,6 +18,7 @@ import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -25,14 +26,13 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -1271,7 +1271,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        RuleManager<Map<String, Object>> ruleManager = config.getRuleManager();
+        RuleStorage ruleStorage = config.getRuleStorage();
         RuleDefinition replacement = new RuleDefinition();
         replacement.setId("sdk_rule");
         replacement.setName("sdk_rule");
@@ -1285,7 +1285,7 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.replaceDefaultRules(List.of(replacement));
 
-        Assertions.assertEquals(List.of(replacement), ruleManager.getDefaultRules());
+        Assertions.assertEquals(List.of(replacement), ruleStorage.getAllRules());
     }
 
     @Test
@@ -1389,6 +1389,37 @@ class MassSdkTest {
         IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskManager);
         assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
                 error.getMessage());
+    }
+
+    @Test
+    void engineConfigDerivesWorkerManagerFromCurrentWorkerStorage() {
+        EngineConfig config = new EngineConfig();
+        WorkerManager initial = config.getWorkerManager();
+        WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-rebound");
+
+        config.setWorkerStorage(replacement);
+
+        WorkerManager rebound = config.getWorkerManager();
+        assertNotSame(initial, rebound);
+        rebound.addWorker(worker);
+
+        verify(replacement).addWorker(worker);
+        assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
+    }
+
+    @Test
+    void engineConfigReinitializesDefaultRulesForReplacementRuleStorage() {
+        EngineConfig config = new EngineConfig();
+        var initial = config.getRuleManager();
+        RuleStorage replacement = new com.xa.mass.storage.memory.InMemoryRuleStorage();
+
+        config.setRuleStorage(replacement);
+
+        var rebound = config.getRuleManager();
+        assertNotSame(initial, rebound);
+        Assertions.assertFalse(replacement.getAllRules().isEmpty());
     }
 
     @Test
@@ -2392,7 +2423,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            requireDelegate(app).getEngine().getConfig().getWorkerManager().addWorker(worker);
+            requireDelegate(app).getEngine().getConfig().getWorkerStorage().addWorker(worker);
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
@@ -2644,6 +2675,8 @@ class MassSdkTest {
         assertMissingMethod(MassEngine.class, "addWorkerContext", WorkerContext.class);
         assertMissingMethod(MassEngine.class, "getTaskManager");
         assertMissingMethod(MassEngine.class, "getWorkerManager");
+        assertMissingMethod(EngineConfig.class, "setWorkerManager", WorkerManager.class);
+        assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.WorkerOperations"));
     }

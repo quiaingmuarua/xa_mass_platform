@@ -1,33 +1,53 @@
 # mass-trace-sink
 
-Asynchronous JSONL execution-event sink for XA Mass Platform.
+Asynchronous JSONL trace sink for XA Mass Platform.
 
-Records lifecycle events (task transitions, message dispatch, lease expiry, worker lifecycle) as newline-delimited JSON files that can be queried with DuckDB or any NDJSON-aware tool.
+This module owns the canonical trace event model and the default JSONL sink
+implementation. It does not define a second logging vocabulary beside engine
+logs. `ExecutionEventType` is the stable event-name registry for the platform.
+
+Use with:
+
+- [../../doc/TRACE_CONTRACT.md](../../doc/TRACE_CONTRACT.md)
+- [../../doc/INFRA_TRUTH_LAYERS.md](../../doc/INFRA_TRUTH_LAYERS.md)
 
 ---
 
-## Schema — `xa.mass.execution-event.v1`
+## Mainline
+
+Current mainline decisions:
+
+- trace is a new platform feature; older MDC lifecycle logs are not the
+  long-term contract
+- `ExecutionEvent` is the only canonical trace payload shape
+- `ExecutionEventType` is the only canonical trace event-name vocabulary
+- JSONL sink is an implementation detail of the canonical model, not a second
+  event design
+
+No compatibility layer is required for superseded trace names such as
+`*_CHANGED` when `*_TRANSITION` is the new mainline.
+
+---
+
+## Schema - `xa.mass.execution-event.v1`
 
 ```json
 {
   "schema": "xa.mass.execution-event.v1",
   "eventId": "evt-xxx",
-  "eventType": "TASK_STATUS_CHANGED",
+  "eventType": "TASK_STATUS_TRANSITION",
   "category": "TASK",
   "severity": "INFO",
   "ts": 1710000000000,
   "tsIso": "2026-05-05T21:00:00.123Z",
-
   "traceId": "trace-xxx",
   "spanId": null,
   "parentSpanId": null,
-
   "node": {
     "serverNodeId": "local-server-1",
     "engineNodeId": "local-engine-1",
     "adapterNodeId": null
   },
-
   "identity": {
     "taskId": "t-xxx",
     "messageId": null,
@@ -38,23 +58,21 @@ Records lifecycle events (task transitions, message dispatch, lease expiry, work
     "routeKey": null,
     "leaseToken": null
   },
-
   "transition": {
     "src": "RUNNING",
     "dst": "TERMINAL",
     "reason": "ALL_MESSAGES_SUCCEEDED"
   },
-
   "outcome": {
     "success": true,
     "errorCode": null,
     "detail": null
   },
-
   "attrs": {
-    "totalMessages": 10,
-    "successCount": 10,
-    "failedCount": 0
+    "trigger": "RESOLVE_TASK_STATE",
+    "source": "TaskManager",
+    "reason": "all messages converged",
+    "terminalReason": "ALL_MESSAGES_SUCCEEDED"
   }
 }
 ```
@@ -62,37 +80,55 @@ Records lifecycle events (task transitions, message dispatch, lease expiry, work
 ### Field groups
 
 | Group | Purpose |
-|---|---|
-| `schema` + `eventId` | Versioned schema identity and idempotency key |
-| `category` + `severity` | Fast filter axes without string-prefix matching |
-| `traceId` / `spanId` / `parentSpanId` | Reserved for future OpenTelemetry integration |
-| `node` | Multi-node deployment: which server/engine/adapter produced the event |
-| `identity` | Unified ID bag — task, message, attempt, worker, lease |
-| `transition` | State machine: `src → dst` + optional `reason` |
-| `outcome` | Execution result: success flag, error code, free-text detail |
-| `attrs` | Event-type-specific free-form attributes |
+| --- | --- |
+| `schema` + `eventId` | versioned schema identity and event id |
+| `eventType` | canonical platform event name |
+| `category` + `severity` | fast filter axes |
+| `traceId` / `spanId` / `parentSpanId` | distributed-trace linkage |
+| `node` | producer node context |
+| `identity` | task / message / attempt / worker / lease identity bag |
+| `transition` | lifecycle transition semantics |
+| `outcome` | decision or result outcome |
+| `attrs` | standardized event-specific supplemental fields |
 
-### Field Optionality
+---
 
-| Field group | When to populate |
-|---|---|
-| `transition` | State-change events only: `TASK_STATUS_CHANGED`, `MSG_STATUS_CHANGED`, `MSG_RETRY_SCHEDULED` |
-| `outcome` | Result events: `MSG_STATUS_CHANGED` on terminal states, `MSG_DISPATCH_SENT` |
-| `node` | Always populate if nodeIds are known; null fields within node are fine |
-| `identity` | Always populate relevant IDs; unused fields default to null |
-| `attrs` | Event-type-specific; document keys per eventType in caller code |
+## Stable Event Types
 
-### Event types and default severity
+The current stable event registry is the `ExecutionEventType` enum.
 
-| eventType | category | default severity |
-|---|---|---|
-| `TASK_STATUS_CHANGED` | TASK | INFO |
-| `MSG_STATUS_CHANGED` | MSG | INFO |
-| `MSG_DISPATCH_SENT` | DISPATCH | INFO |
-| `MSG_RETRY_SCHEDULED` | MSG | WARN |
-| `LEASE_EXPIRED` | LEASE | WARN |
-| `WORKER_ONLINE` | WORKER | INFO |
-| `WORKER_OFFLINE` | WORKER | WARN |
+Current event types:
+
+- `TASK_STATUS_TRANSITION`
+- `TASK_TERMINAL_CLOSED`
+- `TASK_PROGRESS_SNAPSHOT`
+- `TASK_MSG_STATUS_TRANSITION`
+- `TASK_MSG_ATTEMPT_STATUS_TRANSITION`
+- `TASK_MSG_ATTEMPT_CLOSED`
+- `TASK_MSG_LOGICALLY_FINAL`
+- `TASK_MSG_RETRY_RESET`
+- `WORKER_CONTEXT_STATUS_TRANSITION`
+- `WORKER_LOCK_ACQUIRED`
+- `WORKER_LOCK_RELEASED`
+- `WORKER_MATCH_ACCEPTED`
+- `WORKER_MATCH_REJECTED`
+- `DISPATCH_REQUESTED`
+- `DISPATCH_SKIPPED`
+- `ASSIGNMENT_SUMMARY`
+- `TASK_STATE_VALIDATION_SUMMARY`
+- `DISPATCH_BINDING_SUMMARY`
+- `ASSIGNMENT_QUEUE_SNAPSHOT`
+- `ASSIGNMENT_RETRY_SCHEDULED`
+- `CALLBACK_ACCEPTED`
+- `CALLBACK_IGNORED_DUPLICATE`
+- `CALLBACK_IGNORED_LATE`
+- `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
+- `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
+- `RESOURCE_RELEASED`
+- `RESOURCE_RELEASE_FAILED`
+- `LEASE_EXPIRED`
+- `WORKER_ONLINE`
+- `WORKER_OFFLINE`
 
 ---
 
@@ -100,17 +136,21 @@ Records lifecycle events (task transitions, message dispatch, lease expiry, work
 
 ```java
 ExecutionEvent event = ExecutionEvent.builder()
-    .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
     .node("server-1", "engine-1", null)
     .identity(b -> b.taskId("t-abc"))
     .transition("READY", "RUNNING", null)
-    .attrs(Map.of("batchSize", 1))
+    .attrs(Map.of(
+            "trigger", "ASSIGNMENT_SUCCESS",
+            "source", "TaskManager",
+            "reason", "first work item leased"))
     .build();
 
 sink.emit(event);
 ```
 
-The builder auto-generates `eventId` (UUID), `ts` / `tsIso` (current instant), derives `category` and `severity` from `eventType`, and sets `schema` automatically.
+The builder auto-generates `eventId`, `ts`, `tsIso`, `category`, `severity`,
+and an empty `identity` block when the caller does not set one.
 
 ---
 
@@ -120,29 +160,30 @@ The builder auto-generates `eventId` (UUID), `ts` / `tsIso` (current instant), d
 mass:
   trace:
     sink:
-      enabled: true                    # false → NoopExecutionEventSink (default)
+      enabled: true
       output-dir: trace-events
       queue-capacity: 4096
       rotate-after-lines: 100000
-      overflow-policy: DROP            # DROP (default) or FALLBACK_SYNC
-      shutdown-drain-timeout-ms: 5000  # ms to wait for writer thread on close()
+      overflow-policy: DROP
+      shutdown-drain-timeout-ms: 5000
 ```
+
+When disabled, the platform uses `NoopExecutionEventSink`.
 
 ---
 
 ## Overflow Policies
 
-| Policy | Behaviour | Recommended use |
-|---|---|---|
-| `DROP` | Event is silently discarded when queue is full; `droppedCount` increments; rate-limited WARN logged once per 1000 drops | **Production default** — caller thread is never delayed |
-| `FALLBACK_SYNC` | Caller thread writes directly to the output file when queue is full, holding a file lock | **Debug / low-throughput only** — do not use on hot paths; this will block the caller during I/O |
+| Policy | Behavior | Recommended use |
+| --- | --- | --- |
+| `DROP` | event is discarded when the queue is full; `droppedCount` increments | production default |
+| `FALLBACK_SYNC` | caller thread writes directly to the file | debug / low-throughput only |
 
 ---
 
 ## DuckDB queries
 
 ```sql
--- Full timeline for a single task (debug view)
 SELECT
     epoch_ms(ts) AS time,
     eventType,
@@ -151,27 +192,24 @@ SELECT
     identity.attemptId,
     transition.src,
     transition.dst,
-    outcome.errorCode
+    attrs.reason
 FROM read_ndjson('trace-events/events-*.jsonl')
 WHERE identity.taskId = 't-xxx'
 ORDER BY ts;
 ```
 
 ```sql
--- Transition distribution for TASK_STATUS_CHANGED
 SELECT
     transition.src,
     transition.dst,
-    transition.reason,
     count(*) AS cnt
 FROM read_ndjson('trace-events/events-*.jsonl')
-WHERE eventType = 'TASK_STATUS_CHANGED'
-GROUP BY transition.src, transition.dst, transition.reason
+WHERE eventType = 'TASK_STATUS_TRANSITION'
+GROUP BY transition.src, transition.dst
 ORDER BY cnt DESC;
 ```
 
 ```sql
--- WARN and ERROR events by node
 SELECT
     node.engineNodeId,
     eventType,
@@ -181,22 +219,3 @@ WHERE severity IN ('WARN', 'ERROR')
 GROUP BY node.engineNodeId, eventType
 ORDER BY cnt DESC;
 ```
-
-```sql
--- Detect unexpected state transitions
-SELECT src, dst, count(*) AS cnt
-FROM (
-    SELECT
-        transition.src AS src,
-        transition.dst AS dst
-    FROM read_ndjson('trace-events/events-*.jsonl')
-    WHERE eventType = 'TASK_STATUS_CHANGED'
-)
-WHERE (src || '->' || dst) NOT IN (
-    'NEW->READY', 'READY->RUNNING', 'RUNNING->TERMINAL',
-    'READY->PAUSED', 'PAUSED->READY', 'NEW->BLOCKED', 'BLOCKED->READY'
-)
-GROUP BY src, dst
-ORDER BY cnt DESC;
-```
-

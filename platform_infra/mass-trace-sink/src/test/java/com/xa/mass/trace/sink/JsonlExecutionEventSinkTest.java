@@ -55,9 +55,9 @@ class JsonlExecutionEventSinkTest {
     // ── tests ─────────────────────────────────────────────────────────────────
 
     @Test
-    void taskStatusChanged_schemaAndTopLevelFields() throws Exception {
+    void taskStatusTransition_schemaAndTopLevelFields() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .node("srv-1", "eng-1", null)
                 .identity(b -> b.taskId("t-abc"))
                 .transition("READY", "RUNNING", null)
@@ -67,7 +67,7 @@ class JsonlExecutionEventSinkTest {
 
         assertEquals("xa.mass.execution-event.v1", n.get("schema").asText());
         assertFalse(n.get("eventId").asText().isBlank(), "eventId must not be blank");
-        assertEquals("TASK_STATUS_CHANGED", n.get("eventType").asText());
+        assertEquals("TASK_STATUS_TRANSITION", n.get("eventType").asText());
         assertEquals("TASK", n.get("category").asText());
         assertEquals("INFO", n.get("severity").asText());
         assertTrue(n.get("ts").asLong() > 0, "ts must be positive epoch millis");
@@ -75,9 +75,9 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
-    void taskStatusChanged_transitionBlock() throws Exception {
+    void taskStatusTransition_transitionBlock() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .node("srv-1", "eng-1", null)
                 .identity(b -> b.taskId("t-abc"))
                 .transition("RUNNING", "TERMINAL", "ALL_MESSAGES_SUCCEEDED")
@@ -93,9 +93,9 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
-    void taskStatusChanged_identityTaskId() throws Exception {
+    void taskStatusTransition_identityTaskId() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .node("srv-1", "eng-1", null)
                 .identity(b -> b.taskId("t-xyz"))
                 .transition("READY", "RUNNING", null)
@@ -109,9 +109,9 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
-    void taskStatusChanged_nodeBlock() throws Exception {
+    void taskStatusTransition_nodeBlock() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .node("server-1", "engine-1", null)
                 .identity(b -> b.taskId("t-1"))
                 .transition("NEW", "READY", null)
@@ -127,9 +127,9 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
-    void msgRetryScheduled_defaultSeverityIsWarn() throws Exception {
+    void taskMsgRetryReset_defaultSeverityIsWarn() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.MSG_RETRY_SCHEDULED)
+                .eventType(ExecutionEventType.TASK_MSG_RETRY_RESET)
                 .identity(b -> b.messageId("m-1"))
                 .build());
 
@@ -153,7 +153,7 @@ class JsonlExecutionEventSinkTest {
     @Test
     void severityOverride_builderOverridesDefault() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .severity(EventSeverity.WARN)
                 .identity(b -> b.taskId("t-1"))
                 .build());
@@ -165,7 +165,7 @@ class JsonlExecutionEventSinkTest {
     @Test
     void attrsSerializedAsJsonObject() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .identity(b -> b.taskId("t-1"))
                 .attrs(Map.of("totalMessages", 10, "successCount", 10, "failedCount", 0))
                 .build());
@@ -272,7 +272,7 @@ class JsonlExecutionEventSinkTest {
     void shutdownDrain_doesNotLoseEnqueuedEvents() throws Exception {
         // Emit an event and immediately close — the event must not be lost.
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_STATUS_CHANGED)
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .identity(b -> b.taskId("t-drain"))
                 .transition("READY", "RUNNING", null)
                 .build());

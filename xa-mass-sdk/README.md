@@ -194,7 +194,12 @@ such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
 SDK-internal task creation now maps onto the neutral base
 `TaskCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
-dependency. Embedded transport runtime assembly also consumes only
+dependency; SDK rule list/replace helpers now use `RuleStorage` directly
+instead of carrying `RuleManager` as the default outer-layer dependency.
+Within starter assembly, `EngineConfig` now treats `WorkerManager` and
+`RuleManager` as derived helpers over `WorkerStorage` / `RuleStorage` rather
+than independent config slots that outer modules should wire or cache.
+Embedded transport runtime assembly also consumes only
 `WorkerLookupStore`-level worker resolution instead of reaching through the
 broader worker facade.
 

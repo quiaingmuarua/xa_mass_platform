@@ -49,28 +49,14 @@ class TransportResultEnvelopeTest {
     }
 
     @Test
-    void fromDispatchItemCarriesAttemptIdentityWithoutChangingReportPayload() {
+    void fromDispatchContextCarriesAttemptIdentityWithoutChangingReportPayload() {
         TaskResultReport report = report();
-        TaskDispatchItem item = new TaskDispatchItem(
-                "task-1",
-                "msg-1",
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-1",
-                "worker-1",
-                "ctx-1",
-                "batch-1",
-                Map.of("target", "alpha"),
-                Map.of()
-        );
 
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchItem(
+        TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchContext(
                 " Polling ",
+                " worker-1 ",
                 " endpoint-1 ",
-                item,
+                " attempt-1 ",
                 report
         );
 

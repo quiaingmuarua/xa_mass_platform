@@ -52,15 +52,16 @@ public final class TransportResultEnvelope {
         return new TransportResultEnvelope(adapterId, workerId, endpointId, report);
     }
 
-    public static TransportResultEnvelope fromDispatchItem(String adapterId,
-                                                           String endpointId,
-                                                           TaskDispatchItem item,
-                                                           TaskResultReport report) {
+    public static TransportResultEnvelope fromDispatchContext(String adapterId,
+                                                              String workerId,
+                                                              String endpointId,
+                                                              String attemptId,
+                                                              TaskResultReport report) {
         return new TransportResultEnvelope(
                 adapterId,
-                item != null ? item.getWorkerId() : null,
+                workerId,
                 endpointId,
-                item != null ? item.attemptId() : null,
+                attemptId,
                 null,
                 report
         );

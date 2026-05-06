@@ -37,7 +37,9 @@ import java.util.Map;
  *
  * <p>`TaskManager` injection is kept as an assembly seam. Downstream runtime
  * code should prefer the derived command/query/facade/port surfaces exposed by
- * this config rather than carrying the raw manager farther.
+ * this config rather than carrying the raw manager farther. Worker/rule
+ * managers are derived helpers over storage contracts, not independent config
+ * slots with their own truth.
  */
 public class EngineConfig {
 
@@ -58,10 +60,9 @@ public class EngineConfig {
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
-    private WorkerManager workerManager;
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
-    private RuleManager<Map<String, Object>> ruleManager;
+    private boolean defaultRulesInitialized;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
@@ -90,10 +91,9 @@ public class EngineConfig {
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerStorage = source.workerStorage;
-        this.workerManager = source.workerManager;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
-        this.ruleManager = source.ruleManager;
+        this.defaultRulesInitialized = source.defaultRulesInitialized;
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
         this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
@@ -268,14 +268,7 @@ public class EngineConfig {
     }
 
     public WorkerManager getWorkerManager() {
-        if (workerManager == null) {
-            workerManager = new WorkerManager(getWorkerStorage());
-        }
-        return workerManager;
-    }
-
-    public void setWorkerManager(WorkerManager workerManager) {
-        this.workerManager = workerManager;
+        return new WorkerManager(getWorkerStorage());
     }
 
     public WorkerStorage getWorkerStorage() {
@@ -285,9 +278,6 @@ public class EngineConfig {
     public void setWorkerStorage(WorkerStorage workerStorage) {
         if (workerStorage == null) {
             throw new IllegalArgumentException("workerStorage must not be null");
-        }
-        if (this.workerManager != null) {
-            throw new IllegalStateException("Cannot replace workerStorage after workerManager has been configured");
         }
         this.workerStorage = workerStorage;
     }
@@ -301,14 +291,8 @@ public class EngineConfig {
     }
 
     public RuleManager<Map<String, Object>> getRuleManager() {
-        if (ruleManager == null) {
-            ruleManager = RuleManagerFactory.getDefaultRuleManager(getRuleStorage());
-        }
-        return ruleManager;
-    }
-
-    public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) {
-        this.ruleManager = ruleManager;
+        ensureDefaultRulesInitialized();
+        return new RuleManager<>(getRuleStorage());
     }
 
     public RuleStorage getRuleStorage() {
@@ -319,10 +303,8 @@ public class EngineConfig {
         if (ruleStorage == null) {
             throw new IllegalArgumentException("ruleStorage must not be null");
         }
-        if (this.ruleManager != null) {
-            throw new IllegalStateException("Cannot replace ruleStorage after ruleManager has been configured");
-        }
         this.ruleStorage = ruleStorage;
+        this.defaultRulesInitialized = false;
     }
 
     public MassBootstrapDataProvider getBootstrapDataProvider() {
@@ -372,5 +354,13 @@ public class EngineConfig {
         }
         taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         return taskManager;
+    }
+
+    private void ensureDefaultRulesInitialized() {
+        if (defaultRulesInitialized) {
+            return;
+        }
+        RuleManagerFactory.getDefaultRuleManager(getRuleStorage());
+        defaultRulesInitialized = true;
     }
 }
