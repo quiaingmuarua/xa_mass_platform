@@ -875,7 +875,6 @@ class MassSdkTest {
         List<Map<String, Object>> connections = (List<Map<String, Object>>) sessions.get(0).get("connections");
         assertEquals("route-public", connections.get(0).get("routeKey"));
         assertEquals("ws-public", connections.get(0).get("adapterId"));
-        assertEquals("ws-public", connections.get(0).get("transport"));
         assertEquals(2, sessionStats.get("activeConnections"));
         assertEquals(1L, sessionStats.get("workerCount"));
         assertEquals(Map.of("ws-public", 1L, "ws-internal", 1L), sessionStats.get("activeConnectionsByAdapter"));
@@ -3035,7 +3034,7 @@ class MassSdkTest {
                 return false;
             }
             return Boolean.TRUE.equals(connectionInfo.get("active"))
-                    && Objects.equals("socket", connectionInfo.get("transport"));
+                    && Objects.equals("socket", connectionInfo.get("adapterId"));
         });
     }
 

@@ -76,8 +76,7 @@ class SdkMetadataControllerTest {
                                 "active", true,
                                 "endpointId", "ws-crawler-1",
                                 "routeKey", "route-crawler-1",
-                                "adapterId", "ws-public",
-                                "transport", "ws-public"
+                                "adapterId", "ws-public"
                         ))
                 ),
                 java.util.Map.of(
@@ -86,8 +85,7 @@ class SdkMetadataControllerTest {
                                 "active", true,
                                 "endpointId", "poll-1",
                                 "routeKey", "scope-only-worker",
-                                "adapterId", "polling",
-                                "transport", "polling"
+                                "adapterId", "polling"
                         ))
                 )
         ));

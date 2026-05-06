@@ -44,14 +44,4 @@ public final class WorkerEndpointSnapshot {
     public String getAdapterId() {
         return adapterId;
     }
-
-    /**
-     * Legacy compatibility alias for older control-surface payloads.
-     *
-     * <p>This returns the same value as {@link #getAdapterId()} and does not
-     * represent {@code transportHint}.
-     */
-    public String getTransport() {
-        return adapterId;
-    }
 }

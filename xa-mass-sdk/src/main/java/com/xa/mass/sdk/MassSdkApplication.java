@@ -1449,7 +1449,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 connectionInfo.put("endpointId", snapshot.getEndpointId());
                 connectionInfo.put("routeKey", snapshot.getRouteKey());
                 connectionInfo.put("adapterId", snapshot.getAdapterId());
-                connectionInfo.put("transport", snapshot.getTransport());
                 connections.add(connectionInfo);
             });
             entry.put("connections", connections);

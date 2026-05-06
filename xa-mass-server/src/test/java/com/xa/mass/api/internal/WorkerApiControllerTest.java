@@ -87,8 +87,7 @@ class WorkerApiControllerTest {
                         "active", true,
                         "endpointId", "ws-1",
                         "routeKey", "route-1",
-                        "adapterId", "ws-public",
-                        "transport", "ws-public"
+                        "adapterId", "ws-public"
                 ))
         )));
 
@@ -105,7 +104,6 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].routeKey").value("route-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].adapterId").value("ws-public"))
-                .andExpect(jsonPath("$.data.items[0].connections[0].transport").value("ws-public"))
                 .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").value(true))
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));

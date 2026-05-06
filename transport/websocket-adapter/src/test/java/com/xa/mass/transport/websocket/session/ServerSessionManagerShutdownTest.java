@@ -60,7 +60,6 @@ class ServerSessionManagerShutdownTest {
         assertFalse(manager.isAdapterRouteOnline("websocket", "route-1"));
         assertEquals("ws-public", manager.getAdapterId());
         assertEquals("ws-public", manager.listWorkerEndpoints().get(0).getAdapterId());
-        assertEquals("ws-public", manager.listWorkerEndpoints().get(0).getTransport());
     }
 
     @Test

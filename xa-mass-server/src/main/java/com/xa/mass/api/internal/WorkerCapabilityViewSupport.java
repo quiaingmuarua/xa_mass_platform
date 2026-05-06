@@ -69,21 +69,7 @@ final class WorkerCapabilityViewSupport {
     }
 
     static String resolveTransportHint(Worker worker, List<Map<String, Object>> connections) {
-        String workerTransport = WorkerTransportHints.normalize(worker == null ? null : worker.getOnlineStrategy());
-        if (workerTransport != null) {
-            return workerTransport;
-        }
-        if (connections == null || connections.isEmpty()) {
-            return null;
-        }
-        for (Map<String, Object> connection : connections) {
-            String connectionTransport =
-                    WorkerTransportHints.normalize(readTrimmed(connection == null ? null : connection.get("transport")));
-            if (connectionTransport != null) {
-                return connectionTransport;
-            }
-        }
-        return null;
+        return WorkerTransportHints.normalize(worker == null ? null : worker.getOnlineStrategy());
     }
 
     static String resolveAdapterId(Worker worker, List<Map<String, Object>> connections) {
@@ -98,10 +84,6 @@ final class WorkerCapabilityViewSupport {
             String connectionAdapterId = readTrimmed(connection == null ? null : connection.get("adapterId"));
             if (connectionAdapterId != null) {
                 return connectionAdapterId.toLowerCase(java.util.Locale.ROOT);
-            }
-            String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
-            if (connectionTransport != null) {
-                return connectionTransport.toLowerCase(java.util.Locale.ROOT);
             }
         }
         return null;
@@ -129,7 +111,6 @@ final class WorkerCapabilityViewSupport {
             normalized.put("endpointId", readTrimmed(map.get("endpointId")));
             normalized.put("routeKey", readTrimmed(map.get("routeKey")));
             normalized.put("adapterId", readTrimmed(map.get("adapterId")));
-            normalized.put("transport", readTrimmed(map.get("transport")));
             connections.add(normalized);
         }
         return connections.isEmpty() ? List.of() : List.copyOf(connections);
