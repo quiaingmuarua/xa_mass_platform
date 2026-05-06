@@ -20,7 +20,7 @@ import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -94,7 +94,7 @@ public class MassEngine {
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
             WorkerManager workerManager = config.getWorkerManager();
-            AssignmentRecordService recordService = config.getRecordService();
+            AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             TraceEventLogger traceEventLogger = config.getTaskManager().traceEvents();
             var msgAssignListener = new SimpleTaskMsgAssignListener(

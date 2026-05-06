@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 /**
  * Stores assignment-attempt diagnostics for later audit and report generation.
  */
-public class AssignmentRecordService implements AssignmentDiagnosticRecorder {
+public class AssignmentRecordService implements AssignmentDiagnosticRecorder, AssignmentDiagnosticView {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 

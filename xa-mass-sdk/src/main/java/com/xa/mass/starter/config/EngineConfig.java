@@ -15,6 +15,7 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -62,7 +63,7 @@ public class EngineConfig {
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
-    private AssignmentRecordService recordService = new AssignmentRecordService();
+    private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
     private boolean defaultRulesInitialized;
@@ -286,11 +287,11 @@ public class EngineConfig {
         this.workerStorage = workerStorage;
     }
 
-    public AssignmentRecordService getRecordService() {
+    public AssignmentDiagnosticRecorder getRecordService() {
         return recordService;
     }
 
-    public void setRecordService(AssignmentRecordService recordService) {
+    public void setRecordService(AssignmentDiagnosticRecorder recordService) {
         this.recordService = recordService;
     }
 

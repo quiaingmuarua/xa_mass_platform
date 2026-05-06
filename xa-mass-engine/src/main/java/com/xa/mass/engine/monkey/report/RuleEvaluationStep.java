@@ -1,7 +1,7 @@
 package com.xa.mass.engine.monkey.report;
 
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +16,7 @@ public class RuleEvaluationStep implements AssignmentPipelineStep {
     }
 
     @Override
-    public void process(AssignmentRecordService recordService) {
+    public void process(AssignmentDiagnosticView recordService) {
         log.info("\n=== 规则评估详情 ===");
         List<AssignmentRecord> ruleNotMatchRecords = recordService.getRuleNotMatchRecords();
         if (!ruleNotMatchRecords.isEmpty()) {

@@ -13,9 +13,9 @@ import java.util.stream.Collectors;
  */
 public class AssignmentValidationService {
 
-    private final AssignmentRecordService recordService;
+    private final AssignmentDiagnosticView recordService;
 
-    public AssignmentValidationService(AssignmentRecordService recordService) {
+    public AssignmentValidationService(AssignmentDiagnosticView recordService) {
         this.recordService = recordService;
     }
 

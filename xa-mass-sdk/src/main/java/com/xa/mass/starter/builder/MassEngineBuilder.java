@@ -1,6 +1,6 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -20,7 +20,7 @@ public class MassEngineBuilder {
 
     private TaskScheduler scheduler;
     private TaskWorkerMatchingStrategy matchingStrategy;
-    private AssignmentRecordService recordService;
+    private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private TaskStorage taskStorage;
     private TaskDetailStore taskDetailStore;
@@ -78,7 +78,7 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder recordService(AssignmentRecordService recordService) {
+    public MassEngineBuilder recordService(AssignmentDiagnosticRecorder recordService) {
         this.recordService = recordService;
         return this;
     }

@@ -1,6 +1,6 @@
 package com.xa.mass.engine.monkey.report;
 
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,7 +15,7 @@ public class AssignmentReportStep implements AssignmentPipelineStep {
     }
 
     @Override
-    public void process(AssignmentRecordService recordService) {
+    public void process(AssignmentDiagnosticView recordService) {
         log.info("\n=== 分配统计报告 ===");
         Map<String, Object> report = recordService.generateAssignmentReport();
         log.info("总分配记录数: {}", report.get("totalRecords"));
