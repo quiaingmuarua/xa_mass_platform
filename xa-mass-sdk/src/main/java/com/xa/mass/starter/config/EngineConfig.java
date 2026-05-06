@@ -29,6 +29,8 @@ import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.trace.sink.NoopExecutionEventSink;
 
 import java.util.Map;
 
@@ -62,6 +64,7 @@ public class EngineConfig {
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
+    private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
     private boolean defaultRulesInitialized;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
@@ -93,6 +96,7 @@ public class EngineConfig {
         this.workerStorage = source.workerStorage;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
+        this.executionEventSink = source.executionEventSink;
         this.defaultRulesInitialized = source.defaultRulesInitialized;
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
@@ -307,6 +311,17 @@ public class EngineConfig {
         this.defaultRulesInitialized = false;
     }
 
+    public ExecutionEventSink getExecutionEventSink() {
+        return executionEventSink;
+    }
+
+    public void setExecutionEventSink(ExecutionEventSink executionEventSink) {
+        if (executionEventSink == null) {
+            throw new IllegalArgumentException("executionEventSink must not be null");
+        }
+        this.executionEventSink = executionEventSink;
+    }
+
     public MassBootstrapDataProvider getBootstrapDataProvider() {
         return bootstrapDataProvider;
     }
@@ -350,7 +365,13 @@ public class EngineConfig {
 
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
-            taskManager = new TaskManager(scheduler, getTaskStorage(), getTaskDetailStore(), getTaskWorkRuntime());
+            taskManager = new TaskManager(
+                    scheduler,
+                    getTaskStorage(),
+                    getTaskDetailStore(),
+                    getTaskWorkRuntime(),
+                    getExecutionEventSink()
+            );
         }
         taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         return taskManager;

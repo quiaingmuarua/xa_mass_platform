@@ -30,6 +30,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,13 +70,14 @@ public class TaskManager {
     private final TaskRuntimeBridge taskRuntimeBridge;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
+    private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler,
                        TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime, null);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -83,14 +85,32 @@ public class TaskManager {
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
+        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime, null);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskWorkRuntime taskWorkRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime, executionEventSink);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime,
+                       ExecutionEventSink executionEventSink) {
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
+        this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
         this.eventPublisher = new TaskEventPublisher();
-        this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this));
-        this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this));
+        this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this), traceEventLogger);
+        this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this), traceEventLogger);
         this.taskRuntimeBridge = new TaskRuntimeBridge(
                 taskStorage,
                 requiredTaskWorkRuntime,
@@ -108,11 +128,13 @@ public class TaskManager {
         );
         this.lifecycleService = new TaskLifecycleService(
                 new TaskManagerLifecycleRuntimePort(this),
-                stateResolver
+                stateResolver,
+                traceEventLogger
         );
         this.resultService = new TaskResultService(
                 new TaskManagerResultRuntimePort(this),
-                new TaskRuntimeRetryPolicyResolver()
+                new TaskRuntimeRetryPolicyResolver(),
+                traceEventLogger
         );
     }
 
@@ -616,6 +638,10 @@ public class TaskManager {
 
     public TaskWorkRuntime getTaskWorkRuntime() {
         return taskRuntimeBridge.runtime();
+    }
+
+    com.xa.mass.engine.util.TraceEventLogger traceEvents() {
+        return traceEventLogger;
     }
 
     /**

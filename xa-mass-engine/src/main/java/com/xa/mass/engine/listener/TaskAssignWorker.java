@@ -36,6 +36,7 @@ public class TaskAssignWorker {
     private final long retryDelayMillis;
     private final int assignmentQueueCapacity;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
+    private final TraceEventLogger traceEventLogger;
     private final Map<TaskRuntimeProfile.DispatchLane, LaneState> laneStates =
             new EnumMap<>(TaskRuntimeProfile.DispatchLane.class);
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
@@ -45,31 +46,35 @@ public class TaskAssignWorker {
 
     private volatile boolean running = true;
 
-    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener) {
-        this(workerAssignListener, DEFAULT_RETRY_DELAY_MILLIS);
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, TraceEventLogger traceEventLogger) {
+        this(workerAssignListener, DEFAULT_RETRY_DELAY_MILLIS, traceEventLogger);
     }
 
-    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis) {
-        this(workerAssignListener, retryDelayMillis, DEFAULT_ASSIGNMENT_QUEUE_CAPACITY);
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis, TraceEventLogger traceEventLogger) {
+        this(workerAssignListener, retryDelayMillis, DEFAULT_ASSIGNMENT_QUEUE_CAPACITY, traceEventLogger);
     }
 
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                             long retryDelayMillis,
-                            int assignmentQueueCapacity) {
+                            int assignmentQueueCapacity,
+                            TraceEventLogger traceEventLogger) {
         this(workerAssignListener,
                 retryDelayMillis,
                 assignmentQueueCapacity,
-                new TaskRuntimeRetryPolicyResolver());
+                new TaskRuntimeRetryPolicyResolver(),
+                traceEventLogger);
     }
 
     TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                      long retryDelayMillis,
                      int assignmentQueueCapacity,
-                     TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver) {
+                     TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
+                     TraceEventLogger traceEventLogger) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
+        this.traceEventLogger = traceEventLogger;
     }
 
     public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
@@ -212,7 +217,7 @@ public class TaskAssignWorker {
                                    Long retryDelayMillis,
                                    String reason,
                                    String result) {
-        TraceEventLogger.assignmentQueueSnapshot(
+        traceEventLogger.assignmentQueueSnapshot(
                 task,
                 taskStatus,
                 laneState != null ? laneState.lane.name() : resolveDispatchLane(task).name(),
@@ -299,7 +304,7 @@ public class TaskAssignWorker {
         TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
         long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
         laneState.scheduledRetryCount.incrementAndGet();
-        TraceEventLogger.assignmentRetryScheduled(
+        traceEventLogger.assignmentRetryScheduled(
                 task.getTid(),
                 expectedStatus,
                 "NO_ASSIGNMENT_RESULT",

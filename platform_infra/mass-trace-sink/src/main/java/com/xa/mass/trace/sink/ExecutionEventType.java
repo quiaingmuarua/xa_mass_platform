@@ -27,6 +27,7 @@ public enum ExecutionEventType {
     CALLBACK_IGNORED_LATE(EventCategory.CALLBACK, EventSeverity.INFO),
     CALLBACK_REJECTED_NO_ACTIVE_LEASE(EventCategory.CALLBACK, EventSeverity.WARN),
     CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT(EventCategory.CALLBACK, EventSeverity.WARN),
+    CALLBACK_REJECTED_INVALID_STATE(EventCategory.CALLBACK, EventSeverity.WARN),
     RESOURCE_RELEASED(EventCategory.RESOURCE, EventSeverity.INFO),
     RESOURCE_RELEASE_FAILED(EventCategory.RESOURCE, EventSeverity.WARN),
     LEASE_EXPIRED(EventCategory.LEASE, EventSeverity.WARN),

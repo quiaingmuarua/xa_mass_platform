@@ -11,6 +11,7 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
@@ -316,6 +317,11 @@ public final class MassSdk {
 
         public EngineOptions ruleStorage(RuleStorage ruleStorage) {
             delegate.ruleStorage(ruleStorage);
+            return this;
+        }
+
+        public EngineOptions executionEventSink(ExecutionEventSink executionEventSink) {
+            delegate.executionEventSink(executionEventSink);
             return this;
         }
 

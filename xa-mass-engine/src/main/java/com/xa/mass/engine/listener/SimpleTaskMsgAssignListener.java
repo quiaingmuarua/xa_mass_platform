@@ -37,28 +37,31 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private final WorkerManager workerManager;
     private final AssignmentRecordService recordService;
     private final TaskMsgDispatchListener dispatchListener;
+    private final TraceEventLogger traceEventLogger;
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService) {
-        this(assignmentRuntime, workerManager, recordService, null);
+        this(assignmentRuntime, workerManager, recordService, null, TraceEventLogger.noop());
     }
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService,
-                                       TaskMsgDispatchListener dispatchListener) {
+                                       TaskMsgDispatchListener dispatchListener,
+                                       TraceEventLogger traceEventLogger) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
+        this.traceEventLogger = traceEventLogger;
     }
 
     @Override
     public List<TaskDispatchBinding> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
-            TraceEventLogger.dispatchBindingSummary(
+            traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
                     0,
@@ -78,7 +81,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         int totalMessages = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
-            TraceEventLogger.dispatchBindingSummary(
+            traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
                     matchedWorkers.size(),
@@ -118,7 +121,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
                 workerManager.unlockWorker(worker.getWorkerId());
-                TraceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
+                traceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
                         "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "workerContext not dispatchable");
                 continue;
             }
@@ -188,7 +191,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
                 .distinct()
                 .count();
-        TraceEventLogger.dispatchBindingSummary(
+        traceEventLogger.dispatchBindingSummary(
                 task,
                 totalMessages,
                 matchedWorkers.size(),
@@ -280,7 +283,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (!attempt.markLeased(leaseExpireTime)) {
             return null;
         }
-        TraceEventLogger.taskMsgAttemptStatusTransition(
+        traceEventLogger.taskMsgAttemptStatusTransition(
                 attempt,
                 initialAttemptStatus,
                 attempt.getStatus(),
@@ -292,7 +295,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (!attempt.markDispatched()) {
             return null;
         }
-        TraceEventLogger.taskMsgAttemptStatusTransition(
+        traceEventLogger.taskMsgAttemptStatusTransition(
                 attempt,
                 beforeDispatch,
                 attempt.getStatus(),
@@ -306,7 +309,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (!taskMsg.markAsAssigned()) {
             return null;
         }
-        TraceEventLogger.taskMsgStatusTransition(
+        traceEventLogger.taskMsgStatusTransition(
                 taskMsg,
                 attempt,
                 beforeAssigned,
@@ -330,7 +333,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             if (!workerContext.bindToTask(taskId)) {
                 return false;
             }
-            TraceEventLogger.workerContextStatusTransition(
+            traceEventLogger.workerContextStatusTransition(
                     taskId,
                     workerContext,
                     fromStatus,
@@ -347,7 +350,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             if (!workerContext.startOccupying()) {
                 return false;
             }
-            TraceEventLogger.workerContextStatusTransition(
+            traceEventLogger.workerContextStatusTransition(
                     taskId,
                     workerContext,
                     fromStatus,

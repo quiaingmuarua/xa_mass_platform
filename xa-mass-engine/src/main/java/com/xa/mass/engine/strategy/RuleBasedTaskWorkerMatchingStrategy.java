@@ -29,13 +29,16 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private final RuleManager<Map<String, Object>> ruleManager;
     private final WorkerManager workerManager;
     private final AssignmentRecordService recordService;
+    private final TraceEventLogger traceEventLogger;
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
-                                               AssignmentRecordService recordService) {
+                                               AssignmentRecordService recordService,
+                                               TraceEventLogger traceEventLogger) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;
         this.recordService = recordService;
+        this.traceEventLogger = traceEventLogger;
     }
 
     @Override
@@ -73,7 +76,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             for (WorkerContext workerContext : workerContexts) {
                 PrefilterDecision prefilterDecision = prefilterCandidate(task, worker, workerContext);
                 if (!prefilterDecision.passed()) {
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                    traceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
                             prefilterDecision.reason());
                     recordService.recordWorkerAssignment(
                             task, worker, workerContext, prefilterDecision.result(),
@@ -116,10 +119,10 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
                     if (hitCount == rules.size()) {
                         if (workerManager.tryLockWorker(worker.getWorkerId())) {
-                            TraceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
+                            traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
                                     "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
                                     "all rules matched");
-                            TraceEventLogger.workerMatchAccepted(task.getTid(), worker, workerContext,
+                            traceEventLogger.workerMatchAccepted(task.getTid(), worker, workerContext,
                                     "all rules matched and worker lock acquired");
                             recordService.recordWorkerAssignment(
                                     task, worker, workerContext, AssignmentResult.SUCCESS,
@@ -132,7 +135,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                     workerContext != null ? workerContext.getWorkerContextId() : "null",
                                     task.getTid());
                         } else {
-                            TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                            traceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
                                     "worker lock conflict after rules matched");
                             recordService.recordWorkerAssignment(
                                     task, worker, workerContext, AssignmentResult.CONFLICT,
@@ -149,7 +152,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                             .filter(r -> !r.isPassed())
                             .map(RuleEvaluationDetail::getRuleId)
                             .collect(Collectors.joining(", "));
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                    traceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
                             "rule evaluation failed: " + failedRules);
                     recordService.recordWorkerAssignment(
                             task, worker, workerContext, AssignmentResult.RULE_NOT_MATCH,
@@ -171,7 +174,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         }
                     }
                 } catch (Exception e) {
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                    traceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
                             "rule evaluation exception: " + e.getMessage());
                     recordService.recordWorkerAssignment(
                             task, worker, workerContext, AssignmentResult.FAILED,

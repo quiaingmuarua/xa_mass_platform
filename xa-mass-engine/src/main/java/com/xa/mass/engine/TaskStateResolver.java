@@ -15,9 +15,11 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 class TaskStateResolver {
 
     private final TaskStateRuntimePort stateRuntime;
+    private final TraceEventLogger traceEventLogger;
 
-    TaskStateResolver(TaskStateRuntimePort stateRuntime) {
+    TaskStateResolver(TaskStateRuntimePort stateRuntime, TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
+        this.traceEventLogger = traceEventLogger;
     }
 
     void updateTaskProgress(String taskId) {
@@ -63,9 +65,9 @@ class TaskStateResolver {
         TaskStatus fromStatus = task.getStatus();
         boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
         if (result) {
-            TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+            traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
+            traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
             stateRuntime.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "FINALIZED_TO_TERMINAL", false,
@@ -97,7 +99,7 @@ class TaskStateResolver {
                                           String trigger,
                                           String source,
                                           String reason) {
-        TraceEventLogger.taskProgressSnapshot(
+        traceEventLogger.taskProgressSnapshot(
                 task,
                 stats,
                 resolutionOutcome,

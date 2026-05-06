@@ -15,6 +15,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -119,7 +120,8 @@ public class XaMassServerApplication {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
-                                                          ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider) {
+                                                          ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
+                                                          ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
             builder.submitterRegistry(new JdbcSubmitterRegistry(
@@ -151,6 +153,7 @@ public class XaMassServerApplication {
                         engine.taskStorage(jdbcStorageRuntime.taskStorage())
                                 .taskDetailStore(jdbcStorageRuntime.taskDetailStore())
                                 .taskWorkRuntime(taskWorkRuntime)
+                                .executionEventSink(executionEventSinkProvider.getIfAvailable())
                                 .workerStorage(jdbcStorageRuntime.workerStorage())
                                 .ruleStorage(jdbcStorageRuntime.ruleStorage());
                     }

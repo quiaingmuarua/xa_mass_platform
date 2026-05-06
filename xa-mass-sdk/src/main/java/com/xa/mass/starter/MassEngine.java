@@ -23,6 +23,7 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
@@ -95,20 +96,22 @@ public class MassEngine {
             WorkerManager workerManager = config.getWorkerManager();
             AssignmentRecordService recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
+            TraceEventLogger traceEventLogger = config.getTaskManager().traceEvents();
             var msgAssignListener = new SimpleTaskMsgAssignListener(
                     assignmentRuntimePort,
                     workerManager,
                     recordService,
-                    taskMsgDispatchListener);
+                    taskMsgDispatchListener,
+                    traceEventLogger);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskEvents)
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskEvents);
-            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis());
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskEvents, traceEventLogger)
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskEvents, traceEventLogger);
+            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
 
             TaskResourceReleaseListener resourceReleaseListener =
-                    new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager);
+                    new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
             eventListeners.addTaskReadyListener(assignWorker::submit);
             eventListeners.addTaskDispatchListener(assignWorker::submit);
             eventListeners.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);

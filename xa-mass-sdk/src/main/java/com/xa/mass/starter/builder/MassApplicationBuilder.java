@@ -14,6 +14,7 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
@@ -376,6 +377,11 @@ public class MassApplicationBuilder {
 
         public EngineBuilder ruleStorage(RuleStorage ruleStorage) {
             config.setRuleStorage(ruleStorage);
+            return this;
+        }
+
+        public EngineBuilder executionEventSink(ExecutionEventSink executionEventSink) {
+            config.setExecutionEventSink(executionEventSink);
             return this;
         }
 

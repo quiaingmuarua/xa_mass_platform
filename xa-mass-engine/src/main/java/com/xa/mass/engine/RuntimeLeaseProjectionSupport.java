@@ -23,6 +23,7 @@ final class RuntimeLeaseProjectionSupport {
                                                                         String taskId,
                                                                         TaskMsg taskMsg,
                                                                         ActiveLeaseRecord activeLease,
+                                                                        TraceEventLogger traceEventLogger,
                                                                         String trigger,
                                                                         String reason) {
         if (projectionPort == null || taskMsg == null || activeLease == null) {
@@ -35,6 +36,7 @@ final class RuntimeLeaseProjectionSupport {
                 taskMsg,
                 activeAttempt,
                 activeLease,
+                traceEventLogger,
                 trigger,
                 reason)) {
             return ProjectionLeaseSyncResult.rejected(activeAttempt);
@@ -78,6 +80,7 @@ final class RuntimeLeaseProjectionSupport {
                                                          TaskMsg taskMsg,
                                                          TaskMsgAttempt activeAttempt,
                                                          ActiveLeaseRecord activeLease,
+                                                         TraceEventLogger traceEventLogger,
                                                          String trigger,
                                                          String reason) {
         if (projectionPort == null || taskMsg == null || activeLease == null) {
@@ -101,7 +104,7 @@ final class RuntimeLeaseProjectionSupport {
             if (!taskMsg.markAsAssigned()) {
                 return false;
             }
-            TraceEventLogger.taskMsgStatusTransition(
+            traceEventLogger.taskMsgStatusTransition(
                     taskMsg,
                     activeAttempt,
                     fromStatus,

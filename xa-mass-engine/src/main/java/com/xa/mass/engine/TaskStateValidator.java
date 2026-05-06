@@ -21,9 +21,11 @@ import java.util.List;
 class TaskStateValidator {
 
     private final TaskStateRuntimePort stateRuntime;
+    private final TraceEventLogger traceEventLogger;
 
-    TaskStateValidator(TaskStateRuntimePort stateRuntime) {
+    TaskStateValidator(TaskStateRuntimePort stateRuntime, TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
+        this.traceEventLogger = traceEventLogger;
     }
 
     TaskStateValidationResult validateTaskState(String taskId) {
@@ -204,7 +206,7 @@ class TaskStateValidator {
                 .map(Enum::name)
                 .reduce((left, right) -> left + "," + right)
                 .orElse("");
-        TraceEventLogger.taskStateValidationSummary(
+        traceEventLogger.taskStateValidationSummary(
                 taskId,
                 validationResult.getStatus(),
                 validationResult.getTerminalReason(),
