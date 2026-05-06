@@ -183,13 +183,6 @@ public class MassEngine {
         return taskCommands.createTask(dto);
     }
 
-    /**
-     * No-op. Full-table replay of TaskCreatedEvent is not supported at scale.
-     * Subscribers that need historical state should query storage directly via TaskQueryService.
-     */
-    public void publishTaskEvents() {
-    }
-
     public boolean isRunning() {
         return running;
     }

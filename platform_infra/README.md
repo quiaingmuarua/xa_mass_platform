@@ -40,7 +40,7 @@ Current truth for this conservative first slice:
 - `mass-queue-primitives` owns narrow keyed queue/blocking-poll/backpressure mechanics shared by runtime modules without redefining task or transport semantics
 - `mass-runtime-api` owns the shared `TaskWorkRuntime` contract and related value types
 - `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
-- `mass-runtime-redis` now owns the Redis runtime keyspace/index baseline and remains outside the verified runtime path
+- `mass-runtime-redis` now owns the Redis-backed runtime implementation plus its keyspace/index baseline; it remains an explicit opt-in path outside the verified default runtime mainline
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module

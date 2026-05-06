@@ -280,16 +280,16 @@ class TaskWorkerAssignListenerTest {
     }
 
     @Test
-    void matchWorkersWithRulesDelegatesToInjectedStrategy() {
+    void onTaskAssignDelegatesWorkerSelectionToInjectedStrategy() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
         MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
+        when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(3))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
-        List<MatchedWorkerContext> matched = listener.matchWorkersWithRules(task, 3);
-
-        assertEquals(List.of(matchedWorker), matched);
+        assertTrue(listener.onTaskAssign(task));
         verify(matchingStrategy).matchWorkers(same(task), eq(3));
     }
 

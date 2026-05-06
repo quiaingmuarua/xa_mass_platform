@@ -102,10 +102,4 @@ public interface MassRuntimeControl {
      */
     void replaceDefaultRules(Collection<RuleDefinition> rules);
 
-    // --- Event publishing ---
-
-    /**
-     * Publish current task lifecycle events for UI/debug subscribers.
-     */
-    void publishTaskEvents();
 }

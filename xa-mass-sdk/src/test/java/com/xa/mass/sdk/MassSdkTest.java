@@ -2668,6 +2668,7 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "getWorkerManager");
         assertMissingMethod(MassSdkApplication.class, "updateTask", Task.class);
         assertMissingMethod(MassSdkApplication.class, "updateWorker", Worker.class);
+        assertMissingMethod(MassSdkApplication.class, "publishTaskEvents");
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
@@ -2675,6 +2676,7 @@ class MassSdkTest {
         assertMissingMethod(MassEngine.class, "addWorkerContext", WorkerContext.class);
         assertMissingMethod(MassEngine.class, "getTaskManager");
         assertMissingMethod(MassEngine.class, "getWorkerManager");
+        assertMissingMethod(MassEngine.class, "publishTaskEvents");
         assertMissingMethod(EngineConfig.class, "setWorkerManager", WorkerManager.class);
         assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
@@ -2822,8 +2824,7 @@ class MassSdkTest {
                         .workerId("worker-1")
                         .build()),
                 () -> app.pullWorker("worker-1"),
-                () -> app.replaceDefaultRules(List.of()),
-                app::publishTaskEvents
+                () -> app.replaceDefaultRules(List.of())
         );
 
         for (Executable operation : operations) {

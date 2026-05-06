@@ -7,6 +7,7 @@ import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
@@ -52,11 +53,12 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
         for (TaskDispatchBinding binding : dispatchBindings) {
             TransportBinding transportBinding = resolveBinding(binding);
             WorkerAdapter adapter = transportBinding.getWorkerAdapter();
+            TransportDispatchRouteContext routeContext = TransportDispatchRouteContext.from(task, binding);
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding.taskMsg(), binding.attempt());
             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
                     .add(envelopeFactory.create(
                             adapter.adapterId(),
-                            transportBinding.resolveRouteKey(binding, payload),
+                            transportBinding.resolveRouteKey(binding, routeContext),
                             payload.runtimeMetadata().attemptId(),
                             payload
                     ));

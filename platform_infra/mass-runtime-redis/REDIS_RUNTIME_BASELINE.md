@@ -57,6 +57,10 @@ The keyspace owner class is:
 
 Global indexes:
 
+- `...:tasks`
+  - `SET`
+  - member: `taskId`
+  - bounded task registry used for exact shutdown cleanup without namespace scan
 - `...:ready:tasks`
   - `ZSET`
   - member: `taskId`
@@ -133,6 +137,7 @@ Per-worker index:
 ### enqueue
 
 - reject duplicate when work hash or active lease hash already exists
+- add `taskId` into `...:tasks`
 - add `messageId` into `task:{taskId}:members`
 - write work hash
 - if `nextVisibleAt > now`:
@@ -205,6 +210,7 @@ Must stay bounded by task-owned indexes:
   - worker active membership entries corresponding to active leases
 - remove encoded members from global delayed and lease-expiry zsets
 - remove `taskId` from ready-task zset
+- remove `taskId` from `...:tasks`
 
 ## 6. Why This Shape
 

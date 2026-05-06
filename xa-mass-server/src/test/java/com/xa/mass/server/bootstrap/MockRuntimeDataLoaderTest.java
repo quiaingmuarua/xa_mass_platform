@@ -401,10 +401,6 @@ class MockRuntimeDataLoaderTest {
         }
 
         @Override
-        public void publishTaskEvents() {
-        }
-
-        @Override
         public Task getTask(String taskId) { return null; }
 
         @Override

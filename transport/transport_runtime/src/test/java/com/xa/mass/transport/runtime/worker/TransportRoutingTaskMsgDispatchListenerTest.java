@@ -238,7 +238,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportBinding binding = TransportBinding.builder(pollingAdapter)
-                .routeKeyResolver((dispatchBinding, payload) -> "endpoint:" + payload.runtimeMetadata().batchId())
+                .routeKeyResolver((dispatchBinding, routeContext) -> "endpoint:" + routeContext.batchId())
                 .build();
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,

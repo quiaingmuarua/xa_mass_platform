@@ -3,6 +3,7 @@ package com.xa.mass.server;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
@@ -32,6 +33,7 @@ import org.springframework.core.annotation.Order;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Verified mainline Spring Boot entry for the server runtime shell.
@@ -64,6 +66,15 @@ public class XaMassServerApplication {
     @Value("${mass.runtime.event-max-pending-tasks:10000}")
     private int eventRuntimeMaxPendingTasks;
 
+    @Value("${mass.runtime.mode:memory}")
+    private String runtimeMode;
+
+    @Value("${mass.runtime.redis.namespace:xa:mass:runtime:v1}")
+    private String runtimeRedisNamespace;
+
+    @Value("${mass.runtime.redis.max-queued-items:1000000}")
+    private int runtimeRedisMaxQueuedItems;
+
     @Value("${mass.storage.mode:memory}")
     private String storageMode;
 
@@ -75,6 +86,18 @@ public class XaMassServerApplication {
 
     @Value("${mass.storage.jdbc.password:}")
     private String storageJdbcPassword;
+
+    @Value("${spring.redis.host:localhost}")
+    private String redisHost;
+
+    @Value("${spring.redis.port:6379}")
+    private int redisPort;
+
+    @Value("${spring.redis.database:0}")
+    private int redisDatabase;
+
+    @Value("${spring.redis.password:}")
+    private String redisPassword;
 
     public static void main(String[] args) {
         String profile = System.getProperty("spring.profiles.active");
@@ -116,6 +139,17 @@ public class XaMassServerApplication {
         );
     }
 
+    @Bean(destroyMethod = "shutdown")
+    @Profile("dev")
+    public TaskWorkRuntime taskWorkRuntime() {
+        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedMode) {
+            case "", "memory" -> new InMemoryTaskWorkRuntime();
+            case "redis" -> new RedisTaskWorkRuntime(redisUri(), runtimeRedisNamespace, runtimeRedisMaxQueuedItems);
+            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
+        };
+    }
+
     @Bean(destroyMethod = "stop")
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
@@ -148,17 +182,17 @@ public class XaMassServerApplication {
                         .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
                 .engine(engine -> {
                     engine.enabled(true).workerThreads(workerThreads);
+                    TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
+                    engine.taskWorkRuntime(taskWorkRuntime);
+                    ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
+                    if (executionEventSink != null) {
+                        engine.executionEventSink(executionEventSink);
+                    }
                     if (jdbcStorageRuntime.isEnabled()) {
-                        TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                         engine.taskStorage(jdbcStorageRuntime.taskStorage())
                                 .taskDetailStore(jdbcStorageRuntime.taskDetailStore())
-                                .taskWorkRuntime(taskWorkRuntime)
                                 .workerStorage(jdbcStorageRuntime.workerStorage())
                                 .ruleStorage(jdbcStorageRuntime.ruleStorage());
-                        ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
-                        if (executionEventSink != null) {
-                            engine.executionEventSink(executionEventSink);
-                        }
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {
@@ -237,6 +271,15 @@ public class XaMassServerApplication {
         adapters.add("socket(enabled=" + socketEnabled + ", address=" + socketAddress + ")");
         adapters.add("websocket(enabled=" + webSocketEnabled + ", address=" + webSocketUri + ")");
         return adapters;
+    }
+
+    private String redisUri() {
+        StringBuilder uri = new StringBuilder("redis://");
+        if (redisPassword != null && !redisPassword.isBlank()) {
+            uri.append(':').append(redisPassword).append('@');
+        }
+        uri.append(redisHost).append(':').append(redisPort).append('/').append(Math.max(0, redisDatabase));
+        return uri.toString();
     }
 
 }

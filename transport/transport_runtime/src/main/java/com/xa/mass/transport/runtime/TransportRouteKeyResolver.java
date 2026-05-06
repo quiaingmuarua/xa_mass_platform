@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.transport.model.TaskDispatchItem;
 
 /**
  * Runtime-owned resolver for adapter-local dispatch route keys.
@@ -13,5 +12,5 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 @FunctionalInterface
 public interface TransportRouteKeyResolver {
 
-    String resolveRouteKey(TaskDispatchBinding dispatchBinding, TaskDispatchItem payload);
+    String resolveRouteKey(TaskDispatchBinding dispatchBinding, TransportDispatchRouteContext routeContext);
 }

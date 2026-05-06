@@ -24,9 +24,13 @@ sample:
 
 mass:
   runtime:
+    mode: memory
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000
     event-max-pending-tasks: 2000
+    redis:
+      namespace: xa:mass:runtime:v1
+      max-queued-items: 1000000
   websocket:
     port: 18088
   queue:

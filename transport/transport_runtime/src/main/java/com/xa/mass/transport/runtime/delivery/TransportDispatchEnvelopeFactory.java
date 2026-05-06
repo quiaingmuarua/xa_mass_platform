@@ -54,7 +54,6 @@ public final class TransportDispatchEnvelopeFactory {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 packet,
-                payload,
                 currentTimeMillis.getAsLong()
         );
     }

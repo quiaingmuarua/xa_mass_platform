@@ -467,10 +467,6 @@ public class MassApplication {
         );
     }
 
-    public void publishTaskEvents() {
-        requireConfiguredEngine().publishTaskEvents();
-    }
-
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");

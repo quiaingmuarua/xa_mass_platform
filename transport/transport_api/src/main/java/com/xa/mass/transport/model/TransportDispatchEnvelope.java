@@ -2,7 +2,6 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.Objects;
 
@@ -15,21 +14,12 @@ public final class TransportDispatchEnvelope {
     private final String deliveryId;
     private final TransportPacket packet;
     private final long createdAtEpochMillis;
-    private volatile TaskDispatchItem payload;
 
     public TransportDispatchEnvelope(String deliveryId,
                                      TransportPacket packet,
-                                     long createdAtEpochMillis) {
-        this(deliveryId, packet, null, createdAtEpochMillis);
-    }
-
-    public TransportDispatchEnvelope(String deliveryId,
-                                     TransportPacket packet,
-                                     TaskDispatchItem payload,
                                      long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
         this.packet = requireDispatchPacket(packet);
-        this.payload = payload;
         this.createdAtEpochMillis = createdAtEpochMillis;
     }
 
@@ -47,16 +37,6 @@ public final class TransportDispatchEnvelope {
 
     public String getCorrelationKey() {
         return packet.traceId();
-    }
-
-    public TaskDispatchItem getPayload() {
-        TaskDispatchItem current = payload;
-        if (current != null) {
-            return current;
-        }
-        TaskDispatchItem projected = TransportPacketViews.toTaskDispatchItem(packet);
-        payload = projected;
-        return projected;
     }
 
     public TransportPacket getPacket() {

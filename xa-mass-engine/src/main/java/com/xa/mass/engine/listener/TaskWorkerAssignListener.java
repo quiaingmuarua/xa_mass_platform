@@ -104,7 +104,9 @@ public class TaskWorkerAssignListener {
                 ? getRequiredStartWorkerCount(task)
                 : 1;
         int matchRequestCount = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
-        List<MatchedWorkerContext> matched = matchWorkersWithRules(task, matchRequestCount);
+        List<MatchedWorkerContext> matched = matchingStrategy.matchWorkers(task, matchRequestCount);
+        log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
+                matchingStrategy.getClass().getSimpleName(), matched.size(), task.getTid());
         if (matched.isEmpty()) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "no matched worker-context candidates", requiredStartWorkerCount);
@@ -201,16 +203,6 @@ public class TaskWorkerAssignListener {
         assignmentRuntime.updateTask(task);
         assignmentEventSink.publishTaskAssigned(task);
         return true;
-    }
-
-    /**
-     * Kept for compatibility with current tests and callers; the implementation is now strategy-based.
-     */
-    List<MatchedWorkerContext> matchWorkersWithRules(Task task, int maxWorkerCount) {
-        List<MatchedWorkerContext> matchedWorkers = matchingStrategy.matchWorkers(task, maxWorkerCount);
-        log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
-                matchingStrategy.getClass().getSimpleName(), matchedWorkers.size(), task.getTid());
-        return matchedWorkers;
     }
 
     private int getDesiredDispatchWorkerCount(Task task, int pendingDispatchCount) {

@@ -1425,12 +1425,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public void publishTaskEvents() {
-        requireStartedEngine();
-        delegate.publishTaskEvents();
-    }
-
-    @Override
     public List<Map<String, Object>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
         WorkerEndpointInspector endpointInspector = resolveEndpointInspector();

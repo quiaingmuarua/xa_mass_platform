@@ -284,10 +284,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             return assignedCount;
         }
 
-        private boolean canAccept(int perWorkerBatchLimit) {
-            return assignedCount < perWorkerBatchLimit;
-        }
-
         private void incrementAssigned() {
             assignedCount++;
         }

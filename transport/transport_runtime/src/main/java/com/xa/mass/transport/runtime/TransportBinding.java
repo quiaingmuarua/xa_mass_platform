@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
@@ -43,8 +42,8 @@ public final class TransportBinding {
         return taskPullChannel;
     }
 
-    public String resolveRouteKey(TaskDispatchBinding dispatchBinding, TaskDispatchItem payload) {
-        return routeKeyResolver.resolveRouteKey(dispatchBinding, payload);
+    public String resolveRouteKey(TaskDispatchBinding dispatchBinding, TransportDispatchRouteContext routeContext) {
+        return routeKeyResolver.resolveRouteKey(dispatchBinding, routeContext);
     }
 
     public static final class Builder {
