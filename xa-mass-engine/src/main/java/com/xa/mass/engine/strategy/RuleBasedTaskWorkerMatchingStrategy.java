@@ -11,7 +11,7 @@ import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,18 +28,18 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
     private final RuleManager<Map<String, Object>> ruleManager;
     private final WorkerManager workerManager;
-    private final AssignmentRecordService recordService;
+    private final AssignmentDiagnosticRecorder recordService;
     private final TraceEventLogger traceEventLogger;
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
-                                               AssignmentRecordService recordService) {
+                                               AssignmentDiagnosticRecorder recordService) {
         this(ruleManager, workerManager, recordService, TraceEventLogger.noop());
     }
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
-                                               AssignmentRecordService recordService,
+                                               AssignmentDiagnosticRecorder recordService,
                                                TraceEventLogger traceEventLogger) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;

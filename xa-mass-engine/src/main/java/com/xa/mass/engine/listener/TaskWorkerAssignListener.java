@@ -9,7 +9,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -36,7 +36,7 @@ public class TaskWorkerAssignListener {
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
                                     TaskMsgAssignListener msgAssignListener,
-                                    AssignmentRecordService recordService,
+                                    AssignmentDiagnosticRecorder recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
         this(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
@@ -45,7 +45,7 @@ public class TaskWorkerAssignListener {
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
                                     TaskMsgAssignListener msgAssignListener,
-                                    AssignmentRecordService recordService,
+                                    AssignmentDiagnosticRecorder recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink,
                                     TraceEventLogger traceEventLogger) {

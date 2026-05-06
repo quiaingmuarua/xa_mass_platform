@@ -12,7 +12,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
@@ -36,26 +36,26 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     private final TaskAssignmentRuntimePort assignmentRuntime;
     private final WorkerManager workerManager;
-    private final AssignmentRecordService recordService;
+    private final AssignmentDiagnosticRecorder recordService;
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
-                                       AssignmentRecordService recordService) {
+                                       AssignmentDiagnosticRecorder recordService) {
         this(assignmentRuntime, workerManager, recordService, null, TraceEventLogger.noop());
     }
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
-                                       AssignmentRecordService recordService,
+                                       AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener) {
         this(assignmentRuntime, workerManager, recordService, dispatchListener, TraceEventLogger.noop());
     }
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
-                                       AssignmentRecordService recordService,
+                                       AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
         this.assignmentRuntime = assignmentRuntime;

@@ -64,6 +64,8 @@ Keep these facts fixed unless the owning global baselines change:
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
   not the hot-path runtime owner
+- assignment diagnostics are append-only bounded residue; matching and dispatch
+  mainline should depend on a write-only recorder, not on report/history APIs
 - dispatch submit failure after claim/attempt creation must compensate inline
   through runtime retry re-entry plus projection reset; lease expiry repair is a
   fallback, not the mainline

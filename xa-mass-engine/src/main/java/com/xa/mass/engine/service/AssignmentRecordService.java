@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 /**
  * Stores assignment-attempt diagnostics for later audit and report generation.
  */
-public class AssignmentRecordService {
+public class AssignmentRecordService implements AssignmentDiagnosticRecorder {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 
@@ -30,6 +30,7 @@ public class AssignmentRecordService {
     /**
      * Records a worker-level assignment attempt.
      */
+    @Override
     public AssignmentRecord recordWorkerAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
@@ -60,6 +61,7 @@ public class AssignmentRecordService {
     /**
      * Records a message-level assignment attempt.
      */
+    @Override
     public AssignmentRecord recordMessageAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                     String messageId, String batchId,
                                                     AssignmentResult result, String reason,
