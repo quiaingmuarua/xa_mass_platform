@@ -75,6 +75,8 @@ Infra ownership:
 
 - storage contracts live in `../platform_infra/mass-storage-api`
 - runtime queue/lease contracts live in `../platform_infra/mass-runtime-api`
+- transport adapter contracts live outside engine; engine must not take a direct
+  dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
 
 ## Rule-Matching Surface

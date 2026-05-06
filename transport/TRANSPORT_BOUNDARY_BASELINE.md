@@ -134,6 +134,12 @@ Current runtime rules:
 - queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
 - `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as
   task, attempt, lease, or business routing truth
+- route-only endpoint lookups are a single-adapter convenience only; once more
+  than one endpoint registry is composed, callers must use adapter-scoped
+  route operations instead of inferring ownership from endpoint snapshots
+- worker-addressed debug/raw side-channels are not route truth; if they remain,
+  they must first resolve one unique active `(adapterId, routeKey)` from
+  endpoint state before adapter send
 - future Redis/JDBC queue replacements must preserve the same canonical addressing
   rules and must not require hot-path scans to recover queue ownership
 

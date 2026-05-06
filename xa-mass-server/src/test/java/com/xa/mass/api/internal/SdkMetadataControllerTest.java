@@ -75,6 +75,8 @@ class SdkMetadataControllerTest {
                         "connections", java.util.List.of(java.util.Map.of(
                                 "active", true,
                                 "endpointId", "ws-crawler-1",
+                                "routeKey", "route-crawler-1",
+                                "adapterId", "ws-public",
                                 "transport", "websocket"
                         ))
                 ),
@@ -83,6 +85,8 @@ class SdkMetadataControllerTest {
                         "connections", java.util.List.of(java.util.Map.of(
                                 "active", true,
                                 "endpointId", "poll-1",
+                                "routeKey", "scope-only-worker",
+                                "adapterId", "polling",
                                 "transport", "polling"
                         ))
                 )

@@ -44,4 +44,8 @@ public final class WorkerEndpointSnapshot {
     public String getTransport() {
         return transport;
     }
+
+    public String getAdapterId() {
+        return transport;
+    }
 }

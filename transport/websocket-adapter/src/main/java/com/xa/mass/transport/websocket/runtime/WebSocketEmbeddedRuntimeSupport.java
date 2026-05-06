@@ -1,6 +1,6 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;

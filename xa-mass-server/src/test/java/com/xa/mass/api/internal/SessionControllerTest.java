@@ -37,6 +37,8 @@ class SessionControllerTest {
                 "connections", List.of(Map.of(
                         "active", true,
                         "endpointId", "endpoint-1",
+                        "routeKey", "route-1",
+                        "adapterId", "ws-public",
                         "transport", "websocket"
                 ))
         )));
@@ -47,6 +49,8 @@ class SessionControllerTest {
                 .andExpect(jsonPath("$.data[0].workerId").value("worker-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].active").value(true))
                 .andExpect(jsonPath("$.data[0].connections[0].endpointId").value("endpoint-1"))
+                .andExpect(jsonPath("$.data[0].connections[0].routeKey").value("route-1"))
+                .andExpect(jsonPath("$.data[0].connections[0].adapterId").value("ws-public"))
                 .andExpect(jsonPath("$.data[0].connections[0].transport").value("websocket"));
     }
 
@@ -54,13 +58,16 @@ class SessionControllerTest {
     void sessionStatsUseSdkCounts() throws Exception {
         when(transportOperations.getSessionStats()).thenReturn(Map.of(
                 "activeConnections", 2,
-                "workerCount", 2L
+                "workerCount", 2L,
+                "activeConnectionsByAdapter", Map.of("ws-public", 1L, "socket-edge", 1L)
         ));
 
         mockMvc.perform(get("/api/session/stats"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.activeConnections").value(2))
-                .andExpect(jsonPath("$.data.workerCount").value(2));
+                .andExpect(jsonPath("$.data.workerCount").value(2))
+                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.ws-public").value(1))
+                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.socket-edge").value(1));
     }
 }

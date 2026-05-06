@@ -48,6 +48,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 MassSdkApplication app = MassSdk.builder()
         .transport(transport -> transport
                 .webSocketAdapter(webSocket -> webSocket
+                        .adapterId("ws-public")
                         .server(19090, "/ws")
                         .enabled(false)
                         .serverEnabled(false)))
@@ -57,6 +58,10 @@ MassSdkApplication app = MassSdk.builder()
 Mainline transport configuration is adapter-owned: use nested
 `webSocketAdapter(...)`, `socketAdapter(...)`, or other explicit adapter blocks.
 Start from `MassSdk.builder()` and assemble the adapters you actually want.
+When the same adapter type needs multiple concrete runtime instances, keep one
+bundled slot with `webSocketAdapter(...)` / `socketAdapter(...)` and add extra
+instances through `addWebSocketAdapter(...)` / `addSocketAdapter(...)`, each
+with an explicit `adapterId`.
 
 app.start();
 
@@ -96,6 +101,11 @@ app.pullWorker("crawler-worker-1").connect();
 `supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
+
+For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
+same concept. For example, two bundled WebSocket instances might use adapter ids
+such as `ws-public` and `ws-internal`; both still belong to transport hint
+`realtime`.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
@@ -225,6 +235,9 @@ Stable builder mainline is `transport(...)`. Bundled WebSocket settings belong
 under explicit adapter-owned config such as
 `transport(... -> webSocketAdapter(...))`; there is no separate WebSocket-named
 builder mainline in `xa-mass-sdk`.
+Additional same-type adapter instances can be appended through
+`transport(... -> addWebSocketAdapter(...))` and
+`transport(... -> addSocketAdapter(...))`.
 
 Current embedded-runtime mainline snapshots `TransportConfig` into an internal
 runtime-composition object during `MassApplication` construction. Runtime

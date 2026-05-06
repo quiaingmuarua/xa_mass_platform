@@ -1,6 +1,5 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -8,6 +7,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

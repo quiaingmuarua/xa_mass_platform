@@ -82,7 +82,7 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -831,10 +831,54 @@ class MassSdkTest {
                 .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));
         assertEquals(0L, sessionStats.get("workerCount"));
+        assertEquals(Map.of(), sessionStats.get("activeConnectionsByAdapter"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
         verify(delegate, atLeastOnce()).getEndpointRegistry();
         verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
+    }
+
+    @Test
+    void sessionDiagnosticsExposeAdapterIdAndRouteKey() {
+        MassApplication delegate = mock(MassApplication.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(com.xa.mass.transport.WorkerEndpointInspector.class));
+        com.xa.mass.transport.WorkerEndpointInspector inspector =
+                (com.xa.mass.transport.WorkerEndpointInspector) endpointRegistry;
+
+        when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
+        when(endpointRegistry.getActiveConnectionCount()).thenReturn(2);
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new com.xa.mass.transport.WorkerEndpointSnapshot(
+                        "route-public",
+                        "worker-1",
+                        true,
+                        "endpoint-1",
+                        "ws-public"
+                ),
+                new com.xa.mass.transport.WorkerEndpointSnapshot(
+                        "route-internal",
+                        "worker-1",
+                        true,
+                        "endpoint-2",
+                        "ws-internal"
+                )
+        ));
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        List<Map<String, Object>> sessions = app.listSessions();
+        Map<String, Object> sessionStats = app.getSessionStats();
+
+        assertEquals(1, sessions.size());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> connections = (List<Map<String, Object>>) sessions.get(0).get("connections");
+        assertEquals("route-public", connections.get(0).get("routeKey"));
+        assertEquals("ws-public", connections.get(0).get("adapterId"));
+        assertEquals("ws-public", connections.get(0).get("transport"));
+        assertEquals(2, sessionStats.get("activeConnections"));
+        assertEquals(1L, sessionStats.get("workerCount"));
+        assertEquals(Map.of("ws-public", 1L, "ws-internal", 1L), sessionStats.get("activeConnectionsByAdapter"));
     }
 
     @Test

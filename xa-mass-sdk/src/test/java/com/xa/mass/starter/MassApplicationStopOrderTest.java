@@ -11,6 +11,9 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.WorkerEndpointInspector;
+import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.WorkerEndpointSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -95,18 +98,25 @@ class MassApplicationStopOrderTest {
     }
 
     @Test
-    void rawTransportMessageFallsBackToSingleRegisteredChannel() throws Exception {
+    void rawTransportMessageUsesResolvedActiveRouteForWorker() throws Exception {
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(WorkerEndpointInspector.class));
+        WorkerEndpointInspector inspector = (WorkerEndpointInspector) endpointRegistry;
         when(registry.resolveWorkerAdapterId("worker-1")).thenReturn("websocket");
-        when(channel.supportsRoute("worker-1", "websocket")).thenReturn(true);
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new WorkerEndpointSnapshot("route-public", "worker-1", true, "endpoint-1", "websocket")
+        ));
+        when(channel.supportsRoute("route-public", "websocket")).thenReturn(true);
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
         inject(app, "transportRuntimeRegistry", registry);
+        inject(app, "endpointRegistry", endpointRegistry);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
-        verify(channel).sendToRoute("worker-1", "{\"hello\":1}", "trace-1");
-        verify(channel).supportsRoute("worker-1", "websocket");
+        verify(channel).sendToRoute("route-public", "{\"hello\":1}", "trace-1");
+        verify(channel).supportsRoute("route-public", "websocket");
     }
 
     @Test
@@ -114,31 +124,44 @@ class MassApplicationStopOrderTest {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(WorkerEndpointInspector.class));
+        WorkerEndpointInspector inspector = (WorkerEndpointInspector) endpointRegistry;
         when(registry.resolveWorkerAdapterId("worker-2")).thenReturn("websocket");
-        when(first.supportsRoute("worker-2", "websocket")).thenReturn(false);
-        when(second.supportsRoute("worker-2", "websocket")).thenReturn(true);
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new WorkerEndpointSnapshot("route-private", "worker-2", true, "endpoint-2", "websocket")
+        ));
+        when(first.supportsRoute("route-private", "websocket")).thenReturn(false);
+        when(second.supportsRoute("route-private", "websocket")).thenReturn(true);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
         inject(app, "transportRuntimeRegistry", registry);
+        inject(app, "endpointRegistry", endpointRegistry);
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
         verify(first, never()).sendToRoute(anyString(), anyString(), anyString());
-        verify(second).sendToRoute("worker-2", "{\"hello\":2}", "trace-2");
+        verify(second).sendToRoute("route-private", "{\"hello\":2}", "trace-2");
     }
 
     @Test
-    void rawTransportMessageReturnsFalseWhenNoChannelAcceptsWorker() throws Exception {
+    void rawTransportMessageReturnsFalseWhenNoUniqueActiveRouteExists() throws Exception {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(WorkerEndpointInspector.class));
+        WorkerEndpointInspector inspector = (WorkerEndpointInspector) endpointRegistry;
         when(registry.resolveWorkerAdapterId("worker-3")).thenReturn("websocket");
-        when(first.supportsRoute("worker-3", "websocket")).thenReturn(false);
-        when(second.supportsRoute("worker-3", "websocket")).thenReturn(false);
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new WorkerEndpointSnapshot("route-a", "worker-3", true, "endpoint-a", "websocket"),
+                new WorkerEndpointSnapshot("route-b", "worker-3", true, "endpoint-b", "websocket")
+        ));
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
         inject(app, "transportRuntimeRegistry", registry);
+        inject(app, "endpointRegistry", endpointRegistry);
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
         verify(first, never()).sendToRoute(anyString(), anyString(), anyString());

@@ -16,6 +16,9 @@ entry for `transport/`.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
 - `routeKey` is the transport delivery address. Current mainline bindings resolve
   it from `workerId`, but that is policy, not a transport-global invariant.
+- route-only endpoint operations are adapter-local convenience only. In a
+  multi-adapter runtime, callers must route with `adapterId + routeKey` rather
+  than asking a composite registry to guess ownership.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `TransportDispatchEnvelope`, `TransportDeliveryStore`, and `DispatchOutcome`.
 

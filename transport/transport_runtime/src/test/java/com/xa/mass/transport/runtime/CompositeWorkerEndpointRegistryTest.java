@@ -43,7 +43,7 @@ class CompositeWorkerEndpointRegistryTest {
     }
 
     @Test
-    void sendToRouteUsesUniqueSnapshotOwnerWhenMultipleRegistriesExist() {
+    void routeOnlyOperationsRequireSingleRegisteredAdapter() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
                 List.of(new WorkerEndpointSnapshot("route-a", "worker-a", true, "endpoint-a", "websocket")),
@@ -59,8 +59,9 @@ class CompositeWorkerEndpointRegistryTest {
         registry.register("websocket", websocket);
         registry.register("socket", socket);
 
-        assertTrue(registry.sendToRoute("route-a", "{\"hello\":1}"));
-        assertTrue(websocket.sendInvoked);
+        assertFalse(registry.sendToRoute("route-a", "{\"hello\":1}"));
+        assertFalse(registry.isRouteOnline("route-a"));
+        assertFalse(websocket.sendInvoked);
         assertFalse(socket.sendInvoked);
     }
 

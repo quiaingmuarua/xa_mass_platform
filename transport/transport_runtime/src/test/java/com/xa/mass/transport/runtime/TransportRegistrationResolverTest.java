@@ -120,7 +120,7 @@ class TransportRegistrationResolverTest {
                 error.getMessage());
     }
 
-    private static final class StubWorkerAdapter implements com.xa.mass.engine.worker.WorkerAdapter {
+    private static final class StubWorkerAdapter implements com.xa.mass.transport.worker.WorkerAdapter {
         private final String protocol;
         private final String transportHint;
 

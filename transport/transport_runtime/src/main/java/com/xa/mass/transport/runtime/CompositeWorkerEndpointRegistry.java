@@ -52,13 +52,13 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
 
     @Override
     public synchronized boolean sendToRoute(String routeKey, String message) {
-        WorkerEndpointRegistry registry = resolveUniqueRegistryForRoute(routeKey);
+        WorkerEndpointRegistry registry = resolveSingleRegistryForRouteOnlyAccess(routeKey);
         return registry != null && registry.sendToRoute(routeKey, message);
     }
 
     @Override
     public synchronized boolean isRouteOnline(String routeKey) {
-        WorkerEndpointRegistry registry = resolveUniqueRegistryForRoute(routeKey);
+        WorkerEndpointRegistry registry = resolveSingleRegistryForRouteOnlyAccess(routeKey);
         return registry != null && registry.isRouteOnline(routeKey);
     }
 
@@ -111,30 +111,13 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
         return List.copyOf(unique);
     }
 
-    private WorkerEndpointRegistry resolveUniqueRegistryForRoute(String routeKey) {
+    private WorkerEndpointRegistry resolveSingleRegistryForRouteOnlyAccess(String routeKey) {
         String normalizedRouteKey = normalizeRouteKey(routeKey);
         if (normalizedRouteKey == null) {
             return null;
         }
         List<WorkerEndpointRegistry> registries = uniqueRegistries();
-        if (registries.size() == 1) {
-            return registries.get(0);
-        }
-        WorkerEndpointRegistry resolved = null;
-        for (Map.Entry<String, WorkerEndpointInspector> entry : inspectorsByAdapterId.entrySet()) {
-            if (!ownsRoute(entry.getValue(), normalizedRouteKey)) {
-                continue;
-            }
-            WorkerEndpointRegistry candidate = registriesByAdapterId.get(entry.getKey());
-            if (candidate == null) {
-                continue;
-            }
-            if (resolved != null && resolved != candidate) {
-                return null;
-            }
-            resolved = candidate;
-        }
-        return resolved;
+        return registries.size() == 1 ? registries.get(0) : null;
     }
 
     private WorkerEndpointRegistry registryForAdapter(String adapterId) {
@@ -142,15 +125,6 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
             return null;
         }
         return registriesByAdapterId.get(normalizeAdapterId(adapterId));
-    }
-
-    private static boolean ownsRoute(WorkerEndpointInspector inspector, String routeKey) {
-        for (WorkerEndpointSnapshot snapshot : inspector.listWorkerEndpoints()) {
-            if (routeKey.equals(snapshot.getRouteKey())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static String normalizeAdapterId(String adapterId) {

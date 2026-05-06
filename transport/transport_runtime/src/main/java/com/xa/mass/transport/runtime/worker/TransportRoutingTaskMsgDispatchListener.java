@@ -4,7 +4,6 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
-import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -12,6 +11,7 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

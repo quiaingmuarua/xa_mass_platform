@@ -19,17 +19,17 @@ public interface RawWorkerMessageChannel {
      * Returns whether this channel can confidently route a raw message to the
      * given transport route under the current runtime state.
      */
-    default boolean supportsRoute(String routeKey, String workerAdapterId) {
-        return supportsAdapter(workerAdapterId);
+    default boolean supportsRoute(String routeKey, String requestedAdapterId) {
+        return supportsAdapter(requestedAdapterId);
     }
 
     /**
      * Returns whether the requested adapter id resolves to this side-channel.
      */
-    default boolean supportsAdapter(String workerAdapterId) {
+    default boolean supportsAdapter(String requestedAdapterId) {
         return adapterId() != null
-                && workerAdapterId != null
-                && adapterId().equalsIgnoreCase(workerAdapterId.trim());
+                && requestedAdapterId != null
+                && adapterId().equalsIgnoreCase(requestedAdapterId.trim());
     }
 
     /**

@@ -7,6 +7,12 @@ package com.xa.mass.transport;
  * this interface. Future polling, gRPC, or custom socket adapters should be
  * able to provide the same semantics without leaking protocol-specific types
  * into the scheduler/runtime composition layer.
+ *
+ * <p>{@link #sendToRoute(String, String)} and {@link #isRouteOnline(String)}
+ * are adapter-local operations. They are safe when the caller already owns the
+ * concrete adapter registry or when only one adapter registry is present in a
+ * composite runtime. Callers operating against a multi-adapter aggregate must
+ * prefer the adapter-scoped methods.
  */
 public interface WorkerEndpointRegistry {
 

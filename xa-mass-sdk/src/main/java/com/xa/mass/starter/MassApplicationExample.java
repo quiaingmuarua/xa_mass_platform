@@ -44,14 +44,22 @@ public class MassApplicationExample {
     }
 
     private static void exampleDualRealtimeAdapters() {
-        logger.info("Example 2: dual realtime adapters");
+        logger.info("Example 2: multiple realtime adapter instances");
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
+                                .adapterId("ws-public")
                                 .server(8081, "/ws")
                                 .enabled(true)
                                 .maxConnections(1000))
+                        .addWebSocketAdapter(webSocket -> webSocket
+                                .adapterId("ws-internal")
+                                .server(8083, "/internal-ws")
+                                .enabled(true)
+                                .serverEnabled(true)
+                                .maxConnections(200))
                         .socketAdapter(socket -> socket
+                                .adapterId("socket-edge")
                                 .server(8082)
                                 .enabled(true)
                                 .serverEnabled(true)
@@ -98,6 +106,7 @@ public class MassApplicationExample {
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
+                                .adapterId("ws-default")
                                 .server(8080)
                                 .enabled(true)
                                 .maxConnections(100))

@@ -31,6 +31,8 @@ import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.WorkerEndpointInspector;
+import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -38,8 +40,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -440,8 +444,14 @@ public class MassApplication {
         if (rawWorkerMessageChannels.isEmpty() || transportRuntimeRegistry == null) {
             return false;
         }
-        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(workerId);
-        String routeKey = workerId;
+        String normalizedWorkerId = workerId.trim();
+        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(normalizedWorkerId);
+        String routeKey = resolveRawMessageRouteKey(normalizedWorkerId, workerAdapterId);
+        if (routeKey == null) {
+            logger.debug("Skip raw transport side-channel because no unique active route is available: workerId={}, adapterId={}",
+                    normalizedWorkerId, workerAdapterId);
+            return false;
+        }
         for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
             if (rawWorkerMessageChannel.supportsRoute(routeKey, workerAdapterId)) {
                 rawWorkerMessageChannel.sendToRoute(routeKey, rawJson, traceId);
@@ -449,6 +459,32 @@ public class MassApplication {
             }
         }
         return false;
+    }
+
+    private String resolveRawMessageRouteKey(String workerId, String adapterId) {
+        WorkerEndpointInspector inspector = endpointRegistry instanceof WorkerEndpointInspector endpointInspector
+                ? endpointInspector
+                : null;
+        if (inspector == null || adapterId == null || adapterId.isBlank()) {
+            return null;
+        }
+        Set<String> routeKeys = new LinkedHashSet<>();
+        for (WorkerEndpointSnapshot snapshot : inspector.listWorkerEndpoints()) {
+            if (snapshot == null || !snapshot.isActive()) {
+                continue;
+            }
+            if (!workerId.equals(snapshot.getWorkerId())) {
+                continue;
+            }
+            if (!adapterId.equalsIgnoreCase(snapshot.getAdapterId())) {
+                continue;
+            }
+            String routeKey = snapshot.getRouteKey();
+            if (routeKey != null && !routeKey.isBlank()) {
+                routeKeys.add(routeKey.trim());
+            }
+        }
+        return routeKeys.size() == 1 ? routeKeys.iterator().next() : null;
     }
 
     public Map<String, Object> getTransportQueueDetail() {

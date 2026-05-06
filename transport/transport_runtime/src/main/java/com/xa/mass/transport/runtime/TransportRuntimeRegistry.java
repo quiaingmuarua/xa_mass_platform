@@ -2,11 +2,11 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
-import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.worker.TransportRoutingTaskMsgDispatchListener;
+import com.xa.mass.transport.worker.WorkerAdapter;
 
 import java.util.LinkedHashMap;
 import java.util.List;

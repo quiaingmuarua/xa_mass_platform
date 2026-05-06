@@ -852,15 +852,17 @@ Response shape:
 {
   "success": true,
   "data": [
-    {
-      "workerId": "dev123",
-      "connections": [
-        {
-          "active": true,
-          "endpointId": "abc123",
-          "transport": "websocket"
-        }
-      ]
+      {
+        "workerId": "dev123",
+        "connections": [
+          {
+            "active": true,
+            "endpointId": "abc123",
+            "routeKey": "worker-route-1",
+            "adapterId": "ws-public",
+            "transport": "websocket"
+          }
+        ]
     }
   ]
 }
@@ -876,6 +878,7 @@ Current meaning:
 
 - `activeConnections` counts currently addressable transport endpoints
 - `workerCount` counts distinct workers represented in the endpoint snapshot set
+- `activeConnectionsByAdapter` breaks active endpoint counts down by concrete `adapterId`
 - current WebSocket adapter uses a single endpoint per worker; session inspection no longer exposes any role/lane field
 
 Response shape:
@@ -885,7 +888,11 @@ Response shape:
   "success": true,
   "data": {
     "activeConnections": 2,
-    "workerCount": 1
+    "workerCount": 1,
+    "activeConnectionsByAdapter": {
+      "ws-public": 1,
+      "socket-edge": 1
+    }
   }
 }
 ```

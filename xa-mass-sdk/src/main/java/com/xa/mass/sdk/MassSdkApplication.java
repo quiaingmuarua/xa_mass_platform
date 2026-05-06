@@ -1447,6 +1447,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 Map<String, Object> connectionInfo = new LinkedHashMap<>();
                 connectionInfo.put("active", snapshot.isActive());
                 connectionInfo.put("endpointId", snapshot.getEndpointId());
+                connectionInfo.put("routeKey", snapshot.getRouteKey());
+                connectionInfo.put("adapterId", snapshot.getAdapterId());
                 connectionInfo.put("transport", snapshot.getTransport());
                 connections.add(connectionInfo);
             });
@@ -1463,12 +1465,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
         if (endpointRegistry != null) {
             data.put("activeConnections", endpointRegistry.getActiveConnectionCount());
-            data.put("workerCount", endpointInspector != null
-                    ? endpointInspector.listWorkerEndpoints().stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count()
-                    : 0L);
+            if (endpointInspector != null) {
+                List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
+                data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
+                Map<String, Long> activeConnectionsByAdapter = new LinkedHashMap<>();
+                snapshots.stream()
+                        .filter(WorkerEndpointSnapshot::isActive)
+                        .forEach(snapshot -> activeConnectionsByAdapter.merge(
+                                snapshot.getAdapterId(),
+                                1L,
+                                Long::sum
+                        ));
+                data.put("activeConnectionsByAdapter", activeConnectionsByAdapter);
+            } else {
+                data.put("workerCount", 0L);
+                data.put("activeConnectionsByAdapter", Map.of());
+            }
         } else {
             data.put("activeConnections", 0);
             data.put("workerCount", 0L);
+            data.put("activeConnectionsByAdapter", Map.of());
         }
         return data;
     }
@@ -1487,7 +1503,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 UUID.randomUUID().toString()
         );
         if (!accepted) {
-            return Map.of("success", false, "msg", "no transport side-channel accepted workerId");
+            return Map.of("success", false, "msg", "no transport side-channel accepted a unique active worker route");
         }
         return Map.of("success", true, "msg", "message enqueued");
     }
