@@ -76,7 +76,7 @@ class MassEngineStartRecoveryTest {
 
         try {
             engine.start((dispatchedTask, dispatchBindings) -> {
-                if (task.getTid().equals(dispatchedTask.getTid())) {
+                if (task.getTid().equals(dispatchedTask.taskId())) {
                     dispatchBindingsRef.set(dispatchBindings);
                     dispatchLatch.countDown();
                 }
