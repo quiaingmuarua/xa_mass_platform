@@ -1,8 +1,8 @@
 package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.listener.TaskDispatchBinding;
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;

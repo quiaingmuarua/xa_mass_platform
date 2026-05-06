@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.TaskResultIngestFacade;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;

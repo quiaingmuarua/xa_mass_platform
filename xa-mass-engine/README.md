@@ -36,6 +36,9 @@ Runtime-facing glue should prefer narrow engine ports and facades such as:
 - `TaskEventService`
 
 Do not default new cross-module callers to the full `TaskManager` facade.
+When a seam is transport-neutral and cross-module by nature, prefer a small
+shared runtime contract in a neutral module over making transport depend on
+engine-internal listener packages.
 
 ## Mainline Truth
 
@@ -70,6 +73,9 @@ Repo-level mainline surfaces:
 - explicit projection audit stays on `TaskQueryService` as a diagnostic-only
   path
 - transport/runtime result ingress uses `TaskResultIngestFacade`
+- dispatch-ready bindings and result-ingest seams used across engine, SDK,
+  transport runtime, and tests now live in shared base runtime contracts rather
+  than engine-owned package paths
 - listeners, watchdogs, and startup recovery should depend on narrow ports, not
   on `TaskManager` plus reach-through getters
 

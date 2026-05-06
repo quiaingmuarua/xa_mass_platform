@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 
 import java.util.Map;
 

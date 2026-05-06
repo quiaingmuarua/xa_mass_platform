@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.engine.listener.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.worker.WorkerAdapter;

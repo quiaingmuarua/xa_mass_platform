@@ -71,6 +71,8 @@ behavior that cannot fit one of these concepts.
 - routing from task assignment events to adapter dispatch channels
 - worker transport-binding resolution from registered worker truth via storage
   lookup contracts rather than the broader engine worker facade
+- consumption of shared dispatch-ready/result-ingest seams from neutral runtime
+  contracts rather than direct engine listener/package ownership
 
 Concrete adapters own protocol I/O only:
 

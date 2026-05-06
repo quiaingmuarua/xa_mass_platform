@@ -1,12 +1,12 @@
-package com.xa.mass.engine;
+package com.xa.mass.base.runtime.result;
 
 import com.xa.mass.base.model.TaskMsgAttempt;
 
 import java.util.Map;
 
 /**
- * Narrow engine surface for transport-side task result ingestion and
- * attempt-identity validation.
+ * Narrow runtime-facing surface for task result ingestion and active-attempt
+ * identity validation.
  */
 public interface TaskResultIngestFacade {
 

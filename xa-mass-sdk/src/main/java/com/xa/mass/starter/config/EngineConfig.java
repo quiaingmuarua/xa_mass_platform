@@ -1,5 +1,6 @@
 package com.xa.mass.starter.config;
 
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -9,7 +10,6 @@ import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskManagerRuntimeRecoveryPort;
-import com.xa.mass.engine.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;

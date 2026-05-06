@@ -1,6 +1,7 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 
 import java.util.List;

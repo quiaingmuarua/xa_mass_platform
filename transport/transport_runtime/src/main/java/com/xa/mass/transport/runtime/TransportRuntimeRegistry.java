@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
