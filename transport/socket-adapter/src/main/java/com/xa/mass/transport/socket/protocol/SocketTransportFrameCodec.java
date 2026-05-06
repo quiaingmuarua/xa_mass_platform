@@ -58,6 +58,10 @@ public final class SocketTransportFrameCodec {
         return readString(frame, "workerId");
     }
 
+    public String extractRouteKey(JsonObject frame) {
+        return readString(frame, "routeKey");
+    }
+
     public String extractTraceId(JsonObject frame) {
         return readString(frame, "traceId");
     }

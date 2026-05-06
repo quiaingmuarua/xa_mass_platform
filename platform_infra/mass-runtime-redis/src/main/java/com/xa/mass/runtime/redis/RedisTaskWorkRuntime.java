@@ -119,7 +119,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get()) {
             return WorkEnqueueOutcome.unavailable(item, "work runtime is stopped");
         }
-        return withRuntimeLock(() -> enqueueLocked(item, options));
+        try {
+            return withRuntimeLock(() -> enqueueLocked(item, options));
+        } catch (RuntimeException ex) {
+            return WorkEnqueueOutcome.unavailable(item, "redis runtime is unavailable: " + ex.getMessage());
+        }
     }
 
     @Override
@@ -127,10 +131,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (limit <= 0 || !running.get()) {
             return List.of();
         }
-        return withRuntimeLock(() -> {
-            promoteDueDelayedLocked(clock.get(), limit);
-            return loadReadyTaskIdsLocked(limit);
-        });
+        try {
+            return withRuntimeLock(() -> {
+                promoteDueDelayedLocked(clock.get(), limit);
+                return loadReadyTaskIdsLocked(limit);
+            });
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -143,7 +151,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (options.maxItems() <= 0) {
             return List.of();
         }
-        return withRuntimeLock(() -> claimReadyLocked(taskId, workers, options));
+        try {
+            return withRuntimeLock(() -> claimReadyLocked(taskId, workers, options));
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -151,7 +163,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get()) {
             return ResultApplyOutcome.failed(result, "work runtime is stopped");
         }
-        return withRuntimeLock(() -> applyResultLocked(result));
+        try {
+            return withRuntimeLock(() -> applyResultLocked(result));
+        } catch (RuntimeException ex) {
+            return ResultApplyOutcome.failed(result, "redis runtime is unavailable: " + ex.getMessage());
+        }
     }
 
     @Override
@@ -159,7 +175,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get() || limit <= 0) {
             return List.of();
         }
-        return withRuntimeLock(() -> pollExpiredLeasesLocked(limit, now == null ? clock.get() : now));
+        try {
+            return withRuntimeLock(() -> pollExpiredLeasesLocked(limit, now == null ? clock.get() : now));
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -167,7 +187,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get() || isBlank(taskId)) {
             return List.of();
         }
-        return withRuntimeLock(() -> activeLeasesLocked(taskId));
+        try {
+            return withRuntimeLock(() -> activeLeasesLocked(taskId));
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -175,7 +199,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (isBlank(taskId) || isBlank(messageId)) {
             return Optional.empty();
         }
-        return withRuntimeLock(() -> Optional.ofNullable(loadLease(taskId, messageId)));
+        try {
+            return withRuntimeLock(() -> Optional.ofNullable(loadLease(taskId, messageId)));
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
     }
 
     @Override
@@ -183,10 +211,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (isBlank(taskId) || !running.get()) {
             return false;
         }
-        return withRuntimeLock(() -> {
-            promoteDueDelayedForTaskLocked(taskId, clock.get());
-            return ensureReadyQueueVisibleLocked(taskId);
-        });
+        try {
+            return withRuntimeLock(() -> {
+                promoteDueDelayedForTaskLocked(taskId, clock.get());
+                return ensureReadyQueueVisibleLocked(taskId);
+            });
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     @Override
@@ -194,15 +226,19 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (isBlank(taskId) || isBlank(workerId) || !running.get()) {
             return false;
         }
-        return withRuntimeLock(() -> {
-            for (String member : commands.smembers(keyspace.workerActiveSet(workerId))) {
-                RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
-                if (taskId.equals(ref.taskId()) && loadLease(ref.taskId(), ref.messageId()) != null) {
-                    return true;
+        try {
+            return withRuntimeLock(() -> {
+                for (String member : commands.smembers(keyspace.workerActiveSet(workerId))) {
+                    RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
+                    if (taskId.equals(ref.taskId()) && loadLease(ref.taskId(), ref.messageId()) != null) {
+                        return true;
+                    }
                 }
-            }
+                return false;
+            });
+        } catch (RuntimeException ex) {
             return false;
-        });
+        }
     }
 
     @Override
@@ -213,10 +249,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (isBlank(taskId)) {
             return TaskWorkStats.EMPTY;
         }
-        return withRuntimeLock(() -> {
-            promoteDueDelayedForTaskLocked(taskId, clock.get());
-            return loadTaskStats(taskId);
-        });
+        try {
+            return withRuntimeLock(() -> {
+                promoteDueDelayedForTaskLocked(taskId, clock.get());
+                return loadTaskStats(taskId);
+            });
+        } catch (RuntimeException ex) {
+            return TaskWorkStats.EMPTY;
+        }
     }
 
     @Override
@@ -224,27 +264,31 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get()) {
             return new TaskWorkRuntimeStats(0, 0, 0, 0, maxQueuedItems, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
-        return withRuntimeLock(() -> {
-            promoteDueDelayedLocked(clock.get(), 256);
-            Map<String, String> runtimeStats = commands.hgetall(keyspace.runtimeStatsHash());
-            return new TaskWorkRuntimeStats(
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_READY_COUNT)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT)),
-                    Math.toIntExact(commands.zcard(keyspace.readyTasksZset())),
-                    maxQueuedItems,
-                    oldestReadyAgeMillisLocked(),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_ENQUEUED_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_CLAIMED_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_RESULT_APPLIED_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DUPLICATE_RESULT_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_STALE_RESULT_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_EXPIRED_LEASE_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DISCARDED_ITEMS)),
-                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS))
-            );
-        });
+        try {
+            return withRuntimeLock(() -> {
+                promoteDueDelayedLocked(clock.get(), 256);
+                Map<String, String> runtimeStats = commands.hgetall(keyspace.runtimeStatsHash());
+                return new TaskWorkRuntimeStats(
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_READY_COUNT)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT)),
+                        Math.toIntExact(commands.zcard(keyspace.readyTasksZset())),
+                        maxQueuedItems,
+                        oldestReadyAgeMillisLocked(),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_ENQUEUED_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_CLAIMED_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_RESULT_APPLIED_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DUPLICATE_RESULT_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_STALE_RESULT_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_EXPIRED_LEASE_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DISCARDED_ITEMS)),
+                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS))
+                );
+            });
+        } catch (RuntimeException ex) {
+            return new TaskWorkRuntimeStats(0, 0, 0, 0, maxQueuedItems, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
     }
 
     @Override
@@ -252,7 +296,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (isBlank(taskId)) {
             return 0L;
         }
-        return withRuntimeLock(() -> discardTaskLocked(taskId));
+        try {
+            return withRuntimeLock(() -> discardTaskLocked(taskId));
+        } catch (RuntimeException ex) {
+            return 0L;
+        }
     }
 
     @Override
@@ -262,22 +310,26 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return;
         }
         try {
-            withRuntimeLock(() -> {
-                long cleared = 0L;
-                for (String taskId : commands.smembers(keyspace.taskRegistrySet())) {
-                    cleared += discardTaskLocked(taskId);
-                }
-                if (cleared > 0) {
-                    incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS, cleared);
-                }
-                commands.del(
-                        keyspace.readyTasksZset(),
-                        keyspace.delayedWorkZset(),
-                        keyspace.leaseExpiryZset(),
-                        keyspace.taskRegistrySet()
-                );
-                return null;
-            });
+            try {
+                withRuntimeLock(() -> {
+                    long cleared = 0L;
+                    for (String taskId : commands.smembers(keyspace.taskRegistrySet())) {
+                        cleared += discardTaskLocked(taskId);
+                    }
+                    if (cleared > 0) {
+                        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS, cleared);
+                    }
+                    commands.del(
+                            keyspace.readyTasksZset(),
+                            keyspace.delayedWorkZset(),
+                            keyspace.leaseExpiryZset(),
+                            keyspace.taskRegistrySet()
+                    );
+                    return null;
+                });
+            } catch (RuntimeException ignored) {
+                // Redis is already unavailable; local shutdown still needs to release resources.
+            }
         } finally {
             closeRedisResources();
         }

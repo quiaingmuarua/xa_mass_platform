@@ -21,7 +21,11 @@ public final class WebSocketOutputProcessor {
 
     public boolean process(TransportOutboundMessage delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getRouteKey(), delivery.getRawJson());
+            boolean sent = context.getEndpointRegistry().sendToAdapterRoute(
+                    context.getAdapterId(),
+                    delivery.getRouteKey(),
+                    delivery.getRawJson()
+            );
             if (sent) {
                 return true;
             }

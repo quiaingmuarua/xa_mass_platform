@@ -29,6 +29,7 @@ public final class WebSocketTransportFrameCodec {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportFrameCodec.class);
     private static final String MESSAGE_ID_FIELD = "messageId";
     private static final String WORKER_ID_FIELD = "workerId";
+    private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String PROJECT_FIELD = "project";
     private static final String EVENT_CODE_FIELD = "eventCode";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
@@ -56,6 +57,10 @@ public final class WebSocketTransportFrameCodec {
 
     public String extractWorkerId(JsonObject frame) {
         return readString(frame, WORKER_ID_FIELD);
+    }
+
+    public String extractRouteKey(JsonObject frame) {
+        return readString(frame, ROUTE_KEY_FIELD);
     }
 
     public String extractProject(JsonObject frame) {

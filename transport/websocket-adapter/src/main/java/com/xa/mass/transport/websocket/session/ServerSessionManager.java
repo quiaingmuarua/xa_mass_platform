@@ -131,6 +131,11 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return binding != null ? binding.workerId() : null;
     }
 
+    public String getRouteKey(Channel channel) {
+        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(channel);
+        return binding != null ? binding.routeKey() : null;
+    }
+
     public Channel getChannel(String routeKey) {
         WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         return endpoint != null ? endpoint.channel() : null;

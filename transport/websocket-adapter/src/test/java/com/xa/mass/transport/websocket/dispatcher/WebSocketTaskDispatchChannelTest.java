@@ -35,7 +35,8 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void publishesDispatchItemsDirectlyToEndpointRegistry() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
+        when(endpointRegistry.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("websocket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+                .thenReturn(true);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
                 "websocket",
@@ -55,7 +56,7 @@ class WebSocketTaskDispatchChannelTest {
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-        verify(endpointRegistry).sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), captor.capture());
+        verify(endpointRegistry).sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("websocket"), org.mockito.ArgumentMatchers.eq("worker-1"), captor.capture());
 
         JsonObject message = codec.parseObject(captor.getValue());
         assertNotNull(message);
@@ -80,7 +81,8 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsEndpointOfflineWhenEndpointRegistryCannotSend() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
+        when(endpointRegistry.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("websocket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+                .thenReturn(false);
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
                 "websocket",
                 endpointRegistry,

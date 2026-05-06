@@ -110,6 +110,16 @@ class WebSocketTransportFrameCodecTest {
     }
 
     @Test
+    void routeKeyCanBeExtractedIndependentlyFromWorkerId() {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("routeKey", "ws-route-7");
+
+        assertEquals("worker-1", codec.extractWorkerId(frame));
+        assertEquals("ws-route-7", codec.extractRouteKey(frame));
+    }
+
+    @Test
     void legacyContextTaskRoutingIsRejected() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");

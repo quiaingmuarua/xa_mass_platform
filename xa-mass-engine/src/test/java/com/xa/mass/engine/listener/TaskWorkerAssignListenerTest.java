@@ -286,11 +286,11 @@ class TaskWorkerAssignListenerTest {
         MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
-        when(matchingStrategy.matchWorkers(same(task), eq(3))).thenReturn(List.of(matchedWorker));
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
         when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
-        verify(matchingStrategy).matchWorkers(same(task), eq(3));
+        verify(matchingStrategy).matchWorkers(same(task), eq(2));
     }
 
     @Test

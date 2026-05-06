@@ -1,10 +1,13 @@
 package com.xa.mass.runtime.redis;
 
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -19,12 +22,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class RedisTaskWorkRuntimeTest {
 
@@ -179,6 +185,73 @@ class RedisTaskWorkRuntimeTest {
         assertEquals(List.of("foreign-task"), commands.zrange(other.readyTasksZset(), 0, -1));
     }
 
+    @Test
+    void competingRuntimeInstancesClaimOnlyOneCopyOfTheSameWork() throws Exception {
+        runtime.enqueue(item("task-race", "msg-1"), WorkEnqueueOptions.DEFAULT);
+
+        StatefulRedisConnection<String, String> contenderConnection = redisClient.connect();
+        RedisTaskWorkRuntime contender = new RedisTaskWorkRuntime(contenderConnection, keyspace, 1024, now::get);
+        try {
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicReference<List<ClaimedTaskWork>> firstClaim = new AtomicReference<>(List.of());
+            AtomicReference<List<ClaimedTaskWork>> secondClaim = new AtomicReference<>(List.of());
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+
+            Thread first = new Thread(() -> runClaim(runtime, ready, start, firstClaim, failure), "redis-claim-first");
+            Thread second = new Thread(() -> runClaim(contender, ready, start, secondClaim, failure), "redis-claim-second");
+            first.start();
+            second.start();
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "claim workers did not become ready");
+            start.countDown();
+            first.join(5000);
+            second.join(5000);
+
+            if (failure.get() != null) {
+                fail(failure.get());
+            }
+
+            int claimedCopies = firstClaim.get().size() + secondClaim.get().size();
+            assertEquals(1, claimedCopies);
+            assertTrue(firstClaim.get().isEmpty() || secondClaim.get().isEmpty());
+            assertEquals(1, commands.smembers(keyspace.taskActiveSet("task-race")).size());
+            assertTrue(commands.lrange(keyspace.taskReadyQueue("task-race"), 0, -1).isEmpty());
+        } finally {
+            contender.shutdown();
+            if (contenderConnection.isOpen()) {
+                contenderConnection.close();
+            }
+        }
+    }
+
+    @Test
+    void closedRedisConnectionDegradesToRuntimeLevelUnavailableSemantics() {
+        StatefulRedisConnection<String, String> brokenConnection = redisClient.connect();
+        RedisTaskWorkRuntime brokenRuntime = new RedisTaskWorkRuntime(
+                brokenConnection,
+                new RedisTaskWorkKeyspace("xa:mass:test:redis-runtime:broken:" + UUID.randomUUID()),
+                1024,
+                now::get
+        );
+        brokenConnection.close();
+
+        WorkEnqueueOutcome enqueueOutcome = brokenRuntime.enqueue(item("broken-task", "msg-1"), WorkEnqueueOptions.DEFAULT);
+        ResultApplyOutcome resultOutcome = brokenRuntime.applyResult(
+                TaskWorkResult.success("broken-task", "msg-1", "lease-1", "done", Map.of())
+        );
+
+        assertEquals(WorkEnqueueStatus.STORE_UNAVAILABLE, enqueueOutcome.status());
+        assertEquals(ResultApplyStatus.FAILED, resultOutcome.status());
+        assertTrue(brokenRuntime.readyTaskIds(10).isEmpty());
+        assertTrue(brokenRuntime.claimReady("broken-task", List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).isEmpty());
+        assertTrue(brokenRuntime.pollExpiredLeases(10, now.get()).isEmpty());
+        assertEquals(0L, brokenRuntime.stats().readyItems());
+        assertEquals(0L, brokenRuntime.stats("broken-task").totalCount());
+        assertEquals(0L, brokenRuntime.discardTask("broken-task"));
+        brokenRuntime.shutdown();
+    }
+
     private TaskWorkEnvelope item(String taskId, String messageId) {
         return new TaskWorkEnvelope(taskId, messageId, "demo.event",
                 Map.of("target", messageId), null, 0, 3, null, null, now.get());
@@ -187,5 +260,24 @@ class RedisTaskWorkRuntimeTest {
     private TaskWorkEnvelope delayedItem(String taskId, String messageId, Instant nextVisibleAt) {
         return new TaskWorkEnvelope(taskId, messageId, "demo.event",
                 Map.of("target", messageId), null, 0, 3, null, nextVisibleAt, now.get());
+    }
+
+    private void runClaim(RedisTaskWorkRuntime runtime,
+                          CountDownLatch ready,
+                          CountDownLatch start,
+                          AtomicReference<List<ClaimedTaskWork>> claimHolder,
+                          AtomicReference<Throwable> failure) {
+        ready.countDown();
+        try {
+            assertTrue(start.await(5, TimeUnit.SECONDS));
+            claimHolder.set(runtime.claimReady(
+                    "task-race",
+                    List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                    1,
+                    30
+            ));
+        } catch (Throwable throwable) {
+            failure.compareAndSet(null, throwable);
+        }
     }
 }

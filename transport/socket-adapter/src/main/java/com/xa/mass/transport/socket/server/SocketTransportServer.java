@@ -151,6 +151,7 @@ public final class SocketTransportServer implements TransportServer {
     private void handleClient(Socket client) {
         String endpointId = UUID.randomUUID().toString();
         String boundWorkerId = null;
+        String boundRouteKey = null;
         try (Socket socket = client;
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -167,7 +168,8 @@ public final class SocketTransportServer implements TransportServer {
                     if (boundWorkerId == null) {
                         continue;
                     }
-                    sessionManager.addSession(boundWorkerId, boundWorkerId, endpointId, socket, writer);
+                    boundRouteKey = firstNonBlank(frameCodec.extractRouteKey(frame), boundWorkerId);
+                    sessionManager.addSession(boundRouteKey, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }
                 if (boundWorkerId == null) {
@@ -199,11 +201,13 @@ public final class SocketTransportServer implements TransportServer {
                     ));
                     continue;
                 }
-                logger.warn("Ignoring unsupported socket frame: endpointId={}, workerId={}", endpointId, boundWorkerId);
+                logger.warn("Ignoring unsupported socket frame: endpointId={}, routeKey={}, workerId={}",
+                        endpointId, boundRouteKey, boundWorkerId);
             }
         } catch (Exception ex) {
             if (running.get()) {
-                logger.error("Socket client loop failed: endpointId={}, workerId={}", endpointId, boundWorkerId, ex);
+                logger.error("Socket client loop failed: endpointId={}, routeKey={}, workerId={}",
+                        endpointId, boundRouteKey, boundWorkerId, ex);
             }
         } finally {
             sessionManager.removeSession(endpointId);
@@ -242,5 +246,15 @@ public final class SocketTransportServer implements TransportServer {
         } catch (IOException ignored) {
             // Best-effort startup cleanup.
         }
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        if (second != null && !second.isBlank()) {
+            return second;
+        }
+        return null;
     }
 }
