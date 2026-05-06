@@ -16,6 +16,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
 import org.junit.jupiter.api.Test;
 
@@ -294,8 +295,8 @@ class TransportRoutingTaskMsgDispatchListenerTest {
             lastEnvelopes.addAll(envelopes);
             List<DispatchOutcome> currentOutcomes = new ArrayList<>();
             for (TransportDispatchEnvelope envelope : envelopes) {
-                TaskDispatchItem item = envelope.getPayload();
-                dispatchedMessageIds.add(item.getMessageId());
+                TransportPacket packet = envelope.getPacket();
+                dispatchedMessageIds.add(packet.messageId());
                 DispatchOutcome outcome = outcome(envelope);
                 outcomes.add(outcome);
                 currentOutcomes.add(outcome);

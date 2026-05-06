@@ -2,7 +2,7 @@ package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -120,3 +120,4 @@ public final class SdkResourceMapper {
         return normalized.isEmpty() ? Collections.emptyMap() : Map.copyOf(normalized);
     }
 }
+

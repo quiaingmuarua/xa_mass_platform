@@ -8,7 +8,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -687,4 +687,5 @@ public class TaskManager {
         return taskRuntimeBridge.enqueueTaskWork(taskId, taskMsg);
     }
 }
+
 

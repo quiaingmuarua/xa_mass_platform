@@ -4,7 +4,7 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.rule.RuleDefinition;
 
 import java.util.List;
@@ -85,3 +85,4 @@ public class MonkeyGenerator {
                 """;
     }
 }
+

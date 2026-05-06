@@ -74,7 +74,6 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         TransportDispatchEnvelope normalizedEnvelope = new TransportDispatchEnvelope(
                 envelope.getDeliveryId(),
                 normalizedPacket,
-                envelope.getPayload(),
                 envelope.getCreatedAtEpochMillis()
         );
         KeyedQueueOfferResult result = queueStore.offer(

@@ -10,7 +10,7 @@ import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -350,3 +350,4 @@ public class StorageExample {
         );
     }
 }
+

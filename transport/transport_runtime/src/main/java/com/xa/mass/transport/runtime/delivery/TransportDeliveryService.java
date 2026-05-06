@@ -5,6 +5,7 @@ import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -66,7 +67,8 @@ public final class TransportDeliveryService {
             return List.of();
         }
         return result.getEnvelopes().stream()
-                .map(TransportDispatchEnvelope::getPayload)
+                .map(TransportDispatchEnvelope::getPacket)
+                .map(TransportPacketViews::toTaskDispatchItem)
                 .toList();
     }
 

@@ -26,9 +26,10 @@ import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -1114,8 +1115,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1138,7 +1139,7 @@ class MassSdkTest {
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(captor.capture());
+        verify(workerStorage).addWorker(captor.capture());
         Worker worker = captor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
@@ -1154,8 +1155,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1170,7 +1171,7 @@ class MassSdkTest {
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerManager).addWorkerContext(captor.capture());
+        verify(workerStorage).addWorkerContext(captor.capture());
         WorkerContext workerContext = captor.getValue();
         Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
         Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
@@ -1964,8 +1965,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2003,7 +2004,7 @@ class MassSdkTest {
                 .build());
 
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(workerCaptor.capture());
+        verify(workerStorage).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
@@ -2013,7 +2014,7 @@ class MassSdkTest {
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
 
         var contextCaptor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerManager).addWorkerContext(contextCaptor.capture());
+        verify(workerStorage).addWorkerContext(contextCaptor.capture());
         WorkerContext workerContext = contextCaptor.getValue();
         Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
         Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
@@ -2026,8 +2027,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2054,7 +2055,7 @@ class MassSdkTest {
                 .build());
 
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(workerCaptor.capture());
+        verify(workerStorage).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals(List.of("demoApp", "telegramApp", "rcsApp"), worker.getSupportedProjects());
         Assertions.assertEquals(List.of("crawler.fetch-page", "chatbot.reply"), worker.getSupportedEventCodes());
@@ -3059,3 +3060,4 @@ class MassSdkTest {
     }
 
 }
+

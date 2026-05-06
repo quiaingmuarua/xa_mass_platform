@@ -5,6 +5,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
@@ -17,10 +18,10 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
@@ -343,19 +344,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public Worker getWorker(String workerId) {
-        return requireStartedWorkerManager().getWorker(workerId);
+        return requireStartedWorkerStorage().getWorker(workerId).orElse(null);
     }
 
     public List<Worker> getAllWorkers() {
-        return requireStartedWorkerManager().getAllWorkers();
+        return requireStartedWorkerStorage().getAllWorkers();
     }
 
     public List<WorkerContext> getAllWorkerContexts() {
-        return requireStartedWorkerManager().getAllWorkerContexts();
+        return requireStartedWorkerStorage().getAllWorkerContexts();
     }
 
     public List<WorkerContext> getWorkerContexts(String workerId) {
-        return requireStartedWorkerManager().getWorkerContexts(workerId);
+        return requireStartedWorkerStorage().getWorkerContexts(workerId);
     }
 
     public PullWorkerSession pullWorker(String workerId) {
@@ -405,25 +406,27 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public WorkerContext getWorkerContextById(String workerContextId) {
-        return requireStartedWorkerManager().getWorkerContextById(workerContextId);
+        return requireStartedWorkerStorage().getWorkerContextById(workerContextId).orElse(null);
     }
 
     public boolean isWorkerLocked(String workerId) {
-        return requireStartedWorkerManager().isLocked(workerId);
+        return requireStartedWorkerStorage().isLocked(workerId);
     }
 
     public boolean isWorkerOnline(String workerId) {
-        return requireStartedWorkerManager().isWorkerOnline(workerId);
+        Worker worker = getWorker(requireWorkerId(workerId));
+        return worker != null && worker.getStatus() == WorkerStatus.ONLINE;
     }
 
     @Override
     public boolean updateWorkerSupportedProjects(String workerId, List<String> supportedProjects) {
-        Worker worker = requireStartedWorkerManager().getWorker(requireWorkerId(workerId));
+        WorkerStorage workerStorage = requireStartedWorkerStorage();
+        Worker worker = workerStorage.getWorker(requireWorkerId(workerId)).orElse(null);
         if (worker == null) {
             return false;
         }
         worker.setSupportedProjects(normalizedProjectCodes(supportedProjects));
-        return requireStartedWorkerManager().updateWorker(worker);
+        return workerStorage.updateWorker(worker);
     }
 
     @Override
@@ -524,7 +527,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Register a worker identity and capability record.",
                 (request, principal) -> {
                     WorkerRegistration registration = resolveWorkerRegistration(request);
-                    requireStartedWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
+                    requireStartedWorkerStorage().addWorker(SdkResourceMapper.toWorker(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
@@ -534,7 +537,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "Register a worker execution context.",
                 (request, principal) -> {
                     WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
-                    requireStartedWorkerManager().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
+                    requireStartedWorkerStorage().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
@@ -1591,12 +1594,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskEvents;
     }
 
-    private WorkerManager requireStartedWorkerManager() {
-        WorkerManager workerManager = requireStartedEngine().getConfig().getWorkerManager();
-        if (workerManager == null) {
-            throw new IllegalStateException("Worker manager is unavailable for this SDK application");
+    private WorkerStorage requireStartedWorkerStorage() {
+        WorkerStorage workerStorage = requireStartedEngine().getConfig().getWorkerStorage();
+        if (workerStorage == null) {
+            throw new IllegalStateException("Worker storage is unavailable for this SDK application");
         }
-        return workerManager;
+        return workerStorage;
     }
 
     private RuleManager<Map<String, Object>> requireStartedRuleManager() {

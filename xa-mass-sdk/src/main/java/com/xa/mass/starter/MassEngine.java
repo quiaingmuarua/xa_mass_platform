@@ -6,6 +6,7 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
@@ -174,7 +175,7 @@ public class MassEngine {
         }
     }
 
-    public Task createTask(com.xa.mass.engine.model.TaskCreateRequestDto dto) {
+    public Task createTask(TaskCreateRequestDto dto) {
         if (taskCommands == null) {
             throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
         }
@@ -208,3 +209,4 @@ public class MassEngine {
         }
     }
 }
+

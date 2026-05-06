@@ -10,7 +10,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -69,3 +69,4 @@ public class EngineExample {
         return processor.generate(definition, new ProcessingContext("test-context"), Worker.class);
     }
 }
+

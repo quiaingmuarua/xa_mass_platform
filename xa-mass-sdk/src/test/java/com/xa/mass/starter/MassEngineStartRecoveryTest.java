@@ -11,7 +11,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
@@ -98,3 +98,4 @@ class MassEngineStartRecoveryTest {
         }
     }
 }
+

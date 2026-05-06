@@ -1,4 +1,4 @@
-package com.xa.mass.engine.model;
+package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.base.enums.task.TaskSourceType;
@@ -8,16 +8,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Engine-internal task-create contract.
+ * Shared task-create contract used across engine, SDK, server bootstrap, and
+ * testing flows.
  *
- * <p>This DTO is the authoritative input type for {@link com.xa.mass.engine.TaskManager#createTask}.
- * It lives in {@code xa-mass-engine} so the engine module has no dependency on
- * {@code xa-mass-sdk-api}. The SDK-facing equivalent is
- * {@code com.xa.mass.sdk.model.MassTaskCreateRequest}; {@code MassApplication} maps
- * between the two at the composition boundary.
+ * <p>This type is intentionally kept in the neutral base module because task
+ * creation is not an engine-private concern. Runtime shells and acceptance
+ * harnesses should not need to depend on engine package ownership just to
+ * submit task-create input.
  *
  * <p>Unknown JSON properties are rejected ({@code ignoreUnknown = false}) so
- * outdated REST clients fail fast instead of silently ignoring unsupported fields.
+ * outdated clients fail fast instead of silently ignoring unsupported fields.
  */
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class TaskCreateRequestDto {
@@ -38,14 +38,6 @@ public class TaskCreateRequestDto {
     public TaskCreateRequestDto() {
     }
 
-    public boolean isOpenEnded() {
-        return openEnded;
-    }
-
-    public void setOpenEnded(boolean openEnded) {
-        this.openEnded = openEnded;
-    }
-
     public TaskCreateRequestDto(String userId,
                                 String project,
                                 String taskName,
@@ -56,6 +48,14 @@ public class TaskCreateRequestDto {
         this.taskName = taskName;
         this.sharedConfig = sharedConfig;
         this.inputs = inputs;
+    }
+
+    public boolean isOpenEnded() {
+        return openEnded;
+    }
+
+    public void setOpenEnded(boolean openEnded) {
+        this.openEnded = openEnded;
     }
 
     public String getUserId() {

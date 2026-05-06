@@ -2,7 +2,7 @@ package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -47,3 +47,4 @@ class SdkTaskRequestMapperTest {
         assertEquals(TaskSourceType.STREAM, dto.getSourceType());
     }
 }
+

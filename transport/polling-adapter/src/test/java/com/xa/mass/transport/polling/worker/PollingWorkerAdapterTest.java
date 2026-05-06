@@ -27,7 +27,9 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(List.of(item), adapter.pollTaskMessages("worker-1", 10, 0));
+        assertEquals(List.of("msg-1"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
     }
 
     @Test

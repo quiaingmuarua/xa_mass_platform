@@ -2,7 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
@@ -77,3 +77,4 @@ public class TaskCommandService {
     }
 
 }
+

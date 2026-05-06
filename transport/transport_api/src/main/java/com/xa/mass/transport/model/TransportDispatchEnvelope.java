@@ -14,8 +14,8 @@ public final class TransportDispatchEnvelope {
 
     private final String deliveryId;
     private final TransportPacket packet;
-    private final TaskDispatchItem payload;
     private final long createdAtEpochMillis;
+    private volatile TaskDispatchItem payload;
 
     public TransportDispatchEnvelope(String deliveryId,
                                      TransportPacket packet,
@@ -77,7 +77,13 @@ public final class TransportDispatchEnvelope {
     }
 
     public TaskDispatchItem getPayload() {
-        return payload;
+        TaskDispatchItem current = payload;
+        if (current != null) {
+            return current;
+        }
+        TaskDispatchItem projected = TransportPacketViews.toTaskDispatchItem(packet);
+        payload = projected;
+        return projected;
     }
 
     public TransportPacket getPacket() {

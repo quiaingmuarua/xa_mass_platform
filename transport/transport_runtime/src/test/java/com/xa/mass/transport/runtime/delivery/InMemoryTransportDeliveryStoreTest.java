@@ -29,8 +29,8 @@ class InMemoryTransportDeliveryStoreTest {
 
         assertEquals(DispatchOutcomeStatus.QUEUED, pollingOutcome.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, websocketOutcome.getStatus());
-        assertEquals(List.of(pollingItem), payloads(store.drain("polling", "worker-1", 10)));
-        assertEquals(List.of(websocketItem), payloads(store.drain("websocket", "worker-1", 10)));
+        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertEquals(List.of("msg-2"), messageIds(store.drain("websocket", "worker-1", 10)));
     }
 
     @Test
@@ -202,7 +202,7 @@ class InMemoryTransportDeliveryStoreTest {
         Thread.sleep(50L);
         store.enqueue(envelope("polling", item));
 
-        assertEquals(List.of(item), payloads(polled.get(1, TimeUnit.SECONDS)));
+        assertEquals(List.of("msg-1"), messageIds(polled.get(1, TimeUnit.SECONDS)));
     }
 
     @Test

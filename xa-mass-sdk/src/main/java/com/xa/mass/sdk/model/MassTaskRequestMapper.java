@@ -1,13 +1,14 @@
 package com.xa.mass.sdk.model;
 
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskCreateRequestDto;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Shared mapper from SDK-native task requests to the current engine DTO.
+ * Shared mapper from SDK-native task requests to the neutral task-create
+ * contract consumed by engine command surfaces.
  */
 public final class MassTaskRequestMapper {
 
@@ -47,3 +48,4 @@ public final class MassTaskRequestMapper {
         return Map.copyOf(merged);
     }
 }
+

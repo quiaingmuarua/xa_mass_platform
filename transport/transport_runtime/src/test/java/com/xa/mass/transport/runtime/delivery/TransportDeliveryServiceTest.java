@@ -125,7 +125,9 @@ class TransportDeliveryServiceTest {
         TaskDispatchItem item = item("msg-1", "worker-1");
         service.enqueue(List.of(envelope(item)));
 
-        assertEquals(List.of(item), service.pollPayloads("polling", "worker-1", 10, 0));
+        assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
     }
 
     @Test
