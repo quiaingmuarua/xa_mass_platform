@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
@@ -682,6 +683,31 @@ public class TaskManager {
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskRuntimeBridge.applyTaskWorkResult(result);
+    }
+
+    boolean compensateDispatchSubmitFailure(Task task,
+                                            List<TaskDispatchBinding> dispatchBindings,
+                                            String detail) {
+        if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
+            return true;
+        }
+        boolean progressDirty = false;
+        for (TaskDispatchBinding dispatchBinding : dispatchBindings) {
+            if (dispatchBinding == null || dispatchBinding.taskMsg() == null) {
+                continue;
+            }
+            String messageId = dispatchBinding.taskMsg().getMessageId();
+            TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(task.getTid(), messageId,
+                    () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
+            if (!outcome.accepted()) {
+                return false;
+            }
+            progressDirty |= outcome.progressDirty();
+        }
+        if (progressDirty) {
+            updateTaskProgress(task.getTid());
+        }
+        return true;
     }
 
     void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {

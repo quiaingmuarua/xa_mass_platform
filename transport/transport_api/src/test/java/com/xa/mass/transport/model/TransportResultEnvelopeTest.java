@@ -27,6 +27,7 @@ class TransportResultEnvelopeTest {
         assertEquals("endpoint-1", envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
         assertSame(report, envelope.getReport());
         assertEquals("task-1", envelope.getTaskId());
         assertEquals("msg-1", envelope.getMessageId());
@@ -46,6 +47,7 @@ class TransportResultEnvelopeTest {
         assertNull(envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
     }
 
     @Test
@@ -65,7 +67,36 @@ class TransportResultEnvelopeTest {
         assertEquals("endpoint-1", envelope.getEndpointId());
         assertEquals("attempt-1", envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
         assertSame(report, envelope.getReport());
+    }
+
+    @Test
+    void fromReportCarriesTraceIdWhenProvided() {
+        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
+                "polling",
+                "worker-1",
+                "endpoint-1",
+                " trace-123 ",
+                report()
+        );
+
+        assertEquals("trace-123", envelope.getTraceId());
+    }
+
+    @Test
+    void fromDispatchContextCarriesTraceIdWhenProvided() {
+        TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchContext(
+                "polling",
+                "worker-1",
+                "endpoint-1",
+                "attempt-1",
+                " trace-attempt-1 ",
+                report()
+        );
+
+        assertEquals("attempt-1", envelope.getAttemptId());
+        assertEquals("trace-attempt-1", envelope.getTraceId());
     }
 
     @Test

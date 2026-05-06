@@ -18,10 +18,15 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -40,13 +45,15 @@ class RuntimeTaskResultIngestChannelTest {
     private InMemoryTaskStorage taskStorage;
     private InMemoryTaskWorkRuntime taskWorkRuntime;
     private RuntimeTaskResultIngestChannel channel;
+    private RecordingExecutionEventSink traceSink;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime);
+        traceSink = new RecordingExecutionEventSink();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
@@ -171,6 +178,53 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
     }
 
+    @Test
+    void envelopeTraceIdFlowsIntoEngineCanonicalTraceEvents() {
+        Task task = createRunningTask("task-envelope-trace");
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+
+        boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+                "polling",
+                "worker-1",
+                "worker-1",
+                "trace-envelope-1",
+                report(task, taskMsg, "SUCCESS", "ok-trace", null)
+        ));
+
+        assertTrue(handled);
+        assertTrue(traceSink.events.stream().anyMatch(event ->
+                event.getEventType() == ExecutionEventType.CALLBACK_ACCEPTED
+                        && "trace-envelope-1".equals(event.getTraceId())
+                        && task.getTid().equals(event.getIdentity().taskId())
+                        && taskMsg.getMessageId().equals(event.getIdentity().messageId())));
+    }
+
+    @Test
+    void envelopeTraceIdTemporarilyOverridesExistingMdcTraceId() {
+        Task task = createRunningTask("task-envelope-mdc-restore");
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+        MDC.put("traceId", "outer-trace");
+        try {
+            boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+                    "polling",
+                    "worker-1",
+                    "worker-1",
+                    "trace-envelope-2",
+                    report(task, taskMsg, "SUCCESS", "ok-restore", null)
+            ));
+
+            assertTrue(handled);
+            assertTrue(traceSink.events.stream().anyMatch(event ->
+                    event.getEventType() == ExecutionEventType.CALLBACK_ACCEPTED
+                            && "trace-envelope-2".equals(event.getTraceId())
+                            && task.getTid().equals(event.getIdentity().taskId())
+                            && taskMsg.getMessageId().equals(event.getIdentity().messageId())));
+        } finally {
+            assertEquals("outer-trace", MDC.get("traceId"));
+            MDC.remove("traceId");
+        }
+    }
+
     private Task createRunningTask(String taskName) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
@@ -270,6 +324,15 @@ class RuntimeTaskResultIngestChannelTest {
         @Override
         public boolean resumeTask(String taskId) {
             return true;
+        }
+    }
+
+    private static final class RecordingExecutionEventSink implements ExecutionEventSink {
+        private final List<ExecutionEvent> events = new ArrayList<>();
+
+        @Override
+        public void emit(ExecutionEvent event) {
+            events.add(event);
         }
     }
 }

@@ -1,11 +1,13 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.LogUtils;
@@ -25,6 +27,7 @@ import java.util.Map;
 class TaskResultService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskResultService.class);
+    static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
 
     private final TaskResultRuntimePort resultRuntime;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
@@ -281,6 +284,71 @@ class TaskResultService {
         return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
     }
 
+    TaskMessageMutationOutcome compensateDispatchSubmitFailure(Task task,
+                                                              TaskDispatchBinding dispatchBinding,
+                                                              String detail) {
+        if (task == null || dispatchBinding == null) {
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        String taskId = task.getTid();
+        String messageId = dispatchBinding.taskMsg().getMessageId();
+        TaskMsg taskMsg = resultRuntime.getTaskMessage(taskId, messageId);
+        if (taskMsg == null) {
+            logger.warn("Cannot compensate dispatch submit failure because msg {} was not found in task {}",
+                    messageId, taskId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        ActiveLeaseRecord activeLease = resultRuntime.getActiveLease(taskId, messageId).orElse(null);
+        if (activeLease == null) {
+            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no active runtime lease",
+                    messageId, taskId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        TaskMsgAttempt activeAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
+        if (activeAttempt == null) {
+            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no latest attempt",
+                    messageId, taskId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        if (!dispatchBinding.attempt().getAttemptId().equals(activeAttempt.getAttemptId())) {
+            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} advanced to attempt {} instead of {}",
+                    messageId, taskId, activeAttempt.getAttemptId(), dispatchBinding.attempt().getAttemptId());
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        String normalizedDetail = normalizeDispatchSubmitFailureDetail(detail);
+        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
+                false, normalizedDetail, DISPATCH_SUBMIT_FAILED_ERROR_CODE, null, true, false);
+        if (workOutcome.status() != ResultApplyStatus.RETRY_SCHEDULED) {
+            logger.warn("Dispatch submit compensation for msg {} in task {} was rejected by runtime with {}",
+                    messageId, taskId, workOutcome.status());
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        TaskMessageMutationOutcome retryOutcome = resetForRetryWithoutPublishingAttemptClosure(
+                taskId,
+                taskMsg,
+                activeAttempt,
+                normalizedDetail,
+                DISPATCH_SUBMIT_FAILED_ERROR_CODE,
+                "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
+                "dispatch submit failed before transport delivery"
+        );
+        if (!retryOutcome.accepted()) {
+            return retryOutcome;
+        }
+
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
+        Task updatedTask = resultRuntime.getTask(taskId);
+        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+            requestRetryDispatch(updatedTask, workRetryDelayMillis);
+        }
+        return retryOutcome;
+    }
+
     private TaskMessageMutationOutcome handleSuccess(String taskId,
                                                      TaskMsg taskMsg,
                                                      TaskMsgAttempt activeAttempt,
@@ -345,13 +413,55 @@ class TaskResultService {
                                                               String detail,
                                                               String errorCode,
                                                               Map<String, Object> output) {
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(resultRuntime.getTask(taskId), true);
+        TaskMessageMutationOutcome retryOutcome = resetForRetryWithoutPublishingAttemptClosure(
+                taskId,
+                taskMsg,
+                activeAttempt,
+                detail,
+                errorCode,
+                "HANDLE_TASK_MESSAGE_RESULT",
+                "retry budget allows re-dispatch"
+        );
+        if (!retryOutcome.accepted()) {
+            return retryOutcome;
+        }
+        Task updatedTask = resultRuntime.getTask(taskId);
+        if (updatedTask != null) {
+            publishAttemptClosed(updatedTask, taskMsg, activeAttempt,
+                    "HANDLE_TASK_MESSAGE_RESULT", "retryable failure closed the current attempt");
+        }
+        updatedTask = resultRuntime.getTask(taskId);
+        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+            requestRetryDispatch(updatedTask, workRetryDelayMillis);
+        }
+        return TaskMessageMutationOutcome.acceptedDirty();
+    }
+
+    private TaskMessageMutationOutcome resetForRetryWithoutPublishingAttemptClosure(String taskId,
+                                                                                    TaskMsg taskMsg,
+                                                                                    TaskMsgAttempt activeAttempt,
+                                                                                    String detail,
+                                                                                    String errorCode,
+                                                                                    String trigger,
+                                                                                    String resetReason) {
         String messageId = taskMsg.getMessageId();
+        TaskMsgAttemptStatus beforeRevokedStatus = activeAttempt.getStatus();
         if (!activeAttempt.markRevokedForRetry()) {
             logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
             return TaskMessageMutationOutcome.rejected();
         }
+        activeAttempt.setErrorMessage(detail);
         activeAttempt.setErrorCode(errorCode);
-        activeAttempt.setOutput(output);
+        activeAttempt.setOutput(null);
+        traceEventLogger.taskMsgAttemptStatusTransition(
+                activeAttempt,
+                beforeRevokedStatus,
+                activeAttempt.getStatus(),
+                trigger,
+                "TaskManager",
+                resetReason
+        );
         resultRuntime.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
 
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
@@ -364,7 +474,7 @@ class TaskResultService {
                 activeAttempt,
                 beforeRetryFailureStatus,
                 taskMsg.getStatus(),
-                "HANDLE_TASK_MESSAGE_RESULT",
+                trigger,
                 "TaskManager",
                 "task message marked failed before retry reset"
         );
@@ -379,19 +489,12 @@ class TaskResultService {
         traceEventLogger.taskMsgRetryReset(taskMsg,
                 activeAttempt,
                 workRetryDelayMillis,
-                "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
+                trigger,
+                "TaskManager",
+                resetReason);
         if (!resultRuntime.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
-        }
-        Task updatedTask = resultRuntime.getTask(taskId);
-        if (updatedTask != null) {
-            publishAttemptClosed(updatedTask, taskMsg, activeAttempt,
-                    "HANDLE_TASK_MESSAGE_RESULT", "retryable failure closed the current attempt");
-        }
-        updatedTask = resultRuntime.getTask(taskId);
-        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-            requestRetryDispatch(updatedTask, workRetryDelayMillis);
         }
         return TaskMessageMutationOutcome.acceptedDirty();
     }
@@ -481,6 +584,13 @@ class TaskResultService {
         }
         TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, 1L);
         return retryPolicy.workRetryDelayMillis();
+    }
+
+    private String normalizeDispatchSubmitFailureDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "dispatch submit failed before transport delivery";
+        }
+        return detail;
     }
 
     void shutdown() {

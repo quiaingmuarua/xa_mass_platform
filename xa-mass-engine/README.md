@@ -61,6 +61,9 @@ Keep these facts fixed unless the owning global baselines change:
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
   not the hot-path runtime owner
+- dispatch submit failure after claim/attempt creation must compensate inline
+  through runtime retry re-entry plus projection reset; lease expiry repair is a
+  fallback, not the mainline
 - engine-provided message reads are compatibility helpers, not the future
   business-detail query model
 - cross-module callers that only need worker registration lookup should depend

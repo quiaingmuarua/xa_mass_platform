@@ -219,7 +219,36 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 task.getTid(), dispatchBindings.size(), totalMessages);
 
         if (dispatchListener != null && !dispatchBindings.isEmpty()) {
-            dispatchListener.onTaskMsgsReady(task, List.copyOf(dispatchBindings));
+            List<TaskDispatchBinding> immutableDispatchBindings = List.copyOf(dispatchBindings);
+            try {
+                dispatchListener.onTaskMsgsReady(task, immutableDispatchBindings);
+            } catch (RuntimeException e) {
+                String detail = "dispatch submit failed before transport delivery: "
+                        + e.getClass().getSimpleName()
+                        + (e.getMessage() == null || e.getMessage().isBlank() ? "" : " - " + e.getMessage());
+                log.error("[MsgAssign] Dispatch submit failed for task {} with {} bindings; compensating assignment state",
+                        task.getTid(), immutableDispatchBindings.size(), e);
+                boolean compensated = assignmentRuntime.compensateDispatchSubmitFailure(task, immutableDispatchBindings, detail);
+                releaseAssignedWorkerContexts(task, dispatchSlots);
+                if (!compensated) {
+                    throw new IllegalStateException("dispatch submit compensation failed for task " + task.getTid(), e);
+                }
+                traceEventLogger.dispatchBindingSummary(
+                        task,
+                        totalMessages,
+                        matchedWorkers.size(),
+                        dispatchSlots.size(),
+                        0,
+                        0,
+                        0,
+                        perWorkerBatchLimit,
+                        "ON_MSG_ASSIGN",
+                        "SimpleTaskMsgAssignListener",
+                        "dispatch submit failed and assignment state was compensated for retry",
+                        "RETRIED"
+                );
+                return List.of();
+            }
         }
         return List.copyOf(dispatchBindings);
     }
@@ -376,6 +405,47 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         return !changed || workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
+    }
+
+    private void releaseAssignedWorkerContexts(Task task, List<DispatchSlot> dispatchSlots) {
+        for (DispatchSlot slot : dispatchSlots) {
+            if (slot.assignedCount() <= 0) {
+                continue;
+            }
+            releaseWorkerContextAfterDispatchFailure(task, slot.workerContext());
+        }
+    }
+
+    private void releaseWorkerContextAfterDispatchFailure(Task task, WorkerContext workerContext) {
+        if (task == null || workerContext == null) {
+            return;
+        }
+        if (workerContext.getLastBindTaskId() != null && !task.getTid().equals(workerContext.getLastBindTaskId())) {
+            return;
+        }
+        if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
+            return;
+        }
+        WorkerContextStatus fromStatus = workerContext.getStatus();
+        if (!workerContext.release()) {
+            log.warn("[MsgAssign] WorkerContext {} could not be released after dispatch submit failure for task {} from status {}",
+                    workerContext.getWorkerContextId(), task.getTid(), workerContext.getStatus());
+            return;
+        }
+        boolean stored = workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
+        if (!stored) {
+            log.warn("[MsgAssign] Failed to persist workerContext {} release after dispatch submit failure for task {}",
+                    workerContext.getWorkerContextId(), task.getTid());
+        }
+        traceEventLogger.workerContextStatusTransition(
+                task.getTid(),
+                workerContext,
+                fromStatus,
+                workerContext.getStatus(),
+                "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
+                "SimpleTaskMsgAssignListener",
+                "workerContext released after dispatch submit failure"
+        );
     }
 }
 

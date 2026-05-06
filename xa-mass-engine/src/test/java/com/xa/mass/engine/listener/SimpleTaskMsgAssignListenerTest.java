@@ -226,6 +226,61 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerContextForRetry() {
+        Task task = createTask(2);
+        task.setBatchSize(2);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        listener = new SimpleTaskMsgAssignListener(
+                new TaskManagerAssignmentRuntimePort(taskManager),
+                workerManager,
+                recordService,
+                (t, bindings) -> {
+                    throw new IllegalStateException("handoff queue unavailable");
+                }
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+        assertTrue(dispatched.isEmpty());
+        List<TaskMsg> stored = storedMessages(task.getTid());
+        assertEquals(List.of(TaskMsgStatus.INIT, TaskMsgStatus.INIT),
+                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+        assertTrue(stored.stream().allMatch(msg -> msg.getRetryCount() == 1));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() == null));
+
+        List<TaskMsgAttempt> attempts = stored.stream()
+                .map(msg -> taskStorage.getLatestTaskMessageAttempt(task.getTid(), msg.getMessageId()).orElseThrow())
+                .collect(Collectors.toList());
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.REVOKED));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getFinalReason()
+                == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY));
+        assertTrue(attempts.stream().allMatch(attempt -> "DISPATCH_SUBMIT_FAILED".equals(attempt.getErrorCode())));
+
+        assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
+        assertNull(wc.getLastBindTaskId());
+        verify(workerManager, times(2)).updateWorkerContextById(eq("tk1"), same(wc));
+        assertEquals(2, new TaskManagerAssignmentRuntimePort(taskManager).countPendingDispatchableMessages(task.getTid()));
+
+        AtomicReference<List<TaskDispatchBinding>> recoveredDispatch = new AtomicReference<>();
+        listener = new SimpleTaskMsgAssignListener(
+                new TaskManagerAssignmentRuntimePort(taskManager),
+                workerManager,
+                recordService,
+                (t, bindings) -> recoveredDispatch.set(bindings)
+        );
+        listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+        List<TaskDispatchBinding> retryDispatch = recoveredDispatch.get();
+        assertNotNull(retryDispatch);
+        assertEquals(2, retryDispatch.size());
+    }
+
+    @Test
     void assignmentEmitsTaskMsgAndWorkerContextTraceEvents() {
         Task task = createTask(1);
         task.setBatchSize(1);

@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -64,6 +65,13 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
                                             List<WorkerClaimTarget> claimTargets,
                                             TaskWorkClaimOptions claimOptions) {
         return taskManager.claimReady(taskId, claimTargets, claimOptions);
+    }
+
+    @Override
+    public boolean compensateDispatchSubmitFailure(Task task,
+                                                   List<TaskDispatchBinding> dispatchBindings,
+                                                   String detail) {
+        return taskManager.compensateDispatchSubmitFailure(task, dispatchBindings, detail);
     }
 }
 
