@@ -294,6 +294,10 @@ the resolved delivery store. The embedded mainline still defaults to the
 in-memory delivery store, but SDK composition may replace it through
 `deliveryStoreFactory(...)` or `redisDeliveryStore(redisUri[, namespacePrefix])`
 without changing transport runtime contracts.
+`maxDeliveryItemsPerRoute(...)` controls per-route backlog admission for both
+the in-memory and Redis-backed delivery stores, so per-worker polling queues
+and adapter-local route backpressure can be tuned without changing transport
+contracts.
 Runtime executor admission is also configurable through
 `transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`;
 both default to 10000 pending tasks and are reported in executor diagnostics.

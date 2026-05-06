@@ -55,6 +55,7 @@ public class TransportRuntimeComposition {
     private final TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
+    private final int maxDeliveryItemsPerRoute;
     private final int transportRuntimeMaxPendingTasks;
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
@@ -83,6 +84,7 @@ public class TransportRuntimeComposition {
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
+        this.maxDeliveryItemsPerRoute = source.getMaxDeliveryItemsPerRoute();
         this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
@@ -178,7 +180,7 @@ public class TransportRuntimeComposition {
     public TransportDeliveryStore resolveTransportDeliveryStore() {
         return deliveryStoreFactory != null
                 ? deliveryStoreFactory.get()
-                : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems);
+                : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems, maxDeliveryItemsPerRoute);
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -209,6 +211,10 @@ public class TransportRuntimeComposition {
 
     public long getEventHandlerTimeoutMillis() {
         return eventHandlerTimeoutMillis;
+    }
+
+    public int getMaxDeliveryItemsPerRoute() {
+        return maxDeliveryItemsPerRoute;
     }
 
     public int getTransportRuntimeMaxPendingTasks() {

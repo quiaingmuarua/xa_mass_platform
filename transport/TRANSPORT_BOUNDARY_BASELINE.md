@@ -245,6 +245,9 @@ per-key/global admission, and queue snapshot counters may live under
 Embedded runtime composition may choose between the default in-memory delivery
 store and a Redis-backed transport delivery store, but that selection belongs
 to SDK/starter assembly rather than transport-facing adapter contracts.
+That assembly layer also owns queue-cap tuning such as total queued items and
+per-route queued-item caps; transport contracts should consume those resolved
+limits rather than hard-code runtime policy.
 
 ## Direct vs Queued Delivery
 

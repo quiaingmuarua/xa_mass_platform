@@ -748,15 +748,19 @@ class MassSdkTest {
     void transportRuntimeCompositionSnapshotsDeliveryQueueCapacity() {
         TransportConfig config = new TransportConfig();
         config.setMaxDeliveryQueuedItems(42);
+        config.setMaxDeliveryItemsPerRoute(7);
         config.setEventHandlerTimeoutMillis(123);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         config.setMaxDeliveryQueuedItems(84);
+        config.setMaxDeliveryItemsPerRoute(9);
         config.setEventHandlerTimeoutMillis(456);
 
         assertEquals(42, runtimeComposition.getMaxDeliveryQueuedItems());
+        assertEquals(7, runtimeComposition.getMaxDeliveryItemsPerRoute());
         assertEquals(123, runtimeComposition.getEventHandlerTimeoutMillis());
         assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
+        assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryItemsPerRoute(0));
         assertThrows(IllegalArgumentException.class, () -> config.setEventHandlerTimeoutMillis(-1));
     }
 
@@ -780,6 +784,7 @@ class MassSdkTest {
     void sdkBuilderAcceptsRedisDeliveryStoreNamespaceOverride() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
+                        .maxDeliveryItemsPerRoute(5)
                         .redisDeliveryStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:delivery")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))

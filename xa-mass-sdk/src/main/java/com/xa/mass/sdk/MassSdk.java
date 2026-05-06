@@ -150,6 +150,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
+            delegate.maxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+            return this;
+        }
+
         public TransportOptions transportRuntimeMaxPendingTasks(int maxPendingTasks) {
             delegate.transportRuntimeMaxPendingTasks(maxPendingTasks);
             return this;

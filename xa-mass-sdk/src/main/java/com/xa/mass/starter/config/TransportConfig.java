@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 public class TransportConfig {
 
     public static final int DEFAULT_MAX_DELIVERY_QUEUED_ITEMS = 100_000;
+    public static final int DEFAULT_MAX_DELIVERY_ITEMS_PER_ROUTE = 10_000;
     public static final int DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS = 10_000;
 
     private MessageTransporterFactory.TransporterType transporterType =
@@ -48,6 +49,7 @@ public class TransportConfig {
     private TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
+    private int maxDeliveryItemsPerRoute = DEFAULT_MAX_DELIVERY_ITEMS_PER_ROUTE;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
@@ -81,6 +83,7 @@ public class TransportConfig {
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
+        this.maxDeliveryItemsPerRoute = source.maxDeliveryItemsPerRoute;
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
@@ -267,6 +270,17 @@ public class TransportConfig {
             throw new IllegalArgumentException("maxDeliveryQueuedItems must be positive");
         }
         this.maxDeliveryQueuedItems = maxDeliveryQueuedItems;
+    }
+
+    public int getMaxDeliveryItemsPerRoute() {
+        return maxDeliveryItemsPerRoute;
+    }
+
+    public void setMaxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
+        if (maxDeliveryItemsPerRoute <= 0) {
+            throw new IllegalArgumentException("maxDeliveryItemsPerRoute must be positive");
+        }
+        this.maxDeliveryItemsPerRoute = maxDeliveryItemsPerRoute;
     }
 
     public long getEventHandlerTimeoutMillis() {

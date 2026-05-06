@@ -206,13 +206,18 @@ public class MassApplicationBuilder {
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     config.getMaxDeliveryQueuedItems(),
-                    RedisTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE
+                    config.getMaxDeliveryItemsPerRoute()
             ));
             return this;
         }
 
         public TransportBuilder maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             config.setMaxDeliveryQueuedItems(maxDeliveryQueuedItems);
+            return this;
+        }
+
+        public TransportBuilder maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
+            config.setMaxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
             return this;
         }
 
