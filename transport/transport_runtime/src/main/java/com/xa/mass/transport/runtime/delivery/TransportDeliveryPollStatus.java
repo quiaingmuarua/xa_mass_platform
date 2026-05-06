@@ -14,13 +14,6 @@ public enum TransportDeliveryPollStatus {
      */
     INVALID_REQUEST,
     /**
-     * Synthesized by {@link TransportDeliveryService} when the polling thread
-     * is interrupted while the underlying store throws
-     * {@link InterruptedException}. Store implementations should not return
-     * this status directly.
-     */
-    INTERRUPTED,
-    /**
      * The store is currently unavailable for poll work.
      */
     UNAVAILABLE,

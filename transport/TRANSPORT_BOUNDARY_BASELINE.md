@@ -217,8 +217,8 @@ diagnostics are assembled above the store boundary by
 distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
 queue. Thread interruption is not a store result contract; store
-implementations should throw interruption and let
-`TransportDeliveryService` translate it for adapter-facing callers. Store shutdown is
+implementations should throw interruption and let callers handle it above the
+store boundary. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.

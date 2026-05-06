@@ -52,17 +52,14 @@ public final class TransportDeliveryService {
         return deliveryStore.drain(adapterId, routeKey, maxItems);
     }
 
-    public TransportDeliveryPollResult pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+    public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        TransportDeliveryPollResult result;
         try {
-            return deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+            result = deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return TransportDeliveryPollResult.interrupted();
+            return List.of();
         }
-    }
-
-    public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        TransportDeliveryPollResult result = pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis);
         if (result.getStatus() != TransportDeliveryPollStatus.DELIVERED) {
             return List.of();
         }

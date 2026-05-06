@@ -57,6 +57,15 @@ public class XaMassServerApplication {
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
 
+    @Value("${mass.engine.assignment-retry-delay-millis:1000}")
+    private long assignmentRetryDelayMillis;
+
+    @Value("${mass.engine.lease-watchdog-interval-seconds:30}")
+    private long leaseWatchdogIntervalSeconds;
+
+    @Value("${mass.engine.task-message-lease-seconds:300}")
+    private long taskMessageLeaseSeconds;
+
     @Value("${mass.runtime.event-handler-timeout-ms:0}")
     private long eventHandlerTimeoutMillis;
 
@@ -181,7 +190,11 @@ public class XaMassServerApplication {
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
                 .engine(engine -> {
-                    engine.enabled(true).workerThreads(workerThreads);
+                    engine.enabled(true)
+                            .workerThreads(workerThreads)
+                            .assignmentRetryDelayMillis(assignmentRetryDelayMillis)
+                            .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
+                            .taskMessageLeaseSeconds(taskMessageLeaseSeconds);
                     TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);
                     ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();

@@ -27,10 +27,6 @@ public final class TransportDeliveryPollResult {
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.INVALID_REQUEST, List.of());
     }
 
-    public static TransportDeliveryPollResult interrupted() {
-        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.INTERRUPTED, List.of());
-    }
-
     public static TransportDeliveryPollResult unavailable() {
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.UNAVAILABLE, List.of());
     }

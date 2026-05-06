@@ -16,9 +16,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>{@link #poll(String, String, int, long, TimeUnit)} returns transport
  * delivery status, but store implementations should throw
- * {@link InterruptedException} instead of materializing an "interrupted"
- * result. {@link TransportDeliveryService} is responsible for converting
- * thread interruption into a poll result for adapter-facing callers.
+ * {@link InterruptedException} instead of materializing interruption as a poll
+ * status. Adapter-facing callers that need interruption handling should do so
+ * above the store boundary.
  *
  * <p>{@link #shutdown()} is a store-availability boundary, not task lifecycle
  * truth. After shutdown the store must reject new enqueue/poll work and wake
