@@ -85,7 +85,6 @@ class DispatchOutcomeTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         TransportPacketViews.dispatchPayload(item.wireView())
                 ),
-                item,
                 10L
         );
     }

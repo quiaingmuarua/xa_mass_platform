@@ -2,18 +2,19 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class TransportDispatchEnvelopeTest {
 
     @Test
-    void constructorNormalizesAdapterRouteAndCorrelationKeys() {
+    void constructorUsesNormalizedPacketAddressAndTraceFields() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -30,7 +31,6 @@ class TransportDispatchEnvelopeTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         Map.of()
                 ),
-                item(),
                 10L
         );
 
@@ -42,7 +42,7 @@ class TransportDispatchEnvelopeTest {
     }
 
     @Test
-    void constructorCollapsesBlankAdapterRouteAndCorrelationKeysToNull() {
+    void constructorCarriesNullForBlankPacketAddressAndTraceFields() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -59,7 +59,6 @@ class TransportDispatchEnvelopeTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         Map.of()
                 ),
-                item(),
                 10L
         );
 
@@ -69,7 +68,7 @@ class TransportDispatchEnvelopeTest {
     }
 
     @Test
-    void packetBackedConstructorProjectsPayloadLazilyWhenCompatibilityViewIsRequested() {
+    void packetProjectionRebuildsDispatchItemWhenExplicitlyRequested() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -99,28 +98,11 @@ class TransportDispatchEnvelopeTest {
                 10L
         );
 
-        TaskDispatchItem projected = envelope.getPayload();
+        TaskDispatchItem projected = TransportPacketViews.toTaskDispatchItem(envelope.getPacket());
 
         assertNotNull(projected);
         assertEquals("msg-1", projected.getMessageId());
         assertEquals("attempt-1", projected.attemptId());
         assertEquals("target-1", projected.getInput().get("target"));
-    }
-
-    private TaskDispatchItem item() {
-        return new TaskDispatchItem(
-                "task-1",
-                "msg-1",
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "worker-1",
-                "ctx-1",
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
     }
 }

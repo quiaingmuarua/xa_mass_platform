@@ -229,8 +229,8 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(List.of("msg-1", "msg-2"),
                 List.of(firstPoller.get(1, TimeUnit.SECONDS), secondPoller.get(1, TimeUnit.SECONDS)).stream()
                         .flatMap(List::stream)
-                        .map(TransportDispatchEnvelope::getPayload)
-                        .map(TaskDispatchItem::getMessageId)
+                        .map(TransportDispatchEnvelope::getPacket)
+                        .map(TransportPacket::messageId)
                         .sorted()
                         .toList());
     }
@@ -346,7 +346,6 @@ class InMemoryTransportDeliveryStoreTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         TransportPacketViews.dispatchPayload(item.wireView())
                 ),
-                item,
                 createdAtEpochMillis
         );
     }
@@ -368,7 +367,6 @@ class InMemoryTransportDeliveryStoreTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         TransportPacketViews.dispatchPayload(item.wireView())
                 ),
-                item,
                 1L
         );
     }
@@ -389,12 +387,11 @@ class InMemoryTransportDeliveryStoreTest {
         return (List<TransportDispatchEnvelope>) result;
     }
 
-    private List<TaskDispatchItem> payloads(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream().map(TransportDispatchEnvelope::getPayload).toList();
-    }
-
     private List<String> messageIds(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream().map(TransportDispatchEnvelope::getPayload).map(TaskDispatchItem::getMessageId).toList();
+        return envelopes.stream()
+                .map(TransportDispatchEnvelope::getPacket)
+                .map(TransportPacket::messageId)
+                .toList();
     }
 
     private void waitUntil(BooleanSupplier condition) throws InterruptedException {

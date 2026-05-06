@@ -171,7 +171,7 @@ The returned `MassSdkApplication` exposes:
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
+- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:

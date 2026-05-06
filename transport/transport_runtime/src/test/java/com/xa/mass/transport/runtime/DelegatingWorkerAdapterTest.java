@@ -117,7 +117,6 @@ class DelegatingWorkerAdapterTest {
                         TransportPacket.JSON_CONTENT_TYPE,
                         TransportPacketViews.dispatchPayload(item.wireView())
                 ),
-                item,
                 1L
         );
     }
