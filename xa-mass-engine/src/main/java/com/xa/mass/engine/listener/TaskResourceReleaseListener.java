@@ -29,6 +29,11 @@ public class TaskResourceReleaseListener {
     private final TraceEventLogger traceEventLogger;
 
     public TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
+                                       WorkerManager workerManager) {
+        this(maintenancePort, workerManager, TraceEventLogger.noop());
+    }
+
+    public TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
                                        WorkerManager workerManager,
                                        TraceEventLogger traceEventLogger) {
         this.maintenancePort = maintenancePort;

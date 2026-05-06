@@ -3,7 +3,7 @@ package com.xa.mass.transport.model;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -95,22 +95,27 @@ public final class TaskDispatchItem {
     }
 
     public static TaskDispatchItem from(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        Objects.requireNonNull(task, "task");
+        return from(TaskDispatchContext.from(task), taskMsg, attempt);
+    }
+
+    public static TaskDispatchItem from(TaskDispatchContext task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
         Objects.requireNonNull(taskMsg, "taskMsg");
         Objects.requireNonNull(attempt, "attempt");
         return new TaskDispatchItem(
-                task.getTid(),
+                task.taskId(),
                 taskMsg.getMessageId(),
-                TaskSharedConfig.sdkEventCode(task),
-                task.getTaskName(),
-                task.getProject(),
-                task.getUser() != null ? task.getUser().getUserId() : null,
+                task.eventCode(),
+                task.taskName(),
+                task.project(),
+                task.userId(),
                 taskMsg.getRetryCount(),
                 attempt.getAttemptId(),
                 attempt.getWorkerId(),
                 attempt.getWorkerContextId(),
                 attempt.getBatchId(),
                 normalizeInput(task, taskMsg),
-                task.getSharedConfig()
+                task.sharedConfig()
         );
     }
 
@@ -203,7 +208,7 @@ public final class TaskDispatchItem {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeInput(Task task, TaskMsg taskMsg) {
+    private static Map<String, Object> normalizeInput(TaskDispatchContext task, TaskMsg taskMsg) {
         Map<String, Object> rawInput = taskMsg == null ? null : taskMsg.getInput();
         if (rawInput == null || rawInput.isEmpty()) {
             return Collections.emptyMap();
@@ -224,11 +229,11 @@ public final class TaskDispatchItem {
         return immutableCopy(rawInput);
     }
 
-    private static String sdkPayloadType(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
+    private static String sdkPayloadType(TaskDispatchContext task) {
+        if (task == null || task.sharedConfig() == null) {
             return null;
         }
-        Object sdk = task.getSharedConfig().get("_sdk");
+        Object sdk = task.sharedConfig().get("_sdk");
         if (!(sdk instanceof Map<?, ?> metadata)) {
             return null;
         }

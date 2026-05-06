@@ -33,6 +33,12 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
+                                               AssignmentRecordService recordService) {
+        this(ruleManager, workerManager, recordService, TraceEventLogger.noop());
+    }
+
+    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                               WorkerManager workerManager,
                                                AssignmentRecordService recordService,
                                                TraceEventLogger traceEventLogger) {
         this.ruleManager = ruleManager;

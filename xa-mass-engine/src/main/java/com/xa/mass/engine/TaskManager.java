@@ -640,7 +640,7 @@ public class TaskManager {
         return taskRuntimeBridge.runtime();
     }
 
-    com.xa.mass.engine.util.TraceEventLogger traceEvents() {
+    public com.xa.mass.engine.util.TraceEventLogger traceEvents() {
         return traceEventLogger;
     }
 

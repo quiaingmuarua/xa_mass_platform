@@ -821,11 +821,24 @@ public final class TraceEventLogger {
     }
 
     private void emit(ExecutionEvent event) {
+        Map<String, String> previous = MDC.getCopyOfContextMap();
         try {
             sink.emit(event);
-            LOG.debug("Trace event emitted: {}", event.getEventType());
+            Map<String, String> flattened = flatten(event);
+            MDC.put("event", event.getEventType().name());
+            for (Map.Entry<String, String> entry : flattened.entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().isBlank()) {
+                    MDC.put(entry.getKey(), entry.getValue());
+                }
+            }
+            LOG.info(event.getEventType().name());
         } catch (RuntimeException e) {
             LOG.warn("Failed to emit trace event {}", event != null ? event.getEventType() : null, e);
+        } finally {
+            MDC.clear();
+            if (previous != null) {
+                previous.forEach(MDC::put);
+            }
         }
     }
 
@@ -868,5 +881,41 @@ public final class TraceEventLogger {
         attrs.put("batchPolicy", enumName(profile.batchPolicy()));
         attrs.put("leaseProfile", enumName(profile.leaseProfile()));
         attrs.put("backpressureClass", enumName(profile.backpressureClass()));
+    }
+
+    private static Map<String, String> flatten(ExecutionEvent event) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        if (event == null) {
+            return fields;
+        }
+        put(fields, "traceId", event.getTraceId());
+        if (event.getIdentity() != null) {
+            put(fields, "taskId", event.getIdentity().taskId());
+            put(fields, "messageId", event.getIdentity().messageId());
+            put(fields, "attemptId", event.getIdentity().attemptId());
+            put(fields, "workerId", event.getIdentity().workerId());
+            put(fields, "workerContextId", event.getIdentity().workerContextId());
+            put(fields, "leaseToken", event.getIdentity().leaseToken());
+        }
+        if (event.getTransition() != null) {
+            put(fields, "fromStatus", event.getTransition().src());
+            put(fields, "toStatus", event.getTransition().dst());
+        }
+        if (event.getAttrs() != null) {
+            for (Map.Entry<String, Object> entry : event.getAttrs().entrySet()) {
+                put(fields, entry.getKey(), stringify(entry.getValue()));
+            }
+        }
+        return fields;
+    }
+
+    private static void put(Map<String, String> fields, String key, String value) {
+        if (value != null) {
+            fields.put(key, value);
+        }
+    }
+
+    private static String stringify(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

@@ -1,6 +1,8 @@
 package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
@@ -21,7 +23,7 @@ import java.util.*;
  * Routes logical task dispatches to the transport adapter selected by each
  * worker's resolved adapter identity.
  */
-public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchListener {
+public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchListener, TaskDispatchBatchListener {
 
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskMsgDispatchListener.class);
 
@@ -44,6 +46,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
 
     @Override
     public void onTaskMsgsReady(Task task, List<TaskDispatchBinding> dispatchBindings) {
+        if (task == null) {
+            return;
+        }
+        onTaskDispatchBatch(TaskDispatchContext.from(task), dispatchBindings);
+    }
+
+    @Override
+    public void onTaskDispatchBatch(TaskDispatchContext task, List<TaskDispatchBinding> dispatchBindings) {
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }

@@ -153,9 +153,12 @@ public class XaMassServerApplication {
                         engine.taskStorage(jdbcStorageRuntime.taskStorage())
                                 .taskDetailStore(jdbcStorageRuntime.taskDetailStore())
                                 .taskWorkRuntime(taskWorkRuntime)
-                                .executionEventSink(executionEventSinkProvider.getIfAvailable())
                                 .workerStorage(jdbcStorageRuntime.workerStorage())
                                 .ruleStorage(jdbcStorageRuntime.ruleStorage());
+                        ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
+                        if (executionEventSink != null) {
+                            engine.executionEventSink(executionEventSink);
+                        }
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {

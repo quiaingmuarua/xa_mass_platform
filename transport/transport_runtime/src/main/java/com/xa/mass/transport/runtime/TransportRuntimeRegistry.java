@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -53,6 +54,10 @@ public final class TransportRuntimeRegistry {
     }
 
     public TaskMsgDispatchListener createDispatchListener() {
+        return new TransportRoutingTaskMsgDispatchListener(workerLookupStore, this);
+    }
+
+    public TaskDispatchBatchListener createDispatchBatchListener() {
         return new TransportRoutingTaskMsgDispatchListener(workerLookupStore, this);
     }
 

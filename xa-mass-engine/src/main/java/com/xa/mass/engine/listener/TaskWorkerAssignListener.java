@@ -38,10 +38,27 @@ public class TaskWorkerAssignListener {
                                     TaskMsgAssignListener msgAssignListener,
                                     AssignmentRecordService recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink) {
+        this(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+    }
+
+    public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
+                                    WorkerManager workerManager,
+                                    TaskMsgAssignListener msgAssignListener,
+                                    AssignmentRecordService recordService,
+                                    TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink,
                                     TraceEventLogger traceEventLogger) {
         this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService, traceEventLogger),
                 workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink, traceEventLogger);
+    }
+
+    public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                                    WorkerManager workerManager,
+                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink) {
+        this(matchingStrategy, workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
@@ -144,7 +161,7 @@ public class TaskWorkerAssignListener {
                 .distinct()
                 .count();
         if (usedWorkerCount <= 0) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "matched candidates produced no bound task messages", requiredStartWorkerCount);
             unlockWorkers(dispatchCandidates);
             emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,

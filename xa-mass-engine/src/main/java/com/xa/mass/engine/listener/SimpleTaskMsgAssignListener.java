@@ -48,6 +48,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService,
+                                       TaskMsgDispatchListener dispatchListener) {
+        this(assignmentRuntime, workerManager, recordService, dispatchListener, TraceEventLogger.noop());
+    }
+
+    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
+                                       WorkerManager workerManager,
+                                       AssignmentRecordService recordService,
                                        TaskMsgDispatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
         this.assignmentRuntime = assignmentRuntime;
@@ -174,7 +181,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
                 workerManager.unlockWorker(slot.worker().getWorkerId());
-                TraceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
+                traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
                         "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "matched worker received no messages");
             }
         }

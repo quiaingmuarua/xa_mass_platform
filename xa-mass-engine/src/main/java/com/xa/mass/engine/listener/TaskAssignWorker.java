@@ -46,12 +46,26 @@ public class TaskAssignWorker {
 
     private volatile boolean running = true;
 
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener) {
+        this(workerAssignListener, DEFAULT_RETRY_DELAY_MILLIS, TraceEventLogger.noop());
+    }
+
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, TraceEventLogger traceEventLogger) {
         this(workerAssignListener, DEFAULT_RETRY_DELAY_MILLIS, traceEventLogger);
     }
 
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis) {
+        this(workerAssignListener, retryDelayMillis, TraceEventLogger.noop());
+    }
+
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis, TraceEventLogger traceEventLogger) {
         this(workerAssignListener, retryDelayMillis, DEFAULT_ASSIGNMENT_QUEUE_CAPACITY, traceEventLogger);
+    }
+
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                            long retryDelayMillis,
+                            int assignmentQueueCapacity) {
+        this(workerAssignListener, retryDelayMillis, assignmentQueueCapacity, TraceEventLogger.noop());
     }
 
     public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,

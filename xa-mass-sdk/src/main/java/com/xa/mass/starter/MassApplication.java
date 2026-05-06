@@ -2,6 +2,9 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoffListener;
 import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -26,6 +29,8 @@ import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
+import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.dispatch.TaskDispatchHandoffPump;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -53,6 +58,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
+    private static final int DEFAULT_DISPATCH_HANDOFF_CAPACITY =
+            Integer.getInteger("xa.mass.engine.dispatchHandoffCapacity", 10_000);
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -67,6 +74,8 @@ public class MassApplication {
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportDeliveryService transportDeliveryService;
+    private TaskDispatchHandoff taskDispatchHandoff;
+    private TaskDispatchHandoffPump taskDispatchHandoffPump;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
@@ -126,6 +135,7 @@ public class MassApplication {
                     engine.stop();
                 }
             } finally {
+                stopTaskDispatchHandoff();
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -149,6 +159,7 @@ public class MassApplication {
             logger.warn("Failed to stop engine after startup failure", cleanupError);
         }
         try {
+            stopTaskDispatchHandoff();
             stopTransportServers();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -250,11 +261,20 @@ public class MassApplication {
                                 adapterBindings
                         )
                 );
-                taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
+                taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener();
+                taskDispatchHandoffPump = new TaskDispatchHandoffPump(
+                        taskDispatchHandoff,
+                        batchListener,
+                        transportRuntimeTaskExecutor
+                );
+                taskDispatchHandoffPump.start();
+                taskMsgDispatchListener = new TaskDispatchHandoffListener(taskDispatchHandoff);
             }
             return taskMsgDispatchListener;
         } catch (Exception e) {
             try {
+                stopTaskDispatchHandoff();
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -335,6 +355,19 @@ public class MassApplication {
         transportDeliveryService = null;
         if (deliveryService != null) {
             deliveryService.shutdown();
+        }
+    }
+
+    private void stopTaskDispatchHandoff() {
+        TaskDispatchHandoffPump pump = taskDispatchHandoffPump;
+        taskDispatchHandoffPump = null;
+        if (pump != null) {
+            pump.stop();
+        }
+        TaskDispatchHandoff handoff = taskDispatchHandoff;
+        taskDispatchHandoff = null;
+        if (handoff != null) {
+            handoff.shutdown();
         }
     }
 
