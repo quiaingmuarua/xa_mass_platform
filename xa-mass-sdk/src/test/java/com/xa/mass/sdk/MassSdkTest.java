@@ -82,6 +82,9 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
@@ -394,6 +397,17 @@ class MassSdkTest {
         assertSame(overriddenRegistry, customizedRuntimeComposition.resolveWorkerEndpointRegistry());
         assertSame(customSystemEventChannel, customizedRuntimeComposition.resolveSystemEventChannel());
         assertSame(customFactory, customizedRuntimeComposition.resolveWorkerTransportRuntimeFactory());
+    }
+
+    @Test
+    void runtimeCompositionResolvesCustomTransportDeliveryStoreFactory() {
+        TransportConfig config = new TransportConfig();
+        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
+        config.setDeliveryStoreFactory(() -> store);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertSame(store, runtimeComposition.resolveTransportDeliveryStore());
     }
 
     @Test
@@ -744,6 +758,22 @@ class MassSdkTest {
         assertEquals(123, runtimeComposition.getEventHandlerTimeoutMillis());
         assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
         assertThrows(IllegalArgumentException.class, () -> config.setEventHandlerTimeoutMillis(-1));
+    }
+
+    @Test
+    void massApplicationStopsCustomTransportDeliveryStore() {
+        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .deliveryStoreFactory(() -> store)
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        app.start();
+        app.stop();
+
+        assertTrue(store.shutdownCalled.get());
     }
 
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
@@ -3088,6 +3118,43 @@ class MassSdkTest {
         @Override
         public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
             return TransportAdapterContribution.empty();
+        }
+    }
+
+    private static final class StubTransportDeliveryStore implements TransportDeliveryStore {
+        private final AtomicBoolean shutdownCalled = new AtomicBoolean(false);
+
+        @Override
+        public com.xa.mass.transport.model.DispatchOutcome enqueue(
+                com.xa.mass.transport.model.TransportDispatchEnvelope envelope) {
+            return com.xa.mass.transport.model.DispatchOutcome.queued(
+                    envelope == null ? null : envelope.getAdapterId(),
+                    envelope
+            );
+        }
+
+        @Override
+        public List<com.xa.mass.transport.model.TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
+            return List.of();
+        }
+
+        @Override
+        public TransportDeliveryPollResult poll(String adapterId,
+                                                String routeKey,
+                                                int maxItems,
+                                                long timeout,
+                                                TimeUnit unit) {
+            return TransportDeliveryPollResult.empty();
+        }
+
+        @Override
+        public TransportDeliveryStoreStats stats() {
+            return new TransportDeliveryStoreStats(0, 0, 0, 1);
+        }
+
+        @Override
+        public void shutdown() {
+            shutdownCalled.set(true);
         }
     }
 

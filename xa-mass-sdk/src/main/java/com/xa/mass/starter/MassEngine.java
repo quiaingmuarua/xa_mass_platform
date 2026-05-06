@@ -61,7 +61,7 @@ public class MassEngine {
     private TaskResourceReleaseListener resourceReleaseListener;
     private EngineRuntimeBridge runtimeBridge;
     private Consumer<Task> taskReadyListener;
-    private Consumer<Task> taskDispatchListener;
+    private Consumer<Task> taskDispatchSignalListener;
     private Consumer<Task> taskTerminalListener;
     private com.xa.mass.engine.TaskMessageAttemptClosedListener taskMessageAttemptClosedListener;
 
@@ -73,7 +73,7 @@ public class MassEngine {
         start(null);
     }
 
-    public void start(TaskDispatchBatchListener taskDispatchListener) {
+    public void start(TaskDispatchBatchListener dispatchBatchListener) {
         LogUtils.clearMdc();
         if (!config.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
@@ -100,7 +100,7 @@ public class MassEngine {
                     assignmentRuntimePort,
                     workerManager,
                     recordService,
-                    taskDispatchListener,
+                    dispatchBatchListener,
                     traceEventLogger);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
@@ -111,11 +111,11 @@ public class MassEngine {
 
             resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
             taskReadyListener = assignWorker::submit;
-            taskDispatchListener = assignWorker::submit;
+            taskDispatchSignalListener = assignWorker::submit;
             taskMessageAttemptClosedListener = resourceReleaseListener::onTaskMessageAttemptClosed;
             taskTerminalListener = resourceReleaseListener::onTaskTerminal;
             eventListeners.addTaskReadyListener(taskReadyListener);
-            eventListeners.addTaskDispatchListener(taskDispatchListener);
+            eventListeners.addTaskDispatchListener(taskDispatchSignalListener);
             eventListeners.addTaskMessageAttemptClosedListener(taskMessageAttemptClosedListener);
             eventListeners.addTaskTerminalListener(taskTerminalListener);
             recoverRuntimeReadyTasks();
@@ -145,8 +145,8 @@ public class MassEngine {
                 if (taskReadyListener != null) {
                     eventListeners.removeTaskReadyListener(taskReadyListener);
                 }
-                if (taskDispatchListener != null) {
-                    eventListeners.removeTaskDispatchListener(taskDispatchListener);
+                if (taskDispatchSignalListener != null) {
+                    eventListeners.removeTaskDispatchListener(taskDispatchSignalListener);
                 }
             }
             if (eventListeners != null) {
@@ -171,7 +171,7 @@ public class MassEngine {
             }
             resourceReleaseListener = null;
             taskReadyListener = null;
-            taskDispatchListener = null;
+            taskDispatchSignalListener = null;
             taskMessageAttemptClosedListener = null;
             taskTerminalListener = null;
             config.shutdownTaskRuntime();

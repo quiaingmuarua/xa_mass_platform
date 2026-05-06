@@ -12,6 +12,8 @@ import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.trace.sink.ExecutionEvent;
@@ -116,6 +118,68 @@ class RedisRuntimeTraceIntegrationTest {
     }
 
     @Test
+    void duplicateCallbackOnRedisRuntimeKeepsFirstFinalResultAndEmitsDuplicateTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-duplicate-trace", 0);
+
+        boolean firstHandled = resultFacade.handleTaskMessageResult(
+                fixture.task().getTid(),
+                fixture.message().getMessageId(),
+                true,
+                "ok-first",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "ok-first")
+        );
+        boolean duplicateHandled = resultFacade.handleTaskMessageResult(
+                fixture.task().getTid(),
+                fixture.message().getMessageId(),
+                false,
+                "boom-duplicate",
+                "IGNORED_DUPLICATE",
+                Map.of("status", "FAILED", "mockData", "boom-duplicate")
+        );
+
+        assertTrue(firstHandled);
+        assertTrue(duplicateHandled);
+        TaskMsg updated = taskQueries.getTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-first", updated.getOutput().get("mockData"));
+
+        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
+    }
+
+    @Test
+    void callbackAfterRuntimeLeaseAlreadyConvergedIsRejectedAndEmitsNoActiveLeaseTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-no-active-lease-trace", 0);
+
+        ResultApplyStatus runtimeStatus = runtime.applyResult(TaskWorkResult.success(
+                fixture.task().getTid(),
+                fixture.message().getMessageId(),
+                fixture.claimedWork().leaseToken(),
+                "runtime-only-success",
+                Map.of("status", "SUCCESS", "mockData", "runtime-only-success")
+        )).status();
+
+        boolean handled = resultFacade.handleTaskMessageResult(
+                fixture.task().getTid(),
+                fixture.message().getMessageId(),
+                true,
+                "late-after-runtime",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "late-after-runtime")
+        );
+
+        assertEquals(ResultApplyStatus.SUCCESS_APPLIED, runtimeStatus);
+        assertFalse(handled);
+        TaskMsg updated = taskQueries.getTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
+        assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
+        assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
+
+        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+    }
+
+    @Test
     void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
 
@@ -178,7 +242,7 @@ class RedisRuntimeTraceIntegrationTest {
         assertTrue(attempt.markLeased(leaseExpire));
         assertTrue(attempt.markDispatched());
         taskStorage.addTaskMessageAttempt(task.getTid(), message.getMessageId(), attempt);
-        return new RunningTaskFixture(task, message, attempt);
+        return new RunningTaskFixture(task, message, attempt, claimed);
     }
 
     private void assertTraceContains(String taskId, String messageId, ExecutionEventType eventType) {
@@ -207,7 +271,7 @@ class RedisRuntimeTraceIntegrationTest {
                 "Did not expect trace event " + eventType + " for taskId=" + taskId + ", messageId=" + messageId);
     }
 
-    private record RunningTaskFixture(Task task, TaskMsg message, TaskMsgAttempt attempt) {
+    private record RunningTaskFixture(Task task, TaskMsg message, TaskMsgAttempt attempt, ClaimedTaskWork claimedWork) {
     }
 
     private static final class NoopTaskScheduler implements TaskScheduler {
