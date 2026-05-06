@@ -2592,9 +2592,9 @@ class MassSdkTest {
             assertTrue(app.approveTask(task.getTid()));
 
             TaskDispatchItem dispatchItem = waitFor(
-                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(10),
                     () -> {
-                        List<TaskDispatchItem> polled = session.poll(1);
+                        List<TaskDispatchItem> polled = session.poll(1, 250L);
                         return polled.isEmpty() ? null : polled.get(0);
                     }
             );

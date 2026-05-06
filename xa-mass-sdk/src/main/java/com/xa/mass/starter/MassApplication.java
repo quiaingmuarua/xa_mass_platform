@@ -21,6 +21,7 @@ import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
+import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
@@ -215,7 +216,10 @@ public class MassApplication {
                 logger.info("No shared message transporter configured; continuing with adapter-native transport runtime");
             }
 
-            WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
+            WorkerSystemEventChannel systemEventChannel = new TracingWorkerSystemEventChannel(
+                    transportRuntimeComposition.resolveSystemEventChannel(),
+                    engineConfig.getExecutionEventSink()
+            );
             TransportDeliveryService deliveryService =
                     new TransportDeliveryService(new InMemoryTransportDeliveryStore(
                             transportRuntimeComposition.getMaxDeliveryQueuedItems()

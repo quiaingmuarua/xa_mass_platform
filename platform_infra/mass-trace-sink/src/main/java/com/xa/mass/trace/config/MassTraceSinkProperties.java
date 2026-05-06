@@ -21,13 +21,13 @@ public class MassTraceSinkProperties {
     /**
      * What to do when the queue is full.
      * {@code DROP} (default) silently discards the event.
-     * {@code FALLBACK_SYNC} writes synchronously on the caller thread — debug only.
+     * {@code FALLBACK_SYNC} writes synchronously on the caller thread; debug only.
      */
     private OverflowPolicy overflowPolicy = OverflowPolicy.DROP;
 
     /**
      * How long (ms) {@code close()} waits for the background writer to drain before
-     * logging a warning and returning.  Default: 5000 ms.
+     * logging a warning and returning. Default: 5000 ms.
      */
     private long shutdownDrainTimeoutMs = 5_000;
 

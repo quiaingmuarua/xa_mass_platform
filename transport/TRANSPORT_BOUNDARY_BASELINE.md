@@ -69,6 +69,9 @@ behavior that cannot fit one of these concepts.
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result-envelope validation and runtime logging
 - routing from task assignment events to adapter dispatch channels
+- engine-to-transport dispatch handoff queue/store ownership after assignment;
+  current default wiring is an in-memory `TaskDispatchHandoff` drained by a
+  runtime pump, not a direct engine->transport listener invocation
 - worker transport-binding resolution from registered worker truth via storage
   lookup contracts rather than the broader engine worker facade
 - consumption of shared dispatch-ready/result-ingest seams from neutral runtime
@@ -102,6 +105,12 @@ the worker wire contract is intentionally changed.
 
 Do not split this hybrid opportunistically. That is a cross-adapter wire change
 touching adapter codecs and external worker API behavior.
+
+`TaskDispatchContext` is the current task-level dispatch snapshot passed through
+the engine -> transport handoff seam. It freezes the task shell fields needed
+for delivery payload assembly after assignment has already selected concrete
+`TaskDispatchBinding` values. Transport should consume this snapshot instead of
+depending on a live mutable `Task` reference across the handoff boundary.
 
 `TransportPacket` is now the internal flat transport envelope for dispatch,
 result, and worker-system-event shapes. In the current mainline, dispatch is
@@ -184,6 +193,13 @@ should provide an indexed lookup for:
 Dispatch is also a hot path. Delivery queues currently store
 `TransportDispatchEnvelope` values and should avoid deep-copying task payload
 maps beyond the immutable copies already owned by `TaskDispatchItem`.
+
+Assignment-to-transport handoff is also part of the hot path. The current
+runtime uses an in-memory `TaskDispatchHandoff` plus `TaskDispatchHandoffPump`
+as the explicit producer/consumer seam. This is still node-local today, but it
+is now the queue/store replacement point for a future durable or cross-node
+handoff. Do not reintroduce direct synchronous engine->transport callback
+coupling as a parallel mainline.
 
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has both per-worker queue caps and a configurable total

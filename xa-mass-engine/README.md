@@ -79,6 +79,8 @@ Repo-level mainline surfaces:
 - dispatch-ready bindings and result-ingest seams used across engine, SDK,
   transport runtime, and tests now live in shared base runtime contracts rather
   than engine-owned package paths
+- engine emits dispatch-ready bindings into a neutral handoff/listener seam; it
+  must not grow a direct dependency on transport routing/runtime classes
 - task-create input consumed by `TaskCommandService` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
   DTO packages just to submit tasks

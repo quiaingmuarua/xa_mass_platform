@@ -227,6 +227,7 @@ The canonical model must be able to represent these flows:
 - callback accepted / duplicate / late / rejected
 - resource release success / failure
 - lease expiry
+- worker online / offline reachability changes
 - validation and reconciliation decisions
 
 ## 6. Replayability Requirement
