@@ -190,13 +190,21 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder redisDeliveryStore(String redisUri) {
+            return redisDeliveryStore(redisUri, RedisTransportDeliveryStore.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisDeliveryStore(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
             if (normalizedRedisUri.isBlank()) {
                 throw new IllegalArgumentException("redisUri must not be blank");
             }
+            String normalizedNamespacePrefix = Objects.requireNonNull(namespacePrefix, "namespacePrefix").trim();
+            if (normalizedNamespacePrefix.isBlank()) {
+                throw new IllegalArgumentException("namespacePrefix must not be blank");
+            }
             config.setDeliveryStoreFactory(() -> new RedisTransportDeliveryStore(
                     normalizedRedisUri,
-                    RedisTransportDeliveryStore.DEFAULT_NAMESPACE_PREFIX,
+                    normalizedNamespacePrefix,
                     config.getMaxDeliveryQueuedItems(),
                     RedisTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE
             ));

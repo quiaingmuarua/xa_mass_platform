@@ -289,8 +289,11 @@ Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
 Runtime delivery backlog admission is configured through the transport builder;
-`maxDeliveryQueuedItems(...)` controls the total in-memory queued dispatch cap
-used by the embedded delivery store before a Redis/JDBC-backed store is added.
+`maxDeliveryQueuedItems(...)` controls the total queued dispatch cap used by
+the resolved delivery store. The embedded mainline still defaults to the
+in-memory delivery store, but SDK composition may replace it through
+`deliveryStoreFactory(...)` or `redisDeliveryStore(redisUri[, namespacePrefix])`
+without changing transport runtime contracts.
 Runtime executor admission is also configurable through
 `transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`;
 both default to 10000 pending tasks and are reported in executor diagnostics.

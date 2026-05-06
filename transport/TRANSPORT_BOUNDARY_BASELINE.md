@@ -242,6 +242,9 @@ Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
 `platform_infra` so long as transport semantics remain owned by
 `TransportDeliveryStore`, `TransportDispatchEnvelope`, and `DispatchOutcome`.
+Embedded runtime composition may choose between the default in-memory delivery
+store and a Redis-backed transport delivery store, but that selection belongs
+to SDK/starter assembly rather than transport-facing adapter contracts.
 
 ## Direct vs Queued Delivery
 

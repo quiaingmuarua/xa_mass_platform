@@ -180,6 +180,31 @@ class RedisRuntimeTraceIntegrationTest {
     }
 
     @Test
+    void callbackOnAlreadyTerminalTaskIsIgnoredAsLateAndEmitsLateTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-late-callback-trace", 0);
+        fixture.task().setStatus(TaskStatus.TERMINAL);
+        taskStorage.updateTask(fixture.task());
+
+        boolean handled = resultFacade.handleTaskMessageResult(
+                fixture.task().getTid(),
+                fixture.message().getMessageId(),
+                true,
+                "late-terminal",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "late-terminal")
+        );
+
+        assertTrue(handled);
+        TaskMsg updated = taskQueries.getTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
+        assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
+        assertEquals(1, runtime.activeLeases(fixture.task().getTid()).size());
+
+        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_IGNORED_LATE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+    }
+
+    @Test
     void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
 

@@ -140,6 +140,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions redisDeliveryStore(String redisUri, String namespacePrefix) {
+            delegate.redisDeliveryStore(redisUri, namespacePrefix);
+            return this;
+        }
+
         public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
             return this;

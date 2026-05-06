@@ -25,6 +25,9 @@ entry for `transport/`.
   websocket/socket/polling JSON remains unchanged in this phase.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `TransportDispatchEnvelope`, `TransportDeliveryStore`, and `DispatchOutcome`.
+- Embedded runtime composition currently defaults to the in-memory delivery
+  store, but SDK/starter wiring may swap in a Redis-backed
+  `TransportDeliveryStore` without changing transport-facing contracts.
 
 Canonical transport concepts live in
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md). Use that as

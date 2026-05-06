@@ -776,6 +776,19 @@ class MassSdkTest {
         assertTrue(store.shutdownCalled.get());
     }
 
+    @Test
+    void sdkBuilderAcceptsRedisDeliveryStoreNamespaceOverride() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .redisDeliveryStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:delivery")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        assertNotNull(app);
+        assertFalse(app.isRunning());
+    }
+
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
         MassSdkApplication app = explicitRealtimeRuntime(18080, 8, 1000);
 
