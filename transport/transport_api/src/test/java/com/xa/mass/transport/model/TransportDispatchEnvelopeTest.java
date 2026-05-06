@@ -16,9 +16,20 @@ class TransportDispatchEnvelopeTest {
     void constructorNormalizesAdapterRouteAndCorrelationKeys() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                " WebSocket ",
-                " worker-1 ",
-                " attempt-1 ",
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-1",
+                        " attempt-1 ",
+                        PacketType.TASK_DISPATCH,
+                        " WebSocket ",
+                        " worker-1 ",
+                        "task-1",
+                        "msg-1",
+                        null,
+                        "crawler.fetch-page",
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        Map.of()
+                ),
                 item(),
                 10L
         );
@@ -34,9 +45,20 @@ class TransportDispatchEnvelopeTest {
     void constructorCollapsesBlankAdapterRouteAndCorrelationKeysToNull() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                " ",
-                " ",
-                " ",
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-1",
+                        " ",
+                        PacketType.TASK_DISPATCH,
+                        " ",
+                        " ",
+                        "task-1",
+                        "msg-1",
+                        null,
+                        "crawler.fetch-page",
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        Map.of()
+                ),
                 item(),
                 10L
         );

@@ -134,7 +134,8 @@ public class TaskAssignWorker {
         }
         pendingTasks.addAndGet(tasks.size());
         for (Task task : tasks) {
-            if (!submit(task, true)) {
+            SubmitResult submitResult = submit(task, true);
+            if (submitResult.isHardRejected()) {
                 completeRejectedBatchSubmission(task);
             }
         }
@@ -155,6 +156,10 @@ public class TaskAssignWorker {
     }
 
     public boolean submit(Task task) {
+        return submitDetailed(task).acceptsSignal();
+    }
+
+    public SubmitResult submitDetailed(Task task) {
         return submit(task, false);
     }
 
@@ -322,6 +327,42 @@ public class TaskAssignWorker {
         return laneState.queue.offer(new TaskAssignmentSignal(task, reason));
     }
 
+    private void scheduleSubmissionRetry(Task task, LaneState laneState) {
+        if (task == null || laneState == null || laneState.retryExecutor == null) {
+            releaseTrackedTask(task != null ? task.getTid() : null);
+            return;
+        }
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
+        long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
+        laneState.scheduledRetryCount.incrementAndGet();
+        emitQueueSnapshot(task, task.getStatus(), laneState, "SUBMIT_RETRY_SCHEDULED", resolvedRetryDelayMillis,
+                "assignment signal queue is full; submit will be retried", "DEFERRED");
+        laneState.retryExecutor.schedule(() -> {
+            laneState.scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
+            TaskStatus currentStatus = task.getStatus();
+            if (!running) {
+                releaseTrackedTask(task.getTid());
+                completeUnprocessedTrackedTask(task, laneState, "RETRY_DROPPED",
+                        "submit retry was dropped because assignment signal worker is stopping", "SKIPPED");
+                return;
+            }
+            if (currentStatus != TaskStatus.READY && currentStatus != TaskStatus.RUNNING) {
+                releaseTrackedTask(task.getTid());
+                completeUnprocessedTrackedTask(task, laneState, "RETRY_DROPPED",
+                        "submit retry was dropped because task is no longer dispatchable", "SKIPPED");
+                return;
+            }
+            if (enqueueSignal(task, AssignmentSignalReason.RETRY, laneState)) {
+                emitQueueSnapshot(task, currentStatus, laneState, "RETRY_ENQUEUED", resolvedRetryDelayMillis,
+                        "delayed submit retry enqueued task back into assignment signal queue", "SUCCESS");
+                return;
+            }
+            emitQueueSnapshot(task, currentStatus, laneState, "RETRY_QUEUE_FULL", resolvedRetryDelayMillis,
+                    "assignment signal queue is still full; submit retry will be rescheduled", "DEFERRED");
+            scheduleSubmissionRetry(task, laneState);
+        }, resolvedRetryDelayMillis, TimeUnit.MILLISECONDS);
+    }
+
     private void scheduleRetry(Task task, TaskStatus expectedStatus, LaneState laneState) {
         if (laneState == null || laneState.retryExecutor == null) {
             return;
@@ -372,6 +413,21 @@ public class TaskAssignWorker {
         }
     }
 
+    private void completeUnprocessedTrackedTask(Task task,
+                                                LaneState laneState,
+                                                String queueAction,
+                                                String reason,
+                                                String result) {
+        int previous = pendingTasks.getAndUpdate(current -> current > 0 ? current - 1 : 0);
+        int remaining = previous > 0 ? previous - 1 : 0;
+        emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, queueAction, null, reason, result);
+        if (previous > 0 && remaining == 0) {
+            emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState,
+                    "DRAINED", null, "tracked assignment batch drained", "SUCCESS");
+            listeners.forEach(TaskAssignmentQueueListener::onAssignmentQueueDrained);
+        }
+    }
+
     private LaneState resolveLaneState(Task task) {
         return laneStates.get(resolveDispatchLane(task));
     }
@@ -388,39 +444,53 @@ public class TaskAssignWorker {
         return laneStates.values().stream().mapToInt(lane -> lane.scheduledRetryCount.get()).sum();
     }
 
-    private boolean submit(Task task, boolean trackedBatchSubmission) {
+    private SubmitResult submit(Task task, boolean trackedBatchSubmission) {
         LaneState laneState = resolveLaneState(task);
+        if (!running || laneState == null) {
+            emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "UNAVAILABLE", null,
+                    "assignment signal worker is not running", "REJECTED");
+            return SubmitResult.REJECTED_UNAVAILABLE;
+        }
         if (!trackTask(task)) {
             if (markDeferredRequeue(task)) {
                 emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "REQUEUE_MARKED", null,
                         "task requested another dispatch while an assignment cycle is still in progress", "DEFERRED");
+                return SubmitResult.DEFERRED_REQUEUE_MARKED;
             } else {
                 emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "DEDUP_SKIPPED", null,
                         "task is already queued, processing, or waiting retry", "SKIPPED");
+                return SubmitResult.DEDUP_SKIPPED;
             }
-            return false;
         }
         if (!enqueueSignal(task, AssignmentSignalReason.SUBMITTED, laneState)) {
-            releaseTrackedTask(task != null ? task.getTid() : null);
             emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "QUEUE_FULL", null,
-                    "assignment signal queue is full", "REJECTED");
-            return false;
+                    "assignment signal queue is full; submit will be retried", "DEFERRED");
+            scheduleSubmissionRetry(task, laneState);
+            return SubmitResult.RETRY_SCHEDULED;
         }
         emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "SUBMITTED", null,
                 "task submitted to assignment signal queue", "SUCCESS");
-        return true;
+        return SubmitResult.ACCEPTED;
     }
 
     private void completeRejectedBatchSubmission(Task task) {
-        int previous = pendingTasks.getAndUpdate(current -> current > 0 ? current - 1 : 0);
-        int remaining = previous > 0 ? previous - 1 : 0;
-        emitQueueSnapshot(task, task != null ? task.getStatus() : null, resolveLaneState(task),
-                "BATCH_SUBMIT_REJECTED", null,
+        completeUnprocessedTrackedTask(task, resolveLaneState(task), "BATCH_SUBMIT_REJECTED",
                 "task did not enter the tracked assignment batch", "SKIPPED");
-        if (previous > 0 && remaining == 0) {
-            emitQueueSnapshot(task, task != null ? task.getStatus() : null, resolveLaneState(task),
-                    "DRAINED", null, "tracked assignment batch drained", "SUCCESS");
-            listeners.forEach(TaskAssignmentQueueListener::onAssignmentQueueDrained);
+    }
+
+    public enum SubmitResult {
+        ACCEPTED,
+        DEDUP_SKIPPED,
+        DEFERRED_REQUEUE_MARKED,
+        RETRY_SCHEDULED,
+        REJECTED_UNAVAILABLE;
+
+        public boolean acceptsSignal() {
+            return this != REJECTED_UNAVAILABLE;
+        }
+
+        public boolean isHardRejected() {
+            return this == REJECTED_UNAVAILABLE;
         }
     }
 

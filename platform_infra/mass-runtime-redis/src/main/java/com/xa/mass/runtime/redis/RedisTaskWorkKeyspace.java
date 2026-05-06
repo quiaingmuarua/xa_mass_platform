@@ -80,6 +80,10 @@ public final class RedisTaskWorkKeyspace {
         return namespaced("stats");
     }
 
+    public String taskRegistrySet() {
+        return namespaced("tasks");
+    }
+
     public String taskReadyQueue(String taskId) {
         return taskPrefix(taskId) + ":ready";
     }

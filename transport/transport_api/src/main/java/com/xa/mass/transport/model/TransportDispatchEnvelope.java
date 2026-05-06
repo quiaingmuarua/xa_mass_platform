@@ -33,33 +33,6 @@ public final class TransportDispatchEnvelope {
         this.createdAtEpochMillis = createdAtEpochMillis;
     }
 
-    public TransportDispatchEnvelope(String deliveryId,
-                                     String adapterId,
-                                     String routeKey,
-                                     String correlationKey,
-                                     TaskDispatchItem payload,
-                                     long createdAtEpochMillis) {
-        this(
-                deliveryId,
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        requireText(deliveryId, "deliveryId"),
-                        TransportDeliveryAddressing.normalizeText(correlationKey),
-                        PacketType.TASK_DISPATCH,
-                        adapterId,
-                        routeKey,
-                        payload == null ? null : payload.getTaskId(),
-                        payload == null ? null : payload.getMessageId(),
-                        payload == null ? null : payload.attemptId(),
-                        payload == null ? null : payload.getEventCode(),
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        payload == null ? null : TransportPacketViews.dispatchPayload(payload.wireView())
-                ),
-                Objects.requireNonNull(payload, "payload"),
-                createdAtEpochMillis
-        );
-    }
-
     public String getDeliveryId() {
         return deliveryId;
     }

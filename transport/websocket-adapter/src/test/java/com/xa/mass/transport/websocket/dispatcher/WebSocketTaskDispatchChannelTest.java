@@ -12,6 +12,9 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -154,9 +157,20 @@ class WebSocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
-                "websocket",
-                item.getWorkerId(),
-                item.attemptId(),
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-" + item.getMessageId(),
+                        item.attemptId(),
+                        PacketType.TASK_DISPATCH,
+                        "websocket",
+                        item.getWorkerId(),
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        TransportPacketViews.dispatchPayload(item.wireView())
+                ),
                 item,
                 1L
         );

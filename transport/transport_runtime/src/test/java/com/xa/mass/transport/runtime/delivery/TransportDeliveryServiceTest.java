@@ -4,6 +4,9 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -134,14 +137,7 @@ class TransportDeliveryServiceTest {
     void pollUsesCanonicalAdapterAndRouteKeys() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", " worker-1 ");
-        service.enqueue(List.of(new TransportDispatchEnvelope(
-                "delivery-msg-1",
-                " Polling ",
-                " worker-1 ",
-                item.attemptId(),
-                item,
-                1L
-        )));
+        service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " worker-1 ", item)));
 
         assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
                 .map(TaskDispatchItem::getMessageId)
@@ -242,22 +238,33 @@ class TransportDeliveryServiceTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "polling",
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
-                1L
-        );
+        return envelope("delivery-" + item.getMessageId(), "polling", item.getWorkerId(), item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return envelope("delivery-" + item.getMessageId(), "polling", " ", item);
+    }
+
+    private TransportDispatchEnvelope envelope(String deliveryId,
+                                              String adapterId,
+                                              String routeKey,
+                                              TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "polling",
-                " ",
-                item.attemptId(),
+                deliveryId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        item.attemptId(),
+                        PacketType.TASK_DISPATCH,
+                        adapterId,
+                        routeKey,
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        TransportPacketViews.dispatchPayload(item.wireView())
+                ),
                 item,
                 1L
         );

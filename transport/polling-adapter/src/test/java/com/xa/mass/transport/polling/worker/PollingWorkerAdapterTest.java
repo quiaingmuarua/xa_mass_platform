@@ -5,6 +5,9 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -91,22 +94,30 @@ class PollingWorkerAdapterTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                PollingWorkerAdapter.PROTOCOL,
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
-                1L
-        );
+        return envelope("delivery-" + item.getMessageId(), item.getWorkerId(), item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return envelope("delivery-" + item.getMessageId(), " ", item);
+    }
+
+    private TransportDispatchEnvelope envelope(String deliveryId, String routeKey, TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                PollingWorkerAdapter.PROTOCOL,
-                " ",
-                item.attemptId(),
+                deliveryId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        item.attemptId(),
+                        PacketType.TASK_DISPATCH,
+                        PollingWorkerAdapter.PROTOCOL,
+                        routeKey,
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        TransportPacketViews.dispatchPayload(item.wireView())
+                ),
                 item,
                 1L
         );

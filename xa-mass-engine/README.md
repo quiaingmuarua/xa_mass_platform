@@ -57,6 +57,9 @@ Keep these facts fixed unless the owning global baselines change:
   reconciliation
 - `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
   including enqueue, claim, lease, and discard/apply helpers
+- `TaskAssignWorker` owns lane-local assignment signal admission; queue-full
+  pressure must converge through internal retry/defer behavior instead of
+  silently dropping `READY` / redispatch signals
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,

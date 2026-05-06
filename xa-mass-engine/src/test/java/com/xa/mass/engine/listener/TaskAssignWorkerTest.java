@@ -66,7 +66,7 @@ class TaskAssignWorkerTest {
 
         Task task = readyTask("t1");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
             assertTrue(latch.await(3, TimeUnit.SECONDS), "Task should be processed within 3s");
             assertEquals(1, assigned.size());
@@ -105,7 +105,7 @@ class TaskAssignWorkerTest {
 
         Task task = readyTask("retry");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
             assertEquals(TaskStatus.RUNNING, task.getStatus());
@@ -143,7 +143,7 @@ class TaskAssignWorkerTest {
 
         Task task = runningTask("running-retry");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "RUNNING task should be retried until replenishment succeeds");
             assertEquals(TaskStatus.RUNNING, task.getStatus());
@@ -169,8 +169,8 @@ class TaskAssignWorkerTest {
         newTask.setTid("skipped");
         newTask.setStatus(TaskStatus.NEW);
 
-        worker.submit(newTask);
-        worker.submit(readyTask("processed"));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(newTask));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("processed")));
 
         assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
         assertEquals(1, assigned.size());
@@ -201,9 +201,9 @@ class TaskAssignWorkerTest {
 
         Task task = readyTask("dedup");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
             assertTrue(firstAttemptEntered.await(3, TimeUnit.SECONDS), "first assignment attempt should start");
-            assertFalse(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.DEDUP_SKIPPED, worker.submitDetailed(task));
             releaseFirstAttempt.countDown();
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
@@ -216,17 +216,21 @@ class TaskAssignWorkerTest {
     }
 
     @Test
-    void submitRejectsDistinctTaskWhenAssignmentSignalQueueIsFull() throws InterruptedException {
+    void submitDefersDistinctTaskWhenAssignmentSignalQueueIsFull() throws InterruptedException {
         worker.stop();
 
         CountDownLatch firstAttemptStarted = new CountDownLatch(1);
         CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
+        CountDownLatch rejectedEventuallyProcessed = new CountDownLatch(1);
         TaskWorkerAssignListener blockingListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             firstAttemptStarted.countDown();
             assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             task.transitionTo(TaskStatus.RUNNING);
+            if ("rejected".equals(task.getTid())) {
+                rejectedEventuallyProcessed.countDown();
+            }
             return true;
         }).when(blockingListener).onTaskAssign(any());
 
@@ -234,15 +238,26 @@ class TaskAssignWorkerTest {
         worker.start();
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(readyTask("blocking")));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("blocking")));
             assertTrue(firstAttemptStarted.await(3, TimeUnit.SECONDS));
-            assertTrue(worker.submit(readyTask("queued")));
-            assertFalse(worker.submit(readyTask("rejected")));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("queued")));
+            assertEquals(TaskAssignWorker.SubmitResult.RETRY_SCHEDULED, worker.submitDetailed(readyTask("rejected")));
 
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "rejected".equals(mdc.get("taskId"))
                             && "QUEUE_FULL".equals(mdc.get("queueAction"))
-                            && "REJECTED".equals(mdc.get("result")));
+                            && "DEFERRED".equals(mdc.get("result")));
+            releaseFirstAttempt.countDown();
+            assertTrue(rejectedEventuallyProcessed.await(3, TimeUnit.SECONDS),
+                    "queue-full submission should be retried until it enters the assignment queue");
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "rejected".equals(mdc.get("taskId"))
+                            && "SUBMIT_RETRY_SCHEDULED".equals(mdc.get("queueAction"))
+                            && "DEFERRED".equals(mdc.get("result")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "rejected".equals(mdc.get("taskId"))
+                            && "RETRY_ENQUEUED".equals(mdc.get("queueAction"))
+                            && "SUCCESS".equals(mdc.get("result")));
         } finally {
             releaseFirstAttempt.countDown();
         }
@@ -261,7 +276,8 @@ class TaskAssignWorkerTest {
             Task task = invocation.getArgument(0);
             int currentAttempt = attempts.incrementAndGet();
             if (currentAttempt == 1) {
-                assertFalse(worker.submit(task), "second submit while tracked should be deferred");
+                assertEquals(TaskAssignWorker.SubmitResult.DEFERRED_REQUEUE_MARKED, worker.submitDetailed(task),
+                        "second submit while tracked should be deferred");
                 deferredSubmitObserved.countDown();
                 assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             } else if (currentAttempt == 2) {
@@ -275,7 +291,7 @@ class TaskAssignWorkerTest {
 
         Task task = runningTask("deferred-requeue");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
             assertTrue(deferredSubmitObserved.await(3, TimeUnit.SECONDS),
                     "deferred submit should be observed during the first assignment cycle");
             releaseFirstAttempt.countDown();
@@ -313,8 +329,8 @@ class TaskAssignWorkerTest {
         Task bulkTask = bulkTask("bulk-retry-delay");
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(interactiveTask));
-            assertTrue(worker.submit(bulkTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(interactiveTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask));
 
             assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "interactive-retry-delay", "25")),
                     "interactive retry should use the shorter resolved delay");
@@ -352,9 +368,9 @@ class TaskAssignWorkerTest {
         Task interactiveTask = interactiveTask("interactive-fast");
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(bulkTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask));
             assertTrue(bulkStarted.await(3, TimeUnit.SECONDS), "bulk lane should start processing first");
-            assertTrue(worker.submit(interactiveTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(interactiveTask));
             assertTrue(interactiveProcessed.await(1, TimeUnit.SECONDS),
                     "interactive lane should still make progress while bulk lane is blocked");
 

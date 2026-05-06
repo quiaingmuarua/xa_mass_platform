@@ -1,5 +1,8 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -52,12 +55,7 @@ class DispatchOutcomeTest {
     }
 
     private TransportDispatchEnvelope envelope() {
-        return new TransportDispatchEnvelope(
-                "delivery-1",
-                "polling",
-                "worker-1",
-                "attempt-1",
-                new TaskDispatchItem(
+        TaskDispatchItem item = new TaskDispatchItem(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
@@ -70,7 +68,24 @@ class DispatchOutcomeTest {
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+        );
+        return new TransportDispatchEnvelope(
+                "delivery-1",
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-1",
+                        "attempt-1",
+                        PacketType.TASK_DISPATCH,
+                        "polling",
+                        "worker-1",
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        TransportPacketViews.dispatchPayload(item.wireView())
                 ),
+                item,
                 10L
         );
     }
