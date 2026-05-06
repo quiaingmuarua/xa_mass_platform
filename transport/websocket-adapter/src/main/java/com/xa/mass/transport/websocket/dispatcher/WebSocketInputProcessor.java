@@ -65,6 +65,7 @@ public final class WebSocketInputProcessor {
                             inboundMessage.getWorkerId()
                     ),
                     inboundMessage.getEndpointId(),
+                    context.getFrameCodec().extractTraceId(frame),
                     report
             ));
         } catch (IllegalArgumentException ex) {

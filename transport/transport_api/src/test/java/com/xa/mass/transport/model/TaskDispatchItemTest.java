@@ -3,6 +3,7 @@ package com.xa.mass.transport.model;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -19,7 +20,7 @@ class TaskDispatchItemTest {
                 "data", Map.of("url", "https://example.test/page-1")
         ));
 
-        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt());
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), taskMsg, attempt());
 
         assertEquals("https://example.test/page-1", item.getInput().get("url"));
     }
@@ -32,7 +33,7 @@ class TaskDispatchItemTest {
                 "text", "hello"
         ));
 
-        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt());
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), taskMsg, attempt());
 
         assertEquals(Map.of("text", "hello"), item.getInput());
     }
@@ -43,7 +44,7 @@ class TaskDispatchItemTest {
         task.setTid("task-1");
         TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", Map.of("target", "worker-a"));
 
-        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt());
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), taskMsg, attempt());
 
         assertEquals(Map.of("target", "worker-a"), item.getInput());
     }
@@ -55,7 +56,7 @@ class TaskDispatchItemTest {
         TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", Map.of("target", "worker-a"));
         TaskMsgAttempt attempt = attempt();
 
-        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt);
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), taskMsg, attempt);
 
         assertEquals("attempt-1", item.attemptId());
         assertEquals("worker-1", item.getWorkerId());
@@ -71,7 +72,7 @@ class TaskDispatchItemTest {
                 "data", Map.of("url", "https://example.test/page-1")
         ));
 
-        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg, attempt());
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), taskMsg, attempt());
 
         assertEquals("attempt-1", item.runtimeMetadata().attemptId());
         assertEquals("worker-1", item.runtimeMetadata().workerId());

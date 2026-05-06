@@ -72,6 +72,9 @@ behavior that cannot fit one of these concepts.
 - engine-to-transport dispatch handoff queue/store ownership after assignment;
   current default wiring is an in-memory `TaskDispatchHandoff` drained by a
   runtime pump, not a direct engine->transport listener invocation
+- transport runtime consumes `TaskDispatchBatchListener` at this seam; the
+  older `TaskMsgDispatchListener` shape remains producer-side only for engine ->
+  handoff adaptation and is not a transport consumer boundary anymore
 - worker transport-binding resolution from registered worker truth via storage
   lookup contracts rather than the broader engine worker facade
 - consumption of shared dispatch-ready/result-ingest seams from neutral runtime

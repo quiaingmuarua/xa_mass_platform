@@ -1,6 +1,5 @@
 package com.xa.mass.transport.model;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -94,12 +93,8 @@ public final class TaskDispatchItem {
         return eventCode;
     }
 
-    public static TaskDispatchItem from(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        Objects.requireNonNull(task, "task");
-        return from(TaskDispatchContext.from(task), taskMsg, attempt);
-    }
-
     public static TaskDispatchItem from(TaskDispatchContext task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        Objects.requireNonNull(task, "task");
         Objects.requireNonNull(taskMsg, "taskMsg");
         Objects.requireNonNull(attempt, "attempt");
         return new TaskDispatchItem(

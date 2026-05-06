@@ -7,6 +7,7 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.util.Objects;
 
@@ -17,6 +18,7 @@ import java.util.Objects;
 public final class RuntimeTaskResultIngestChannel implements TaskResultIngestChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(RuntimeTaskResultIngestChannel.class);
+    private static final String TRACE_ID_MDC_KEY = "traceId";
 
     private final TaskResultIngestFacade taskResultIngestFacade;
 
@@ -46,12 +48,24 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         if (envelope == null) {
             return false;
         }
-        TaskResultReport report = envelope.getReport();
-        logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, attemptId={}, taskId={}, messageId={}",
-                envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(), envelope.getAttemptId(),
-                report.getTaskId(), report.getMessageId());
-        validateAttemptIdentity(envelope, report);
-        return ingest(report);
+        String previousTraceId = MDC.get(TRACE_ID_MDC_KEY);
+        try {
+            if (envelope.getTraceId() != null) {
+                MDC.put(TRACE_ID_MDC_KEY, envelope.getTraceId());
+            }
+            TaskResultReport report = envelope.getReport();
+            logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, attemptId={}, taskId={}, messageId={}, traceId={}",
+                    envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(), envelope.getAttemptId(),
+                    report.getTaskId(), report.getMessageId(), envelope.getTraceId());
+            validateAttemptIdentity(envelope, report);
+            return ingest(report);
+        } finally {
+            if (previousTraceId == null || previousTraceId.isBlank()) {
+                MDC.remove(TRACE_ID_MDC_KEY);
+            } else {
+                MDC.put(TRACE_ID_MDC_KEY, previousTraceId);
+            }
+        }
     }
 
     private void validateAttemptIdentity(TransportResultEnvelope envelope, TaskResultReport report) {

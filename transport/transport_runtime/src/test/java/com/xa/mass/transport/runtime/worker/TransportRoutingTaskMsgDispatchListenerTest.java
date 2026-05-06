@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -66,7 +67,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         pollMsg.setMessageId("msg-poll");
         TaskMsgAttempt pollAttempt = attempt("task-1", "msg-poll", "attempt-poll", "poll-worker", null, "batch-poll");
 
-        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(wsMsg, wsAttempt), new TaskDispatchBinding(pollMsg, pollAttempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(wsMsg, wsAttempt), new TaskDispatchBinding(pollMsg, pollAttempt)));
 
         assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMessageIds);
         assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
@@ -98,7 +99,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         taskMsg.setMessageId("msg-rt");
         TaskMsgAttempt attempt = attempt("task-1", "msg-rt", "attempt-rt", "ws-worker", null, "batch-rt");
 
-        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
 
         assertEquals(List.of("msg-rt"), realtimeAdapter.dispatchedMessageIds);
     }
@@ -127,7 +128,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)))
+                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)))
         );
         assertEquals("Cannot resolve transport binding for worker missing-transport-worker: transportHint must not be blank",
                 error.getMessage());
@@ -158,7 +159,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)))
+                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)))
         );
         assertEquals("Cannot resolve transport binding for worker unsupported-transport-worker: Unsupported worker transportHint 'grpc'; available transportHints=[polling]",
                 error.getMessage());
@@ -188,7 +189,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         taskMsg.setMessageId("msg-backpressure");
         TaskMsgAttempt attempt = attempt("task-1", "msg-backpressure", "attempt-backpressure", "poll-worker", null, "batch-1");
 
-        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
 
         assertEquals(List.of("msg-backpressure"), pollingAdapter.dispatchedMessageIds);
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE_REJECTED), pollingAdapter.outcomeStatuses());
@@ -220,7 +221,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         taskMsg.setMessageId("msg-1");
         TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-1");
 
-        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
 
         assertEquals("delivery-1", pollingAdapter.outcomes.get(0).getDeliveryId());
         assertEquals(123456789L, pollingAdapter.lastEnvelopes.get(0).getCreatedAtEpochMillis());
@@ -257,7 +258,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         taskMsg.setMessageId("msg-1");
         TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-9");
 
-        listener.onTaskMsgsReady(task, List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
 
         assertEquals("endpoint:batch-9", pollingAdapter.lastEnvelopes.get(0).getRouteKey());
     }
@@ -343,6 +344,10 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         attempt.setWorkerContextId(workerContextId);
         attempt.setBatchId(batchId);
         return attempt;
+    }
+
+    private static TaskDispatchContext taskContext(Task task) {
+        return TaskDispatchContext.from(task);
     }
 
     private static final class NoopWorkerSystemEventChannel implements com.xa.mass.transport.channel.WorkerSystemEventChannel {

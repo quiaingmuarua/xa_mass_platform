@@ -245,6 +245,7 @@ Given a `taskId`, operators must be able to reconstruct:
 9. how many workers were requested, matched, and actually used per assignment attempt
 10. whether validation detected invariant drift or pending reconciliation
 11. whether pressure came from queue backlog, delayed retry accumulation, or lease expiry
+12. when transport provides a result-ingest `traceId`, downstream engine callback and message lifecycle events should preserve it
 
 ## 7. Non-Goals
 

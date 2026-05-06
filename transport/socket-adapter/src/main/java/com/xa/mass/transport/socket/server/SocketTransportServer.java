@@ -194,6 +194,7 @@ public final class SocketTransportServer implements TransportServer {
                             adapterId,
                             boundWorkerId,
                             endpointId,
+                            frameCodec.extractTraceId(frame),
                             report
                     ));
                     continue;

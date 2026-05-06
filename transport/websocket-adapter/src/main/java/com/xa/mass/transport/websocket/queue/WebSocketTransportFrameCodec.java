@@ -70,6 +70,10 @@ public final class WebSocketTransportFrameCodec {
         return readString(frame, EVENT_CODE_FIELD);
     }
 
+    public String extractTraceId(JsonObject frame) {
+        return readString(frame, "traceId");
+    }
+
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
                 && readString(frame, EVENT_CODE_FIELD) == null
