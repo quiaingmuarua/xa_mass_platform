@@ -241,7 +241,7 @@ class TaskConcurrencyAcceptanceTest {
             capture.assertHasEvent("CALLBACK_ACCEPTED", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.getMessageId().equals(mdc.get("messageId"))
-                            && "worker-".concat(message.getMessageId()).equals(mdc.get("latestAttemptWorkerId"))
+                            && "worker-".concat(message.getMessageId()).equals(mdc.get("workerId"))
                             && "batch-0".equals(mdc.get("latestAttemptBatchId")));
         }
     }

@@ -79,6 +79,17 @@ public class TaskAssignWorker {
                 traceEventLogger);
     }
 
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                            long retryDelayMillis,
+                            int assignmentQueueCapacity,
+                            TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver) {
+        this(workerAssignListener,
+                retryDelayMillis,
+                assignmentQueueCapacity,
+                taskRuntimeRetryPolicyResolver,
+                TraceEventLogger.noop());
+    }
+
     TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                      long retryDelayMillis,
                      int assignmentQueueCapacity,

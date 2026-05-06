@@ -239,8 +239,8 @@ class SimpleTaskMsgAssignListenerTest {
                     task.getTid().equals(mdc.get("taskId"))
                             && "INIT".equals(mdc.get("fromStatus"))
                             && "ASSIGNED".equals(mdc.get("toStatus"))
-                            && "d1".equals(mdc.get("latestAttemptWorkerId"))
-                            && "tk1".equals(mdc.get("latestAttemptWorkerContextId")));
+                            && "d1".equals(mdc.get("workerId"))
+                            && "tk1".equals(mdc.get("workerContextId")));
             capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && "CREATED".equals(mdc.get("fromStatus"))
