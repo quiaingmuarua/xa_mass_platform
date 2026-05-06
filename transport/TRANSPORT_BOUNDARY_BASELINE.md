@@ -69,6 +69,8 @@ behavior that cannot fit one of these concepts.
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result-envelope validation and runtime logging
 - routing from task assignment events to adapter dispatch channels
+- worker transport-binding resolution from registered worker truth via storage
+  lookup contracts rather than the broader engine worker facade
 
 Concrete adapters own protocol I/O only:
 

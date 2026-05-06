@@ -845,6 +845,8 @@ Current meaning:
 - this endpoint returns transport endpoint snapshots, not a kernel-level worker truth source
 - current mainline data is backed by the WebSocket adapter, but the response shape is transport-neutral
 - session diagnostics are operator-only read surfaces and should not be used as a second worker-control API
+- `adapterId` is the canonical endpoint identity in session payloads
+- `transport` is a legacy compatibility alias for `adapterId`; it is not `transportHint`
 
 Response shape:
 
@@ -860,7 +862,7 @@ Response shape:
             "endpointId": "abc123",
             "routeKey": "worker-route-1",
             "adapterId": "ws-public",
-            "transport": "websocket"
+            "transport": "ws-public"
           }
         ]
     }

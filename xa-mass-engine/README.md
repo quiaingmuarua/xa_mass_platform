@@ -60,6 +60,8 @@ Keep these facts fixed unless the owning global baselines change:
   not the hot-path runtime owner
 - engine-provided message reads are compatibility helpers, not the future
   business-detail query model
+- cross-module callers that only need worker registration lookup should depend
+  on storage lookup contracts rather than carrying `WorkerManager`
 
 Repo-level mainline surfaces:
 

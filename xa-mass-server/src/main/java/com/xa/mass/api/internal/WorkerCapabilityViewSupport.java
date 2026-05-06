@@ -95,6 +95,10 @@ final class WorkerCapabilityViewSupport {
             return null;
         }
         for (Map<String, Object> connection : connections) {
+            String connectionAdapterId = readTrimmed(connection == null ? null : connection.get("adapterId"));
+            if (connectionAdapterId != null) {
+                return connectionAdapterId.toLowerCase(java.util.Locale.ROOT);
+            }
             String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
             if (connectionTransport != null) {
                 return connectionTransport.toLowerCase(java.util.Locale.ROOT);
@@ -123,6 +127,8 @@ final class WorkerCapabilityViewSupport {
             Map<String, Object> normalized = new LinkedHashMap<>();
             normalized.put("active", Boolean.TRUE.equals(map.get("active")));
             normalized.put("endpointId", readTrimmed(map.get("endpointId")));
+            normalized.put("routeKey", readTrimmed(map.get("routeKey")));
+            normalized.put("adapterId", readTrimmed(map.get("adapterId")));
             normalized.put("transport", readTrimmed(map.get("transport")));
             connections.add(normalized);
         }

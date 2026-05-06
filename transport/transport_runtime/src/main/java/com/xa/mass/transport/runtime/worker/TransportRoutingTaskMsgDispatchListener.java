@@ -1,9 +1,9 @@
 package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskDispatchBinding;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -25,19 +25,19 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
 
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskMsgDispatchListener.class);
 
-    private final WorkerManager workerManager;
+    private final WorkerLookupStore workerLookupStore;
     private final TransportRuntimeRegistry transportRuntimeRegistry;
     private final TransportDispatchEnvelopeFactory envelopeFactory;
 
-    public TransportRoutingTaskMsgDispatchListener(WorkerManager workerManager,
+    public TransportRoutingTaskMsgDispatchListener(WorkerLookupStore workerLookupStore,
                                                    TransportRuntimeRegistry transportRuntimeRegistry) {
-        this(workerManager, transportRuntimeRegistry, new TransportDispatchEnvelopeFactory());
+        this(workerLookupStore, transportRuntimeRegistry, new TransportDispatchEnvelopeFactory());
     }
 
-    TransportRoutingTaskMsgDispatchListener(WorkerManager workerManager,
+    TransportRoutingTaskMsgDispatchListener(WorkerLookupStore workerLookupStore,
                                             TransportRuntimeRegistry transportRuntimeRegistry,
                                             TransportDispatchEnvelopeFactory envelopeFactory) {
-        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
         this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
         this.envelopeFactory = Objects.requireNonNull(envelopeFactory, "envelopeFactory");
     }
@@ -92,7 +92,7 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
 
     private TransportBinding resolveBinding(TaskDispatchBinding binding) {
         String workerId = binding != null && binding.attempt() != null ? binding.attempt().getWorkerId() : null;
-        if (workerId == null || workerManager.getWorker(workerId) == null) {
+        if (workerId == null || workerLookupStore.findWorker(workerId) == null) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }
         return transportRuntimeRegistry.resolveDispatchBinding(workerId);

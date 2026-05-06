@@ -13,11 +13,16 @@ import java.util.Optional;
  * one active execution lane per worker in the current runtime model, even when
  * a worker owns multiple worker contexts.
  */
-public interface WorkerStorage {
+public interface WorkerStorage extends WorkerLookupStore {
 
     void addWorker(Worker worker);
 
     Optional<Worker> getWorker(String workerId);
+
+    @Override
+    default Worker findWorker(String workerId) {
+        return getWorker(workerId).orElse(null);
+    }
 
     boolean updateWorker(Worker worker);
 

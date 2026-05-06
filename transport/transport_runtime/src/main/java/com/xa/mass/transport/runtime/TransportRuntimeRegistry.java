@@ -1,8 +1,8 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.worker.TransportRoutingTaskMsgDispatchListener;
@@ -27,18 +27,18 @@ import java.util.TreeSet;
  */
 public final class TransportRuntimeRegistry {
 
-    private final WorkerManager workerManager;
+    private final WorkerLookupStore workerLookupStore;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
 
-    public TransportRuntimeRegistry(WorkerManager workerManager,
+    public TransportRuntimeRegistry(WorkerLookupStore workerLookupStore,
                                     TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
                                     List<TransportBinding> bindings) {
-        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.bindings = List.copyOf(bindings);
@@ -53,7 +53,7 @@ public final class TransportRuntimeRegistry {
     }
 
     public TaskMsgDispatchListener createDispatchListener() {
-        return new TransportRoutingTaskMsgDispatchListener(workerManager, this);
+        return new TransportRoutingTaskMsgDispatchListener(workerLookupStore, this);
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -96,7 +96,7 @@ public final class TransportRuntimeRegistry {
     }
 
     private Worker requireWorker(String workerId) {
-        Worker worker = workerManager.getWorker(requireWorkerId(workerId));
+        Worker worker = workerLookupStore.findWorker(requireWorkerId(workerId));
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }

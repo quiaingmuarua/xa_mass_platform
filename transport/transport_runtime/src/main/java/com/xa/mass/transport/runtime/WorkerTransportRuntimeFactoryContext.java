@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -14,26 +14,26 @@ import java.util.Objects;
  */
 public final class WorkerTransportRuntimeFactoryContext {
 
-    private final WorkerManager workerManager;
+    private final WorkerLookupStore workerLookupStore;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final TransportDeliveryService deliveryService;
     private final List<TransportBinding> adapterBindings;
 
-    public WorkerTransportRuntimeFactoryContext(WorkerManager workerManager,
+    public WorkerTransportRuntimeFactoryContext(WorkerLookupStore workerLookupStore,
                                                 TaskResultIngestChannel taskResultIngestChannel,
                                                 WorkerSystemEventChannel systemEventChannel,
                                                 TransportDeliveryService deliveryService,
                                                 List<TransportBinding> adapterBindings) {
-        this.workerManager = workerManager;
+        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.adapterBindings = List.copyOf(adapterBindings);
     }
 
-    public WorkerManager getWorkerManager() {
-        return workerManager;
+    public WorkerLookupStore getWorkerLookupStore() {
+        return workerLookupStore;
     }
 
     public TaskResultIngestChannel getTaskResultIngestChannel() {

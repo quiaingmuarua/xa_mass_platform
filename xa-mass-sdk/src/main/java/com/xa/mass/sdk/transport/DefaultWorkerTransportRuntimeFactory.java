@@ -31,7 +31,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
         bindings.addAll(context.getAdapterBindings());
 
         return new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 bindings

@@ -2230,7 +2230,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
@@ -2266,7 +2266,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
@@ -2306,7 +2306,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
@@ -2345,7 +2345,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
@@ -2412,7 +2412,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)).build())
@@ -2450,7 +2450,7 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
@@ -2491,7 +2491,7 @@ class MassSdkTest {
                 WorkerTransportHints.POLLING
         );
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
+                context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(pollingAdapter)

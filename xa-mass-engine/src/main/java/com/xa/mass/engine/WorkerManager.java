@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,7 @@ import java.util.List;
  * convenience methods aligned with that single source of truth instead of
  * maintaining a second in-memory online registry.
  */
-public class WorkerManager {
+public class WorkerManager implements WorkerLookupStore {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
 
@@ -38,6 +39,11 @@ public class WorkerManager {
 
     public Worker getWorker(String workerId) {
         return workerStorage.getWorker(workerId).orElse(null);
+    }
+
+    @Override
+    public Worker findWorker(String workerId) {
+        return getWorker(workerId);
     }
 
     public boolean updateWorker(Worker worker) {

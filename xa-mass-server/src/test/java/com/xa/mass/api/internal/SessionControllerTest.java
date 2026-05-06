@@ -39,7 +39,7 @@ class SessionControllerTest {
                         "endpointId", "endpoint-1",
                         "routeKey", "route-1",
                         "adapterId", "ws-public",
-                        "transport", "websocket"
+                        "transport", "ws-public"
                 ))
         )));
 
@@ -51,7 +51,7 @@ class SessionControllerTest {
                 .andExpect(jsonPath("$.data[0].connections[0].endpointId").value("endpoint-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].routeKey").value("route-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].adapterId").value("ws-public"))
-                .andExpect(jsonPath("$.data[0].connections[0].transport").value("websocket"));
+                .andExpect(jsonPath("$.data[0].connections[0].transport").value("ws-public"));
     }
 
     @Test
