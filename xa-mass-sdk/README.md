@@ -191,6 +191,12 @@ For embedded runtime wiring, keep the mainline on storage/runtime contracts
 such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
 `workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
+SDK-internal task creation now maps onto the neutral base
+`TaskCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
+for control-plane truth instead of treating `WorkerManager` as the default SDK
+dependency. Embedded transport runtime assembly also consumes only
+`WorkerLookupStore`-level worker resolution instead of reaching through the
+broader worker facade.
 
 ## Compatibility Policy
 

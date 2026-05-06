@@ -20,7 +20,7 @@ public final class TransportDispatchEnvelope {
     public TransportDispatchEnvelope(String deliveryId,
                                      TransportPacket packet,
                                      long createdAtEpochMillis) {
-        this(deliveryId, packet, TransportPacketViews.toTaskDispatchItem(packet), createdAtEpochMillis);
+        this(deliveryId, packet, null, createdAtEpochMillis);
     }
 
     public TransportDispatchEnvelope(String deliveryId,
@@ -29,7 +29,7 @@ public final class TransportDispatchEnvelope {
                                      long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
         this.packet = requireDispatchPacket(packet);
-        this.payload = Objects.requireNonNull(payload, "payload");
+        this.payload = payload;
         this.createdAtEpochMillis = createdAtEpochMillis;
     }
 

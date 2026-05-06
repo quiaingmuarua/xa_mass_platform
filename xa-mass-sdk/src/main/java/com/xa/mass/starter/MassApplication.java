@@ -243,7 +243,7 @@ public class MassApplication {
             if (engineConfig.isEnabled()) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
-                                engineConfig.getWorkerManager(),
+                                engineConfig.getWorkerStorage(),
                                 taskResultIngestChannel,
                                 systemEventChannel,
                                 deliveryService,

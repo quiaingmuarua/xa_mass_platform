@@ -2166,8 +2166,6 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
