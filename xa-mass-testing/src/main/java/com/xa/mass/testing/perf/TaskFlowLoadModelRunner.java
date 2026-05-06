@@ -91,7 +91,11 @@ public final class TaskFlowLoadModelRunner {
 
         private LoadReport run() throws Exception {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
-            TaskManager taskManager = new TaskManager(new NoOpTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
+            TaskManager taskManager = new TaskManager(
+                    new NoOpTaskScheduler(),
+                    taskStorage,
+                    taskStorage,
+                    new InMemoryTaskWorkRuntime());
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
             TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);

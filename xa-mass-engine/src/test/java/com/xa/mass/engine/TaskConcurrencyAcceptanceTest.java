@@ -55,7 +55,8 @@ class TaskConcurrencyAcceptanceTest {
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
-        taskManager = new TaskManager(scheduler, new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -249,9 +250,11 @@ class TaskConcurrencyAcceptanceTest {
     void successCallbacksForDifferentMessagesDoNotSerializeAtTaskLevel() throws Exception {
         RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(2);
+        InMemoryTaskStorage concurrentTaskStorage = new InMemoryTaskStorage();
         TaskManager concurrentTaskManager = new TaskManager(
                 localScheduler,
-                new InMemoryTaskStorage(),
+                concurrentTaskStorage,
+                concurrentTaskStorage,
                 new AllWorkFinalTaskTerminalPolicy(),
                 blockingRuntime
         );
@@ -709,7 +712,7 @@ class TaskConcurrencyAcceptanceTest {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
         private CountingTaskManager(TaskScheduler taskScheduler, InMemoryTaskStorage taskStorage) {
-            super(taskScheduler, taskStorage, new InMemoryTaskWorkRuntime());
+            super(taskScheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         }
 
         @Override
@@ -735,7 +738,7 @@ class TaskConcurrencyAcceptanceTest {
                                               InMemoryTaskStorage taskStorage,
                                               TaskWorkRuntime taskWorkRuntime,
                                               int expectedProgressRequests) {
-            super(taskScheduler, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+            super(taskScheduler, taskStorage, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
             this.allProgressRequestsReached = new CountDownLatch(expectedProgressRequests);
         }
 

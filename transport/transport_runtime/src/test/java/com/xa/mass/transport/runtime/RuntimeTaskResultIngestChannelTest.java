@@ -46,7 +46,7 @@ class RuntimeTaskResultIngestChannelTest {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
-        taskManager = new TaskManager(scheduler, taskStorage, taskWorkRuntime);
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);

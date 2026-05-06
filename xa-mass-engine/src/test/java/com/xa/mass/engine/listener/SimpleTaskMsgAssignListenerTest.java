@@ -47,7 +47,7 @@ class SimpleTaskMsgAssignListenerTest {
         workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         listener = newAssignmentListener(taskManager);
     }
@@ -207,7 +207,7 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         listener = newAssignmentListener(taskManager);
 

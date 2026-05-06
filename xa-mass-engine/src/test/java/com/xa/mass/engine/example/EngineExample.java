@@ -28,9 +28,11 @@ public class EngineExample {
     private static final Logger log = LoggerFactory.getLogger(EngineExample.class);
 
     public static void main(String[] args) {
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         TaskManager taskManager = new TaskManager(
                 new SimpleTaskScheduler(),
-                new InMemoryTaskStorage(),
+                taskStorage,
+                taskStorage,
                 new InMemoryTaskWorkRuntime());
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());

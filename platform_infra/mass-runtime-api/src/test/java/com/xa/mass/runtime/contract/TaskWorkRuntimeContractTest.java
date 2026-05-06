@@ -6,6 +6,7 @@ import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -82,6 +83,13 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(runtime.hasReadyWork("t1")).isFalse();
     }
 
+    @Test
+    void enqueue_rejectsWhenPerTaskBackpressureLimitIsExceeded() {
+        runtime.enqueue(item("t1", "m1"), new WorkEnqueueOptions(1));
+        assertThat(runtime.enqueue(item("t1", "m2"), new WorkEnqueueOptions(1)).status())
+                .isEqualTo(WorkEnqueueStatus.BACKPRESSURE_REJECTED);
+    }
+
     // ── claim ─────────────────────────────────────────────────────────────────
 
     @Test
@@ -111,6 +119,26 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("t1", targets("w1"), 1, 30);
         assertThat(runtime.hasReadyWork("t1")).isFalse();
+    }
+
+    @Test
+    void claimReady_distributesAcrossWorkersWithinCapacity() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(item("t1", "m2"), WorkEnqueueOptions.DEFAULT);
+
+        List<ClaimedTaskWork> claimed = runtime.claimReady(
+                "t1",
+                List.of(
+                        new WorkerClaimTarget("w1", "ctx-1", "batch-1", 1),
+                        new WorkerClaimTarget("w2", "ctx-2", "batch-2", 1)
+                ),
+                2,
+                30
+        );
+
+        assertThat(claimed).hasSize(2);
+        assertThat(claimed).extracting(ClaimedTaskWork::workerId)
+                .containsExactlyInAnyOrder("w1", "w2");
     }
 
     // ── apply result ──────────────────────────────────────────────────────────
@@ -160,6 +188,26 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(retried.get(0).retryCount()).isEqualTo(1);
     }
 
+    @Test
+    void retryableFailure_respectsDelayedRetryVisibility() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+
+        ResultApplyOutcome outcome = runtime.applyResult(
+                TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true)
+                        .withRetryVisibleAt(clock.get().plusSeconds(5))
+        );
+
+        assertThat(outcome.status()).isEqualTo(ResultApplyStatus.RETRY_SCHEDULED);
+        assertThat(runtime.hasReadyWork("t1")).isFalse();
+        assertThat(runtime.stats("t1").delayedCount()).isEqualTo(1);
+
+        clock.set(clock.get().plusSeconds(6));
+        assertThat(runtime.hasReadyWork("t1")).isTrue();
+        assertThat(runtime.stats("t1").readyCount()).isEqualTo(1);
+        assertThat(runtime.stats("t1").delayedCount()).isZero();
+    }
+
     // ── lease expiry ──────────────────────────────────────────────────────────
 
     @Test
@@ -189,6 +237,29 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(runtime.stats("t1").inflightCount()).isEqualTo(1);
     }
 
+    @Test
+    void stats_reflectRetryAndFinalizationInvariants() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+
+        runtime.applyResult(TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true));
+        TaskWorkStats afterRetry = runtime.stats("t1");
+        assertThat(afterRetry.totalCount()).isEqualTo(1);
+        assertThat(afterRetry.readyCount()).isEqualTo(1);
+        assertThat(afterRetry.inflightCount()).isZero();
+        assertThat(afterRetry.finalCount()).isZero();
+        assertThat(afterRetry.processingCount()).isEqualTo(1);
+
+        ClaimedTaskWork retried = runtime.claimReady("t1", targets("w2"), 1, 30).get(0);
+        runtime.applyResult(TaskWorkResult.success("t1", "m1", retried.leaseToken(), "done", Map.of()));
+
+        TaskWorkStats finalized = runtime.stats("t1");
+        assertThat(finalized.successCount()).isEqualTo(1);
+        assertThat(finalized.finalCount()).isEqualTo(1);
+        assertThat(finalized.processingCount()).isZero();
+        assertThat(finalized.pendingCount()).isZero();
+    }
+
     // ── discard ───────────────────────────────────────────────────────────────
 
     @Test
@@ -208,6 +279,55 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(item("t2", "m2"), WorkEnqueueOptions.DEFAULT);
         runtime.discardTask("t1");
         assertThat(runtime.hasReadyWork("t2")).isTrue();
+    }
+
+    @Test
+    void readyTaskIds_areRuntimeOwnedAndPromoteDueDelayedItems() {
+        runtime.enqueue(item("t-ready", "m1"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(new TaskWorkEnvelope(
+                        "t-delayed",
+                        "m2",
+                        "demo.event",
+                        Map.of("key", "m2"),
+                        null,
+                        0,
+                        3,
+                        null,
+                        clock.get().plusSeconds(5),
+                        clock.get()),
+                WorkEnqueueOptions.DEFAULT);
+
+        assertThat(runtime.readyTaskIds(10)).containsExactly("t-ready");
+
+        clock.set(clock.get().plusSeconds(6));
+        assertThat(runtime.readyTaskIds(10)).contains("t-ready", "t-delayed");
+    }
+
+    @Test
+    void shutdown_clearsRuntimeResidueAndRejectsFurtherEnqueue() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(new TaskWorkEnvelope(
+                        "t1",
+                        "m2",
+                        "demo.event",
+                        Map.of("key", "m2"),
+                        null,
+                        0,
+                        3,
+                        null,
+                        clock.get().plusSeconds(5),
+                        clock.get()),
+                WorkEnqueueOptions.DEFAULT);
+        runtime.claimReady("t1", targets("w1"), 1, 30);
+
+        runtime.shutdown();
+
+        assertThat(runtime.stats("t1")).isEqualTo(TaskWorkStats.EMPTY);
+        assertThat(runtime.stats().readyItems()).isZero();
+        assertThat(runtime.stats().inflightItems()).isZero();
+        assertThat(runtime.stats().delayedItems()).isZero();
+        assertThat(runtime.enqueue(item("t1", "m3"), WorkEnqueueOptions.DEFAULT).status())
+                .isEqualTo(WorkEnqueueStatus.STORE_UNAVAILABLE);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

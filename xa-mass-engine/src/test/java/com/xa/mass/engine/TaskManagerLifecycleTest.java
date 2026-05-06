@@ -17,7 +17,6 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.*;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
@@ -37,14 +36,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class TaskManagerLifecycleTest {
 
     private RecordingTaskScheduler scheduler;
-    private TaskStorage taskStorage;
+    private InMemoryTaskStorage taskStorage;
     private TaskManager taskManager;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(scheduler, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -322,7 +321,12 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+            InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+            TaskManager manager = new TaskManager(
+                    new RecordingTaskScheduler(),
+                    managerStorage,
+                    managerStorage,
+                    new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = new TaskCreateRequestDto();
             dto.setTaskName("interactive-backpressure");
             dto.setProject("demoApp");
@@ -579,7 +583,12 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        TaskManager manager = new TaskManager(
+                new RecordingTaskScheduler(),
+                managerStorage,
+                managerStorage,
+                new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = buildRequest("task-result-interactive-delayed-retry", List.of("alpha"));
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             Task task = manager.createTask(dto);
@@ -619,7 +628,12 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-            TaskManager manager = new TaskManager(new RecordingTaskScheduler(), new InMemoryTaskStorage(), new InMemoryTaskWorkRuntime());
+        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        TaskManager manager = new TaskManager(
+                new RecordingTaskScheduler(),
+                managerStorage,
+                managerStorage,
+                new InMemoryTaskWorkRuntime());
             TaskCreateRequestDto dto = buildRequest("task-result-interactive-coalesced-retry", List.of("alpha", "beta"), 1);
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             Task task = manager.createTask(dto);
@@ -1329,7 +1343,7 @@ class TaskManagerLifecycleTest {
     @Test
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, new InMemoryTaskWorkRuntime());
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1352,7 +1366,7 @@ class TaskManagerLifecycleTest {
     @Test
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, new InMemoryTaskWorkRuntime());
+        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1422,9 +1436,11 @@ class TaskManagerLifecycleTest {
 
     @Test
     void customTerminalPolicyCanKeepTaskRunningEvenWhenMessagesAreFinal() {
+        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
-                new InMemoryTaskStorage(),
+                policyStorage,
+                policyStorage,
                 (task, stats) -> TaskTerminalPolicyDecision.keepRunning(),
                 new InMemoryTaskWorkRuntime()
         );
@@ -1452,9 +1468,11 @@ class TaskManagerLifecycleTest {
     void customTerminalPolicyCanForceTerminalBeforeAllMessagesAreFinal() {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
+        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
-                new InMemoryTaskStorage(),
+                policyStorage,
+                policyStorage,
                 runtimeLimitPolicy,
                 new InMemoryTaskWorkRuntime()
         );
@@ -1479,9 +1497,11 @@ class TaskManagerLifecycleTest {
     void validateTaskStateAllowsRuntimeLimitClosureForOpenIntakeTask() {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
+        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         TaskManager policyAwareManager = new TaskManager(
                 scheduler,
-                new InMemoryTaskStorage(),
+                policyStorage,
+                policyStorage,
                 runtimeLimitPolicy,
                 new InMemoryTaskWorkRuntime()
         );

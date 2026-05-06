@@ -53,7 +53,7 @@ public class EngineConfig {
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
-    private TaskStorage taskStorage = new InMemoryTaskStorage();
+    private TaskStorage taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
@@ -68,6 +68,9 @@ public class EngineConfig {
     private long taskMessageLeaseSeconds = 300L;
 
     public EngineConfig() {
+        InMemoryTaskStorage defaultTaskStorage = new InMemoryTaskStorage();
+        this.taskStorage = defaultTaskStorage;
+        this.taskDetailStore = defaultTaskStorage;
     }
 
     public EngineConfig(EngineConfig source) {
@@ -240,6 +243,9 @@ public class EngineConfig {
         if (this.taskManager != null) {
             throw new IllegalStateException("Cannot replace taskStorage after taskManager has been configured");
         }
+        if (this.taskDetailStore == this.taskStorage) {
+            this.taskDetailStore = null;
+        }
         this.taskStorage = taskStorage;
     }
 
@@ -247,11 +253,8 @@ public class EngineConfig {
         if (taskDetailStore != null) {
             return taskDetailStore;
         }
-        if (taskStorage instanceof TaskDetailStore tds) {
-            return tds;
-        }
         throw new IllegalStateException(
-                "taskStorage does not implement TaskDetailStore; provide an explicit taskDetailStore via setTaskDetailStore()");
+                "taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()");
     }
 
     public void setTaskDetailStore(TaskDetailStore taskDetailStore) {

@@ -158,6 +158,7 @@ public class XaMassServerApplication {
                                 .taskManager(new TaskManager(
                                         scheduler,
                                         jdbcStorageRuntime.taskStorage(),
+                                        jdbcStorageRuntime.taskDetailStore(),
                                         taskWorkRuntime))
                                 .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
                                 .ruleManager(RuleManagerFactory.getDefaultRuleManager(jdbcStorageRuntime.ruleStorage()));

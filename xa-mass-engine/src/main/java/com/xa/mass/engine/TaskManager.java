@@ -70,10 +70,6 @@ public class TaskManager {
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private long taskMessageLeaseSeconds = 300L;
 
-    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
-    }
-
     public TaskManager(TaskScheduler taskScheduler,
                        TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
@@ -83,18 +79,11 @@ public class TaskManager {
 
     public TaskManager(TaskScheduler taskScheduler,
                        TaskStorage taskStorage,
-                       TaskTerminalPolicy taskTerminalPolicy,
-                       TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), taskTerminalPolicy, taskWorkRuntime);
-    }
-
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
-        this.taskScheduler = taskScheduler;
-        this.taskStorage = taskStorage;
+        this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
+        this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
@@ -458,14 +447,6 @@ public class TaskManager {
 
     TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
-    }
-
-    private static TaskDetailStore requireDetailStore(TaskStorage taskStorage) {
-        if (taskStorage instanceof TaskDetailStore tds) {
-            return tds;
-        }
-        throw new IllegalArgumentException(
-                "taskStorage must implement TaskDetailStore; use the explicit constructor to provide a separate TaskDetailStore");
     }
 
     boolean deleteTaskRecord(String taskId) {

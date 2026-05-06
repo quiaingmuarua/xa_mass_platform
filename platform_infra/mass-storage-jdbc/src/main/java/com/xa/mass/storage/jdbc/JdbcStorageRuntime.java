@@ -2,6 +2,7 @@ package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
@@ -84,6 +85,13 @@ public final class JdbcStorageRuntime implements AutoCloseable {
 
     public TaskStorage taskStorage() {
         return taskStorage;
+    }
+
+    public TaskDetailStore taskDetailStore() {
+        if (taskStorage instanceof TaskDetailStore taskDetailStore) {
+            return taskDetailStore;
+        }
+        throw new IllegalStateException("configured JDBC task storage does not provide TaskDetailStore");
     }
 
     public WorkerStorage workerStorage() {

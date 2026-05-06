@@ -4,6 +4,7 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -12,43 +13,36 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
-    // routeKey -> Channel
-    private final Map<String, Channel> routeChannelMap = new ConcurrentHashMap<>();
-
-    // routeKey -> ChannelHandlerContext
-    private final Map<String, ChannelHandlerContext> routeChannelCtxMap = new ConcurrentHashMap<>();
-
-    // Reverse index: Channel -> session binding
-    private final Map<Channel, RouteSessionBinding> channelIndex = new ConcurrentHashMap<>();
+    private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
 
     public synchronized void addSession(String routeKey, String workerId, Channel channel, ChannelHandlerContext ctx) {
         boolean wasRouteOnline = hasActiveChannel(routeKey);
-        Channel existingChannel = routeChannelMap.get(routeKey);
-        if (existingChannel != null && existingChannel == channel && existingChannel.isActive()) {
+        RouteEndpointIndex.BindResult<Channel, WebSocketRouteEndpoint> result = routeIndex.bind(
+                routeKey,
+                workerId,
+                channel,
+                new WebSocketRouteEndpoint(channel, ctx),
+                WebSocketRouteEndpoint::isActive
+        );
+        if (result.unchanged()) {
             logger.debug("Session for routeKey={} already exists and is active. Skipping add.", routeKey);
             return;
         }
-        if (existingChannel != null && existingChannel != channel) {
+        RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previous = result.previousEntry();
+        if (previous != null && previous.handle() != channel) {
             logger.warn("Existing channel for routeKey={} found, but new channel is different. Replacing session.", routeKey);
-            channelIndex.remove(existingChannel);
         }
-
-        routeChannelMap.put(routeKey, channel);
-        routeChannelCtxMap.put(routeKey, ctx);
-        channelIndex.put(channel, new RouteSessionBinding(routeKey, workerId));
-        if (existingChannel == null || existingChannel != channel) {
+        if (previous == null || previous.handle() != channel) {
             activeConnectionCount.incrementAndGet();
-            if (existingChannel != null) {
+            if (previous != null) {
                 activeConnectionCount.decrementAndGet();
             }
         }
@@ -61,18 +55,16 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public synchronized void removeSession(Channel channel) {
-        RouteSessionBinding binding = channelIndex.remove(channel);
+        RouteEndpointIndex.RemoveResult<Channel, WebSocketRouteEndpoint> result = routeIndex.removeByHandle(channel);
+        RouteEndpointIndex.Binding binding = result.binding();
         if (binding != null) {
-            boolean hadRegisteredSession = routeChannelMap.containsKey(binding.routeKey());
-            if (channel.equals(routeChannelMap.get(binding.routeKey()))) {
-                routeChannelMap.remove(binding.routeKey());
-                routeChannelCtxMap.remove(binding.routeKey());
+            if (result.removedCurrentRoute()) {
                 activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
             }
 
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
-            if (hadRegisteredSession && !hasActiveChannel(binding.routeKey())) {
+            if (result.removedCurrentRoute() && !hasActiveChannel(binding.routeKey())) {
                 systemEventChannel.publishWorkerOffline(binding.workerId(), "websocket disconnected", null);
             }
         } else {
@@ -82,9 +74,9 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     @Override
     public boolean sendToRoute(String routeKey, String message) {
-        Channel channel = routeChannelMap.get(routeKey);
-        if (channel != null && channel.isActive()) {
-            channel.writeAndFlush(new TextWebSocketFrame(message));
+        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
+        if (endpoint != null && endpoint.isActive()) {
+            endpoint.channel().writeAndFlush(new TextWebSocketFrame(message));
             return true;
         }
         logger.warn("Failed to send to routeKey={}. Channel not found or inactive.", routeKey);
@@ -93,8 +85,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     @Override
     public boolean isRouteOnline(String routeKey) {
-        Channel channel = routeChannelMap.get(routeKey);
-        return channel != null && channel.isActive();
+        return hasActiveChannel(routeKey);
     }
 
     @Override
@@ -123,29 +114,29 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public String getWorkerId(Channel channel) {
-        RouteSessionBinding binding = channelIndex.get(channel);
+        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(channel);
         return binding != null ? binding.workerId() : null;
     }
 
     public Channel getChannel(String routeKey) {
-        return routeChannelMap.get(routeKey);
+        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
+        return endpoint != null ? endpoint.channel() : null;
     }
 
     public ChannelHandlerContext getChannelContext(String routeKey) {
-        return routeChannelCtxMap.get(routeKey);
+        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
+        return endpoint != null ? endpoint.context() : null;
     }
 
     @Override
     public synchronized void shutdown() {
-        logger.info("Shutting down session manager, closing {} route connections...", routeChannelMap.size());
-        for (Channel channel : routeChannelMap.values()) {
-            if (channel.isActive()) {
-                channel.close();
+        logger.info("Shutting down session manager, closing {} route connections...", routeIndex.routeCount());
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
+            if (entry.endpoint().isActive()) {
+                entry.endpoint().channel().close();
             }
         }
-        routeChannelMap.clear();
-        routeChannelCtxMap.clear();
-        channelIndex.clear();
+        routeIndex.clear();
         activeConnectionCount.set(0);
         logger.info("Session manager shutdown complete.");
     }
@@ -159,34 +150,31 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     private boolean hasActiveChannel(String routeKey) {
-        Channel channel = routeChannelMap.get(routeKey);
-        return channel != null && channel.isActive();
+        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
+        return endpoint != null && endpoint.isActive();
     }
 
     @Override
     public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
         List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        routeChannelMap.forEach((routeKey, channel) -> snapshots.add(
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            snapshots.add(
                 new WorkerEndpointSnapshot(
-                        routeKey,
-                        resolveWorkerId(routeKey),
-                        channel != null && channel.isActive(),
-                        channel != null ? channel.id().asShortText() : null,
+                        entry.routeKey(),
+                        entry.workerId(),
+                        endpoint != null && endpoint.isActive(),
+                        endpoint != null ? endpoint.channel().id().asShortText() : null,
                         "websocket"
                 )
-        ));
+            );
+        }
         return snapshots;
     }
 
-    private String resolveWorkerId(String routeKey) {
-        for (RouteSessionBinding binding : channelIndex.values()) {
-            if (routeKey.equals(binding.routeKey())) {
-                return binding.workerId();
-            }
+    private record WebSocketRouteEndpoint(Channel channel, ChannelHandlerContext context) {
+        boolean isActive() {
+            return channel != null && channel.isActive();
         }
-        return routeKey;
-    }
-
-    private record RouteSessionBinding(String routeKey, String workerId) {
     }
 }

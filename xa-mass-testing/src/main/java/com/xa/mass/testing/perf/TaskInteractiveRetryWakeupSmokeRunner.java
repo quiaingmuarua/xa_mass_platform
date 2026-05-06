@@ -84,9 +84,11 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
         private SmokeReport run() throws Exception {
             InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
             TaskManager taskManager = new TaskManager(
                     new NoOpTaskScheduler(),
-                    new InMemoryTaskStorage(),
+                    taskStorage,
+                    taskStorage,
                     taskWorkRuntime);
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);

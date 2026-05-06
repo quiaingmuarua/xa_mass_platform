@@ -1148,9 +1148,11 @@ class MassSdkTest {
         TaskRuntimeMaintenancePort oldRuntimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
         TaskRuntimeRecoveryPort oldRuntimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
 
+        InMemoryTaskStorage replacementStorage = new InMemoryTaskStorage();
         TaskManager replacement = new TaskManager(
                 config.getScheduler(),
-                new InMemoryTaskStorage(),
+                replacementStorage,
+                replacementStorage,
                 new InMemoryTaskWorkRuntime()
         );
         config.setTaskManager(replacement);
@@ -1159,6 +1161,17 @@ class MassSdkTest {
         assertNotSame(oldAssignmentRuntimePort, config.getTaskAssignmentRuntimePort());
         assertNotSame(oldRuntimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
         assertNotSame(oldRuntimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
+    }
+
+    @Test
+    void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskStorage() {
+        EngineConfig config = new EngineConfig();
+
+        config.setTaskStorage(new InMemoryTaskStorage());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskManager);
+        assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
+                error.getMessage());
     }
 
     @Test

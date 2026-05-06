@@ -18,6 +18,7 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
@@ -50,11 +51,12 @@ public class StorageExample {
 
         WorkerStorage workerStorage = new InMemoryWorkerStorage();
         TaskStorage taskStorage = new InMemoryTaskStorage();
+        TaskDetailStore taskDetailStore = (TaskDetailStore) taskStorage;
         RuleStorage ruleStorage = new InMemoryRuleStorage();
 
         WorkerManager workerManager = new WorkerManager(workerStorage);
         TaskScheduler taskScheduler = new SimpleTaskScheduler();
-        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, new InMemoryTaskWorkRuntime());
+        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, taskDetailStore, new InMemoryTaskWorkRuntime());
 
         Worker worker1 = new Worker();
         worker1.setWorkerId("worker-001");
@@ -130,9 +132,11 @@ public class StorageExample {
 
         var ruleManager = RuleManagerFactory.getProjectRuleManager(new InMemoryRuleStorage(), "demoApp");
         var recordService = new AssignmentRecordService();
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         var taskManager = new TaskManager(
                 new SimpleTaskScheduler(),
-                new InMemoryTaskStorage(),
+                taskStorage,
+                taskStorage,
                 new InMemoryTaskWorkRuntime());
         var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
@@ -251,9 +255,11 @@ public class StorageExample {
         var workerManager = new WorkerManager(new InMemoryWorkerStorage());
         var ruleManager = RuleManagerFactory.getProjectRuleManager(new InMemoryRuleStorage(), "demoApp");
         var recordService = new AssignmentRecordService();
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         var taskManager = new TaskManager(
                 new SimpleTaskScheduler(),
-                new InMemoryTaskStorage(),
+                taskStorage,
+                taskStorage,
                 new InMemoryTaskWorkRuntime());
         var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);

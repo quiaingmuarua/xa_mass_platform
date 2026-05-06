@@ -79,9 +79,11 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         private SmokeReport run() throws Exception {
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
             TaskManager taskManager = new TaskManager(
                     new NoOpTaskScheduler(),
-                    new InMemoryTaskStorage(),
+                    taskStorage,
+                    taskStorage,
                     new InMemoryTaskWorkRuntime());
             TaskCommandService taskCommands = new TaskCommandService(taskManager);
             TaskEventService taskEvents = new TaskEventService(taskManager);
