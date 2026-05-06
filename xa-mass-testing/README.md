@@ -25,6 +25,7 @@ HTTP/API shell behavior or Spring wiring.
 | `chaos: websocket disconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | disconnect, reconnect, delayed result after reconnect | `target/chaos-reports/` |
 | `chaos: lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another worker | `target/chaos-reports/` |
 | `chaos: late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite the final message/task state | `target/chaos-reports/` |
+| `chaos: polling lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner` | polling worker claims work, stalls without a result, goes offline, watchdog expiry resets the logical message, and another polling worker takes over to finish successfully | `target/chaos-reports/` |
 
 ## Commands
 
@@ -100,6 +101,13 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner
 ```
 
+Polling lease-expiry redispatch chaos:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner
+```
+
 ## Reading Rule
 
 Start from the runner class, then read the matching report artifact.
@@ -118,10 +126,11 @@ Use repo-level docs only for system-level policy:
 
 ## Current Chaos Focus
 
-Current websocket chaos probes cover three distinct recovery branches:
+Current chaos probes cover four distinct recovery branches:
 
 - disconnect, reconnect, then submit the delayed result on the original worker
 - disconnect without a result, let lease expiry trigger redispatch, and finish on a different worker
 - disconnect without a result, let lease expiry trigger redispatch and terminal success, then reconnect the original worker and replay a stale late result that must not mutate the already-final logical message
+- polling worker claims work, stalls without a result, goes offline, and a second polling worker takes over after lease expiry
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.

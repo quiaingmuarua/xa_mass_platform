@@ -7,6 +7,26 @@ import java.util.Map;
  *
  * Queue/store-path-only delivery diagnostics. Direct-send counters are owned by
  * {@link TransportDeliveryService} and assembled above the store boundary.
+ *
+ * <p>Redis-ready contract split:
+ *
+ * <ul>
+ *   <li>hard contract fields:
+ *     {@code queuedItems}, {@code queueCount}, {@code maxQueuedItems},
+ *     {@code queueByAdapter[*].queuedItems}, and
+ *     {@code queueByAdapter[*].queueCount}
+ *   <li>best-effort fields:
+ *     {@code waitingPollers}, {@code oldestQueuedAgeMillis},
+ *     {@code enqueuedItems}, {@code drainedItems},
+ *     {@code backpressureRejectedItems}, {@code invalidItems},
+ *     {@code unavailableItems}, {@code shutdownClearedItems}, and the
+ *     per-adapter mirrors of those diagnostics
+ * </ul>
+ *
+ * <p>"Best effort" here means the field should stay meaningful and monotonic
+ * where applicable, but future distributed queue implementations are not
+ * required to preserve the exact local-JVM waiter or snapshot timing model of
+ * the current in-memory store.
  */
 public final class TransportDeliveryStoreStats {
 
@@ -129,6 +149,9 @@ public final class TransportDeliveryStoreStats {
 
     /**
      * Queue-path only per-adapter breakdown keyed by canonical {@code adapterId}.
+     *
+     * <p>{@code queuedItems} and {@code queueCount} are hard contract fields.
+     * Other nested fields are best-effort diagnostics.
      */
     public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;

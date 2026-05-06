@@ -11,6 +11,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 
@@ -54,6 +55,22 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return new ChaosRuntimeHarness(app, transportPort, config.endpointPath());
     }
 
+    public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
+                        .queueMode())
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(config.workerThreads())
+                        .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
+                        .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                        .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds()))
+                .build();
+        return new ChaosRuntimeHarness(app, 0, "");
+    }
+
     public MassSdkApplication app() {
         return app;
     }
@@ -78,6 +95,29 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .project(projectCode)
                 .routingTags(Set.of(routingCode))
                 .build());
+    }
+
+    public void registerPollingWorker(String workerId,
+                                      String workerGroupId,
+                                      String projectCode,
+                                      String routingCode) {
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(workerId)
+                .workerGroupId(workerGroupId)
+                .supportedProjects(List.of(projectCode))
+                .transportHint(WorkerTransportHints.POLLING)
+                .adapterId("polling")
+                .build());
+        app.registerWorkerContext(WorkerContextRegistration.builder()
+                .workerContextId(workerId + "-context")
+                .workerId(workerId)
+                .project(projectCode)
+                .routingTags(Set.of(routingCode))
+                .build());
+    }
+
+    public PullWorkerSession pullWorker(String workerId) {
+        return app.pullWorker(workerId);
     }
 
     public Task createApprovedTask(TaskCreateSpec spec) {
@@ -195,6 +235,13 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                          long assignmentRetryDelayMillis,
                                          long leaseWatchdogIntervalSeconds,
                                          long taskMessageLeaseSeconds) {
+    }
+
+    public record PollingRuntimeConfig(String queuePrefix,
+                                       int workerThreads,
+                                       long assignmentRetryDelayMillis,
+                                       long leaseWatchdogIntervalSeconds,
+                                       long taskMessageLeaseSeconds) {
     }
 
     public record TaskCreateSpec(String userId,

@@ -216,10 +216,27 @@ diagnostics are assembled above the store boundary by
 `TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
 distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
-queue. Store shutdown is
+queue. Thread interruption is not a store result contract; store
+implementations should throw interruption and let
+`TransportDeliveryService` translate it for adapter-facing callers. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.
+
+For Redis-ready queue diagnostics, treat the stats contract in two tiers:
+
+- hard contract fields:
+  `queuedItems`, `queueCount`, `maxQueuedItems`, and the per-adapter
+  `queuedItems` / `queueCount` breakdown
+- best-effort diagnostics:
+  `waitingPollers`, `oldestQueuedAgeMillis`, `enqueuedItems`,
+  `drainedItems`, `backpressureRejectedItems`, `invalidItems`,
+  `unavailableItems`, `shutdownClearedItems`, and the per-adapter mirrors of
+  those values
+
+Best-effort diagnostics must remain meaningful, but future distributed queue
+implementations are not required to preserve the exact local JVM waiter or
+snapshot timing model of the current in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
