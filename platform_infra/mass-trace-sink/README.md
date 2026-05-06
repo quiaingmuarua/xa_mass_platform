@@ -72,6 +72,16 @@ Records lifecycle events (task transitions, message dispatch, lease expiry, work
 | `outcome` | Execution result: success flag, error code, free-text detail |
 | `attrs` | Event-type-specific free-form attributes |
 
+### Field Optionality
+
+| Field group | When to populate |
+|---|---|
+| `transition` | State-change events only: `TASK_STATUS_CHANGED`, `MSG_STATUS_CHANGED`, `MSG_RETRY_SCHEDULED` |
+| `outcome` | Result events: `MSG_STATUS_CHANGED` on terminal states, `MSG_DISPATCH_SENT` |
+| `node` | Always populate if nodeIds are known; null fields within node are fine |
+| `identity` | Always populate relevant IDs; unused fields default to null |
+| `attrs` | Event-type-specific; document keys per eventType in caller code |
+
 ### Event types and default severity
 
 | eventType | category | default severity |
@@ -110,15 +120,42 @@ The builder auto-generates `eventId` (UUID), `ts` / `tsIso` (current instant), d
 mass:
   trace:
     sink:
-      enabled: true          # false → NoopExecutionEventSink (default)
+      enabled: true                    # false → NoopExecutionEventSink (default)
       output-dir: trace-events
       queue-capacity: 4096
       rotate-after-lines: 100000
+      overflow-policy: DROP            # DROP (default) or FALLBACK_SYNC
+      shutdown-drain-timeout-ms: 5000  # ms to wait for writer thread on close()
 ```
 
 ---
 
+## Overflow Policies
+
+| Policy | Behaviour | Recommended use |
+|---|---|---|
+| `DROP` | Event is silently discarded when queue is full; `droppedCount` increments; rate-limited WARN logged once per 1000 drops | **Production default** — caller thread is never delayed |
+| `FALLBACK_SYNC` | Caller thread writes directly to the output file when queue is full, holding a file lock | **Debug / low-throughput only** — do not use on hot paths; this will block the caller during I/O |
+
+---
+
 ## DuckDB queries
+
+```sql
+-- Full timeline for a single task (debug view)
+SELECT
+    epoch_ms(ts) AS time,
+    eventType,
+    identity.taskId,
+    identity.messageId,
+    identity.attemptId,
+    transition.src,
+    transition.dst,
+    outcome.errorCode
+FROM read_ndjson('trace-events/events-*.jsonl')
+WHERE identity.taskId = 't-xxx'
+ORDER BY ts;
+```
 
 ```sql
 -- Transition distribution for TASK_STATUS_CHANGED
@@ -162,3 +199,4 @@ WHERE (src || '->' || dst) NOT IN (
 GROUP BY src, dst
 ORDER BY cnt DESC;
 ```
+
