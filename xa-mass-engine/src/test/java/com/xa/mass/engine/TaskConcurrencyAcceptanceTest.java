@@ -95,8 +95,6 @@ class TaskConcurrencyAcceptanceTest {
         assertEquals(1, attemptClosedCount.get());
         assertEquals(1, logicallyFinalCount.get());
         assertEquals(1, terminalCount.get());
-        assertEquals(1, scheduler.completedTaskMsgCount.get());
-        assertEquals(0, scheduler.failedTaskMsgCount.get());
     }
 
     @Test
@@ -137,16 +135,12 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
             assertEquals(1, finalTask.getTaskSuccessNumber());
-            assertEquals(1, scheduler.completedTaskMsgCount.get());
-            assertEquals(0, scheduler.failedTaskMsgCount.get());
         } else {
             assertEquals(TaskMsgStatus.EXPIRED, finalMessage.getStatus());
             assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, finalMessage.getFinalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, finalTask.getTerminalReason());
             assertEquals(0, finalTask.getTaskSuccessNumber());
-            assertEquals(0, scheduler.completedTaskMsgCount.get());
-            assertEquals(0, scheduler.failedTaskMsgCount.get());
         }
     }
 
@@ -202,8 +196,6 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(1, logicallyFinalCount.get());
             assertEquals(1, terminalCount.get());
             assertEquals(0, dispatchRequestedCount.get());
-            assertEquals(1, scheduler.completedTaskMsgCount.get());
-            assertEquals(0, scheduler.failedTaskMsgCount.get());
         } else {
             assertEquals(TaskMsgStatus.INIT, currentMessage.getStatus());
             assertEquals(1, currentMessage.getRetryCount());
@@ -217,8 +209,6 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(0, logicallyFinalCount.get());
             assertEquals(0, terminalCount.get());
             assertEquals(1, dispatchRequestedCount.get());
-            assertEquals(0, scheduler.completedTaskMsgCount.get());
-            assertEquals(0, scheduler.failedTaskMsgCount.get());
             assertNull(taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
         }
     }
@@ -560,9 +550,6 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private static final class RecordingTaskScheduler implements TaskScheduler {
-        private final AtomicInteger completedTaskMsgCount = new AtomicInteger();
-        private final AtomicInteger failedTaskMsgCount = new AtomicInteger();
-
         @Override
         public TaskScheduler.SchedulingResult scheduleTask(Task task) {
             return TaskScheduler.SchedulingResult.success(List.of());
@@ -571,18 +558,6 @@ class TaskConcurrencyAcceptanceTest {
         @Override
         public List<TaskScheduler.SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            completedTaskMsgCount.incrementAndGet();
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            failedTaskMsgCount.incrementAndGet();
-            return true;
         }
 
         @Override

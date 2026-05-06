@@ -98,7 +98,6 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
         assertEquals("FAILED", attempt.getOutput().get("status"));
         assertEquals(TaskStatus.RUNNING, taskQueries.getTask(task.getTid()).getStatus());
-        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test
@@ -114,8 +113,6 @@ class RuntimeTaskResultIngestChannelTest {
         TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
-        assertEquals(1, scheduler.completedTaskMsgCount);
-        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test
@@ -281,9 +278,6 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {
-        private int completedTaskMsgCount;
-        private int failedTaskMsgCount;
-
         @Override
         public SchedulingResult scheduleTask(Task task) {
             return SchedulingResult.success(List.of());
@@ -292,18 +286,6 @@ class RuntimeTaskResultIngestChannelTest {
         @Override
         public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            completedTaskMsgCount++;
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            failedTaskMsgCount++;
-            return true;
         }
 
         @Override

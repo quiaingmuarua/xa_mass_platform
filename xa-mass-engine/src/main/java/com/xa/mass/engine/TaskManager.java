@@ -718,14 +718,6 @@ public class TaskManager {
         eventPublisher.publishTaskMessageLogicallyFinal(task, taskMsg);
     }
 
-    void handleTaskMsgCompletion(TaskMsg taskMsg) {
-        taskScheduler.handleTaskMsgCompletion(taskMsg);
-    }
-
-    void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
-        taskScheduler.handleTaskMsgFailure(taskMsg, detail);
-    }
-
     private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
         for (Map<String, Object> input : inputs) {
             String messageId = java.util.UUID.randomUUID().toString();

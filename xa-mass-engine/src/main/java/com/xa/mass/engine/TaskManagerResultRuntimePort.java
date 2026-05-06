@@ -67,16 +67,6 @@ final class TaskManagerResultRuntimePort implements TaskResultRuntimePort {
     }
 
     @Override
-    public void handleTaskMsgCompletion(TaskMsg taskMsg) {
-        taskManager.handleTaskMsgCompletion(taskMsg);
-    }
-
-    @Override
-    public void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
-        taskManager.handleTaskMsgFailure(taskMsg, detail);
-    }
-
-    @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }

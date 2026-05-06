@@ -403,7 +403,6 @@ class TaskResultService {
             publishMessageLogicallyFinal(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable success");
         }
-        resultRuntime.handleTaskMsgCompletion(taskMsg);
         return TaskMessageMutationOutcome.acceptedDirty();
     }
 
@@ -541,8 +540,6 @@ class TaskResultService {
             publishMessageLogicallyFinal(updatedTask, taskMsg, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable failure");
         }
-
-        resultRuntime.handleTaskMsgFailure(taskMsg, detail);
         return TaskMessageMutationOutcome.acceptedDirty();
     }
 

@@ -538,8 +538,6 @@ class TaskManagerLifecycleTest {
         assertNull(retriedMessage.getErrorMessage());
         assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, taskManager.getTask(task.getTid()).getTaskSuccessNumber());
-        assertEquals(0, scheduler.completedTaskMsgCount);
-        assertEquals(0, scheduler.failedTaskMsgCount);
 
         assignMessage(task, retriedMessage, "worker-2", "worker-context-2", "batch-1");
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messageId, true, "done-after-retry"));
@@ -553,8 +551,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
-        assertEquals(1, scheduler.completedTaskMsgCount);
-        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test
@@ -1077,8 +1073,6 @@ class TaskManagerLifecycleTest {
         assertEquals(0, updatedTask.getTaskSuccessNumber());
         // cancelTask now drains in-flight ASSIGNED messages to EXPIRED
         assertEquals(TaskMsgStatus.EXPIRED, updatedMessage.getStatus());
-        assertEquals(0, scheduler.completedTaskMsgCount);
-        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test
@@ -1123,8 +1117,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
-        assertEquals(1, scheduler.completedTaskMsgCount);
-        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test
@@ -1892,9 +1884,6 @@ class TaskManagerLifecycleTest {
         private final List<String> pausedTaskIds = new java.util.ArrayList<>();
         private final List<String> resumedTaskIds = new java.util.ArrayList<>();
         private final List<String> cancelledTaskIds = new java.util.ArrayList<>();
-        private int completedTaskMsgCount;
-        private int failedTaskMsgCount;
-
         @Override
         public SchedulingResult scheduleTask(Task task) {
             return SchedulingResult.success(List.of());
@@ -1903,18 +1892,6 @@ class TaskManagerLifecycleTest {
         @Override
         public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            completedTaskMsgCount++;
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            failedTaskMsgCount++;
-            return true;
         }
 
         @Override

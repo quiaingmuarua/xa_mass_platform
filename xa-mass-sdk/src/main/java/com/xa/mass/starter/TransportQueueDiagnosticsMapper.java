@@ -12,6 +12,11 @@ import java.util.Map;
 /**
  * Maps runtime transport diagnostics into the stable control-plane response
  * shape exposed by SDK/server queue-detail endpoints.
+ *
+ * <p>This mapper preserves the current response shape, but callers must not
+ * interpret every numeric field as a strong queue contract. Only backlog size
+ * and queue-count fields are intended to remain hard queue semantics across
+ * in-memory and distributed runtime implementations.
  */
 final class TransportQueueDiagnosticsMapper {
 

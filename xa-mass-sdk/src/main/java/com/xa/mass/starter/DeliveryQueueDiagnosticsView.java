@@ -5,6 +5,27 @@ import java.util.Map;
 
 /**
  * Internal typed view for combined queue-path and direct-send diagnostics.
+ *
+ * <p>Field contract split for control-plane readers:
+ *
+ * <ul>
+ *   <li>hard queue fields:
+ *     {@code queuedItems}, {@code queueCount}, {@code maxQueuedItems}, and
+ *     the nested per-adapter {@code queuedItems}/{@code queueCount}
+ *   <li>best-effort queue diagnostics:
+ *     {@code waitingPollers}, {@code oldestQueuedAgeMillis},
+ *     {@code enqueuedItems}, {@code drainedItems},
+ *     {@code backpressureRejectedItems}, {@code invalidItems},
+ *     {@code unavailableItems}, {@code shutdownClearedItems}
+ *   <li>direct-send diagnostics:
+ *     {@code directSentItems}, {@code directOfflineItems},
+ *     {@code directFailedItems}, {@code directInvalidItems},
+ *     {@code directUnavailableItems}
+ * </ul>
+ *
+ * <p>Best-effort fields remain useful for operator diagnosis, but future
+ * distributed queue implementations are not required to preserve the exact
+ * local waiter or snapshot timing behavior of the current in-memory store.
  */
 record DeliveryQueueDiagnosticsView(boolean available,
                                     int queuedItems,

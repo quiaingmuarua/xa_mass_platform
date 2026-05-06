@@ -579,16 +579,6 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            return true;
-        }
-
-        @Override
         public boolean retryTaskMsg(TaskMsg taskMsg) {
             return true;
         }

@@ -23,10 +23,6 @@ public interface TaskScheduler {
 
     List<SchedulingResult> scheduleTasks(List<Task> tasks);
 
-    boolean handleTaskMsgCompletion(TaskMsg taskMsg);
-
-    boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage);
-
     boolean retryTaskMsg(TaskMsg taskMsg);
 
     boolean cancelTask(String taskId);

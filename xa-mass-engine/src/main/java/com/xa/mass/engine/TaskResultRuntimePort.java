@@ -31,9 +31,5 @@ public interface TaskResultRuntimePort extends TaskLeaseProjectionPort {
     void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt);
 
     void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg);
-
-    void handleTaskMsgCompletion(TaskMsg taskMsg);
-
-    void handleTaskMsgFailure(TaskMsg taskMsg, String detail);
 }
 

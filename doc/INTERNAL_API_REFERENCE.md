@@ -812,6 +812,15 @@ Notes:
   outcomes. `queueByAdapter` breaks queue-focused store diagnostics down by
   concrete `adapterId`, and `directByAdapter` breaks direct-send counters down
   by concrete `adapterId` for realtime adapter troubleshooting.
+- hard queue contract fields on this control-plane surface are:
+  `queuedItems`, `queueCount`, `maxQueuedItems`, and the nested
+  per-adapter `queuedItems` / `queueCount` values under `queueByAdapter`
+- `waitingPollers`, `oldestQueuedAgeMillis`, `enqueuedItems`,
+  `drainedItems`, `backpressureRejectedItems`, `invalidItems`,
+  `unavailableItems`, and `shutdownClearedItems` are best-effort diagnostics.
+  They remain useful for operators, but future distributed queue
+  implementations are not required to preserve the exact local in-memory
+  waiter or snapshot timing model behind those numbers.
 - `deliveryDiagnostics` is a combined diagnostics envelope, not proof that direct-send
   outcomes are queue-owned. `queueByAdapter` remains queue-path only, while
   `directByAdapter` remains direct-send only.

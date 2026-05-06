@@ -27,18 +27,6 @@ public class SimpleTaskScheduler implements TaskScheduler {
     }
 
     @Override
-    public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-        log.info("Task message completed: messageId={}", taskMsg.getMessageId());
-        return true;
-    }
-
-    @Override
-    public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-        log.info("Task message failed: messageId={}, errorMessage={}", taskMsg.getMessageId(), errorMessage);
-        return true;
-    }
-
-    @Override
     public boolean retryTaskMsg(TaskMsg taskMsg) {
         log.info("Retrying task message {}", taskMsg.getMessageId());
         return true;
