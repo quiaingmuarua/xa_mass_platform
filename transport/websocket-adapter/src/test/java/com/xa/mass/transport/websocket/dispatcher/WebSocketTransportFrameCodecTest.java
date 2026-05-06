@@ -2,6 +2,8 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,22 +30,32 @@ class WebSocketTransportFrameCodecTest {
 
     @Test
     void encodesCanonicalTaskDispatch() {
-        com.xa.mass.transport.model.TaskDispatchItem item = new com.xa.mass.transport.model.TaskDispatchItem(
+        TransportPacket packet = new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-1",
+                "trace-1",
+                PacketType.TASK_DISPATCH,
+                "websocket",
+                "route-1",
                 "task-1",
                 "msg-1",
+                "attempt-1",
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "user-a",
-                2,
-                "worker-1",
-                "worker-context-1",
-                "batch-1",
-                Map.of("target", "https://example.test"),
-                Map.of("textContent", "hello")
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of(
+                        "taskName", "task-name",
+                        "project", "demoApp",
+                        "userId", "user-a",
+                        "retryCount", 2,
+                        "workerId", "worker-1",
+                        "workerContextId", "worker-context-1",
+                        "batchId", "batch-1",
+                        "input", Map.of("target", "https://example.test"),
+                        "sharedConfig", Map.of("textContent", "hello")
+                )
         );
 
-        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(item));
+        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(packet));
 
         assertNotNull(frame);
         assertTrue(codec.isCanonicalTaskDispatch(frame));

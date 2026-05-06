@@ -1,12 +1,6 @@
 package com.xa.mass.server;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -17,6 +11,7 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
@@ -153,15 +148,11 @@ public class XaMassServerApplication {
                     engine.enabled(true).workerThreads(workerThreads);
                     if (jdbcStorageRuntime.isEnabled()) {
                         TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
-                        TaskScheduler scheduler = new SimpleTaskScheduler();
-                        engine.scheduler(scheduler)
-                                .taskManager(new TaskManager(
-                                        scheduler,
-                                        jdbcStorageRuntime.taskStorage(),
-                                        jdbcStorageRuntime.taskDetailStore(),
-                                        taskWorkRuntime))
-                                .workerManager(new WorkerManager(jdbcStorageRuntime.workerStorage()))
-                                .ruleManager(RuleManagerFactory.getDefaultRuleManager(jdbcStorageRuntime.ruleStorage()));
+                        engine.taskStorage(jdbcStorageRuntime.taskStorage())
+                                .taskDetailStore(jdbcStorageRuntime.taskDetailStore())
+                                .taskWorkRuntime(taskWorkRuntime)
+                                .workerStorage(jdbcStorageRuntime.workerStorage())
+                                .ruleStorage(jdbcStorageRuntime.ruleStorage());
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {

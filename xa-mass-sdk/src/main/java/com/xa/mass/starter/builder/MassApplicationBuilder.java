@@ -2,13 +2,14 @@ package com.xa.mass.starter.builder;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
@@ -24,7 +25,6 @@ import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -354,8 +354,13 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder taskManager(TaskManager taskManager) {
-            config.setTaskManager(taskManager);
+        public EngineBuilder taskStorage(TaskStorage taskStorage) {
+            config.setTaskStorage(taskStorage);
+            return this;
+        }
+
+        public EngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
+            config.setTaskDetailStore(taskDetailStore);
             return this;
         }
 
@@ -364,13 +369,13 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder workerManager(WorkerManager workerManager) {
-            config.setWorkerManager(workerManager);
+        public EngineBuilder workerStorage(WorkerStorage workerStorage) {
+            config.setWorkerStorage(workerStorage);
             return this;
         }
 
-        public EngineBuilder ruleManager(RuleManager<Map<String, Object>> ruleManager) {
-            config.setRuleManager(ruleManager);
+        public EngineBuilder ruleStorage(RuleStorage ruleStorage) {
+            config.setRuleStorage(ruleStorage);
             return this;
         }
 

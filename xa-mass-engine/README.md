@@ -86,6 +86,9 @@ Infra ownership:
 - transport adapter contracts live outside engine; engine must not take a direct
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
+- primary SDK/server builders should wire `TaskStorage`, `TaskDetailStore`,
+  `TaskWorkRuntime`, `WorkerStorage`, and `RuleStorage` rather than
+  constructing `TaskManager` / `WorkerManager` in outer modules
 
 ## Rule-Matching Surface
 

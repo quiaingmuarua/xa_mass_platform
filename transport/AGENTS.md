@@ -19,6 +19,9 @@ entry for `transport/`.
 - route-only endpoint operations are adapter-local convenience only. In a
   multi-adapter runtime, callers must route with `adapterId + routeKey` rather
   than asking a composite registry to guess ownership.
+- `TransportPacket` is the internal flat transport envelope. Dispatch now
+  creates packet-backed envelopes before adapter delivery, but worker-facing
+  websocket/socket/polling JSON remains unchanged in this phase.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `TransportDispatchEnvelope`, `TransportDeliveryStore`, and `DispatchOutcome`.
 

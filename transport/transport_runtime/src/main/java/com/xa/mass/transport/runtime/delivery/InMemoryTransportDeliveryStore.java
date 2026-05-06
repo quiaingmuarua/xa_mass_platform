@@ -11,6 +11,7 @@ import com.xa.mass.runtime.queue.KeyedQueueSnapshot;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,11 +70,10 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         }
 
         DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey);
+        TransportPacket normalizedPacket = envelope.getPacket().withTransportAddress(normalizedAdapterId, normalizedRouteKey);
         TransportDispatchEnvelope normalizedEnvelope = new TransportDispatchEnvelope(
                 envelope.getDeliveryId(),
-                normalizedAdapterId,
-                normalizedRouteKey,
-                envelope.getCorrelationKey(),
+                normalizedPacket,
                 envelope.getPayload(),
                 envelope.getCreatedAtEpochMillis()
         );

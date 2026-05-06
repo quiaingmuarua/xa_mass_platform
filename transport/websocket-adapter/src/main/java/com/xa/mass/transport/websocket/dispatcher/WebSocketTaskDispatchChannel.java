@@ -46,7 +46,7 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
                 adapterId(),
                 envelopes,
                 envelope -> {
-                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(envelope.getPayload());
+                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(envelope.getPacket());
                     boolean sent = context.getEndpointRegistry().sendToRoute(envelope.getRouteKey(), rawJson);
                     if (!sent) {
                         logger.warn("WebSocket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",

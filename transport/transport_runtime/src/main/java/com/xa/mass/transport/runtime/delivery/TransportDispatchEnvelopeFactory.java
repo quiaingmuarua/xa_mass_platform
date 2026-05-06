@@ -2,6 +2,8 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -19,25 +21,39 @@ public final class TransportDispatchEnvelopeFactory {
 
     private final Supplier<String> deliveryIdSupplier;
     private final LongSupplier currentTimeMillis;
+    private final TransportPacketFactory packetFactory;
 
     public TransportDispatchEnvelopeFactory() {
-        this(() -> UUID.randomUUID().toString(), System::currentTimeMillis);
+        this(() -> UUID.randomUUID().toString(), System::currentTimeMillis, new TransportPacketFactory());
     }
 
     public TransportDispatchEnvelopeFactory(Supplier<String> deliveryIdSupplier, LongSupplier currentTimeMillis) {
+        this(deliveryIdSupplier, currentTimeMillis, new TransportPacketFactory());
+    }
+
+    public TransportDispatchEnvelopeFactory(Supplier<String> deliveryIdSupplier,
+                                            LongSupplier currentTimeMillis,
+                                            TransportPacketFactory packetFactory) {
         this.deliveryIdSupplier = Objects.requireNonNull(deliveryIdSupplier, "deliveryIdSupplier");
         this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
+        this.packetFactory = Objects.requireNonNull(packetFactory, "packetFactory");
     }
 
     public TransportDispatchEnvelope create(String adapterId,
                                             String routeKey,
                                             String correlationKey,
                                             TaskDispatchItem payload) {
-        return new TransportDispatchEnvelope(
-                deliveryIdSupplier.get(),
+        String deliveryId = deliveryIdSupplier.get();
+        TransportPacket packet = packetFactory.fromDispatchItem(
+                deliveryId,
                 adapterId,
                 routeKey,
                 correlationKey,
+                payload
+        );
+        return new TransportDispatchEnvelope(
+                deliveryId,
+                packet,
                 payload,
                 currentTimeMillis.getAsLong()
         );

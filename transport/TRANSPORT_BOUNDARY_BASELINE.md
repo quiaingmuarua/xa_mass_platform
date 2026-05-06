@@ -103,6 +103,13 @@ the worker wire contract is intentionally changed.
 Do not split this hybrid opportunistically. That is a cross-adapter wire change
 touching adapter codecs and external worker API behavior.
 
+`TransportPacket` is now the internal flat transport envelope for dispatch,
+result, and worker-system-event shapes. In the current mainline, dispatch is
+packet-backed first: `TransportDispatchEnvelope` carries a `TASK_DISPATCH`
+packet plus runtime delivery identity. Adapters may read packet fields for
+routing and frame assembly, but external worker wire behavior remains the
+current JSON contract.
+
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
 fields such as `attemptId` and `leaseToken` may be used by runtime validation,

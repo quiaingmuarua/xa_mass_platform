@@ -1,5 +1,9 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
+
 import java.util.Objects;
 
 /**
@@ -9,11 +13,25 @@ import java.util.Objects;
 public final class TransportDispatchEnvelope {
 
     private final String deliveryId;
-    private final String adapterId;
-    private final String routeKey;
-    private final String correlationKey;
+    private final TransportPacket packet;
     private final TaskDispatchItem payload;
     private final long createdAtEpochMillis;
+
+    public TransportDispatchEnvelope(String deliveryId,
+                                     TransportPacket packet,
+                                     long createdAtEpochMillis) {
+        this(deliveryId, packet, TransportPacketViews.toTaskDispatchItem(packet), createdAtEpochMillis);
+    }
+
+    public TransportDispatchEnvelope(String deliveryId,
+                                     TransportPacket packet,
+                                     TaskDispatchItem payload,
+                                     long createdAtEpochMillis) {
+        this.deliveryId = requireText(deliveryId, "deliveryId");
+        this.packet = requireDispatchPacket(packet);
+        this.payload = Objects.requireNonNull(payload, "payload");
+        this.createdAtEpochMillis = createdAtEpochMillis;
+    }
 
     public TransportDispatchEnvelope(String deliveryId,
                                      String adapterId,
@@ -21,12 +39,25 @@ public final class TransportDispatchEnvelope {
                                      String correlationKey,
                                      TaskDispatchItem payload,
                                      long createdAtEpochMillis) {
-        this.deliveryId = requireText(deliveryId, "deliveryId");
-        this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
-        this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
-        this.correlationKey = TransportDeliveryAddressing.normalizeText(correlationKey);
-        this.payload = Objects.requireNonNull(payload, "payload");
-        this.createdAtEpochMillis = createdAtEpochMillis;
+        this(
+                deliveryId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        requireText(deliveryId, "deliveryId"),
+                        TransportDeliveryAddressing.normalizeText(correlationKey),
+                        PacketType.TASK_DISPATCH,
+                        adapterId,
+                        routeKey,
+                        payload == null ? null : payload.getTaskId(),
+                        payload == null ? null : payload.getMessageId(),
+                        payload == null ? null : payload.attemptId(),
+                        payload == null ? null : payload.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        payload == null ? null : TransportPacketViews.dispatchPayload(payload.wireView())
+                ),
+                Objects.requireNonNull(payload, "payload"),
+                createdAtEpochMillis
+        );
     }
 
     public String getDeliveryId() {
@@ -34,19 +65,23 @@ public final class TransportDispatchEnvelope {
     }
 
     public String getAdapterId() {
-        return adapterId;
+        return packet.adapterId();
     }
 
     public String getRouteKey() {
-        return routeKey;
+        return packet.routeKey();
     }
 
     public String getCorrelationKey() {
-        return correlationKey;
+        return packet.traceId();
     }
 
     public TaskDispatchItem getPayload() {
         return payload;
+    }
+
+    public TransportPacket getPacket() {
+        return packet;
     }
 
     public long getCreatedAtEpochMillis() {
@@ -59,6 +94,14 @@ public final class TransportDispatchEnvelope {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static TransportPacket requireDispatchPacket(TransportPacket packet) {
+        Objects.requireNonNull(packet, "packet");
+        if (packet.type() != PacketType.TASK_DISPATCH) {
+            throw new IllegalArgumentException("TransportDispatchEnvelope requires TASK_DISPATCH packet");
+        }
+        return packet;
     }
 
 }

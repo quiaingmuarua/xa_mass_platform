@@ -1,21 +1,21 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -294,8 +294,13 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions taskManager(TaskManager taskManager) {
-            delegate.taskManager(taskManager);
+        public EngineOptions taskStorage(TaskStorage taskStorage) {
+            delegate.taskStorage(taskStorage);
+            return this;
+        }
+
+        public EngineOptions taskDetailStore(TaskDetailStore taskDetailStore) {
+            delegate.taskDetailStore(taskDetailStore);
             return this;
         }
 
@@ -304,13 +309,13 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions workerManager(WorkerManager workerManager) {
-            delegate.workerManager(workerManager);
+        public EngineOptions workerStorage(WorkerStorage workerStorage) {
+            delegate.workerStorage(workerStorage);
             return this;
         }
 
-        public EngineOptions ruleManager(RuleManager<Map<String, Object>> ruleManager) {
-            delegate.ruleManager(ruleManager);
+        public EngineOptions ruleStorage(RuleStorage ruleStorage) {
+            delegate.ruleStorage(ruleStorage);
             return this;
         }
 

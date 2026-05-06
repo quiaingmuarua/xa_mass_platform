@@ -23,6 +23,8 @@ class TransportDispatchEnvelopeTest {
         assertEquals("websocket", envelope.getAdapterId());
         assertEquals("worker-1", envelope.getRouteKey());
         assertEquals("attempt-1", envelope.getCorrelationKey());
+        assertEquals("delivery-1", envelope.getPacket().packetId());
+        assertEquals("task-1", envelope.getPacket().taskId());
     }
 
     @Test

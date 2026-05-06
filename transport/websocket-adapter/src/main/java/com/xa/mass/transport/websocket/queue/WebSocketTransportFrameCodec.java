@@ -7,9 +7,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskDispatchWireView;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.packet.TransportPacketViews;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,8 +86,8 @@ public final class WebSocketTransportFrameCodec {
                 && !hasBoolean(frame, "success");
     }
 
-    public String encodeCanonicalTaskDispatch(TaskDispatchItem item) {
-        TaskDispatchWireView view = item.wireView();
+    public String encodeCanonicalTaskDispatch(TransportPacket packet) {
+        TaskDispatchWireView view = TransportPacketViews.dispatchWireView(packet);
         JsonObject frame = new JsonObject();
         frame.addProperty(MESSAGE_ID_FIELD, view.messageId());
         frame.addProperty(WORKER_ID_FIELD, view.workerId());

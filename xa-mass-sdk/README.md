@@ -187,6 +187,11 @@ Current SDK contracts:
 | removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
+For embedded runtime wiring, keep the mainline on storage/runtime contracts
+such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
+`workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
+`WorkerManager` the default SDK assembly surface.
+
 ## Compatibility Policy
 
 `com.xa.mass.sdk.*` is the stable public API surface for this artifact.
