@@ -203,22 +203,6 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         };
     }
 
-    private record DeliveryQueueKey(String adapterId, String routeKey) implements Comparable<DeliveryQueueKey> {
-        private DeliveryQueueKey {
-            Objects.requireNonNull(adapterId, "adapterId");
-            Objects.requireNonNull(routeKey, "routeKey");
-        }
-
-        @Override
-        public int compareTo(DeliveryQueueKey other) {
-            int adapterCompare = adapterId.compareTo(other.adapterId);
-            if (adapterCompare != 0) {
-                return adapterCompare;
-            }
-            return routeKey.compareTo(other.routeKey);
-        }
-    }
-
     private static final class MutableAdapterQueueStats {
         private int queuedItems;
         private int queueCount;

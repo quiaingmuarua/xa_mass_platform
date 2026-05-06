@@ -1,6 +1,8 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -95,8 +97,11 @@ class RuntimeTaskResultIngestChannelTest {
         assertNull(updated.getErrorCode());
         TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
+        assertEquals(TaskMsgAttemptStatus.REVOKED, attempt.getStatus());
+        assertEquals(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY, attempt.getFinalReason());
+        assertEquals("boom", attempt.getErrorMessage());
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
-        assertEquals("FAILED", attempt.getOutput().get("status"));
+        assertNull(attempt.getOutput());
         assertEquals(TaskStatus.RUNNING, taskQueries.getTask(task.getTid()).getStatus());
     }
 
