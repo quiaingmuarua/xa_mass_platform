@@ -8,8 +8,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -98,11 +99,19 @@ public final class TaskWorkloadMixSmokeRunner {
             });
             CountDownLatch bulkTerminalLatch = new CountDownLatch(1);
             CountDownLatch interactiveTerminalLatch = new CountDownLatch(1);
+            Map<String, TaskWorkloadClass> workloadByTaskId = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
-                timing.onDispatch(task, dispatchBindings.size());
+            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
+                TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+                timing.onDispatch(task.taskId(), workloadClass, dispatchBindings.size());
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    callbackExecutor.submit(() -> handleBinding(taskResultIngestFacade, timing, task, binding.taskMsg()));
+                    callbackExecutor.submit(() -> handleBinding(
+                            taskResultIngestFacade,
+                            timing,
+                            workloadByTaskId,
+                            task,
+                            binding.taskMsg()
+                    ));
                 }
             };
 
@@ -146,6 +155,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 assignWorker.start();
 
                 Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
+                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
@@ -155,6 +165,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
                 Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
+                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
@@ -187,18 +198,20 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
                                    WorkloadTiming timing,
-                                   Task task,
+                                   Map<String, TaskWorkloadClass> workloadByTaskId,
+                                   TaskDispatchContext task,
                                    TaskMsg taskMsg) {
-            int delayMillis = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE
+            TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+            int delayMillis = workloadClass == TaskWorkloadClass.INTERACTIVE
                     ? config.interactiveProcessingDelayMillis()
                     : config.bulkProcessingDelayMillis();
-            timing.onCallbackStart(task);
+            timing.onCallbackStart(task.taskId(), workloadClass);
             try {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
                 }
                 boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
-                        task.getTid(),
+                        task.taskId(),
                         taskMsg.getMessageId(),
                         true,
                         "ok",
@@ -210,7 +223,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("callback interrupted", e);
             } finally {
-                timing.onCallbackFinish(task);
+                timing.onCallbackFinish(task.taskId(), workloadClass);
             }
         }
 
@@ -349,14 +362,17 @@ public final class TaskWorkloadMixSmokeRunner {
             approvedAtNanos.put(task.getTid(), System.nanoTime());
         }
 
-        private void onDispatch(Task task, int itemCount) {
+        private void onDispatch(String taskId, TaskWorkloadClass workloadClass, int itemCount) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
             long now = System.nanoTime();
-            dispatchCyclesByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).increment();
-            dispatchItemsByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).add(itemCount);
-            firstDispatchAtNanos.putIfAbsent(task.getTid(), now);
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            dispatchCyclesByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).increment();
+            dispatchItemsByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).add(itemCount);
+            firstDispatchAtNanos.putIfAbsent(taskId, now);
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkFirstDispatchLatch.countDown();
-            } else if (task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            } else if (workloadClass == TaskWorkloadClass.INTERACTIVE) {
                 interactiveBulkCallbacksAtFirstDispatch.compareAndSet(-1L, bulkCallbacksInFlight.get());
                 boolean bulkStillRunning = bulkTaskId != null && !terminalAtNanos.containsKey(bulkTaskId);
                 if (bulkStillRunning) {
@@ -369,14 +385,20 @@ public final class TaskWorkloadMixSmokeRunner {
             return bulkFirstDispatchLatch.await(timeout, unit);
         }
 
-        private void onCallbackStart(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackStart(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.incrementAndGet();
             }
         }
 
-        private void onCallbackFinish(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackFinish(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.updateAndGet(current -> current > 0 ? current - 1 : 0);
             }
         }

@@ -131,6 +131,48 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
+    void messageWithoutInlineRouteKeyUsesHandshakeRegisteredRouteKey() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&routeKey=ws-route-11",
+                new DefaultHttpHeaders(),
+                null
+        ));
+        String controlJson = """
+                {
+                  "messageId": "ctrl-001",
+                  "response": false,
+                  "project": "demoApp",
+                  "eventCode": "mock.state.get",
+                  "requestId": "req-1",
+                  "payload": {
+                    "verbose": true
+                  }
+                }
+                """;
+        handler.channelRead0(ctx, frame(controlJson));
+
+        assertNull(sentFrame.get());
+        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertNotNull(sessionManager.getChannelContext("ws-route-11"));
+        assertNull(sessionManager.getChannelContext("worker-1"));
+    }
+
+    @Test
+    void handshakeRouteKeyOverridesWorkerIdAsSessionAddress() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&routeKey=ws-route-9",
+                new DefaultHttpHeaders(),
+                null
+        ));
+
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertNotNull(sessionManager.getChannelContext("ws-route-9"));
+        assertNull(sessionManager.getChannelContext("worker-1"));
+        assertEquals("worker-1", sessionManager.getWorkerId(channel));
+        assertEquals("ws-route-9", sessionManager.getRouteKey(channel));
+    }
+
+    @Test
     void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1",
@@ -251,6 +293,7 @@ class WebSocketServerImplDisconnectTest {
         assertEquals(0, sessionManager.getWorkerConnectionCount());
         assertNull(sessionManager.getChannel("worker-1"));
         assertNull(sessionManager.getWorkerId(channel));
+        assertNull(sessionManager.getRouteKey(channel));
     }
 
     @Test

@@ -92,6 +92,44 @@ class SocketTransportServerTest {
     }
 
     @Test
+    void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
+        SocketSessionManager sessionManager = new SocketSessionManager(null);
+        SocketTransportServer server = new SocketTransportServer(
+                "socket",
+                "127.0.0.1",
+                0,
+                10,
+                sessionManager,
+                new SocketTransportFrameCodec(),
+                null,
+                null,
+                executor
+        );
+
+        try {
+            server.start();
+            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> sessionManager.isRouteOnline("socket-route-9"),
+                        "hello frame should register socket routeKey independently");
+                assertFalse(sessionManager.isRouteOnline("worker-1"));
+            }
+        } finally {
+            server.stop();
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
+    }
+
+    @Test
     void startCleansUpWhenRuntimeExecutorRejectsAcceptLoop() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 1);
         executor.shutdown();

@@ -15,7 +15,8 @@ entry for `transport/`.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
 - `routeKey` is the transport delivery address. Current mainline bindings resolve
-  it from `workerId`, but that is policy, not a transport-global invariant.
+  it from `workerId` by default, but adapter ingress may bind an explicit
+  `routeKey` instead. That is policy, not a transport-global invariant.
 - route-only endpoint operations are adapter-local convenience only. In a
   multi-adapter runtime, callers must route with `adapterId + routeKey` rather
   than asking a composite registry to guess ownership.

@@ -72,9 +72,10 @@ behavior that cannot fit one of these concepts.
 - engine-to-transport dispatch handoff queue/store ownership after assignment;
   current default wiring is an in-memory `TaskDispatchHandoff` drained by a
   runtime pump, not a direct engine->transport listener invocation
-- transport runtime consumes `TaskDispatchBatchListener` at this seam; the
-  older `TaskMsgDispatchListener` shape remains producer-side only for engine ->
-  handoff adaptation and is not a transport consumer boundary anymore
+- both producer and consumer sides now speak `TaskDispatchBatchListener` at
+  this seam; engine submits immutable `TaskDispatchContext +
+  List<TaskDispatchBinding>` batches into handoff, and transport drains the same
+  batch shape without rewrapping through an older listener API
 - worker transport-binding resolution from registered worker truth via storage
   lookup contracts rather than the broader engine worker facade
 - consumption of shared dispatch-ready/result-ingest seams from neutral runtime
@@ -149,6 +150,9 @@ Current runtime rules:
 - mainline polling/websocket/socket bindings currently resolve `routeKey` from
   worker id explicitly at binding assembly time; that is a current policy, not
   a transport-global invariant
+- adapter ingress may also register a session with an explicit `routeKey`
+  provided by handshake / hello metadata and fall back to `workerId` only when
+  no route key is supplied
 - realtime endpoint registries may still be keyed by worker id today, but
   their direct-send contract is route-based: send and online checks should
   speak in terms of `routeKey`, not imply that worker identity is the only

@@ -7,8 +7,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -117,14 +117,14 @@ public final class TaskFlowLoadModelRunner {
             AtomicReference<String> taskIdRef = new AtomicReference<>();
             Map<String, AtomicInteger> messageDeliveryAttempts = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
+            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
                 dispatchMetrics.recordDispatchCycle(dispatchBindings);
                 for (TaskDispatchBinding binding : dispatchBindings) {
                     TaskMsg taskMsg = binding.taskMsg();
                     callbackExecutor.submit(() -> {
                         int active = callbackMetrics.onCallbackStart();
                         try {
-                            String taskId = task.getTid();
+                            String taskId = task.taskId();
                             String messageId = taskMsg.getMessageId();
                             int logicalSeq = ((Number) taskMsg.getInput().get("seq")).intValue();
                             int attemptNo = messageDeliveryAttempts
@@ -503,11 +503,6 @@ public final class TaskFlowLoadModelRunner {
         public java.util.Optional<com.xa.mass.base.model.TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
             return probe.measure("getLatestActiveTaskMessageAttempt",
                     () -> super.getLatestActiveTaskMessageAttempt(taskId, messageId));
-        }
-
-        @Override
-        public List<Task> getAllTasks() {
-            return probe.measure("getAllTasks", super::getAllTasks);
         }
     }
 

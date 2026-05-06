@@ -5,8 +5,9 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.*;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -36,7 +37,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private final TaskAssignmentRuntimePort assignmentRuntime;
     private final WorkerManager workerManager;
     private final AssignmentRecordService recordService;
-    private final TaskMsgDispatchListener dispatchListener;
+    private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
@@ -48,14 +49,14 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService,
-                                       TaskMsgDispatchListener dispatchListener) {
+                                       TaskDispatchBatchListener dispatchListener) {
         this(assignmentRuntime, workerManager, recordService, dispatchListener, TraceEventLogger.noop());
     }
 
     public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentRecordService recordService,
-                                       TaskMsgDispatchListener dispatchListener,
+                                       TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
@@ -219,9 +220,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 task.getTid(), dispatchBindings.size(), totalMessages);
 
         if (dispatchListener != null && !dispatchBindings.isEmpty()) {
+            TaskDispatchContext dispatchContext = TaskDispatchContext.from(task);
             List<TaskDispatchBinding> immutableDispatchBindings = List.copyOf(dispatchBindings);
             try {
-                dispatchListener.onTaskMsgsReady(task, immutableDispatchBindings);
+                dispatchListener.onTaskDispatchBatch(dispatchContext, immutableDispatchBindings);
             } catch (RuntimeException e) {
                 String detail = "dispatch submit failed before transport delivery: "
                         + e.getClass().getSimpleName()

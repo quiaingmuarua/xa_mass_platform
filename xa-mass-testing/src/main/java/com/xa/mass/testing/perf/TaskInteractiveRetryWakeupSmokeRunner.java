@@ -7,8 +7,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -111,11 +112,13 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             CountDownLatch interactiveTerminalLatch = new CountDownLatch(1);
             AtomicInteger callbackSequence = new AtomicInteger();
             Map<String, AtomicInteger> interactiveAttempts = new ConcurrentHashMap<>();
+            Map<String, TaskWorkloadClass> workloadByTaskId = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
-                timing.onDispatch(task, dispatchBindings.size());
+            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
+                TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+                timing.onDispatch(task.taskId(), workloadClass, dispatchBindings.size());
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    ExecutorService callbackExecutor = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE
+                    ExecutorService callbackExecutor = workloadClass == TaskWorkloadClass.INTERACTIVE
                             ? interactiveCallbackExecutor
                             : bulkCallbackExecutor;
                     callbackExecutor.submit(() -> handleBinding(
@@ -123,6 +126,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                             taskWorkRuntime,
                             timing,
                             interactiveAttempts,
+                            workloadByTaskId,
                             task,
                             binding.taskMsg(),
                             callbackSequence.incrementAndGet()
@@ -170,6 +174,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 assignWorker.start();
 
                 Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
+                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
@@ -179,6 +184,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
                 Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
+                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
@@ -231,10 +237,12 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                    InMemoryTaskWorkRuntime taskWorkRuntime,
                                    RetryTiming timing,
                                    Map<String, AtomicInteger> interactiveAttempts,
-                                   Task task,
+                                   Map<String, TaskWorkloadClass> workloadByTaskId,
+                                   TaskDispatchContext task,
                                    TaskMsg taskMsg,
                                    int callbackSeq) {
-            boolean interactive = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE;
+            TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+            boolean interactive = workloadClass == TaskWorkloadClass.INTERACTIVE;
             int attemptNo = interactive
                     ? interactiveAttempts.computeIfAbsent(taskMsg.getMessageId(), ignored -> new AtomicInteger())
                     .incrementAndGet()
@@ -244,7 +252,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     ? config.interactiveFailureProcessingDelayMillis()
                     : config.interactiveSuccessProcessingDelayMillis())
                     : config.bulkProcessingDelayMillis();
-            timing.onCallbackStart(task);
+            timing.onCallbackStart(task.taskId(), workloadClass);
             try {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
@@ -253,7 +261,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 String detail = success ? "ok" : "synthetic retryable failure";
                 String errorCode = success ? null : "SYNTHETIC_RETRY";
                 boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
-                        task.getTid(),
+                        task.taskId(),
                         taskMsg.getMessageId(),
                         success,
                         detail,
@@ -266,13 +274,13 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 );
                 require(accepted, "result callback should be accepted for " + taskMsg.getMessageId());
                 if (interactive && attemptNo == 1) {
-                    timing.onInteractiveFailure(task, taskMsg, taskWorkRuntime.stats(task.getTid()));
+                    timing.onInteractiveFailure(task.taskId(), taskMsg, taskWorkRuntime.stats(task.taskId()));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("callback interrupted", e);
             } finally {
-                timing.onCallbackFinish(task);
+                timing.onCallbackFinish(task.taskId(), workloadClass);
             }
         }
 
@@ -418,14 +426,17 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             approvedAtNanos.put(task.getTid(), System.nanoTime());
         }
 
-        private void onDispatch(Task task, int itemCount) {
+        private void onDispatch(String taskId, TaskWorkloadClass workloadClass, int itemCount) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
             long now = System.nanoTime();
-            dispatchCyclesByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).increment();
-            dispatchItemsByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).add(itemCount);
+            dispatchCyclesByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).increment();
+            dispatchItemsByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).add(itemCount);
             int dispatchCount = dispatchCountByTaskId
-                    .computeIfAbsent(task.getTid(), ignored -> new AtomicInteger())
+                    .computeIfAbsent(taskId, ignored -> new AtomicInteger())
                     .incrementAndGet();
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkFirstDispatchLatch.countDown();
                 return;
             }
@@ -444,26 +455,32 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private void onCallbackStart(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackStart(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.incrementAndGet();
             }
         }
 
-        private void onCallbackFinish(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackFinish(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.updateAndGet(current -> current > 0 ? current - 1 : 0);
             }
         }
 
-        private void onInteractiveFailure(Task task, TaskMsg taskMsg, TaskWorkStats statsAfterFailure) {
+        private void onInteractiveFailure(String taskId, TaskMsg taskMsg, TaskWorkStats statsAfterFailure) {
             if (interactiveTaskId != null
-                    && interactiveTaskId.equals(task.getTid())
+                    && interactiveTaskId.equals(taskId)
                     && "INIT".equals(taskMsg.getStatus().name())) {
                 if (statsAfterFailure != null) {
                     interactiveDelayedCountBeforeWakeup.compareAndSet(-1L, statsAfterFailure.delayedCount());
                 }
-                AtomicInteger dispatchCount = dispatchCountByTaskId.get(task.getTid());
+                AtomicInteger dispatchCount = dispatchCountByTaskId.get(taskId);
                 interactiveDispatchCountBeforeWakeup.compareAndSet(-1L, dispatchCount != null ? dispatchCount.get() : 0L);
                 interactiveFailureCompletedAtNanos.compareAndSet(-1L, System.nanoTime());
                 interactiveFailureLatch.countDown();

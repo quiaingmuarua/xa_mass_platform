@@ -7,7 +7,7 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
@@ -75,7 +75,7 @@ public class MassEngine {
         start(null);
     }
 
-    public void start(TaskMsgDispatchListener taskMsgDispatchListener) {
+    public void start(TaskDispatchBatchListener taskDispatchListener) {
         LogUtils.clearMdc();
         if (!config.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
@@ -101,7 +101,7 @@ public class MassEngine {
                     assignmentRuntimePort,
                     workerManager,
                     recordService,
-                    taskMsgDispatchListener,
+                    taskDispatchListener,
                     traceEventLogger);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null

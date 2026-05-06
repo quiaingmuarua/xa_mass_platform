@@ -3,9 +3,8 @@ package com.xa.mass.starter;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoffListener;
-import com.xa.mass.base.runtime.dispatch.TaskMsgDispatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
@@ -100,11 +99,11 @@ public class MassApplication {
         logger.info("Starting Mass Application");
 
         try {
-            TaskMsgDispatchListener taskMsgDispatchListener = initializeComponents();
+            TaskDispatchBatchListener taskDispatchListener = initializeComponents();
 
             startManagedTransportAdapters();
             startTransportServer();
-            startEngine(taskMsgDispatchListener);
+            startEngine(taskDispatchListener);
 
             LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
@@ -198,7 +197,7 @@ public class MassApplication {
         }
     }
 
-    private TaskMsgDispatchListener initializeComponents() {
+    private TaskDispatchBatchListener initializeComponents() {
         logger.info("Initializing core components");
 
         try {
@@ -229,7 +228,7 @@ public class MassApplication {
                     "transport-runtime-",
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
-            TaskMsgDispatchListener taskMsgDispatchListener = null;
+            TaskDispatchBatchListener taskDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
             if (engineConfig.isEnabled()) {
@@ -273,9 +272,10 @@ public class MassApplication {
                         transportRuntimeTaskExecutor
                 );
                 taskDispatchHandoffPump.start();
-                taskMsgDispatchListener = new TaskDispatchHandoffListener(taskDispatchHandoff);
+                taskDispatchListener = (task, dispatchBindings) ->
+                        taskDispatchHandoff.submit(new TaskDispatchBatch(task, dispatchBindings));
             }
-            return taskMsgDispatchListener;
+            return taskDispatchListener;
         } catch (Exception e) {
             try {
                 stopTaskDispatchHandoff();
@@ -302,14 +302,14 @@ public class MassApplication {
         logger.info("Managed transport adapters started");
     }
 
-    private void startEngine(TaskMsgDispatchListener taskMsgDispatchListener) {
+    private void startEngine(TaskDispatchBatchListener taskDispatchListener) {
         if (!engineConfig.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
             return;
         }
         logger.info("Starting MassEngine");
         if (engine != null) {
-            engine.start(taskMsgDispatchListener);
+            engine.start(taskDispatchListener);
             logger.info("MassEngine started");
         } else {
             logger.error("MassEngine is null - check if engine is enabled in config");
