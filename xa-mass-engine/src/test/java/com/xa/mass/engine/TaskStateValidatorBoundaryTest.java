@@ -82,11 +82,6 @@ class TaskStateValidatorBoundaryTest {
         }
 
         @Override
-        public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-            return List.of();
-        }
-
-        @Override
         public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
             return new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
         }

@@ -4,11 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.JsonTransportPacketCodec;
+import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Objects;
 
 final class RedisTransportDispatchEnvelopeCodec {
@@ -17,7 +18,6 @@ final class RedisTransportDispatchEnvelopeCodec {
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
 
     private final Gson gson;
-    private final JsonTransportPacketCodec packetCodec;
 
     RedisTransportDispatchEnvelopeCodec() {
         this(new GsonBuilder().create());
@@ -25,7 +25,6 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     RedisTransportDispatchEnvelopeCodec(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
-        this.packetCodec = new JsonTransportPacketCodec(gson);
     }
 
     String encodeKeyPart(DeliveryQueueKey key) {
@@ -68,7 +67,20 @@ final class RedisTransportDispatchEnvelopeCodec {
         if (record == null || record.deliveryId == null || record.packet == null) {
             throw new IllegalArgumentException("encoded dispatch envelope record is incomplete");
         }
-        TransportPacket packet = packetCodec.decode(gson.toJson(record.packet).getBytes(StandardCharsets.UTF_8));
+        TransportPacket packet = TransportPacket.fromDecodedJson(
+                record.packet.version,
+                record.packet.packetId,
+                record.packet.traceId,
+                record.packet.type,
+                record.packet.adapterId,
+                record.packet.routeKey,
+                record.packet.taskId,
+                record.packet.messageId,
+                record.packet.attemptId,
+                record.packet.eventCode,
+                record.packet.contentType,
+                record.packet.payload
+        );
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 record.deliveryId,
                 packet,
@@ -94,6 +106,21 @@ final class RedisTransportDispatchEnvelopeCodec {
     private static final class DecodedRedisTransportDispatchEnvelopeRecord {
         private String deliveryId;
         private long createdAtEpochMillis;
-        private Object packet;
+        private DecodedTransportPacketRecord packet;
+    }
+
+    private static final class DecodedTransportPacketRecord {
+        private int version;
+        private String packetId;
+        private String traceId;
+        private PacketType type;
+        private String adapterId;
+        private String routeKey;
+        private String taskId;
+        private String messageId;
+        private String attemptId;
+        private String eventCode;
+        private String contentType;
+        private Map<String, Object> payload;
     }
 }

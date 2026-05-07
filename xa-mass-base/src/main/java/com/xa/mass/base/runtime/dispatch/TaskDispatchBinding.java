@@ -1,9 +1,5 @@
 package com.xa.mass.base.runtime.dispatch;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -13,10 +9,8 @@ import java.util.Objects;
  * handoff seam.
  *
  * <p>The hot-path carrier is runtime-owned data: message identity, payload,
- * retry summary, and active attempt/lease ownership. Compatibility views can
- * still be synthesized for bounded tests or shell/debug callers, but dispatch
- * routing must not depend on persisted {@link TaskMsg}/{@link TaskMsgAttempt}
- * object graphs.</p>
+ * retry summary, and active attempt/lease ownership. Dispatch routing must not
+ * depend on persisted compatibility projection object graphs.</p>
  */
 public final class TaskDispatchBinding {
 
@@ -57,28 +51,6 @@ public final class TaskDispatchBinding {
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
-    }
-
-    /**
-     * Temporary compatibility constructor used by tests and bounded callers
-     * that still build bindings from compatibility projections.
-     */
-    @Deprecated
-    public TaskDispatchBinding(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        this(
-                taskMsg != null ? taskMsg.getTaskId() : null,
-                taskMsg != null ? taskMsg.getMessageId() : null,
-                null,
-                taskMsg != null ? taskMsg.getInput() : null,
-                taskMsg != null ? taskMsg.getPayloadRef() : null,
-                taskMsg != null ? taskMsg.getRetryCount() : 0,
-                attempt != null ? attempt.getAttemptId() : null,
-                attempt != null ? attempt.getAttemptNo() : 1,
-                null,
-                attempt != null ? attempt.getWorkerId() : null,
-                attempt != null ? attempt.getWorkerContextId() : null,
-                attempt != null ? attempt.getBatchId() : null
-        );
     }
 
     public String taskId() {
@@ -127,33 +99,6 @@ public final class TaskDispatchBinding {
 
     public String batchId() {
         return batchId;
-    }
-
-    /**
-     * Compatibility projection view used only by bounded tests and temporary
-     * callers during the migration away from projection-driven dispatch.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMsg taskMsg() {
-        TaskMsg taskMsg = new TaskMsg(messageId, taskId, payload, payloadRef);
-        taskMsg.setRetryCount(retryCount);
-        taskMsg.applyLatestAttemptProjection(attemptId, workerId, workerContextId, batchId);
-        return taskMsg;
-    }
-
-    /**
-     * Compatibility projection view used only by bounded tests and temporary
-     * callers during the migration away from projection-driven dispatch.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMsgAttempt attempt() {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
-        attempt.setWorkerId(workerId);
-        attempt.setWorkerContextId(workerContextId);
-        attempt.setBatchId(batchId);
-        return attempt;
     }
 
     private static String requireText(String value, String field) {

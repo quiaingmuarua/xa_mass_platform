@@ -39,18 +39,18 @@ public final class TransportPacket {
         this(version, packetId, traceId, type, adapterId, routeKey, taskId, messageId, attemptId, eventCode, contentType, payload, false);
     }
 
-    static TransportPacket fromDecodedJson(int version,
-                                           String packetId,
-                                           String traceId,
-                                           PacketType type,
-                                           String adapterId,
-                                           String routeKey,
-                                           String taskId,
-                                           String messageId,
-                                           String attemptId,
-                                           String eventCode,
-                                           String contentType,
-                                           Map<String, Object> payload) {
+    public static TransportPacket fromDecodedJson(int version,
+                                                  String packetId,
+                                                  String traceId,
+                                                  PacketType type,
+                                                  String adapterId,
+                                                  String routeKey,
+                                                  String taskId,
+                                                  String messageId,
+                                                  String attemptId,
+                                                  String eventCode,
+                                                  String contentType,
+                                                  Map<String, Object> payload) {
         return new TransportPacket(
                 version,
                 packetId,
@@ -148,6 +148,22 @@ public final class TransportPacket {
         return payload;
     }
 
+    public String payloadString(String key) {
+        return stringValue(payload.get(key));
+    }
+
+    public int payloadInt(String key) {
+        return intValue(payload.get(key));
+    }
+
+    public boolean payloadBoolean(String key) {
+        return Boolean.TRUE.equals(payload.get(key));
+    }
+
+    public Map<String, Object> payloadObject(String key) {
+        return mapValue(payload.get(key));
+    }
+
     public TransportPacket withTransportAddress(String adapterId, String routeKey) {
         return new TransportPacket(
                 version,
@@ -179,6 +195,28 @@ public final class TransportPacket {
             return null;
         }
         return value.trim();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        return (Map<String, Object>) map;
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
+    }
+
+    private static String stringValue(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
     }
 
     @Override

@@ -268,11 +268,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
     }
 
-    @Override
-    public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
-    }
-
     /**
      * Returns tasks currently in the given status.
      */
@@ -428,13 +423,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             updateTaskProgress(taskId);
         }
         return outcome.accepted();
-    }
-
-    /**
-     * Returns the current persisted task-message aggregate for a task.
-     */
-    TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
-        return taskDetailStore.getTaskMessageStats(taskId);
     }
 
     @Override
