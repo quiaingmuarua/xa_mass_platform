@@ -322,6 +322,11 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * Supplies the bounded compatibility projection store for task-message
+         * residue and attempt detail. This is not the engine's runtime truth or
+         * a public query-model ownership point.
+         */
         public EngineOptions taskDetailStore(TaskDetailStore taskDetailStore) {
             delegate.taskDetailStore(taskDetailStore);
             return this;

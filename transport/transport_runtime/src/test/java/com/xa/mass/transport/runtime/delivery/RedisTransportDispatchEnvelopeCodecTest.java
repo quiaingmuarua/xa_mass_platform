@@ -42,15 +42,15 @@ class RedisTransportDispatchEnvelopeCodecTest {
                         "crawler.fetch-page",
                         TransportPacket.JSON_CONTENT_TYPE,
                         Map.of(
-                                "taskName", "task-name",
-                                "project", "demoApp",
-                                "userId", "agent",
-                                "retryCount", 1,
-                                "workerId", "worker-1",
-                                "workerContextId", "ctx-1",
-                                "batchId", "batch-1",
-                                "input", Map.of("target", "https://example.test"),
-                                "sharedConfig", Map.of("debug", true)
+                                TransportPacket.PAYLOAD_TASK_NAME, "task-name",
+                                TransportPacket.PAYLOAD_PROJECT, "demoApp",
+                                TransportPacket.PAYLOAD_USER_ID, "agent",
+                                TransportPacket.PAYLOAD_RETRY_COUNT, 1,
+                                TransportPacket.PAYLOAD_WORKER_ID, "worker-1",
+                                TransportPacket.PAYLOAD_WORKER_CONTEXT_ID, "ctx-1",
+                                TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "https://example.test"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of("debug", true)
                         )
                 ),
                 1_234L
@@ -66,6 +66,7 @@ class RedisTransportDispatchEnvelopeCodecTest {
         assertEquals("websocket", decoded.value().getPacket().adapterId());
         assertEquals("route-1", decoded.value().getPacket().routeKey());
         assertEquals("msg-1", decoded.value().getPacket().messageId());
-        assertEquals(Map.of("target", "https://example.test"), ((Map<?, ?>) decoded.value().getPacket().payload()).get("input"));
+        assertEquals(Map.of("target", "https://example.test"),
+                ((Map<?, ?>) decoded.value().getPacket().payload()).get(TransportPacket.PAYLOAD_INPUT));
     }
 }

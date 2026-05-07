@@ -29,9 +29,9 @@ class JsonTransportPacketCodecTest {
                 "crawler.fetch-page",
                 TransportPacket.JSON_CONTENT_TYPE,
                 Map.of(
-                        "workerId", "worker-1",
-                        "retryCount", 2,
-                        "input", Map.of("target", "https://example.test"),
+                        TransportPacket.PAYLOAD_WORKER_ID, "worker-1",
+                        TransportPacket.PAYLOAD_RETRY_COUNT, 2,
+                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "https://example.test"),
                         "steps", List.of("a", "b")
                 )
         );
@@ -50,9 +50,10 @@ class JsonTransportPacketCodecTest {
         assertEquals("crawler.fetch-page", decoded.eventCode());
         assertEquals(TransportPacket.JSON_CONTENT_TYPE, decoded.contentType());
         Map<?, ?> payload = assertInstanceOf(Map.class, decoded.payload());
-        assertEquals("worker-1", payload.get("workerId"));
-        assertEquals(2.0d, payload.get("retryCount"));
-        assertEquals("https://example.test", assertInstanceOf(Map.class, payload.get("input")).get("target"));
+        assertEquals("worker-1", payload.get(TransportPacket.PAYLOAD_WORKER_ID));
+        assertEquals(2.0d, payload.get(TransportPacket.PAYLOAD_RETRY_COUNT));
+        assertEquals("https://example.test",
+                assertInstanceOf(Map.class, payload.get(TransportPacket.PAYLOAD_INPUT)).get("target"));
         assertEquals(List.of("a", "b"), payload.get("steps"));
     }
 
@@ -63,7 +64,7 @@ class JsonTransportPacketCodecTest {
         List<Object> steps = new ArrayList<>();
         steps.add("a");
         Map<String, Object> originalPayload = new LinkedHashMap<>();
-        originalPayload.put("input", nested);
+        originalPayload.put(TransportPacket.PAYLOAD_INPUT, nested);
         originalPayload.put("steps", steps);
 
         TransportPacket packet = new TransportPacket(
@@ -85,7 +86,8 @@ class JsonTransportPacketCodecTest {
         steps.add("b");
 
         Map<?, ?> payload = packet.payload();
-        assertEquals("https://example.test", assertInstanceOf(Map.class, payload.get("input")).get("target"));
+        assertEquals("https://example.test",
+                assertInstanceOf(Map.class, payload.get(TransportPacket.PAYLOAD_INPUT)).get("target"));
         assertEquals(List.of("a"), payload.get("steps"));
     }
 

@@ -416,6 +416,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        /**
+         * Wires the bounded compatibility projection store used for task-message
+         * residue and focused diagnostics. Do not treat this seam as runtime
+         * truth or a durable public query contract.
+         */
         public EngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
             config.setTaskDetailStore(taskDetailStore);
             return this;

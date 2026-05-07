@@ -19,11 +19,33 @@ public record TaskMessageAttemptClosedEvent(
         TaskMsgAttemptFinalReason finalReason
 ) {
 
+    public static TaskMessageAttemptClosedEvent from(String taskId,
+                                                     String messageId,
+                                                     String attemptId,
+                                                     int attemptNo,
+                                                     String workerId,
+                                                     String workerContextId,
+                                                     String batchId,
+                                                     TaskMsgAttemptStatus status,
+                                                     TaskMsgAttemptFinalReason finalReason) {
+        return new TaskMessageAttemptClosedEvent(
+                taskId,
+                messageId,
+                attemptId,
+                attemptNo,
+                workerId,
+                workerContextId,
+                batchId,
+                status,
+                finalReason
+        );
+    }
+
     public static TaskMessageAttemptClosedEvent from(String taskId, String messageId, TaskMsgAttempt attempt) {
         if (attempt == null) {
             return null;
         }
-        return new TaskMessageAttemptClosedEvent(
+        return from(
                 taskId,
                 messageId,
                 attempt.getAttemptId(),

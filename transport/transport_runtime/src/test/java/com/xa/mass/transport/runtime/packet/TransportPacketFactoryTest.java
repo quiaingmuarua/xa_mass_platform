@@ -43,8 +43,9 @@ class TransportPacketFactoryTest {
         assertEquals("attempt-1", packet.attemptId());
         assertEquals("crawler.fetch-page", packet.eventCode());
         Map<?, ?> payload = assertInstanceOf(Map.class, packet.payload());
-        assertEquals("worker-1", payload.get("workerId"));
-        assertEquals("https://example.test", assertInstanceOf(Map.class, payload.get("input")).get("target"));
+        assertEquals("worker-1", payload.get(TransportPacket.PAYLOAD_WORKER_ID));
+        assertEquals("https://example.test",
+                assertInstanceOf(Map.class, payload.get(TransportPacket.PAYLOAD_INPUT)).get("target"));
     }
 
     @Test
@@ -61,8 +62,9 @@ class TransportPacketFactoryTest {
         assertEquals("msg-1", packet.messageId());
         assertEquals("attempt-9", packet.attemptId());
         Map<?, ?> payload = assertInstanceOf(Map.class, packet.payload());
-        assertEquals(Boolean.TRUE, payload.get("success"));
-        assertEquals("SUCCESS", assertInstanceOf(Map.class, payload.get("output")).get("status"));
+        assertEquals(Boolean.TRUE, payload.get(TransportPacket.PAYLOAD_SUCCESS));
+        assertEquals("SUCCESS",
+                assertInstanceOf(Map.class, payload.get(TransportPacket.PAYLOAD_OUTPUT)).get("status"));
     }
 
     @Test

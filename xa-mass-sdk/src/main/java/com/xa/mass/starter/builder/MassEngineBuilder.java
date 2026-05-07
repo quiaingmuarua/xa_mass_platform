@@ -48,6 +48,11 @@ public class MassEngineBuilder {
         return this;
     }
 
+    /**
+     * Supplies the bounded compatibility projection store for task-message
+     * residue and attempt detail. This is not the engine's runtime truth or a
+     * public query-model ownership point.
+     */
     public MassEngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
         this.taskDetailStore = taskDetailStore;
         return this;

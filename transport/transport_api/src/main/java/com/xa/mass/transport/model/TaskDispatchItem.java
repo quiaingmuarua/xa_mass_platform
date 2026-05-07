@@ -297,7 +297,7 @@ public final class TaskDispatchItem {
         if ("JSON".equals(payloadType)) {
             Object data = rawInput.get("data");
             if (data instanceof Map<?, ?> map) {
-                return normalizeObject((Map<String, Object>) map, INPUT);
+                return normalizeObject((Map<String, Object>) map, TransportPacket.PAYLOAD_INPUT);
             }
         }
         if ("TEXT".equals(payloadType)) {
@@ -306,7 +306,7 @@ public final class TaskDispatchItem {
                 return Map.of("text", value);
             }
         }
-        return normalizeObject(rawInput, INPUT);
+        return normalizeObject(rawInput, TransportPacket.PAYLOAD_INPUT);
     }
 
     private static String sdkPayloadType(TaskDispatchContext task) {

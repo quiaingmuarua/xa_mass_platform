@@ -27,9 +27,11 @@ import java.util.Optional;
  */
 public interface TaskDetailStore {
 
+    /** Compatibility projection writes used by bounded residue repair paths. */
     @CompatibilityProjectionOnly
     void addTaskMessage(String taskId, TaskMsg taskMsg);
 
+    /** Bounded compatibility reads; callers must not treat these as public history APIs. */
     @CompatibilityProjectionOnly
     List<TaskMsg> getTaskMessages(String taskId);
 
@@ -44,12 +46,15 @@ public interface TaskDetailStore {
     @CompatibilityProjectionOnly
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
 
+    /** Compatibility projection repair/update only. */
     @CompatibilityProjectionOnly
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
+    /** Attempt-level compatibility projection writes used by bounded residue repair paths. */
     @CompatibilityProjectionOnly
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
+    /** Bounded compatibility reads; callers must not treat these as public history APIs. */
     @CompatibilityProjectionOnly
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
 
@@ -62,6 +67,7 @@ public interface TaskDetailStore {
     @CompatibilityProjectionOnly
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
+    /** Aggregate diagnostics only; these stats do not promote the residue rows to runtime truth. */
     TaskMessageStats getTaskMessageStats(String taskId);
 
     TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);

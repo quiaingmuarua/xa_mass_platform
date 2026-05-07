@@ -43,15 +43,15 @@ class WebSocketTransportFrameCodecTest {
                 "crawler.fetch-page",
                 TransportPacket.JSON_CONTENT_TYPE,
                 Map.of(
-                        "taskName", "task-name",
-                        "project", "demoApp",
-                        "userId", "user-a",
-                        "retryCount", 2,
-                        "workerId", "worker-1",
-                        "workerContextId", "worker-context-1",
-                        "batchId", "batch-1",
-                        "input", Map.of("target", "https://example.test"),
-                        "sharedConfig", Map.of("textContent", "hello")
+                        TransportPacket.PAYLOAD_TASK_NAME, "task-name",
+                        TransportPacket.PAYLOAD_PROJECT, "demoApp",
+                        TransportPacket.PAYLOAD_USER_ID, "user-a",
+                        TransportPacket.PAYLOAD_RETRY_COUNT, 2,
+                        TransportPacket.PAYLOAD_WORKER_ID, "worker-1",
+                        TransportPacket.PAYLOAD_WORKER_CONTEXT_ID, "worker-context-1",
+                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "https://example.test"),
+                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of("textContent", "hello")
                 )
         );
 
@@ -70,10 +70,10 @@ class WebSocketTransportFrameCodecTest {
     void framesWithEventCodeAndSuccessAreNotTreatedAsCanonicalTaskResults() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty("taskId", "task-1");
         frame.addProperty("eventCode", "mock.state.get");
-        frame.addProperty("success", true);
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
 
         assertFalse(codec.isCanonicalTaskResult(frame));
     }
@@ -82,12 +82,12 @@ class WebSocketTransportFrameCodecTest {
     void canonicalTaskResultDecodesIntoTaskResultReport() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
-        frame.addProperty("workerId", "worker-1");
-        frame.addProperty("project", "demoApp");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_PROJECT, "demoApp");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "completed");
-        frame.add("output", payload("status", "SUCCESS", "mockData", "completed"));
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "completed");
+        frame.add(TransportPacket.PAYLOAD_OUTPUT, payload("status", "SUCCESS", "mockData", "completed"));
 
         assertTrue(codec.isCanonicalTaskResult(frame));
         var report = codec.decodeCanonicalTaskResult(frame);
@@ -102,7 +102,7 @@ class WebSocketTransportFrameCodecTest {
     void msgIdOnlyFrameIsRejected() {
         JsonObject frame = new JsonObject();
         frame.addProperty("msgId", "legacy-1");
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty("taskId", "task-1");
 
         assertNull(codec.extractMessageId(frame));
@@ -112,7 +112,7 @@ class WebSocketTransportFrameCodecTest {
     @Test
     void routeKeyCanBeExtractedIndependentlyFromWorkerId() {
         JsonObject frame = new JsonObject();
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty("routeKey", "ws-route-7");
 
         assertEquals("worker-1", codec.extractWorkerId(frame));
@@ -123,7 +123,7 @@ class WebSocketTransportFrameCodecTest {
     void legacyContextTaskRoutingIsRejected() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         JsonObject context = new JsonObject();
         context.addProperty("taskId", "task-1");
         frame.add("context", context);
@@ -136,7 +136,7 @@ class WebSocketTransportFrameCodecTest {
     void legacyTupleFieldsDoNotMakeFrameCanonical() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty("msgType", "TASK");
         frame.addProperty("subMsgType", "step");
         frame.add("payload", payload("steps", java.util.List.of(Map.of("stepId", "step-1"))));
