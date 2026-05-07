@@ -415,18 +415,6 @@ class TaskResultService {
                 : Math.max(1, activeLease.retryCount() + 1);
         String attemptId = preferredAttemptId;
         if (attemptId == null || attemptId.isBlank()) {
-            attemptId = taskMsg.latestAttemptId();
-        }
-        if (attemptId == null || attemptId.isBlank()) {
-            TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditProjection(
-                    taskMsg.taskId(),
-                    taskMsg.messageId()
-            );
-            if (matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
-                attemptId = latestAuditView.getAttemptId();
-            }
-        }
-        if (attemptId == null || attemptId.isBlank()) {
             attemptId = TaskMessageAttemptSupport.runtimeAttemptId(taskMsg.messageId(), attemptNo, activeLease);
         }
         return AttemptProjectionView.dispatched(
@@ -863,28 +851,6 @@ class TaskResultService {
 
     private TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
-    }
-
-    private TaskMsgAttempt getLatestTaskMessageAttemptAuditProjection(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
-    }
-
-    private boolean matchesRuntimeLease(TaskMsgAttempt attempt,
-                                        ActiveLeaseRecord activeLease,
-                                        int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
-            return false;
-        }
-        if (attempt.getAttemptNo() != attemptNo) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
-            return false;
-        }
-        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
     }
 
     private boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {

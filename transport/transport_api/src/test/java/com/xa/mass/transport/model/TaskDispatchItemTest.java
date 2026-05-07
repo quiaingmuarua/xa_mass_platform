@@ -15,7 +15,8 @@ class TaskDispatchItemTest {
 
     @Test
     void unwrapsSdkJsonPayloadForTransportConsumers() {
-        Task task = taskWithSdkPayloadType("JSON");
+        Task task = new Task();
+        task.setTid("task-1");
 
         TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
                 "type", "json",
@@ -27,7 +28,8 @@ class TaskDispatchItemTest {
 
     @Test
     void unwrapsSdkTextPayloadForTransportConsumers() {
-        Task task = taskWithSdkPayloadType("TEXT");
+        Task task = new Task();
+        task.setTid("task-1");
 
         TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
                 "type", "text",
@@ -62,13 +64,15 @@ class TaskDispatchItemTest {
 
     @Test
     void exposesDispatchFieldsDirectlyWithoutExtraWrapperObjects() {
-        Task task = taskWithSdkPayloadType("JSON");
+        Task task = new Task();
+        task.setTid("task-1");
 
         TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
                 "type", "json",
                 "data", Map.of("url", "https://example.test/page-1")
         )));
 
+        assertEquals("binding.event", item.getEventCode());
         assertEquals("attempt-1", item.attemptId());
         assertEquals("worker-1", item.getWorkerId());
         assertEquals("msg-1", item.getMessageId());
@@ -76,6 +80,34 @@ class TaskDispatchItemTest {
         assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
         assertEquals("https://example.test/page-1", item.getInput().get("url"));
+    }
+
+    @Test
+    void plainDataFieldWithoutJsonWrapperTypeRemainsUntouched() {
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
+                "type", "custom",
+                "data", Map.of("url", "https://example.test/page-1")
+        )));
+
+        assertEquals("custom", item.getInput().get("type"));
+        assertEquals(Map.of("url", "https://example.test/page-1"), item.getInput().get("data"));
+    }
+
+    @Test
+    void plainDataFieldWithoutTypeRemainsUntouched() {
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
+                "data", Map.of("url", "https://example.test/page-1"),
+                "target", "worker-a"
+        )));
+
+        assertEquals(Map.of("url", "https://example.test/page-1"), item.getInput().get("data"));
+        assertEquals("worker-a", item.getInput().get("target"));
     }
 
     @Test
@@ -158,20 +190,11 @@ class TaskDispatchItemTest {
         assertEquals("fast", ((Map<?, ?>) item.getSharedConfig().get("sdk")).get("mode"));
     }
 
-    private Task taskWithSdkPayloadType(String payloadType) {
-        Task task = new Task();
-        task.setTid("task-1");
-        task.setSharedConfig(Map.of(
-                "_sdk", Map.of("payloadType", payloadType)
-        ));
-        return task;
-    }
-
     private TaskDispatchBinding binding(Map<String, Object> payload) {
         return new TaskDispatchBinding(
                 "task-1",
                 "msg-1",
-                null,
+                "binding.event",
                 payload,
                 null,
                 0,

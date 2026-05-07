@@ -96,6 +96,11 @@ Concrete adapters own protocol I/O only:
 - worker-facing payload fields: task id, message id, event code, input, shared config
 - runtime metadata fields: worker id, worker-context id, batch id, internal attempt id
 
+Dispatch input projection should be payload-shape driven. If transport needs to
+unwrap a worker-facing wrapper such as the current SDK `type=json,data=...` or
+`type=text,text=...` shapes, that decision must come from the dispatch payload
+itself, not from unrelated task metadata like `_sdk.payloadType`.
+
 Transport internals should prefer direct access to the hybrid's real owner
 fields. Packet assembly, routing, and internal result correlation should read
 `TaskDispatchItem` directly instead of rebuilding internal wrapper objects

@@ -128,7 +128,7 @@ public final class TaskDispatchItem {
         return new TaskDispatchItem(
                 task.taskId(),
                 dispatchBinding.messageId(),
-                task.eventCode(),
+                firstNonBlank(dispatchBinding.eventCode(), task.eventCode()),
                 task.taskName(),
                 task.project(),
                 task.userId(),
@@ -137,7 +137,7 @@ public final class TaskDispatchItem {
                 dispatchBinding.workerId(),
                 dispatchBinding.workerContextId(),
                 dispatchBinding.batchId(),
-                normalizeInput(task, dispatchBinding.payload()),
+                normalizeInput(dispatchBinding.payload()),
                 task.sharedConfig()
         );
     }
@@ -289,38 +289,51 @@ public final class TaskDispatchItem {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeInput(TaskDispatchContext task, Map<String, Object> rawInput) {
+    private static Map<String, Object> normalizeInput(Map<String, Object> rawInput) {
         if (rawInput == null || rawInput.isEmpty()) {
             return Map.of();
         }
-        String payloadType = sdkPayloadType(task);
-        if ("JSON".equals(payloadType)) {
+        if (isWrappedJsonPayload(rawInput)) {
             Object data = rawInput.get("data");
-            if (data instanceof Map<?, ?> map) {
-                return normalizeObject((Map<String, Object>) map, TransportPacket.PAYLOAD_INPUT);
-            }
+            return normalizeObject((Map<String, Object>) data, TransportPacket.PAYLOAD_INPUT);
         }
-        if ("TEXT".equals(payloadType)) {
-            Object text = rawInput.get("text");
-            if (text instanceof String value) {
-                return Map.of("text", value);
-            }
+        if (isWrappedTextPayload(rawInput)) {
+            return Map.of("text", rawInput.get("text"));
         }
         return normalizeObject(rawInput, TransportPacket.PAYLOAD_INPUT);
     }
 
-    private static String sdkPayloadType(TaskDispatchContext task) {
-        if (task == null || task.sharedConfig() == null) {
-            return null;
+    private static boolean isWrappedJsonPayload(Map<String, Object> rawInput) {
+        if (rawInput == null) {
+            return false;
         }
-        Object sdk = task.sharedConfig().get("_sdk");
-        if (!(sdk instanceof Map<?, ?> metadata)) {
-            return null;
+        Object data = rawInput.get("data");
+        if (!(data instanceof Map<?, ?>)) {
+            return false;
         }
-        Object payloadType = metadata.get("payloadType");
-        if (!(payloadType instanceof String value) || value.isBlank()) {
-            return null;
+        Object type = rawInput.get("type");
+        return type instanceof String text && "json".equalsIgnoreCase(text);
+    }
+
+    private static boolean isWrappedTextPayload(Map<String, Object> rawInput) {
+        if (rawInput == null) {
+            return false;
         }
-        return value.trim().toUpperCase();
+        Object text = rawInput.get("text");
+        if (!(text instanceof String)) {
+            return false;
+        }
+        Object type = rawInput.get("type");
+        return type instanceof String value && "text".equalsIgnoreCase(value);
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return null;
     }
 }

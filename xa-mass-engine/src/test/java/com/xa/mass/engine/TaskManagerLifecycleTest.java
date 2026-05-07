@@ -2021,7 +2021,13 @@ class TaskManagerLifecycleTest {
 
         int attemptNo = message.getRetryCount() + 1;
         TaskMsgAttempt attempt = new TaskMsgAttempt(
-                "attempt-" + message.getMessageId() + "-" + attemptNo,
+                TaskMessageAttemptSupport.runtimeAttemptId(
+                        message.getMessageId(),
+                        attemptNo,
+                        workerId,
+                        workerContextId,
+                        batchId
+                ),
                 task.getTid(),
                 message.getMessageId(),
                 attemptNo
