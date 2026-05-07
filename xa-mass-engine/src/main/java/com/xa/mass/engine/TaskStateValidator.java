@@ -20,50 +20,18 @@ import java.util.List;
  */
 class TaskStateValidator {
 
+    private final TaskManager taskManager;
     private final TaskStateRuntimePort stateRuntime;
     private final TraceEventLogger traceEventLogger;
 
     TaskStateValidator(TaskManager taskManager, TraceEventLogger traceEventLogger) {
-        this.stateRuntime = new TaskStateRuntimePort() {
-            @Override
-            public Task getTask(String taskId) {
-                return taskManager.getTask(taskId);
-            }
-
-            @Override
-            public boolean updateTask(Task task) {
-                return taskManager.updateTask(task);
-            }
-
-            @Override
-            public TaskWorkStats getTaskWorkStats(String taskId) {
-                return taskManager.getTaskWorkStats(taskId);
-            }
-
-            @Override
-            public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
-                return taskManager.evaluateTerminalPolicy(task, stats);
-            }
-
-            @Override
-            public void publishTaskTerminal(Task task) {
-                taskManager.publishTaskTerminal(task);
-            }
-
-            @Override
-            public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-                return taskManager.getTaskMessages(taskId);
-            }
-
-            @Override
-            public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-                return taskManager.getTaskMessageAttemptStats(taskId, messageId);
-            }
-        };
+        this.taskManager = taskManager;
+        this.stateRuntime = null;
         this.traceEventLogger = traceEventLogger;
     }
 
     TaskStateValidator(TaskStateRuntimePort stateRuntime, TraceEventLogger traceEventLogger) {
+        this.taskManager = null;
         this.stateRuntime = stateRuntime;
         this.traceEventLogger = traceEventLogger;
     }
@@ -77,7 +45,7 @@ class TaskStateValidator {
     }
 
     private TaskStateValidationResult validateTaskState(String taskId, boolean projectionAudit) {
-        Task task = stateRuntime.getTask(taskId);
+        Task task = getTask(taskId);
         if (task == null) {
             TaskStateValidationResult result = new TaskStateValidationResult(
                     false,
@@ -102,7 +70,7 @@ class TaskStateValidator {
             return result;
         }
 
-        TaskWorkStats stats = stateRuntime.getTaskWorkStats(taskId);
+        TaskWorkStats stats = getTaskWorkStats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
 
         if (task.getTaskEligibleNumber() < 0) {
@@ -173,7 +141,7 @@ class TaskStateValidator {
         }
 
         boolean needsResolution = !finalStatus
-                && stateRuntime.evaluateTerminalPolicy(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
+                && evaluateTerminalPolicy(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
         if (projectionAudit) {
             needsResolution = needsResolution || auditTaskMessageProjection(taskId, violations);
         }
@@ -207,7 +175,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskMsg taskMsg : stateRuntime.getTaskMessagesForProjectionAudit(taskId)) {
+        for (TaskMsg taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
             if (taskMsg == null) {
                 continue;
             }
@@ -218,7 +186,7 @@ class TaskStateValidator {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskDetailStore.TaskMessageAttemptStats attemptStats =
-                    stateRuntime.getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
+                    getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
@@ -264,6 +232,28 @@ class TaskStateValidator {
                 reason,
                 validationResult.isValid() && !validationResult.isNeedsResolution() ? "SUCCESS" : "ANOMALY"
         );
+    }
+
+    private Task getTask(String taskId) {
+        return taskManager != null ? taskManager.getTask(taskId) : stateRuntime.getTask(taskId);
+    }
+
+    private TaskWorkStats getTaskWorkStats(String taskId) {
+        return taskManager != null ? taskManager.getTaskWorkStats(taskId) : stateRuntime.getTaskWorkStats(taskId);
+    }
+
+    private TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
+        return taskManager != null ? taskManager.evaluateTerminalPolicy(task, stats) : stateRuntime.evaluateTerminalPolicy(task, stats);
+    }
+
+    private List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
+        return taskManager != null ? taskManager.getTaskMessages(taskId) : stateRuntime.getTaskMessagesForProjectionAudit(taskId);
+    }
+
+    private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        return taskManager != null
+                ? taskManager.getTaskMessageAttemptStats(taskId, messageId)
+                : stateRuntime.getTaskMessageAttemptStats(taskId, messageId);
     }
 
 }

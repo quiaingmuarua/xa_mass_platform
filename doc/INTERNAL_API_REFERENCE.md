@@ -336,7 +336,7 @@ Example response:
 Response notes:
 
 - returns `task`
-- returns a bounded `items` snapshot derived from persisted `TaskMsg.input`
+- returns a bounded `items` snapshot derived from the SDK task-message compatibility view input payload
 - optional `limit` controls the snapshot size; default `100`, hard-capped at `500`
 - task detail does not scan total task-message count; it returns only
   `itemsReturned`, `itemsLimit`, and `itemsTruncated` for the bounded snapshot
@@ -401,7 +401,7 @@ Response notes:
 - returns `taskId`
 - returns `projectionAudit`
 - this is an explicit diagnostic-only compatibility/projection audit
-- unlike `stateValidation`, this path may inspect bounded `TaskMsg` / `TaskMsgAttempt` projection state
+- unlike `stateValidation`, this path may inspect bounded compatibility/residue projection state, including task-message and attempt projections
 - SDK credential callers may use this route under the same ownership-based task-view gate as task detail
 
 Example response shape:
@@ -591,7 +591,7 @@ Query params:
 
 Response shape:
 
-- returns a bounded compatibility summary snapshot, not a full payload/detail API
+- returns a bounded SDK-owned compatibility summary snapshot, not a full payload/detail API
 - response intentionally omits `messages[*].input` and `messages[*].output`
 - `returned` reports the bounded snapshot size; `truncated=true` means the
   controller fetched one extra row and omitted the tail without scanning total

@@ -117,13 +117,12 @@ public final class TaskFlowLoadModelRunner {
             TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
                 dispatchMetrics.recordDispatchCycle(dispatchBindings);
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    TaskMsg taskMsg = binding.taskMsg();
                     callbackExecutor.submit(() -> {
                         int active = callbackMetrics.onCallbackStart();
                         try {
                             String taskId = task.taskId();
-                            String messageId = taskMsg.getMessageId();
-                            int logicalSeq = ((Number) taskMsg.getInput().get("seq")).intValue();
+                            String messageId = binding.messageId();
+                            int logicalSeq = ((Number) binding.payload().get("seq")).intValue();
                             int attemptNo = messageDeliveryAttempts
                                     .computeIfAbsent(messageId, ignored -> new AtomicInteger())
                                     .incrementAndGet();
@@ -447,7 +446,7 @@ public final class TaskFlowLoadModelRunner {
     private static final class NoOpTaskScheduler implements TaskScheduler {
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -456,7 +455,7 @@ public final class TaskFlowLoadModelRunner {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

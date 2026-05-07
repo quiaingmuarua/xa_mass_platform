@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
@@ -38,17 +37,18 @@ public final class TaskMessageAttemptSupport {
         return attempt;
     }
 
-    public static TaskMsgAttempt buildDispatchedProjection(TaskMsg taskMsg,
+    public static TaskMsgAttempt buildDispatchedProjection(String taskId,
+                                                           String messageId,
                                                            ActiveLeaseRecord activeLease,
                                                            String attemptId,
                                                            int attemptNo) {
-        if (taskMsg == null || activeLease == null) {
+        if (taskId == null || messageId == null || activeLease == null) {
             return null;
         }
         return buildDispatchedProjection(
                 attemptId,
-                taskMsg.getTaskId(),
-                taskMsg.getMessageId(),
+                taskId,
+                messageId,
                 attemptNo,
                 activeLease.workerId(),
                 activeLease.workerContextId(),

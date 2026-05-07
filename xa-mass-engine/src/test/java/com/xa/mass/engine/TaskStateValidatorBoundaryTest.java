@@ -72,11 +72,6 @@ class TaskStateValidatorBoundaryTest {
         }
 
         @Override
-        public boolean updateTask(Task task) {
-            return true;
-        }
-
-        @Override
         public TaskWorkStats getTaskWorkStats(String taskId) {
             return stats;
         }
@@ -84,10 +79,6 @@ class TaskStateValidatorBoundaryTest {
         @Override
         public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
             return TaskTerminalPolicyDecision.keepRunning();
-        }
-
-        @Override
-        public void publishTaskTerminal(Task task) {
         }
 
         @Override

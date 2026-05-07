@@ -125,7 +125,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                             interactiveAttempts,
                             workloadByTaskId,
                             task,
-                            binding.taskMsg(),
+                            binding,
                             callbackSequence.incrementAndGet()
                     ));
                 }
@@ -234,12 +234,13 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                    Map<String, AtomicInteger> interactiveAttempts,
                                    Map<String, TaskWorkloadClass> workloadByTaskId,
                                    TaskDispatchContext task,
-                                   TaskMsg taskMsg,
+                                   TaskDispatchBinding binding,
                                    int callbackSeq) {
             TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
             boolean interactive = workloadClass == TaskWorkloadClass.INTERACTIVE;
+            String messageId = binding.messageId();
             int attemptNo = interactive
-                    ? interactiveAttempts.computeIfAbsent(taskMsg.getMessageId(), ignored -> new AtomicInteger())
+                    ? interactiveAttempts.computeIfAbsent(messageId, ignored -> new AtomicInteger())
                     .incrementAndGet()
                     : 1;
             int delayMillis = interactive
@@ -257,7 +258,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 String errorCode = success ? null : "SYNTHETIC_RETRY";
                 boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
                         task.taskId(),
-                        taskMsg.getMessageId(),
+                        messageId,
                         success,
                         detail,
                         errorCode,
@@ -267,9 +268,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                 "attemptNo", attemptNo
                         )
                 );
-                require(accepted, "result callback should be accepted for " + taskMsg.getMessageId());
+                require(accepted, "result callback should be accepted for " + messageId);
                 if (interactive && attemptNo == 1) {
-                    timing.onInteractiveFailure(task.taskId(), taskMsg, taskWorkRuntime.stats(task.taskId()));
+                    timing.onInteractiveFailure(task.taskId(), taskWorkRuntime.stats(task.taskId()));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -478,10 +479,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private void onInteractiveFailure(String taskId, TaskMsg taskMsg, TaskWorkStats statsAfterFailure) {
-            if (interactiveTaskId != null
-                    && interactiveTaskId.equals(taskId)
-                    && "INIT".equals(taskMsg.getStatus().name())) {
+        private void onInteractiveFailure(String taskId, TaskWorkStats statsAfterFailure) {
+            if (interactiveTaskId != null && interactiveTaskId.equals(taskId)) {
                 if (statsAfterFailure != null) {
                     interactiveDelayedCountBeforeWakeup.compareAndSet(-1L, statsAfterFailure.delayedCount());
                 }
@@ -685,7 +684,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
     private static final class NoOpTaskScheduler implements TaskScheduler {
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -694,7 +693,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

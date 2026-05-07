@@ -124,6 +124,12 @@ routing and frame assembly, but external worker wire behavior remains the
 current JSON contract. `TransportPacket.payload` is a JSON object boundary,
 not an arbitrary JVM object slot. Durable queue codecs must be able to
 round-trip packet payloads without relying on Java-local runtime types.
+Allowed payload values are JSON-safe primitives plus nested JSON-safe object
+or array shapes only: `String`, `Number`, `Boolean`, `null`,
+`Map<String, Object>`, and lists/arrays composed from the same value set.
+Transport must reject unsupported JVM-only objects at payload assembly time
+instead of letting different codecs or queue implementations observe different
+behavior.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope

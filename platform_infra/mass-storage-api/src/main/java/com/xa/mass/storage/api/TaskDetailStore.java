@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Storage seam for task message and attempt detail.
+ * Storage seam for task-message compatibility projection and attempt detail.
  *
  * <p>Separated from {@link TaskStorage} so that the high-frequency
  * message/attempt write path can be routed to a different sink (e.g. a
@@ -19,7 +19,11 @@ import java.util.Optional;
  * <p>Callers should treat this seam in two tiers:
  * runtime-essential compatibility projection helpers used by result repair and
  * bounded convergence, and shell/debug reads that must not grow into
- * pagination, analytics, or durable-history contracts.</p>
+ * pagination, analytics, or durable-history contracts.
+ *
+ * <p>{@link TaskMsg} and {@link TaskMsgAttempt} remain bounded compatibility
+ * residue shapes here. This seam must not be treated as a public SDK/server
+ * read-model contract or as the runtime-hot-path source of truth.</p>
  */
 public interface TaskDetailStore {
 

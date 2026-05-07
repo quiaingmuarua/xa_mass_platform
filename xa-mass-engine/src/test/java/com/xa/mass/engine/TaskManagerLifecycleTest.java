@@ -2029,7 +2029,7 @@ class TaskManagerLifecycleTest {
         private final List<String> cancelledTaskIds = new java.util.ArrayList<>();
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -2038,7 +2038,7 @@ class TaskManagerLifecycleTest {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

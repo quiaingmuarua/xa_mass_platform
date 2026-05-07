@@ -1,6 +1,7 @@
 package com.xa.mass.transport.model;
 
-import java.util.LinkedHashMap;
+import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
+
 import java.util.Map;
 
 /**
@@ -58,9 +59,6 @@ public final class TaskResultReport {
     }
 
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(new LinkedHashMap<>(values));
+        return TransportJsonValueNormalizer.normalizeObject(values, "output");
     }
 }

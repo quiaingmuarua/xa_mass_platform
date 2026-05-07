@@ -483,7 +483,7 @@ class RuntimeTaskResultIngestChannelTest {
     private static class RecordingTaskScheduler implements TaskScheduler {
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -492,7 +492,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

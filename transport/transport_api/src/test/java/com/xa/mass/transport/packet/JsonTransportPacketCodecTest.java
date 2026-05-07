@@ -2,11 +2,14 @@ package com.xa.mass.transport.packet;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JsonTransportPacketCodecTest {
 
@@ -51,5 +54,61 @@ class JsonTransportPacketCodecTest {
         assertEquals(2.0d, payload.get("retryCount"));
         assertEquals("https://example.test", assertInstanceOf(Map.class, payload.get("input")).get("target"));
         assertEquals(List.of("a", "b"), payload.get("steps"));
+    }
+
+    @Test
+    void constructorDetachesNestedMutablePayloadValues() {
+        Map<String, Object> nested = new LinkedHashMap<>();
+        nested.put("target", "https://example.test");
+        List<Object> steps = new ArrayList<>();
+        steps.add("a");
+        Map<String, Object> originalPayload = new LinkedHashMap<>();
+        originalPayload.put("input", nested);
+        originalPayload.put("steps", steps);
+
+        TransportPacket packet = new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-2",
+                null,
+                PacketType.TASK_DISPATCH,
+                "polling",
+                "route-1",
+                "task-1",
+                "msg-1",
+                null,
+                "crawler.fetch-page",
+                TransportPacket.JSON_CONTENT_TYPE,
+                originalPayload
+        );
+
+        nested.put("target", "mutated");
+        steps.add("b");
+
+        Map<?, ?> payload = packet.payload();
+        assertEquals("https://example.test", assertInstanceOf(Map.class, payload.get("input")).get("target"));
+        assertEquals(List.of("a"), payload.get("steps"));
+    }
+
+    @Test
+    void constructorRejectsUnsupportedNonJsonPayloadValues() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-3",
+                null,
+                PacketType.TASK_DISPATCH,
+                "polling",
+                "route-1",
+                "task-1",
+                "msg-1",
+                null,
+                "crawler.fetch-page",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of("unsupported", new StringBuilder("x"))
+        ));
+
+        assertEquals(
+                "payload.unsupported contains unsupported non-JSON value type: java.lang.StringBuilder",
+                error.getMessage()
+        );
     }
 }

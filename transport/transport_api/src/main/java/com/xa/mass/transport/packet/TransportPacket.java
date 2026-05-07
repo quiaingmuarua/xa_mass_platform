@@ -1,8 +1,8 @@
 package com.xa.mass.transport.packet;
 
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
+import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -72,9 +72,6 @@ public record TransportPacket(int version,
     }
 
     private static Map<String, Object> immutablePayload(Map<String, Object> payload) {
-        if (payload == null || payload.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(new LinkedHashMap<>(payload));
+        return TransportJsonValueNormalizer.normalizeObject(payload, "payload");
     }
 }

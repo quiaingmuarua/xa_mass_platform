@@ -3,7 +3,6 @@ package com.xa.mass.transport.packet;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskDispatchWireView;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -34,9 +33,9 @@ public final class TransportPacketViews {
         put(payload, WORKER_ID, view.workerId());
         put(payload, WORKER_CONTEXT_ID, view.workerContextId());
         put(payload, BATCH_ID, view.batchId());
-        payload.put(INPUT, immutableMap(view.input()));
-        payload.put(SHARED_CONFIG, immutableMap(view.sharedConfig()));
-        return Collections.unmodifiableMap(payload);
+        payload.put(INPUT, view.input() == null ? Map.of() : view.input());
+        payload.put(SHARED_CONFIG, view.sharedConfig() == null ? Map.of() : view.sharedConfig());
+        return payload;
     }
 
     public static TaskDispatchWireView dispatchWireView(TransportPacket packet) {

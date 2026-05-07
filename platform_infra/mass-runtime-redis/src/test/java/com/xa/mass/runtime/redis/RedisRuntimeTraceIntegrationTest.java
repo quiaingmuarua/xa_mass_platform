@@ -305,7 +305,7 @@ class RedisRuntimeTraceIntegrationTest {
     private static final class NoopTaskScheduler implements TaskScheduler {
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -314,7 +314,7 @@ class RedisRuntimeTraceIntegrationTest {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

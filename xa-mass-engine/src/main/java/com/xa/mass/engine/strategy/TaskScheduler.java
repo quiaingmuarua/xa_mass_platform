@@ -1,7 +1,6 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 
 import java.util.List;
 
@@ -23,7 +22,7 @@ public interface TaskScheduler {
 
     List<SchedulingResult> scheduleTasks(List<Task> tasks);
 
-    boolean retryTaskMsg(TaskMsg taskMsg);
+    boolean retryTaskMessage(String taskId, String messageId);
 
     boolean cancelTask(String taskId);
 
@@ -34,22 +33,24 @@ public interface TaskScheduler {
     class SchedulingResult {
         private final boolean success;
         private final String message;
-        private final List<TaskMsg> scheduledMessages;
         private final int scheduledCount;
 
-        public SchedulingResult(boolean success, String message, List<TaskMsg> scheduledMessages) {
+        public SchedulingResult(boolean success, String message, int scheduledCount) {
             this.success = success;
             this.message = message;
-            this.scheduledMessages = scheduledMessages;
-            this.scheduledCount = scheduledMessages != null ? scheduledMessages.size() : 0;
+            this.scheduledCount = Math.max(0, scheduledCount);
         }
 
-        public static SchedulingResult success(List<TaskMsg> scheduledMessages) {
-            return new SchedulingResult(true, "scheduled", scheduledMessages);
+        public static SchedulingResult success() {
+            return new SchedulingResult(true, "scheduled", 0);
+        }
+
+        public static SchedulingResult success(int scheduledCount) {
+            return new SchedulingResult(true, "scheduled", scheduledCount);
         }
 
         public static SchedulingResult failure(String message) {
-            return new SchedulingResult(false, message, null);
+            return new SchedulingResult(false, message, 0);
         }
 
         public boolean isSuccess() {
@@ -58,10 +59,6 @@ public interface TaskScheduler {
 
         public String getMessage() {
             return message;
-        }
-
-        public List<TaskMsg> getScheduledMessages() {
-            return scheduledMessages;
         }
 
         public int getScheduledCount() {

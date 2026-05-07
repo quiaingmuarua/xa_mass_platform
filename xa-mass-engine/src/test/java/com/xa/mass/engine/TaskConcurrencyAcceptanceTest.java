@@ -583,7 +583,7 @@ class TaskConcurrencyAcceptanceTest {
     private static final class RecordingTaskScheduler implements TaskScheduler {
         @Override
         public TaskScheduler.SchedulingResult scheduleTask(Task task) {
-            return TaskScheduler.SchedulingResult.success(List.of());
+            return TaskScheduler.SchedulingResult.success();
         }
 
         @Override
@@ -592,7 +592,7 @@ class TaskConcurrencyAcceptanceTest {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

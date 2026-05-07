@@ -107,7 +107,7 @@ public final class TaskWorkloadMixSmokeRunner {
                             timing,
                             workloadByTaskId,
                             task,
-                            binding.taskMsg()
+                            binding
                     ));
                 }
             };
@@ -195,7 +195,7 @@ public final class TaskWorkloadMixSmokeRunner {
                                    WorkloadTiming timing,
                                    Map<String, TaskWorkloadClass> workloadByTaskId,
                                    TaskDispatchContext task,
-                                   TaskMsg taskMsg) {
+                                   TaskDispatchBinding binding) {
             TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
             int delayMillis = workloadClass == TaskWorkloadClass.INTERACTIVE
                     ? config.interactiveProcessingDelayMillis()
@@ -207,13 +207,13 @@ public final class TaskWorkloadMixSmokeRunner {
                 }
                 boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
                         task.taskId(),
-                        taskMsg.getMessageId(),
+                        binding.messageId(),
                         true,
                         "ok",
                         null,
                         Map.of("runner", "TaskWorkloadMixSmokeRunner")
                 );
-                require(accepted, "result callback should be accepted for " + taskMsg.getMessageId());
+                require(accepted, "result callback should be accepted for " + binding.messageId());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("callback interrupted", e);
@@ -575,7 +575,7 @@ public final class TaskWorkloadMixSmokeRunner {
     private static final class NoOpTaskScheduler implements TaskScheduler {
         @Override
         public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
+            return SchedulingResult.success();
         }
 
         @Override
@@ -584,7 +584,7 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
+        public boolean retryTaskMessage(String taskId, String messageId) {
             return true;
         }
 

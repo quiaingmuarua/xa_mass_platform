@@ -1,7 +1,6 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +16,7 @@ public class SimpleTaskScheduler implements TaskScheduler {
     @Override
     public SchedulingResult scheduleTask(Task task) {
         log.info("Scheduling task {}", task.getTid());
-        return SchedulingResult.success(Collections.emptyList());
+        return SchedulingResult.success(1);
     }
 
     @Override
@@ -27,8 +26,8 @@ public class SimpleTaskScheduler implements TaskScheduler {
     }
 
     @Override
-    public boolean retryTaskMsg(TaskMsg taskMsg) {
-        log.info("Retrying task message {}", taskMsg.getMessageId());
+    public boolean retryTaskMessage(String taskId, String messageId) {
+        log.info("Retrying task message {} of task {}", messageId, taskId);
         return true;
     }
 

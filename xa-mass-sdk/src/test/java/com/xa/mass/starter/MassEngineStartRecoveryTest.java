@@ -87,8 +87,9 @@ class MassEngineStartRecoveryTest {
             List<TaskDispatchBinding> dispatchBindings = dispatchBindingsRef.get();
             assertNotNull(dispatchBindings);
             assertEquals(1, dispatchBindings.size());
-            assertEquals(task.getTid(), dispatchBindings.get(0).taskMsg().getTaskId());
-            assertEquals("worker-1", dispatchBindings.get(0).attempt().getWorkerId());
+            assertEquals(task.getTid(), dispatchBindings.get(0).taskId());
+            assertEquals("worker-1", dispatchBindings.get(0).workerId());
+            assertEquals(Map.of("payload", "hello"), dispatchBindings.get(0).payload());
 
             TaskMsg message = taskQueries.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
             assertEquals(TaskMsgStatus.ASSIGNED, message.getStatus());

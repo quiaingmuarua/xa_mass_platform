@@ -16,13 +16,9 @@ public interface TaskStateRuntimePort {
 
     Task getTask(String taskId);
 
-    boolean updateTask(Task task);
-
     TaskWorkStats getTaskWorkStats(String taskId);
 
     TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats);
-
-    void publishTaskTerminal(Task task);
 
     /**
      * Diagnostic-only full projection read for explicit audit flows.

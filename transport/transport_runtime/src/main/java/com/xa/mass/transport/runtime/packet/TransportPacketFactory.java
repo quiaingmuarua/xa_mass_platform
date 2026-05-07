@@ -6,7 +6,6 @@ import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.packet.TransportPacketViews;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -93,7 +92,7 @@ public final class TransportPacketFactory {
                 null,
                 eventCode,
                 TransportPacket.JSON_CONTENT_TYPE,
-                immutableMap(payload)
+                payload == null ? Map.of() : payload
         );
     }
 
@@ -102,8 +101,8 @@ public final class TransportPacketFactory {
         payload.put("success", report.isSuccess());
         put(payload, "detail", report.getDetail());
         put(payload, "errorCode", report.getErrorCode());
-        payload.put("output", immutableMap(report.getOutput()));
-        return Collections.unmodifiableMap(payload);
+        payload.put("output", report.getOutput() == null ? Map.of() : report.getOutput());
+        return payload;
     }
 
     private static void put(Map<String, Object> payload, String key, String value) {
@@ -117,12 +116,5 @@ public final class TransportPacketFactory {
             return null;
         }
         return value.trim();
-    }
-
-    private static Map<String, Object> immutableMap(Map<String, Object> source) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
-        }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 }
