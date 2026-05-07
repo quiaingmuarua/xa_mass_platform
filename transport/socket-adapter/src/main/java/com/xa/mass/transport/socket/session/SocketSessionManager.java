@@ -42,7 +42,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
-        boolean wasOnline = isRouteOnline(routeKey);
+        boolean wasOnline = hasActiveRoute(routeKey);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -82,7 +82,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    public boolean sendToRoute(String routeKey, String message) {
+    private boolean sendToBoundRoute(String routeKey, String message) {
         SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         if (endpoint == null || !endpoint.isActive()) {
             return false;
@@ -98,7 +98,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    public boolean isRouteOnline(String routeKey) {
+    private boolean hasActiveRoute(String routeKey) {
         SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         return endpoint != null && endpoint.isActive();
     }
@@ -108,7 +108,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToRoute(routeKey, message);
+        return sendToBoundRoute(routeKey, message);
     }
 
     @Override
@@ -116,7 +116,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return isRouteOnline(routeKey);
+        return hasActiveRoute(routeKey);
     }
 
     @Override

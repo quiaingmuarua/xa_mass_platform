@@ -39,8 +39,8 @@ class ServerSessionManagerShutdownTest {
         verify(ch1).close();
         verify(ch2).close();
         assertEquals(0, manager.getWorkerConnectionCount());
-        assertFalse(manager.isRouteOnline("worker-1"));
-        assertFalse(manager.isRouteOnline("worker-2"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-2"));
     }
 
     @Test
@@ -75,18 +75,18 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
 
         verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
-        assertTrue(manager.isRouteOnline("worker-1"));
+        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
         assertEquals(secondChannel, manager.getChannel("worker-1"));
 
         manager.removeSession(firstChannel);
 
         verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertTrue(manager.isRouteOnline("worker-1"));
+        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
 
         manager.removeSession(secondChannel);
 
         verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertFalse(manager.isRouteOnline("worker-1"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
     }
 
     @Test

@@ -166,7 +166,8 @@ Current runtime rules:
   route operations rather than inferring ownership from endpoint snapshots
 - worker-addressed debug/raw side-channels are not route truth; if they remain,
   they must first resolve one unique active `(adapterId, routeKey)` from
-  endpoint state before adapter send
+  endpoint state before adapter send, and the send contract itself should stay
+  adapter-scoped rather than reviving route-only shared operations
 - future Redis/JDBC queue replacements must preserve the same canonical addressing
   rules and must not require hot-path scans to recover queue ownership
 

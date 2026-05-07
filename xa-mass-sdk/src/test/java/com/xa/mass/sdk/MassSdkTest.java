@@ -2270,8 +2270,7 @@ class MassSdkTest {
                 context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                        .build())
+                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2307,10 +2306,8 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2347,10 +2344,8 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2386,10 +2381,8 @@ class MassSdkTest {
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2452,7 +2445,7 @@ class MassSdkTest {
                 context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)).build())
+                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2490,9 +2483,9 @@ class MassSdkTest {
                 context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
-                        .taskPullChannel(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
-                        .build())
+                List.of(workerIdRouteBinding(
+                        new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
+                        new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2531,9 +2524,7 @@ class MassSdkTest {
                 context.getWorkerLookupStore(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(pollingAdapter)
-                        .taskPullChannel(pollingAdapter)
-                        .build())
+                List.of(workerIdRouteBinding(pollingAdapter, pollingAdapter))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2931,6 +2922,19 @@ class MassSdkTest {
 
     private static void assertMissingMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
+    }
+
+    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .build();
+    }
+
+    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .taskPullChannel(taskPullChannel)
+                .build();
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {

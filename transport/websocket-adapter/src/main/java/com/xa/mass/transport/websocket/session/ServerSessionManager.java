@@ -85,7 +85,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
     }
 
-    public boolean sendToRoute(String routeKey, String message) {
+    private boolean sendToBoundRoute(String routeKey, String message) {
         WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         if (endpoint != null && endpoint.isActive()) {
             endpoint.channel().writeAndFlush(new TextWebSocketFrame(message));
@@ -95,16 +95,12 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return false;
     }
 
-    public boolean isRouteOnline(String routeKey) {
-        return hasActiveChannel(routeKey);
-    }
-
     @Override
     public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToRoute(routeKey, message);
+        return sendToBoundRoute(routeKey, message);
     }
 
     @Override
@@ -112,7 +108,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return isRouteOnline(routeKey);
+        return hasActiveChannel(routeKey);
     }
 
     public int getWorkerConnectionCount() {

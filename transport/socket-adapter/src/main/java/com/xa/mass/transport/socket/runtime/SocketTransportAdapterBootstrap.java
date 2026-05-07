@@ -7,7 +7,6 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -48,7 +47,12 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             frameCodec,
                             context.getDeliveryService()
                     ))
-            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
+            ).routeKeyResolver((dispatchBinding, routeContext) -> {
+                if (routeContext != null && routeContext.workerId() != null && !routeContext.workerId().isBlank()) {
+                    return routeContext.workerId();
+                }
+                return dispatchBinding != null ? dispatchBinding.workerId() : null;
+            }).build());
             contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {
@@ -103,14 +107,17 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         }
 
         @Override
-        public boolean supportsRoute(String routeKey, String workerAdapterId) {
-            return supportsAdapter(workerAdapterId)
-                    && hasRouteKey(routeKey)
+        public boolean supportsAdapterRoute(String routeKey, String workerAdapterId) {
+            return workerAdapterId != null
+                    && adapterId() != null
+                    && adapterId().equalsIgnoreCase(workerAdapterId.trim())
+                    && routeKey != null
+                    && !routeKey.isBlank()
                     && sessionManager.isAdapterRouteOnline(adapterId(), routeKey);
         }
 
         @Override
-        public void sendToRoute(String routeKey, String rawJson, String traceId) {
+        public void sendToAdapterRoute(String routeKey, String rawJson, String traceId) {
             sessionManager.sendToAdapterRoute(adapterId(), routeKey, rawJson);
         }
     }

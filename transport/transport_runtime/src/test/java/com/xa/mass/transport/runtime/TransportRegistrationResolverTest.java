@@ -85,8 +85,7 @@ class TransportRegistrationResolverTest {
     @Test
     void fromBindingsUsesCanonicalAdapterIdsOnly() {
         TransportRegistrationResolver resolver = TransportRegistrationResolver.fromBindings(List.of(
-                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
-                        .build()
+                workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
         ));
 
         assertEquals("websocket", resolver.resolveRegistrationAdapterId("websocket", "realtime"));
@@ -118,6 +117,12 @@ class TransportRegistrationResolverTest {
 
         assertEquals("Duplicate worker adapter identity 'websocket' is registered more than once for adapter 'websocket'",
                 error.getMessage());
+    }
+
+    private static TransportBinding workerIdRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .build();
     }
 
     private static final class StubWorkerAdapter implements com.xa.mass.transport.worker.WorkerAdapter {

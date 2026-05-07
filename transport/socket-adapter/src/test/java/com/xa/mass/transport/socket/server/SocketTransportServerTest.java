@@ -80,7 +80,7 @@ class SocketTransportServerTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isRouteOnline("worker-1"),
+                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "worker-1"),
                         "hello frame should register worker socket session");
             }
         } finally {
@@ -117,9 +117,9 @@ class SocketTransportServerTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isRouteOnline("socket-route-9"),
+                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
                         "hello frame should register socket routeKey independently");
-                assertFalse(sessionManager.isRouteOnline("worker-1"));
+                assertFalse(sessionManager.isAdapterRouteOnline("socket", "worker-1"));
             }
         } finally {
             server.stop();

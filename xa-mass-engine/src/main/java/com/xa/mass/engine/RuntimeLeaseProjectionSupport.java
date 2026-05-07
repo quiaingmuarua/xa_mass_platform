@@ -17,19 +17,19 @@ final class RuntimeLeaseProjectionSupport {
     private RuntimeLeaseProjectionSupport() {
     }
 
-    static ProjectionLeaseSyncResult recoverAndSynchronizeActiveAttempt(TaskLeaseProjectionPort projectionPort,
+    static ProjectionLeaseSyncResult recoverAndSynchronizeActiveAttempt(TaskManager taskManager,
                                                                         String taskId,
                                                                         TaskMsg taskMsg,
                                                                         ActiveLeaseRecord activeLease,
                                                                         TraceEventLogger traceEventLogger,
                                                                         String trigger,
                                                                         String reason) {
-        if (projectionPort == null || taskMsg == null || activeLease == null) {
+        if (taskManager == null || taskMsg == null || activeLease == null) {
             return ProjectionLeaseSyncResult.rejected(null);
         }
-        TaskMsgAttempt activeAttempt = resolveOrRecoverActiveAttempt(projectionPort, taskMsg, activeLease);
+        TaskMsgAttempt activeAttempt = resolveOrRecoverActiveAttempt(taskManager, taskMsg, activeLease);
         if (!synchronizeProjectionFromRuntimeLease(
-                projectionPort,
+                taskManager,
                 taskId,
                 taskMsg,
                 activeAttempt,
@@ -42,13 +42,13 @@ final class RuntimeLeaseProjectionSupport {
         return ProjectionLeaseSyncResult.accepted(activeAttempt);
     }
 
-    static TaskMsgAttempt resolveOrRecoverActiveAttempt(TaskLeaseProjectionPort projectionPort,
+    static TaskMsgAttempt resolveOrRecoverActiveAttempt(TaskManager taskManager,
                                                         TaskMsg taskMsg,
                                                         ActiveLeaseRecord activeLease) {
-        if (projectionPort == null || taskMsg == null || activeLease == null) {
+        if (taskManager == null || taskMsg == null || activeLease == null) {
             return null;
         }
-        TaskMsgAttempt activeAttempt = projectionPort.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         if (activeAttempt != null) {
             return activeAttempt;
         }
@@ -67,11 +67,11 @@ final class RuntimeLeaseProjectionSupport {
                 activeLease.batchId(),
                 activeLease.leaseExpireAt()
         );
-        tryAddTaskMessageAttempt(projectionPort, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
+        tryAddTaskMessageAttempt(taskManager, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
         return recoveredAttempt;
     }
 
-    static boolean synchronizeProjectionFromRuntimeLease(TaskLeaseProjectionPort projectionPort,
+    static boolean synchronizeProjectionFromRuntimeLease(TaskManager taskManager,
                                                          String taskId,
                                                          TaskMsg taskMsg,
                                                          TaskMsgAttempt activeAttempt,
@@ -79,7 +79,7 @@ final class RuntimeLeaseProjectionSupport {
                                                          TraceEventLogger traceEventLogger,
                                                          String trigger,
                                                          String reason) {
-        if (projectionPort == null || taskMsg == null || activeLease == null) {
+        if (taskManager == null || taskMsg == null || activeLease == null) {
             return false;
         }
         boolean projectionChanged = false;
@@ -114,18 +114,18 @@ final class RuntimeLeaseProjectionSupport {
         if (!projectionChanged) {
             return true;
         }
-        return projectionPort.updateTaskMessage(taskId, taskMsg);
+        return taskManager.updateTaskMessage(taskId, taskMsg);
     }
 
-    private static void tryAddTaskMessageAttempt(TaskLeaseProjectionPort projectionPort,
+    private static void tryAddTaskMessageAttempt(TaskManager taskManager,
                                                  String taskId,
                                                  String messageId,
                                                  TaskMsgAttempt attempt) {
-        if (projectionPort == null || attempt == null) {
+        if (taskManager == null || attempt == null) {
             return;
         }
         try {
-            projectionPort.addTaskMessageAttempt(taskId, messageId, attempt);
+            taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
         } catch (RuntimeException ignored) {
             // Compatibility attempt persistence is best-effort during runtime recovery.
         }

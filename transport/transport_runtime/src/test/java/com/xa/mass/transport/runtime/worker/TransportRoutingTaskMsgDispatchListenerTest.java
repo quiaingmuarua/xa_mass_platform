@@ -11,7 +11,6 @@ import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -366,11 +365,20 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 report -> true,
                 new NoopWorkerSystemEventChannel(),
                 Arrays.stream(adapters)
-                        .map(adapter -> TransportBinding.builder(adapter)
-                                .routeKeyResolver(TransportRouteKeyResolvers.workerId())
-                                .build())
+                        .map(TransportRoutingTaskMsgDispatchListenerTest::workerIdRouteBinding)
                         .toList()
         );
+    }
+
+    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> {
+                    if (routeContext != null && routeContext.workerId() != null && !routeContext.workerId().isBlank()) {
+                        return routeContext.workerId();
+                    }
+                    return dispatchBinding != null ? dispatchBinding.workerId() : null;
+                })
+                .build();
     }
 
     private static TaskMsgAttempt attempt(String taskId,

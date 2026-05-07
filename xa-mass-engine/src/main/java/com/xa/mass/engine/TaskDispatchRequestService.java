@@ -16,14 +16,14 @@ import java.util.concurrent.RejectedExecutionException;
  */
 class TaskDispatchRequestService {
 
-    private final TaskDispatchRequestRuntimePort dispatchRuntime;
+    private final TaskManager taskManager;
     private final RuntimeTaskExecutor retryWakeupExecutor;
     private final DelayedDispatchSchedule delayedDispatchSchedule;
 
-    TaskDispatchRequestService(TaskDispatchRequestRuntimePort dispatchRuntime,
+    TaskDispatchRequestService(TaskManager taskManager,
                                RuntimeTaskExecutor retryWakeupExecutor,
                                DelayedDispatchSchedule delayedDispatchSchedule) {
-        this.dispatchRuntime = dispatchRuntime;
+        this.taskManager = taskManager;
         this.retryWakeupExecutor = retryWakeupExecutor;
         this.delayedDispatchSchedule = delayedDispatchSchedule;
     }
@@ -33,7 +33,7 @@ class TaskDispatchRequestService {
             return;
         }
         delayedDispatchSchedule.remove(task.getTid());
-        dispatchRuntime.publishTaskDispatchRequested(task);
+        taskManager.publishTaskDispatchRequested(task);
     }
 
     void requestDelayed(Task task, long delayMillis) {
@@ -97,14 +97,14 @@ class TaskDispatchRequestService {
             return;
         }
 
-        Task refreshedTask = dispatchRuntime.getTask(taskId);
+        Task refreshedTask = taskManager.getTask(taskId);
         if (refreshedTask == null || refreshedTask.getStatus().isFinal()) {
             return;
         }
-        if (!dispatchRuntime.hasPendingDispatchableMessages(taskId)) {
+        if (!taskManager.hasPendingDispatchableMessages(taskId)) {
             return;
         }
-        dispatchRuntime.publishTaskDispatchRequested(refreshedTask);
+        taskManager.publishTaskDispatchRequested(refreshedTask);
     }
 
     private boolean isUsable(Task task) {

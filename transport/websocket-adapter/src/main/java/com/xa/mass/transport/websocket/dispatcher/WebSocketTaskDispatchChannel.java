@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * WebSocket adapter-owned task dispatch bridge.
+ * WebSocket adapter-owned task dispatch channel.
  */
 public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
 

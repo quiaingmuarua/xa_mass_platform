@@ -68,6 +68,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - active-attempt compatibility lookup
 - bounded shell/debug reads
 - focused tests and audit helpers
+- engine code should depend on this seam directly through the smallest needed
+  runtime or service ports; do not reintroduce pass-through projection bridges
+  that add no ownership boundary
 
 It must not redefine:
 

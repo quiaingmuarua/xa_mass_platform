@@ -49,7 +49,7 @@ public final class TransportBinding {
     public static final class Builder {
         private final WorkerAdapter workerAdapter;
         private TaskPullChannel taskPullChannel;
-        private TransportRouteKeyResolver routeKeyResolver = TransportRouteKeyResolvers.workerId();
+        private TransportRouteKeyResolver routeKeyResolver;
 
         private Builder(WorkerAdapter workerAdapter) {
             this.workerAdapter = workerAdapter;

@@ -503,8 +503,8 @@ public class MassApplication {
             return false;
         }
         for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
-            if (rawWorkerMessageChannel.supportsRoute(routeKey, workerAdapterId)) {
-                rawWorkerMessageChannel.sendToRoute(routeKey, rawJson, traceId);
+            if (rawWorkerMessageChannel.supportsAdapterRoute(routeKey, workerAdapterId)) {
+                rawWorkerMessageChannel.sendToAdapterRoute(routeKey, rawJson, traceId);
                 return true;
             }
         }

@@ -108,15 +108,15 @@ class MassApplicationStopOrderTest {
         when(inspector.listWorkerEndpoints()).thenReturn(List.of(
                 new WorkerEndpointSnapshot("route-public", "worker-1", true, "endpoint-1", "websocket")
         ));
-        when(channel.supportsRoute("route-public", "websocket")).thenReturn(true);
+        when(channel.supportsAdapterRoute("route-public", "websocket")).thenReturn(true);
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
         inject(app, "transportRuntimeRegistry", registry);
         inject(app, "endpointRegistry", endpointRegistry);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
-        verify(channel).sendToRoute("route-public", "{\"hello\":1}", "trace-1");
-        verify(channel).supportsRoute("route-public", "websocket");
+        verify(channel).sendToAdapterRoute("route-public", "{\"hello\":1}", "trace-1");
+        verify(channel).supportsAdapterRoute("route-public", "websocket");
     }
 
     @Test
@@ -131,8 +131,8 @@ class MassApplicationStopOrderTest {
         when(inspector.listWorkerEndpoints()).thenReturn(List.of(
                 new WorkerEndpointSnapshot("route-private", "worker-2", true, "endpoint-2", "websocket")
         ));
-        when(first.supportsRoute("route-private", "websocket")).thenReturn(false);
-        when(second.supportsRoute("route-private", "websocket")).thenReturn(true);
+        when(first.supportsAdapterRoute("route-private", "websocket")).thenReturn(false);
+        when(second.supportsAdapterRoute("route-private", "websocket")).thenReturn(true);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
@@ -140,8 +140,8 @@ class MassApplicationStopOrderTest {
         inject(app, "endpointRegistry", endpointRegistry);
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
-        verify(first, never()).sendToRoute(anyString(), anyString(), anyString());
-        verify(second).sendToRoute("route-private", "{\"hello\":2}", "trace-2");
+        verify(first, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
+        verify(second).sendToAdapterRoute("route-private", "{\"hello\":2}", "trace-2");
     }
 
     @Test
@@ -164,8 +164,8 @@ class MassApplicationStopOrderTest {
         inject(app, "endpointRegistry", endpointRegistry);
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
-        verify(first, never()).sendToRoute(anyString(), anyString(), anyString());
-        verify(second, never()).sendToRoute(anyString(), anyString(), anyString());
+        verify(first, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
+        verify(second, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
     }
 
     @Test

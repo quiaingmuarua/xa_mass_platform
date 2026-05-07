@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Adapter-owned dispatch bridge for raw socket workers.
+ * Adapter-owned dispatch channel for raw socket workers.
  */
 public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
 
