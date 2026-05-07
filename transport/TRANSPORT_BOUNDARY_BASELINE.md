@@ -96,11 +96,11 @@ Concrete adapters own protocol I/O only:
 - worker-facing payload fields: task id, message id, event code, input, shared config
 - runtime metadata fields: worker id, worker-context id, batch id, internal attempt id
 
-Transport internals should prefer the explicit projections already exposed on
-the hybrid:
-
-- `wireView()` for adapter codec / worker-facing canonical frame assembly
-- `runtimeMetadata()` for routing and internal result correlation
+Transport internals should prefer direct access to the hybrid's real owner
+fields. Packet assembly, routing, and internal result correlation should read
+`TaskDispatchItem` directly instead of rebuilding internal projection wrappers
+around the same data. Add a projection only when it carries a distinct protocol
+or lifecycle boundary.
 
 The internal attempt identity is intentionally exposed through `attemptId()`, not
 `getAttemptId()`, so JSON serializers do not add it to worker API responses by

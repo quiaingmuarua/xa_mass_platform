@@ -64,6 +64,24 @@ public final class TaskDispatchItem {
                             String batchId,
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
+        this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
+                attemptId, workerId, workerContextId, batchId, input, sharedConfig, false);
+    }
+
+    private TaskDispatchItem(String taskId,
+                             String messageId,
+                             String eventCode,
+                             String taskName,
+                             String project,
+                             String userId,
+                             int retryCount,
+                             String attemptId,
+                             String workerId,
+                             String workerContextId,
+                             String batchId,
+                             Map<String, Object> input,
+                             Map<String, Object> sharedConfig,
+                             boolean trustedImmutablePayload) {
         this.taskId = taskId;
         this.messageId = messageId;
         this.eventCode = eventCode;
@@ -75,8 +93,8 @@ public final class TaskDispatchItem {
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
-        this.input = immutableCopy(input);
-        this.sharedConfig = immutableCopy(sharedConfig);
+        this.input = trustedImmutablePayload ? trustedMap(input) : immutableCopy(input);
+        this.sharedConfig = trustedImmutablePayload ? trustedMap(sharedConfig) : immutableCopy(sharedConfig);
     }
 
     public String getTaskId() {
@@ -108,6 +126,37 @@ public final class TaskDispatchItem {
                 dispatchBinding.batchId(),
                 normalizeInput(task, dispatchBinding.payload()),
                 task.sharedConfig()
+        );
+    }
+
+    public static TaskDispatchItem fromDecodedTransportPayload(String taskId,
+                                                               String messageId,
+                                                               String eventCode,
+                                                               String taskName,
+                                                               String project,
+                                                               String userId,
+                                                               int retryCount,
+                                                               String attemptId,
+                                                               String workerId,
+                                                               String workerContextId,
+                                                               String batchId,
+                                                               Map<String, Object> input,
+                                                               Map<String, Object> sharedConfig) {
+        return new TaskDispatchItem(
+                taskId,
+                messageId,
+                eventCode,
+                taskName,
+                project,
+                userId,
+                retryCount,
+                attemptId,
+                workerId,
+                workerContextId,
+                batchId,
+                input,
+                sharedConfig,
+                true
         );
     }
 
@@ -151,37 +200,18 @@ public final class TaskDispatchItem {
         return sharedConfig;
     }
 
-    public TaskDispatchRuntimeMetadata runtimeMetadata() {
-        return new TaskDispatchRuntimeMetadata(
-                attemptId,
-                workerId,
-                workerContextId,
-                batchId
-        );
-    }
-
-    public TaskDispatchWireView wireView() {
-        return new TaskDispatchWireView(
-                taskId,
-                messageId,
-                eventCode,
-                taskName,
-                project,
-                userId,
-                retryCount,
-                workerId,
-                workerContextId,
-                batchId,
-                input,
-                sharedConfig
-        );
-    }
-
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
             return Map.of();
         }
         return Map.copyOf(new LinkedHashMap<>(values));
+    }
+
+    private static Map<String, Object> trustedMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        return values;
     }
 
     @SuppressWarnings("unchecked")

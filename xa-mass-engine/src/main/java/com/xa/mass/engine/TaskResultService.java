@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Owns task-message callback handling, retry sequencing, and result-side event ordering.
@@ -409,12 +408,12 @@ class TaskResultService {
                     taskMsg.taskId(),
                     taskMsg.messageId()
             );
-            if (isCompatibleRuntimeAttempt(latestAuditView, activeLease, attemptNo)) {
+            if (TaskMessageAttemptSupport.matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
                 attemptId = latestAuditView.getAttemptId();
             }
         }
         if (attemptId == null || attemptId.isBlank()) {
-            attemptId = "recovered-attempt-" + taskMsg.messageId() + "-" + attemptNo + "-" + UUID.randomUUID();
+            attemptId = TaskMessageAttemptSupport.runtimeAttemptId(taskMsg.messageId(), attemptNo, activeLease);
         }
         return TaskMessageAttemptSupport.buildDispatchedProjection(
                 taskMsg.taskId(),
@@ -423,24 +422,6 @@ class TaskResultService {
                 attemptId,
                 attemptNo
         );
-    }
-
-    private boolean isCompatibleRuntimeAttempt(TaskMsgAttempt attempt,
-                                               ActiveLeaseRecord activeLease,
-                                               int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
-            return false;
-        }
-        if (attempt.getAttemptNo() != attemptNo) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
-            return false;
-        }
-        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
     }
 
     private TaskMsgAttempt resolveOrRecoverDispatchAttemptProjection(RuntimeMessageView taskMsg,

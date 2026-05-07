@@ -59,7 +59,7 @@ class TaskDispatchItemTest {
     }
 
     @Test
-    void exposesSeparatedRuntimeMetadataAndWireView() {
+    void exposesDispatchFieldsDirectlyWithoutExtraProjectionObjects() {
         Task task = taskWithSdkPayloadType("JSON");
 
         TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
@@ -67,14 +67,13 @@ class TaskDispatchItemTest {
                 "data", Map.of("url", "https://example.test/page-1")
         )));
 
-        assertEquals("attempt-1", item.runtimeMetadata().attemptId());
-        assertEquals("worker-1", item.runtimeMetadata().workerId());
-        assertEquals("msg-1", item.wireView().messageId());
-        assertEquals("task-1", item.wireView().taskId());
-        assertEquals("worker-1", item.wireView().workerId());
-        assertEquals("ctx-1", item.wireView().workerContextId());
-        assertEquals("batch-1", item.wireView().batchId());
-        assertEquals("https://example.test/page-1", item.wireView().input().get("url"));
+        assertEquals("attempt-1", item.attemptId());
+        assertEquals("worker-1", item.getWorkerId());
+        assertEquals("msg-1", item.getMessageId());
+        assertEquals("task-1", item.getTaskId());
+        assertEquals("ctx-1", item.getWorkerContextId());
+        assertEquals("batch-1", item.getBatchId());
+        assertEquals("https://example.test/page-1", item.getInput().get("url"));
     }
 
     private Task taskWithSdkPayloadType(String payloadType) {

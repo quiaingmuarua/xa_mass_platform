@@ -68,7 +68,7 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
@@ -79,14 +79,14 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleTaskMessageProjection() {
+    void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleCompatibilitySnapshotView() {
         RunningTaskFixture fixture = createRunningTask("task-failure");
         updateMaxRetryCount(fixture, 0);
 
         boolean handled = channel.ingest(report(fixture, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.INIT, updated.getStatus());
         assertEquals(1, updated.getRetryCount());
         assertNull(updated.getErrorMessage());
@@ -110,13 +110,13 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
     }
 
     @Test
-    void duplicateResponseDoesNotReadAttemptProjectionOnlyForTrace() {
+    void duplicateResponseDoesNotReadAttemptResidueOnlyForTrace() {
         scheduler = new RecordingTaskScheduler();
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskStorage = trackingStorage;
@@ -135,7 +135,7 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(channel.ingest(report(fixture, "FAILED", "late-duplicate", null)));
         assertEquals(0, trackingStorage.latestAttemptReadCount,
-                "duplicate result trace should use bounded message projection instead of re-reading attempt rows");
+                "duplicate result trace should use bounded compatibility message detail instead of re-reading attempt rows");
     }
 
     @Test
@@ -152,7 +152,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
@@ -171,7 +171,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-envelope", updated.getOutput().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -192,13 +192,13 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
     }
 
     @Test
-    void envelopeAttemptValidationDoesNotRequirePersistedAttemptProjectionRow() {
+    void envelopeAttemptValidationDoesNotRequirePersistedAttemptResidueRow() {
         RunningTaskFixture fixture = createRunningTask("task-envelope-no-attempt-row", false);
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
@@ -212,7 +212,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-no-attempt-row", updated.getOutput().get("mockData"));
         TaskMsgAttempt recoveredAttempt = latestAttemptAuditView(fixture);
@@ -221,7 +221,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void missingAttemptProjectionIsRecreatedOnlyAsFinalBoundedAuditView() {
+    void missingAttemptResidueIsRecreatedOnlyAsFinalBoundedAuditView() {
         scheduler = new RecordingTaskScheduler();
         AttemptWriteCountingStorage countingStorage = new AttemptWriteCountingStorage();
         taskStorage = countingStorage;
@@ -240,7 +240,7 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(handled);
         assertEquals(1, countingStorage.addAttemptCount,
-                "missing attempt projection should be recreated once as the final bounded audit view");
+                "missing attempt residue should be recreated once as the final bounded audit view");
         assertTrue(countingStorage.updateAttemptCount <= 1,
                 "result convergence should not keep restamping intermediate attempt states when only runtime lease exists");
         TaskMsgAttempt recoveredAttempt = latestAttemptAuditView(fixture);
@@ -249,7 +249,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void resultCorrelationDoesNotReadActiveAttemptProjection() {
+    void resultCorrelationDoesNotReadActiveAttemptResidue() {
         scheduler = new RecordingTaskScheduler();
         ActiveAttemptTrackingStorage trackingStorage = new ActiveAttemptTrackingStorage();
         taskStorage = trackingStorage;
@@ -267,14 +267,14 @@ class RuntimeTaskResultIngestChannelTest {
         new TaskManagerResultIngestFacade(taskManager).getResultCorrelation(fixture.taskId(), fixture.messageId());
 
         assertEquals(0, trackingStorage.latestActiveAttemptReadCount,
-                "result correlation should validate against runtime lease without reading active attempt projection");
+                "result correlation should validate against runtime lease without reading active attempt residue");
     }
 
     @Test
-    void missingTaskMessageReadProjectionKeepsCompatibilityReinsertBounded() {
+    void hiddenTaskMessageReadKeepsCompatibilityReinsertBounded() {
         scheduler = new RecordingTaskScheduler();
-        ProjectionHiddenReadStorage projectionHiddenStorage = new ProjectionHiddenReadStorage();
-        taskStorage = projectionHiddenStorage;
+        HiddenCompatibilityMessageReadStorage hiddenReadStorage = new HiddenCompatibilityMessageReadStorage();
+        taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
         taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
@@ -284,23 +284,23 @@ class RuntimeTaskResultIngestChannelTest {
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
 
         RunningTaskFixture fixture = createRunningTask("task-hidden-message-read");
-        projectionHiddenStorage.resetCompatibilityAddCount();
+        hiddenReadStorage.resetCompatibilityAddCount();
 
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-hidden-read", null));
 
         assertTrue(handled);
-        assertTrue(projectionHiddenStorage.compatibilityAddCount <= 1,
-                "result convergence should keep TaskMsg compatibility reinsert bounded when read projection is hidden");
+        assertTrue(hiddenReadStorage.compatibilityAddCount <= 1,
+                "result convergence should keep TaskMsg compatibility reinsert bounded when compatibility read is hidden");
         TaskMsg updated = storedCompatibilityMessage(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-hidden-read", updated.getOutput().get("mockData"));
     }
 
     @Test
-    void terminalLateResultDoesNotDependOnReadableTaskMessageProjection() {
+    void terminalLateResultDoesNotDependOnReadableCompatibilityMessage() {
         scheduler = new RecordingTaskScheduler();
-        ProjectionHiddenReadStorage projectionHiddenStorage = new ProjectionHiddenReadStorage();
-        taskStorage = projectionHiddenStorage;
+        HiddenCompatibilityMessageReadStorage hiddenReadStorage = new HiddenCompatibilityMessageReadStorage();
+        taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
         taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
@@ -321,7 +321,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void resultConvergesWhenAttemptProjectionUpdateFailsAfterRuntimeAcceptance() {
+    void resultConvergesWhenAttemptResidueUpdateFailsAfterRuntimeAcceptance() {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new FailingUpdateAttemptStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
@@ -337,7 +337,7 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-update-fails", null));
 
         assertTrue(handled);
-        TaskMsg updated = messageProjection(fixture);
+        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-update-fails", updated.getOutput().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -394,7 +394,7 @@ class RuntimeTaskResultIngestChannelTest {
         return createRunningTask(taskName, true);
     }
 
-    private RunningTaskFixture createRunningTask(String taskName, boolean persistAttemptProjection) {
+    private RunningTaskFixture createRunningTask(String taskName, boolean persistAttemptResidue) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
@@ -423,7 +423,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskMsg.markAsAssigned();
         taskStorage.updateTaskMessage(task.getTid(), taskMsg);
 
-        if (!persistAttemptProjection) {
+        if (!persistAttemptResidue) {
             return new RunningTaskFixture(task.getTid(), messageId, attemptId);
         }
 
@@ -438,8 +438,8 @@ class RuntimeTaskResultIngestChannelTest {
         return new RunningTaskFixture(task.getTid(), messageId, attemptId);
     }
 
-    private TaskMsg messageProjection(RunningTaskFixture fixture) {
-        return compatibilityMessageView(fixture.taskId(), fixture.messageId());
+    private TaskMsg compatibilityMessageSnapshotView(RunningTaskFixture fixture) {
+        return compatibilityMessageSnapshotViewById(fixture.taskId(), fixture.messageId());
     }
 
     private TaskMsgAttempt latestAttemptAuditView(RunningTaskFixture fixture) {
@@ -447,7 +447,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private void updateMaxRetryCount(RunningTaskFixture fixture, int maxRetryCount) {
-        TaskMsg taskMsg = messageProjection(fixture);
+        TaskMsg taskMsg = compatibilityMessageSnapshotView(fixture);
         taskMsg.setMaxRetryCount(maxRetryCount);
         taskStorage.updateTaskMessage(fixture.taskId(), taskMsg);
     }
@@ -460,7 +460,7 @@ class RuntimeTaskResultIngestChannelTest {
         return taskQueries.getTaskMessageSnapshot(taskId, 1).messages().get(0);
     }
 
-    private TaskMsg compatibilityMessageView(String taskId, String messageId) {
+    private TaskMsg compatibilityMessageSnapshotViewById(String taskId, String messageId) {
         return taskQueries.getTaskMessageSnapshot(taskId, 16).messages().stream()
                 .filter(message -> messageId.equals(message.getMessageId()))
                 .findFirst()
@@ -587,7 +587,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class ProjectionHiddenReadStorage extends InMemoryTaskStorage {
+    private static final class HiddenCompatibilityMessageReadStorage extends InMemoryTaskStorage {
         private int compatibilityAddCount;
 
         @Override

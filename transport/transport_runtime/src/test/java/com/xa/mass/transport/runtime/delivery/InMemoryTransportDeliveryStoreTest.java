@@ -344,7 +344,7 @@ class InMemoryTransportDeliveryStoreTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item.wireView())
+                        TransportPacketViews.dispatchPayload(item)
                 ),
                 createdAtEpochMillis
         );
@@ -365,7 +365,7 @@ class InMemoryTransportDeliveryStoreTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item.wireView())
+                        TransportPacketViews.dispatchPayload(item)
                 ),
                 1L
         );

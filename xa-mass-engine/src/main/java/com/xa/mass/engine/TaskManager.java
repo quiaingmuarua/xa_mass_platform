@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -470,10 +471,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
-    @Override
     @Deprecated
     @CompatibilityProjectionOnly
-    public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
+    void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
@@ -496,7 +496,22 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
             return null;
         }
-        return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
+        ActiveLeaseRecord activeLease = getActiveLease(taskId, messageId).orElse(null);
+        if (activeLease == null) {
+            return null;
+        }
+        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+        TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditView(taskId, messageId);
+        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.getStatus() : TaskMsgStatus.ASSIGNED;
+        String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
+        return TaskMessageAttemptSupport.runtimeActiveProjection(
+                taskId,
+                messageId,
+                messageStatus,
+                preferredAttemptId,
+                activeLease,
+                latestAuditView
+        );
     }
 
     boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {

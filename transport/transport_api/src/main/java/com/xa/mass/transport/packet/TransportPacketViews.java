@@ -1,7 +1,6 @@
 package com.xa.mass.transport.packet;
 
 import com.xa.mass.transport.model.TaskDispatchItem;
-import com.xa.mass.transport.model.TaskDispatchWireView;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,23 +20,6 @@ public final class TransportPacketViews {
     private TransportPacketViews() {
     }
 
-    public static Map<String, Object> dispatchPayload(TaskDispatchWireView view) {
-        if (view == null) {
-            return Map.of();
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        put(payload, TASK_NAME, view.taskName());
-        put(payload, PROJECT, view.project());
-        put(payload, USER_ID, view.userId());
-        payload.put(RETRY_COUNT, view.retryCount());
-        put(payload, WORKER_ID, view.workerId());
-        put(payload, WORKER_CONTEXT_ID, view.workerContextId());
-        put(payload, BATCH_ID, view.batchId());
-        payload.put(INPUT, view.input() == null ? Map.of() : view.input());
-        payload.put(SHARED_CONFIG, view.sharedConfig() == null ? Map.of() : view.sharedConfig());
-        return payload;
-    }
-
     public static Map<String, Object> dispatchPayload(TaskDispatchItem item) {
         if (item == null) {
             return Map.of();
@@ -53,25 +35,6 @@ public final class TransportPacketViews {
         payload.put(INPUT, item.getInput() == null ? Map.of() : item.getInput());
         payload.put(SHARED_CONFIG, item.getSharedConfig() == null ? Map.of() : item.getSharedConfig());
         return payload;
-    }
-
-    public static TaskDispatchWireView dispatchWireView(TransportPacket packet) {
-        requireDispatchPacket(packet);
-        Map<String, Object> payload = packet.payload();
-        return new TaskDispatchWireView(
-                packet.taskId(),
-                packet.messageId(),
-                packet.eventCode(),
-                stringValue(payload.get(TASK_NAME)),
-                stringValue(payload.get(PROJECT)),
-                stringValue(payload.get(USER_ID)),
-                intValue(payload.get(RETRY_COUNT)),
-                stringValue(payload.get(WORKER_ID)),
-                stringValue(payload.get(WORKER_CONTEXT_ID)),
-                stringValue(payload.get(BATCH_ID)),
-                mapValue(payload.get(INPUT)),
-                mapValue(payload.get(SHARED_CONFIG))
-        );
     }
 
     public static TaskDispatchItem toTaskDispatchItem(TransportPacket packet) {

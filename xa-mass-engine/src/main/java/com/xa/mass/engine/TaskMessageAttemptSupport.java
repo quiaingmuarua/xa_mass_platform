@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -56,6 +57,66 @@ public final class TaskMessageAttemptSupport {
                 activeLease.batchId(),
                 activeLease.leaseExpireAt()
         );
+    }
+
+    static boolean matchesRuntimeLease(TaskMsgAttempt attempt,
+                                       ActiveLeaseRecord activeLease,
+                                       int attemptNo) {
+        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
+            return false;
+        }
+        if (attempt.getAttemptNo() != attemptNo) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
+            return false;
+        }
+        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
+    }
+
+    static String runtimeAttemptId(String messageId,
+                                   int attemptNo,
+                                   ActiveLeaseRecord activeLease) {
+        String normalizedMessageId = messageId == null || messageId.isBlank() ? "unknown-message" : messageId;
+        if (activeLease == null) {
+            return "runtime-attempt-" + normalizedMessageId + "-" + attemptNo;
+        }
+        return "runtime-attempt-"
+                + normalizedMessageId
+                + "-" + attemptNo
+                + "-" + normalizeAttemptIdToken(activeLease.workerId())
+                + "-" + normalizeAttemptIdToken(activeLease.workerContextId())
+                + "-" + normalizeAttemptIdToken(activeLease.batchId());
+    }
+
+    static TaskMsgAttempt runtimeActiveProjection(String taskId,
+                                                  String messageId,
+                                                  TaskMsgStatus messageStatus,
+                                                  String preferredAttemptId,
+                                                  ActiveLeaseRecord activeLease,
+                                                  TaskMsgAttempt latestAuditView) {
+        if (taskId == null || messageId == null || activeLease == null) {
+            return null;
+        }
+        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
+        String attemptId = preferredAttemptId;
+        if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
+            attemptId = latestAuditView.getAttemptId();
+        }
+        if (attemptId == null || attemptId.isBlank()) {
+            attemptId = runtimeAttemptId(messageId, attemptNo, activeLease);
+        }
+        TaskMsgAttempt attempt = buildDispatchedProjection(taskId, messageId, activeLease, attemptId, attemptNo);
+        if (attempt == null) {
+            return null;
+        }
+        if (messageStatus == TaskMsgStatus.RUNNING) {
+            projectCallbackAccepted(attempt, 0L);
+        }
+        return attempt;
     }
 
     static boolean projectCallbackAccepted(TaskMsgAttempt attempt, long leaseSeconds) {
@@ -159,5 +220,12 @@ public final class TaskMessageAttemptSupport {
                     || taskMsg.getFinalReason() == TaskMsgFinalReason.LEASE_EXPIRED;
             default -> false;
         };
+    }
+
+    private static String normalizeAttemptIdToken(String value) {
+        if (value == null || value.isBlank()) {
+            return "na";
+        }
+        return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 }
