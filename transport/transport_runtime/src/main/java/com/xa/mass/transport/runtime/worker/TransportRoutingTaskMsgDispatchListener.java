@@ -1,5 +1,6 @@
 package com.xa.mass.transport.runtime.worker;
 
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -61,9 +62,11 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
 
         Map<WorkerAdapter, List<TransportDispatchEnvelope>> grouped = new LinkedHashMap<>();
         Map<String, TaskDispatchBinding> bindingByAttemptId = new LinkedHashMap<>();
+        Map<String, ResolvedDispatchTarget> dispatchTargetByWorkerId = new HashMap<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
-            TransportBinding transportBinding = resolveBinding(binding);
-            WorkerAdapter adapter = transportBinding.getWorkerAdapter();
+            ResolvedDispatchTarget target = resolveDispatchTarget(binding, dispatchTargetByWorkerId);
+            TransportBinding transportBinding = target.binding();
+            WorkerAdapter adapter = target.adapter();
             TransportDispatchRouteContext routeContext = TransportDispatchRouteContext.from(task, binding);
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding);
             String attemptId = payload.attemptId();
@@ -80,7 +83,7 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
         }
 
         for (Map.Entry<WorkerAdapter, List<TransportDispatchEnvelope>> entry : grouped.entrySet()) {
-            List<DispatchOutcome> outcomes = entry.getKey().dispatchEnvelopes(List.copyOf(entry.getValue()));
+            List<DispatchOutcome> outcomes = entry.getKey().dispatchEnvelopes(Collections.unmodifiableList(entry.getValue()));
             logDispatchOutcomes(entry.getKey(), outcomes);
             compensateRetryableFailures(task, outcomes, bindingByAttemptId);
         }
@@ -153,11 +156,24 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
         }
     }
 
-    private TransportBinding resolveBinding(TaskDispatchBinding binding) {
+    private ResolvedDispatchTarget resolveDispatchTarget(TaskDispatchBinding binding,
+                                                         Map<String, ResolvedDispatchTarget> dispatchTargetByWorkerId) {
         String workerId = binding != null ? binding.workerId() : null;
-        if (workerId == null || workerLookupStore.findWorker(workerId) == null) {
+        if (workerId == null || workerId.isBlank()) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }
-        return transportRuntimeRegistry.resolveDispatchBinding(workerId);
+        return dispatchTargetByWorkerId.computeIfAbsent(workerId, this::resolveDispatchTarget);
+    }
+
+    private ResolvedDispatchTarget resolveDispatchTarget(String workerId) {
+        Worker worker = workerLookupStore.findWorker(workerId);
+        if (worker == null) {
+            throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
+        }
+        TransportBinding binding = transportRuntimeRegistry.resolveDispatchBinding(worker);
+        return new ResolvedDispatchTarget(binding, binding.getWorkerAdapter());
+    }
+
+    private record ResolvedDispatchTarget(TransportBinding binding, WorkerAdapter adapter) {
     }
 }

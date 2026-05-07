@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -12,12 +11,9 @@ import java.util.Objects;
 /**
  * Preferred engine bounded-read surface for cross-module task inspection.
  *
- * <p>Read tiers exposed here are intentionally narrow:
- * task shell / aggregate reads are mainline, bounded {@link TaskMsg}
- * projection reads and {@link TaskMsgAttempt} audit reads remain
- * shell/debug compatibility helpers, and projection audit stays
- * diagnostic-only. This surface must not become a pagination/history or
- * runtime-correctness contract.
+ * <p>This surface intentionally stops at task shell / aggregate state. TaskMsg
+ * and TaskMsgAttempt compatibility residue must not leak back out as an engine
+ * query contract.
  */
 public class TaskQueryService {
 
@@ -44,63 +40,6 @@ public class TaskQueryService {
 
     public List<Task> getTasksByStatus(TaskStatus status) {
         return taskManager != null ? taskManager.getTasksByStatus(status) : taskQueries.getTasksByStatus(status);
-    }
-
-    /**
-     * @deprecated compatibility residue read only; avoid introducing new
-     * callers that treat compatibility snapshots as engine truth.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMessageSnapshotView getTaskMessageSnapshotView(String taskId, int limit) {
-        return taskManager != null
-                ? taskManager.getTaskMessageSnapshotView(taskId, limit)
-                : taskQueries.getTaskMessageSnapshotView(taskId, limit);
-    }
-
-    /**
-     * @deprecated compatibility residue read only.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMessageView getTaskMessageView(String taskId, String messageId) {
-        return taskManager != null
-                ? taskManager.getTaskMessageView(taskId, messageId)
-                : taskQueries.getTaskMessageView(taskId, messageId);
-    }
-
-    /**
-     * @deprecated compatibility audit read only.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public List<TaskMessageAttemptView> getTaskMessageAttemptAuditViews(String taskId, String messageId) {
-        return taskManager != null
-                ? taskManager.getTaskMessageAttemptAuditViews(taskId, messageId)
-                : taskQueries.getTaskMessageAttemptAuditViews(taskId, messageId);
-    }
-
-    /**
-     * @deprecated compatibility audit read only.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMessageAttemptView getLatestTaskMessageAttemptView(String taskId, String messageId) {
-        return taskManager != null
-                ? taskManager.getLatestTaskMessageAttemptView(taskId, messageId)
-                : taskQueries.getLatestTaskMessageAttemptView(taskId, messageId);
-    }
-
-    /**
-     * @deprecated transitional compatibility lookup only; runtime lease state
-     * remains the active-attempt truth.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    public TaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        return taskManager != null
-                ? taskManager.getLatestActiveTaskMessageAttemptView(taskId, messageId)
-                : taskQueries.getLatestActiveTaskMessageAttemptView(taskId, messageId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

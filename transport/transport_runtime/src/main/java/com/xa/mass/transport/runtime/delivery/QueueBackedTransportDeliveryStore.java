@@ -11,6 +11,7 @@ import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         for (KeyedQueueEntry<TransportDispatchEnvelope> entry : drained) {
             envelopes.add(entry.value());
         }
-        return List.copyOf(envelopes);
+        return Collections.unmodifiableList(envelopes);
     }
 
     @Override
@@ -205,7 +206,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         for (KeyedQueueEntry<TransportDispatchEnvelope> entry : items) {
             envelopes.add(entry.value());
         }
-        return List.copyOf(envelopes);
+        return envelopes;
     }
 
     private static final class MutableAdapterQueueStats {

@@ -7,6 +7,7 @@ import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,7 @@ public final class TransportDeliveryService {
         for (TransportDispatchEnvelope envelope : envelopes) {
             outcomes.add(deliveryStore.enqueue(envelope));
         }
-        return List.copyOf(outcomes);
+        return Collections.unmodifiableList(outcomes);
     }
 
     public List<TransportDispatchEnvelope> drainEnvelopes(String adapterId, String routeKey, int maxItems) {
@@ -84,7 +85,7 @@ public final class TransportDeliveryService {
         for (TransportDispatchEnvelope envelope : envelopes) {
             items.add(toDispatchItem(envelope));
         }
-        return List.copyOf(items);
+        return Collections.unmodifiableList(items);
     }
 
     public TransportDeliveryServiceStats stats() {
@@ -150,7 +151,7 @@ public final class TransportDeliveryService {
                 outcomes.add(DispatchOutcome.failed(adapterId, envelope, e.getMessage(), true));
             }
         }
-        return List.copyOf(outcomes);
+        return Collections.unmodifiableList(outcomes);
     }
 
     private DirectDeliveryCounters directCounters(String adapterId) {

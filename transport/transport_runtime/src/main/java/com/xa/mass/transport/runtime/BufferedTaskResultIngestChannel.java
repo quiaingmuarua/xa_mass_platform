@@ -6,8 +6,11 @@ import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Async buffer that decouples transport-thread result delivery from engine-side
@@ -29,13 +32,10 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
 
     static final int DEFAULT_CAPACITY = 2048;
     private static final long DRAIN_JOIN_MILLIS = 5_000L;
-
-    private sealed interface PendingIngest permits PendingReport, PendingEnvelope {}
-    private record PendingReport(TaskResultReport report) implements PendingIngest {}
-    private record PendingEnvelope(TransportResultEnvelope envelope) implements PendingIngest {}
+    private static final int MAX_DRAIN_BATCH = 64;
 
     private final TaskResultIngestChannel delegate;
-    private final LinkedBlockingQueue<PendingIngest> queue;
+    private final LinkedBlockingQueue<Object> queue;
     private volatile boolean shutdown;
     private final Thread drainerThread;
 
@@ -59,7 +59,7 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
         if (report == null || shutdown) {
             return false;
         }
-        boolean offered = queue.offer(new PendingReport(report));
+        boolean offered = queue.offer(report);
         if (!offered) {
             logger.warn("Result ingest buffer full ({} capacity); falling back to synchronous report ingest taskId={}, messageId={}",
                     queue.size(), report.getTaskId(), report.getMessageId());
@@ -73,7 +73,7 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
         if (envelope == null || shutdown) {
             return false;
         }
-        boolean offered = queue.offer(new PendingEnvelope(envelope));
+        boolean offered = queue.offer(envelope);
         if (!offered) {
             TaskResultReport r = envelope.getReport();
             logger.warn("Result ingest buffer full ({} capacity); falling back to synchronous envelope ingest taskId={}, messageId={}, adapterId={}",
@@ -110,12 +110,16 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
     }
 
     private void drain() {
+        List<Object> batch = new ArrayList<>(MAX_DRAIN_BATCH);
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 // Short poll so that a shutdown signal is not delayed more than 200 ms.
-                PendingIngest item = queue.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+                Object item = queue.poll(200, TimeUnit.MILLISECONDS);
                 if (item != null) {
-                    process(item);
+                    batch.clear();
+                    batch.add(item);
+                    queue.drainTo(batch, MAX_DRAIN_BATCH - 1);
+                    processBatch(batch);
                 } else if (shutdown) {
                     break;
                 }
@@ -124,16 +128,28 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
             }
         }
         // Drain any items that arrived between the interrupt and the loop exit.
-        PendingIngest item;
-        while ((item = queue.poll()) != null) {
+        batch.clear();
+        queue.drainTo(batch);
+        if (!batch.isEmpty()) {
+            processBatch(batch);
+        }
+    }
+
+    private void processBatch(List<Object> batch) {
+        for (Object item : batch) {
             process(item);
         }
     }
 
-    private void process(PendingIngest item) {
-        switch (item) {
-            case PendingReport pr -> delegate.ingest(pr.report());
-            case PendingEnvelope pe -> delegate.ingest(pe.envelope());
+    private void process(Object item) {
+        if (item instanceof TaskResultReport report) {
+            delegate.ingest(report);
+            return;
         }
+        if (item instanceof TransportResultEnvelope envelope) {
+            delegate.ingest(envelope);
+            return;
+        }
+        throw new IllegalStateException("Unsupported buffered result item type: " + item);
     }
 }

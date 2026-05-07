@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -20,8 +21,6 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskMessageAttemptView;
-import com.xa.mass.engine.TaskMessageView;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -1231,32 +1230,6 @@ class MassSdkTest {
     }
 
     @Test
-    void taskMessageResidueQueriesBridgeIntoSdkViews() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-        TaskQueryService taskQueries = mock(TaskQueryService.class);
-        EngineConfig config = mock(EngineConfig.class);
-        TaskMessageView message = compatibilityMessageView("task-1", "msg-1");
-        TaskMessageAttemptView activeAttempt = compatibilityAttemptView("task-1", "msg-1", "attempt-1");
-        List<TaskMessageAttemptView> attempts = List.of(activeAttempt);
-
-        when(delegate.getEngine()).thenReturn(engine);
-        when(engine.isRunning()).thenReturn(true);
-        when(engine.getConfig()).thenReturn(config);
-        when(config.getTaskQueryService()).thenReturn(taskQueries);
-        when(taskQueries.getTaskMessageView("task-1", "msg-1")).thenReturn(message);
-        when(taskQueries.getTaskMessageAttemptAuditViews("task-1", "msg-1")).thenReturn(attempts);
-        when(taskQueries.getLatestActiveTaskMessageAttemptView("task-1", "msg-1")).thenReturn(activeAttempt);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        assertEquals("task-1", app.getTaskMessageView("task-1", "msg-1").taskId());
-        assertEquals(attempts.size(), app.getTaskMessageAttemptViews("task-1", "msg-1").size());
-        assertEquals(activeAttempt.attemptId(),
-                app.getLatestActiveTaskMessageAttemptView("task-1", "msg-1").attemptId());
-    }
-
-    @Test
     void taskAdminCommandsUseSdkCommandSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -1813,9 +1786,11 @@ class MassSdkTest {
             Task task = (Task) response.getData();
             Assertions.assertEquals("crawlerApp", task.getProject());
             Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            SdkTaskMessageSnapshot snapshot = app.getTaskMessageSnapshot(task.getTid(), 1);
-            Assertions.assertEquals(1, snapshot.returned());
-            Assertions.assertEquals("json", snapshot.messages().get(0).input().get("type"));
+            TaskMsg storedMessage = requireDelegate(app).getEngine().getConfig()
+                    .getTaskDetailStore()
+                    .getTaskMessages(task.getTid(), 1)
+                    .get(0);
+            Assertions.assertEquals("json", storedMessage.getInput().get("type"));
         } finally {
             app.stop();
         }
@@ -2652,9 +2627,12 @@ class MassSdkTest {
             assertNotNull(terminalTask);
             Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
 
-            SdkTaskMessageView finalMessage = app.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
-            Assertions.assertEquals("SUCCESS", finalMessage.status());
-            Assertions.assertEquals(200, finalMessage.output().get("httpStatus"));
+            TaskMsg finalMessage = requireDelegate(app).getEngine().getConfig()
+                    .getTaskDetailStore()
+                    .getTaskMessages(task.getTid(), 1)
+                    .get(0);
+            Assertions.assertEquals("SUCCESS", String.valueOf(finalMessage.getStatus()));
+            Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
         } finally {
             app.stop();
         }
@@ -2815,10 +2793,6 @@ class MassSdkTest {
                 () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
-                () -> app.getTaskMessageSnapshot("task-1", 1),
-                () -> app.getTaskMessageView("task-1", "msg-1"),
-                () -> app.getTaskMessageAttemptViews("task-1", "msg-1"),
-                () -> app.getLatestActiveTaskMessageAttemptView("task-1", "msg-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
@@ -2933,55 +2907,6 @@ class MassSdkTest {
 
     private static void assertMissingMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
-    }
-
-    private static TaskMessageView compatibilityMessageView(String taskId, String messageId) {
-        return new TaskMessageView(
-                messageId,
-                taskId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                0,
-                0,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-    }
-
-    private static TaskMessageAttemptView compatibilityAttemptView(String taskId, String messageId, String attemptId) {
-        return new TaskMessageAttemptView(
-                attemptId,
-                taskId,
-                messageId,
-                1,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
     }
 
     private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {

@@ -243,7 +243,7 @@ class RedisRuntimeTraceIntegrationTest {
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg message = taskQueries.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
+        TaskMsg message = taskStorage.getTaskMessages(task.getTid(), 1).get(0);
         message.setMaxRetryCount(maxRetryCount);
         taskStorage.updateTaskMessage(task.getTid(), message);
 
@@ -300,7 +300,7 @@ class RedisRuntimeTraceIntegrationTest {
     }
 
     private TaskMsg compatibilityMessageSnapshotView(String taskId, String messageId) {
-        return taskQueries.getTaskMessageSnapshot(taskId, 16).messages().stream()
+        return taskStorage.getTaskMessages(taskId).stream()
                 .filter(message -> messageId.equals(message.getMessageId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(

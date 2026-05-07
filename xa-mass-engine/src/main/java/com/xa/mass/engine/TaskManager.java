@@ -415,38 +415,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.getTaskMessages(taskId, limit);
     }
 
-    TaskMessageSnapshotView getTaskMessageSnapshotView(String taskId, int limit) {
-        int boundedLimit = Math.max(0, limit);
-        if (boundedLimit == 0) {
-            return new TaskMessageSnapshotView(List.of(), 0, false);
-        }
-        Task task = getTask(taskId);
-        List<TaskMsg> fetched = taskDetailStore.getTaskMessages(taskId, Math.addExact(boundedLimit, 1));
-        boolean truncated = fetched.size() > boundedLimit;
-        List<TaskMsg> snapshot = truncated ? fetched.subList(0, boundedLimit) : fetched;
-        List<TaskMsg> runtimeAwareSnapshot = task != null && (task.getStatus() == null || !task.getStatus().isFinal())
-                ? CompatibilityProjectionSupport.overlayActiveLeaseView(snapshot, getActiveLeases(taskId), taskId)
-                : snapshot;
-        return new TaskMessageSnapshotView(
-                CompatibilityProjectionSupport.overlayTerminalTaskView(task, runtimeAwareSnapshot).stream()
-                        .map(TaskMessageView::from)
-                        .toList(),
-                boundedLimit,
-                truncated
-        );
-    }
-
-    /**
-     * @deprecated compatibility residue read only; cross-module callers should
-     * use {@link TaskQueryService} if they still need bounded projection reads
-     * during migration.
-     */
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMessageView getTaskMessageView(String taskId, String messageId) {
-        return TaskMessageView.from(getTaskMessageProjection(taskId, messageId));
-    }
-
     @Deprecated
     @CompatibilityProjectionOnly
     TaskMsg getTaskMessageProjection(String taskId, String messageId) {
@@ -483,26 +451,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     @CompatibilityProjectionOnly
     void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    List<TaskMessageAttemptView> getTaskMessageAttemptAuditViews(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttempts(taskId, messageId).stream()
-                .map(TaskMessageAttemptView::from)
-                .toList();
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMessageAttemptView getLatestTaskMessageAttemptView(String taskId, String messageId) {
-        return TaskMessageAttemptView.from(getLatestTaskMessageAttemptAuditProjection(taskId, messageId));
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        return TaskMessageAttemptView.from(getLatestActiveAttemptProjection(taskId, messageId));
     }
 
     @Deprecated

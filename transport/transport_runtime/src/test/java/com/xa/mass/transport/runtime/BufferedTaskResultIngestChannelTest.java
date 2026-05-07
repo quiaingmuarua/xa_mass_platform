@@ -66,6 +66,37 @@ class BufferedTaskResultIngestChannelTest {
     }
 
     @Test
+    void mixedReportsAndEnvelopesDrainWithoutLosingTypeSpecificHandling() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(2);
+        List<String> received = new CopyOnWriteArrayList<>();
+        TaskResultIngestChannel delegate = new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                received.add("report:" + report.getMessageId());
+                latch.countDown();
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                received.add("envelope:" + envelope.getMessageId());
+                latch.countDown();
+                return true;
+            }
+        };
+
+        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 8);
+
+        assertTrue(channel.ingest(report("task", "msg-report")));
+        assertTrue(channel.ingest(new TransportResultEnvelope("polling", "w1", "w1", "w1", report("task", "msg-envelope"))));
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive both queued items");
+        assertEquals(List.of("report:msg-report", "envelope:msg-envelope"), received);
+
+        channel.shutdown();
+    }
+
+    @Test
     void shutdownDrainsAllQueuedItems() throws InterruptedException {
         int itemCount = 50;
         List<String> processed = new CopyOnWriteArrayList<>();

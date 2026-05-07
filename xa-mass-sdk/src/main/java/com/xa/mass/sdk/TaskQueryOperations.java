@@ -5,7 +5,7 @@ import com.xa.mass.base.model.Task;
 
 import java.util.List;
 
-/** Query/read surface for bounded task inspection plus explicit compatibility residue views. */
+/** Query/read surface for task shell and aggregate inspection. */
 public interface TaskQueryOperations {
 
     Task getTask(String taskId);
@@ -13,14 +13,6 @@ public interface TaskQueryOperations {
     List<Task> listTasksPaged(int offset, int limit);
 
     List<Task> getTasksByStatus(TaskStatus status);
-
-    SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
-
-    SdkTaskMessageView getTaskMessageView(String taskId, String messageId);
-
-    List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId);
-
-    SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
 
     Object validateTaskState(String taskId);
 

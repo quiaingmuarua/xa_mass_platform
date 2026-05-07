@@ -271,6 +271,32 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         assertEquals("endpoint:batch-9", pollingAdapter.lastEnvelopes.get(0).getRouteKey());
     }
 
+    @Test
+    void batchReusesResolvedDispatchTargetForRepeatedWorkerBindings() {
+        CountingWorkerLookupStore workerLookupStore = new CountingWorkerLookupStore(worker("poll-worker", null, WorkerTransportHints.POLLING));
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
+        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                workerLookupStore,
+                new TransportRuntimeRegistry(
+                        workerLookupStore,
+                        report -> true,
+                        new NoopWorkerSystemEventChannel(),
+                        List.of(workerIdRouteBinding(pollingAdapter))
+                )
+        );
+
+        Task task = new Task();
+        task.setTid("task-1");
+
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-1"),
+                binding("task-1", "msg-2", "attempt-2", "poll-worker", null, "batch-2")
+        ));
+
+        assertEquals(1, workerLookupStore.lookupCount(), "worker lookup should be reused within one dispatch batch");
+        assertEquals(List.of("msg-1", "msg-2"), pollingAdapter.dispatchedMessageIds);
+    }
+
     private static final class RecordingAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
@@ -339,6 +365,14 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         );
     }
 
+    private static Worker worker(String workerId, String adapterId, String transportHint) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setAdapterId(adapterId);
+        worker.setOnlineStrategy(transportHint);
+        return worker;
+    }
+
     private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
                 .routeKeyResolver((dispatchBinding, routeContext) -> {
@@ -383,6 +417,28 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         @Override
         public void publishWorkerOffline(String workerId, String reason, String traceId) {
+        }
+    }
+
+    private static final class CountingWorkerLookupStore implements com.xa.mass.storage.api.WorkerLookupStore {
+        private final Worker worker;
+        private int lookupCount;
+
+        private CountingWorkerLookupStore(Worker worker) {
+            this.worker = worker;
+        }
+
+        @Override
+        public Worker findWorker(String workerId) {
+            lookupCount++;
+            if (worker != null && worker.getWorkerId() != null && worker.getWorkerId().equals(workerId)) {
+                return worker;
+            }
+            return null;
+        }
+
+        private int lookupCount() {
+            return lookupCount;
         }
     }
 }

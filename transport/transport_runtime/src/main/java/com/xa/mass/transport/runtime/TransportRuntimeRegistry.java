@@ -80,6 +80,10 @@ public final class TransportRuntimeRegistry {
         return resolveBindingForWorker(requireWorker(workerId));
     }
 
+    public TransportBinding resolveDispatchBinding(Worker worker) {
+        return resolveBindingForWorker(Objects.requireNonNull(worker, "worker"));
+    }
+
     public ResolvedPullWorkerTransport resolvePullWorkerTransport(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
         Worker worker = requireWorker(normalizedWorkerId);
