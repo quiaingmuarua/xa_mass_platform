@@ -47,6 +47,8 @@ Current engine convergence rule: callback/expiry acceptance comes from runtime
 lease truth first. Compatibility `TaskMsg` / `TaskMsgAttempt` rows may be
 reconstructed or upserted afterward as bounded residue, but they do not decide
 whether a leased work item is valid.
+Result-side trace emission follows the same rule: emit from runtime-owned
+message/lease state first, then repair bounded projection residue if needed.
 
 ## 3. Current Repo Reality
 

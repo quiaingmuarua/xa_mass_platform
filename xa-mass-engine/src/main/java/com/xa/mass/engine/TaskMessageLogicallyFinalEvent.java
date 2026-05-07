@@ -25,7 +25,7 @@ public record TaskMessageLogicallyFinalEvent(
         if (taskMsg == null) {
             return null;
         }
-        return new TaskMessageLogicallyFinalEvent(
+        return from(
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
                 taskMsg.getStatus(),
@@ -34,7 +34,29 @@ public record TaskMessageLogicallyFinalEvent(
                 taskMsg.getErrorCode(),
                 taskMsg.getErrorMessage(),
                 taskMsg.getPayloadRef(),
-                taskMsg.getOutput() == null ? null : Map.copyOf(taskMsg.getOutput())
+                taskMsg.getOutput()
+        );
+    }
+
+    static TaskMessageLogicallyFinalEvent from(String taskId,
+                                               String messageId,
+                                               TaskMsgStatus status,
+                                               TaskMsgFinalReason finalReason,
+                                               int retryCount,
+                                               String errorCode,
+                                               String errorMessage,
+                                               String payloadRef,
+                                               Map<String, Object> output) {
+        return new TaskMessageLogicallyFinalEvent(
+                taskId,
+                messageId,
+                status,
+                finalReason,
+                retryCount,
+                errorCode,
+                errorMessage,
+                payloadRef,
+                output == null ? null : new java.util.LinkedHashMap<>(output)
         );
     }
 }

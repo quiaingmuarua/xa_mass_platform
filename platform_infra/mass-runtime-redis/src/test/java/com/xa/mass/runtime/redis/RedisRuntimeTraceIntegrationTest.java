@@ -108,7 +108,7 @@ class RedisRuntimeTraceIntegrationTest {
         );
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.task().getTid(), fixture.message().getMessageId());
+        TaskMsg updated = compatibilityMessageView(fixture.task().getTid(), fixture.message().getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
         assertFalse(runtime.hasReadyWork(fixture.task().getTid()));
@@ -143,7 +143,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         assertTrue(firstHandled);
         assertTrue(duplicateHandled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.task().getTid(), fixture.message().getMessageId());
+        TaskMsg updated = compatibilityMessageView(fixture.task().getTid(), fixture.message().getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-first", updated.getOutput().get("mockData"));
 
@@ -174,7 +174,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         assertEquals(ResultApplyStatus.SUCCESS_APPLIED, runtimeStatus);
         assertFalse(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.task().getTid(), fixture.message().getMessageId());
+        TaskMsg updated = compatibilityMessageView(fixture.task().getTid(), fixture.message().getMessageId());
         assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
         assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
 
@@ -198,7 +198,7 @@ class RedisRuntimeTraceIntegrationTest {
         );
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.task().getTid(), fixture.message().getMessageId());
+        TaskMsg updated = compatibilityMessageView(fixture.task().getTid(), fixture.message().getMessageId());
         assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
         assertEquals(1, runtime.activeLeases(fixture.task().getTid()).size());
@@ -214,7 +214,7 @@ class RedisRuntimeTraceIntegrationTest {
         boolean expired = maintenancePort.expireTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
 
         assertTrue(expired);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.task().getTid(), fixture.message().getMessageId());
+        TaskMsg updated = compatibilityMessageView(fixture.task().getTid(), fixture.message().getMessageId());
         assertEquals(TaskMsgStatus.INIT, updated.getStatus());
         assertEquals(1, updated.getRetryCount());
         assertTrue(runtime.hasReadyWork(fixture.task().getTid()));
@@ -297,6 +297,15 @@ class RedisRuntimeTraceIntegrationTest {
                                 && taskId.equals(event.getIdentity().taskId())
                                 && messageId.equals(event.getIdentity().messageId())),
                 "Did not expect trace event " + eventType + " for taskId=" + taskId + ", messageId=" + messageId);
+    }
+
+    private TaskMsg compatibilityMessageView(String taskId, String messageId) {
+        return taskQueries.getTaskMessageSnapshot(taskId, 16).messages().stream()
+                .filter(message -> messageId.equals(message.getMessageId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Task message not found in bounded compatibility snapshot: taskId="
+                                + taskId + ", messageId=" + messageId));
     }
 
     private record RunningTaskFixture(Task task, TaskMsg message, TaskMsgAttempt attempt, ClaimedTaskWork claimedWork) {

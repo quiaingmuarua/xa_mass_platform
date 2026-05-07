@@ -66,7 +66,7 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
             WorkerAdapter adapter = transportBinding.getWorkerAdapter();
             TransportDispatchRouteContext routeContext = TransportDispatchRouteContext.from(task, binding);
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding);
-            String attemptId = payload.runtimeMetadata().attemptId();
+            String attemptId = payload.attemptId();
             if (attemptId != null && !attemptId.isBlank()) {
                 bindingByAttemptId.put(attemptId, binding);
             }

@@ -1231,16 +1231,13 @@ class MassSdkTest {
     }
 
     @Test
-    void taskProjectionAndAttemptAuditQueriesUseSdkSurface() {
+    void taskMessageResidueQueriesBridgeIntoSdkViews() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskQueryService taskQueries = mock(TaskQueryService.class);
         EngineConfig config = mock(EngineConfig.class);
-        TaskMsg message = new TaskMsg();
-        message.setTaskId("task-1");
-        message.setMessageId("msg-1");
-        TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
-        activeAttempt.setAttemptId("attempt-1");
+        TaskMsg message = compatibilityMessage("task-1", "msg-1");
+        TaskMsgAttempt activeAttempt = compatibilityAttempt("task-1", "msg-1", "attempt-1");
         List<TaskMsgAttempt> attempts = List.of(activeAttempt);
 
         when(delegate.getEngine()).thenReturn(engine);
@@ -2936,6 +2933,21 @@ class MassSdkTest {
 
     private static void assertMissingMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
+    }
+
+    private static TaskMsg compatibilityMessage(String taskId, String messageId) {
+        TaskMsg message = new TaskMsg();
+        message.setTaskId(taskId);
+        message.setMessageId(messageId);
+        return message;
+    }
+
+    private static TaskMsgAttempt compatibilityAttempt(String taskId, String messageId, String attemptId) {
+        TaskMsgAttempt attempt = new TaskMsgAttempt();
+        attempt.setTaskId(taskId);
+        attempt.setMessageId(messageId);
+        attempt.setAttemptId(attemptId);
+        return attempt;
     }
 
     private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {

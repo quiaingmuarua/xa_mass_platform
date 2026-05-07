@@ -38,6 +38,23 @@ public final class TransportPacketViews {
         return payload;
     }
 
+    public static Map<String, Object> dispatchPayload(TaskDispatchItem item) {
+        if (item == null) {
+            return Map.of();
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        put(payload, TASK_NAME, item.getTaskName());
+        put(payload, PROJECT, item.getProject());
+        put(payload, USER_ID, item.getUserId());
+        payload.put(RETRY_COUNT, item.getRetryCount());
+        put(payload, WORKER_ID, item.getWorkerId());
+        put(payload, WORKER_CONTEXT_ID, item.getWorkerContextId());
+        put(payload, BATCH_ID, item.getBatchId());
+        payload.put(INPUT, item.getInput() == null ? Map.of() : item.getInput());
+        payload.put(SHARED_CONFIG, item.getSharedConfig() == null ? Map.of() : item.getSharedConfig());
+        return payload;
+    }
+
     public static TaskDispatchWireView dispatchWireView(TransportPacket packet) {
         requireDispatchPacket(packet);
         Map<String, Object> payload = packet.payload();
@@ -111,13 +128,6 @@ public final class TransportPacketViews {
         if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
             return Map.of();
         }
-        return immutableMap((Map<String, Object>) map);
-    }
-
-    private static Map<String, Object> immutableMap(Map<String, Object> source) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(new LinkedHashMap<>(source));
+        return (Map<String, Object>) map;
     }
 }

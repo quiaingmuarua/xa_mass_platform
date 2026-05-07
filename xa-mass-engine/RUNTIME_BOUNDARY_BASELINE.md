@@ -63,8 +63,12 @@ Engine hot paths must treat these runtime semantics as authoritative:
   fallback to close the right audit row; runtime acceptance still comes from the
   active lease, not from an active-attempt projection read
 - callback duplicate, late, and no-active-lease trace emission must use bounded
-  runtime-synchronized `TaskMsg` projection fields first; trace must not force
-  a hot-path latest-attempt projection lookup
+  runtime-synchronized message fields first; trace must not force
+  `TaskMsg` materialization or a hot-path latest-attempt projection lookup
+- result-side active-lease repair may derive an in-memory runtime message view
+  directly from runtime lease truth plus bounded projection residue; it must
+  not require routing back through `TaskMsg` compatibility overlay helpers just
+  to recover current dispatch ownership
 - task termination / cancellation must drain runtime active leases only; queued
   or merely projected `TaskMsg` rows must not be scanned just to stamp terminal
   status into compatibility residue

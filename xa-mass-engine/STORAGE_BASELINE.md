@@ -94,6 +94,9 @@ Rules:
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
   final summary write
+- result/expiry trace emission must consume runtime-native message snapshots;
+  `TaskMsg` remains a bounded compatibility write/read shape, not the
+  mandatory event input model for hot-path convergence
 - `getTaskMessage(...)` may still be used to repair or recreate a bounded
   compatibility `TaskMsg` view, but dispatch payload construction must not
   require reading projection input from this seam

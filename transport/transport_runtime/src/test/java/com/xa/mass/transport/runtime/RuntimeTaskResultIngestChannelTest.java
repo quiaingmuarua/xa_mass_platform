@@ -439,7 +439,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private TaskMsg messageProjection(RunningTaskFixture fixture) {
-        return taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
+        return compatibilityMessageView(fixture.taskId(), fixture.messageId());
     }
 
     private TaskMsgAttempt latestAttemptAuditView(RunningTaskFixture fixture) {
@@ -458,6 +458,15 @@ class RuntimeTaskResultIngestChannelTest {
 
     private TaskMsg firstMessage(String taskId) {
         return taskQueries.getTaskMessageSnapshot(taskId, 1).messages().get(0);
+    }
+
+    private TaskMsg compatibilityMessageView(String taskId, String messageId) {
+        return taskQueries.getTaskMessageSnapshot(taskId, 16).messages().stream()
+                .filter(message -> messageId.equals(message.getMessageId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Task message not found in bounded compatibility snapshot: taskId="
+                                + taskId + ", messageId=" + messageId));
     }
 
     private TaskResultReport report(RunningTaskFixture fixture, String status, String detail, String errorCode) {
