@@ -47,12 +47,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         }
 
         DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey);
-        TransportPacket normalizedPacket = envelope.getPacket().withTransportAddress(normalizedAdapterId, normalizedRouteKey);
-        TransportDispatchEnvelope normalizedEnvelope = new TransportDispatchEnvelope(
-                envelope.getDeliveryId(),
-                normalizedPacket,
-                envelope.getCreatedAtEpochMillis()
-        );
+        TransportDispatchEnvelope normalizedEnvelope = normalizeEnvelope(envelope, normalizedAdapterId, normalizedRouteKey);
         KeyedQueueOfferResult result = queueStore.offer(
                 key,
                 new KeyedQueueEntry<>(normalizedEnvelope, normalizedEnvelope.getCreatedAtEpochMillis()),
@@ -84,9 +79,16 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         if (normalizedAdapterId == null || normalizedRouteKey == null || maxItems <= 0) {
             return List.of();
         }
-        return queueStore.drain(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems).stream()
-                .map(KeyedQueueEntry::value)
-                .toList();
+        List<KeyedQueueEntry<TransportDispatchEnvelope>> drained =
+                queueStore.drain(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems);
+        if (drained.isEmpty()) {
+            return List.of();
+        }
+        List<TransportDispatchEnvelope> envelopes = new java.util.ArrayList<>(drained.size());
+        for (KeyedQueueEntry<TransportDispatchEnvelope> entry : drained) {
+            envelopes.add(entry.value());
+        }
+        return List.copyOf(envelopes);
     }
 
     @Override
@@ -103,7 +105,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         KeyedQueuePollResult<TransportDispatchEnvelope> result =
                 queueStore.poll(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems, timeout, unit);
         return switch (result.status()) {
-            case DELIVERED -> TransportDeliveryPollResult.delivered(result.items().stream().map(KeyedQueueEntry::value).toList());
+            case DELIVERED -> TransportDeliveryPollResult.delivered(extractEnvelopes(result.items()));
             case EMPTY -> TransportDeliveryPollResult.empty();
             case INVALID_REQUEST -> TransportDeliveryPollResult.invalidRequest();
             case UNAVAILABLE -> TransportDeliveryPollResult.unavailable();
@@ -178,6 +180,32 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             case "queue is full", "queue capacity is exhausted" -> "delivery queue is full";
             default -> "delivery queue is full";
         };
+    }
+
+    private static TransportDispatchEnvelope normalizeEnvelope(TransportDispatchEnvelope envelope,
+                                                               String normalizedAdapterId,
+                                                               String normalizedRouteKey) {
+        if (normalizedAdapterId.equals(envelope.getAdapterId())
+                && normalizedRouteKey.equals(envelope.getRouteKey())) {
+            return envelope;
+        }
+        TransportPacket normalizedPacket = envelope.getPacket().withTransportAddress(normalizedAdapterId, normalizedRouteKey);
+        return new TransportDispatchEnvelope(
+                envelope.getDeliveryId(),
+                normalizedPacket,
+                envelope.getCreatedAtEpochMillis()
+        );
+    }
+
+    private static List<TransportDispatchEnvelope> extractEnvelopes(List<KeyedQueueEntry<TransportDispatchEnvelope>> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        List<TransportDispatchEnvelope> envelopes = new java.util.ArrayList<>(items.size());
+        for (KeyedQueueEntry<TransportDispatchEnvelope> entry : items) {
+            envelopes.add(entry.value());
+        }
+        return List.copyOf(envelopes);
     }
 
     private static final class MutableAdapterQueueStats {

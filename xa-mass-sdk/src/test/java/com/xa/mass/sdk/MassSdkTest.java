@@ -9,7 +9,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -1251,9 +1250,10 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        assertSame(message, app.getTaskMessageProjection("task-1", "msg-1"));
-        assertSame(attempts, app.getTaskMessageAttemptAuditTrail("task-1", "msg-1"));
-        assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
+        assertEquals("task-1", app.getTaskMessageView("task-1", "msg-1").taskId());
+        assertEquals(attempts.size(), app.getTaskMessageAttemptViews("task-1", "msg-1").size());
+        assertEquals(activeAttempt.getAttemptId(),
+                app.getLatestActiveTaskMessageAttemptView("task-1", "msg-1").attemptId());
     }
 
     @Test
@@ -1813,9 +1813,9 @@ class MassSdkTest {
             Task task = (Task) response.getData();
             Assertions.assertEquals("crawlerApp", task.getProject());
             Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            TaskMessageSnapshot snapshot = app.getTaskMessageSnapshot(task.getTid(), 1);
+            SdkTaskMessageSnapshot snapshot = app.getTaskMessageSnapshot(task.getTid(), 1);
             Assertions.assertEquals(1, snapshot.returned());
-            Assertions.assertEquals("json", snapshot.messages().get(0).getInput().get("type"));
+            Assertions.assertEquals("json", snapshot.messages().get(0).input().get("type"));
         } finally {
             app.stop();
         }
@@ -2652,9 +2652,9 @@ class MassSdkTest {
             assertNotNull(terminalTask);
             Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
 
-            TaskMsg finalMessage = app.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
-            Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
-            Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
+            SdkTaskMessageView finalMessage = app.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
+            Assertions.assertEquals("SUCCESS", finalMessage.status());
+            Assertions.assertEquals(200, finalMessage.output().get("httpStatus"));
         } finally {
             app.stop();
         }
@@ -2816,9 +2816,9 @@ class MassSdkTest {
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
                 () -> app.getTaskMessageSnapshot("task-1", 1),
-                () -> app.getTaskMessageProjection("task-1", "msg-1"),
-                () -> app.getTaskMessageAttemptAuditTrail("task-1", "msg-1"),
-                () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
+                () -> app.getTaskMessageView("task-1", "msg-1"),
+                () -> app.getTaskMessageAttemptViews("task-1", "msg-1"),
+                () -> app.getLatestActiveTaskMessageAttemptView("task-1", "msg-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),

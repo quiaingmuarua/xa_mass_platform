@@ -14,9 +14,9 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
@@ -211,8 +211,8 @@ public class TaskApiController {
             }
 
             String taskId = task.getTid();
-            TaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, 1);
-            String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).getMessageId();
+            SdkTaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, 1);
+            String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).messageId();
 
             Optional<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> result =
                     syncBridge.await(correlationId, future, resolvedTimeoutMs);
@@ -256,9 +256,9 @@ public class TaskApiController {
                 return notFound("Task not found: " + taskId);
             }
             resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            TaskMessageSnapshot taskItemSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            SdkTaskMessageSnapshot taskItemSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
             List<Map<String, Object>> items = taskItemSnapshot.messages().stream()
-                    .map(TaskMsg::getInput)
+                    .map(SdkTaskMessageView::input)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
@@ -495,7 +495,7 @@ public class TaskApiController {
                 resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
             }
             int boundedLimit = resolveTaskMessageLimit(limit);
-            TaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            SdkTaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
             List<Map<String, Object>> messages = messageSnapshot.messages().stream()
                     .map(this::toTaskMessageSummaryView)
                     .collect(Collectors.toList());
@@ -524,25 +524,25 @@ public class TaskApiController {
         return Math.min(requestedLimit, MAX_TASK_MESSAGE_SNAPSHOT_LIMIT);
     }
 
-    private Map<String, Object> toTaskMessageSummaryView(TaskMsg taskMsg) {
+    private Map<String, Object> toTaskMessageSummaryView(SdkTaskMessageView taskMsg) {
         Map<String, Object> view = new LinkedHashMap<>();
-        view.put("messageId", taskMsg.getMessageId());
-        view.put("taskId", taskMsg.getTaskId());
-        view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
+        view.put("messageId", taskMsg.messageId());
+        view.put("taskId", taskMsg.taskId());
+        view.put("status", taskMsg.status());
         view.put("latestAttemptId", taskMsg.latestAttemptId());
-        view.put("latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId());
-        view.put("latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId());
-        view.put("latestAttemptBatchId", taskMsg.getLatestAttemptBatchId());
-        view.put("retryCount", taskMsg.getRetryCount());
-        view.put("maxRetryCount", taskMsg.getMaxRetryCount());
-        view.put("errorMessage", taskMsg.getErrorMessage());
-        view.put("errorCode", taskMsg.getErrorCode());
-        view.put("finalReason", taskMsg.getFinalReason() != null ? taskMsg.getFinalReason().name() : null);
-        view.put("assignedTime", taskMsg.getAssignedTime());
-        view.put("createTime", taskMsg.getCreateTime());
-        view.put("updateTime", taskMsg.getUpdateTime());
-        view.put("startTime", taskMsg.getStartTime());
-        view.put("completeTime", taskMsg.getCompleteTime());
+        view.put("latestAttemptWorkerId", taskMsg.latestAttemptWorkerId());
+        view.put("latestAttemptWorkerContextId", taskMsg.latestAttemptWorkerContextId());
+        view.put("latestAttemptBatchId", taskMsg.latestAttemptBatchId());
+        view.put("retryCount", taskMsg.retryCount());
+        view.put("maxRetryCount", taskMsg.maxRetryCount());
+        view.put("errorMessage", taskMsg.errorMessage());
+        view.put("errorCode", taskMsg.errorCode());
+        view.put("finalReason", taskMsg.finalReason());
+        view.put("assignedTime", taskMsg.assignedTime());
+        view.put("createTime", taskMsg.createTime());
+        view.put("updateTime", taskMsg.updateTime());
+        view.put("startTime", taskMsg.startTime());
+        view.put("completeTime", taskMsg.completeTime());
         return view;
     }
 

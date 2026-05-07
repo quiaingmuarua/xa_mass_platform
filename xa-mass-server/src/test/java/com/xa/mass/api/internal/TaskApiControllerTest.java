@@ -4,8 +4,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
@@ -463,9 +463,9 @@ class TaskApiControllerTest {
         ));
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.getTaskMessageSnapshot(eq(TASK_ID), anyInt())).thenReturn(new TaskMessageSnapshot(List.of(
-                new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha")),
-                new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"))
+        when(taskQueries.getTaskMessageSnapshot(eq(TASK_ID), anyInt())).thenReturn(new SdkTaskMessageSnapshot(List.of(
+                new SdkTaskMessageView("msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "alpha"), null, null, null, null, null, null),
+                new SdkTaskMessageView("msg-2", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "beta"), null, null, null, null, null, null)
         ), 100, false));
         when(taskQueries.validateTaskState(TASK_ID)).thenReturn(Map.of(
                 "valid", true,
@@ -651,10 +651,18 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskMessagesReturnsCompatibilitySnapshot() throws Exception {
-        TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
-        first.setOutput(Map.of("result", "ok"));
-        TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskQueries.getTaskMessageSnapshot(TASK_ID, 100)).thenReturn(new TaskMessageSnapshot(List.of(first, second), 100, false));
+        SdkTaskMessageView first = new SdkTaskMessageView(
+                "msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3,
+                null, null, null, null, Map.of("target", "alpha"), Map.of("result", "ok"),
+                null, null, null, null, null
+        );
+        SdkTaskMessageView second = new SdkTaskMessageView(
+                "msg-2", TASK_ID, "INIT", null, null, null, null, 0, 3,
+                null, null, null, null, Map.of("target", "beta"), null,
+                null, null, null, null, null
+        );
+        when(taskQueries.getTaskMessageSnapshot(TASK_ID, 100))
+                .thenReturn(new SdkTaskMessageSnapshot(List.of(first, second), 100, false));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID))
                 .andExpect(status().isOk())
@@ -674,7 +682,9 @@ class TaskApiControllerTest {
     @Test
     void getTaskMessagesCapsRequestedLimitWithoutPagination() throws Exception {
         when(taskQueries.getTaskMessageSnapshot(TASK_ID, 500))
-                .thenReturn(new TaskMessageSnapshot(List.of(new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"))), 500, false));
+                .thenReturn(new SdkTaskMessageSnapshot(List.of(
+                        new SdkTaskMessageView("msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "alpha"), null, null, null, null, null, null)
+                ), 500, false));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
                         .param("limit", "1000"))

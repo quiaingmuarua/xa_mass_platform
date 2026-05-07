@@ -7,9 +7,6 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -228,23 +225,27 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
-    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        return requireStartedTaskQueries().getTaskMessageSnapshot(taskId, limit);
+    public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        return SdkTaskMessageSnapshot.from(requireStartedTaskQueries().getTaskMessageSnapshot(taskId, limit));
     }
 
     @Override
-    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
-        return requireStartedTaskQueries().getTaskMessageProjection(taskId, messageId);
+    public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
+        return SdkTaskMessageView.from(requireStartedTaskQueries().getTaskMessageProjection(taskId, messageId));
     }
 
     @Override
-    public List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
-        return requireStartedTaskQueries().getTaskMessageAttemptAuditTrail(taskId, messageId);
+    public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
+        return requireStartedTaskQueries().getTaskMessageAttemptAuditTrail(taskId, messageId).stream()
+                .map(SdkTaskMessageAttemptView::from)
+                .toList();
     }
 
     @Override
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId);
+    public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
+        return SdkTaskMessageAttemptView.from(
+                requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId)
+        );
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

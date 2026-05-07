@@ -5,7 +5,6 @@ import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.model.TaskDispatchWireView;
 import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.ArrayList;
@@ -67,26 +66,26 @@ public final class TransportDeliveryService {
         return result.getEnvelopes();
     }
 
+    public List<TaskDispatchItem> pollDispatchItems(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        return toDispatchItems(pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis));
+    }
+
     public static TaskDispatchItem toDispatchItem(TransportDispatchEnvelope envelope) {
         if (envelope == null) {
             throw new IllegalArgumentException("envelope must not be null");
         }
-        TaskDispatchWireView view = TransportPacketViews.dispatchWireView(envelope.getPacket());
-        return new TaskDispatchItem(
-                view.taskId(),
-                view.messageId(),
-                view.eventCode(),
-                view.taskName(),
-                view.project(),
-                view.userId(),
-                view.retryCount(),
-                envelope.getAttemptId(),
-                view.workerId(),
-                view.workerContextId(),
-                view.batchId(),
-                view.input(),
-                view.sharedConfig()
-        );
+        return TransportPacketViews.toTaskDispatchItem(envelope.getPacket());
+    }
+
+    public static List<TaskDispatchItem> toDispatchItems(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
+            return List.of();
+        }
+        List<TaskDispatchItem> items = new ArrayList<>(envelopes.size());
+        for (TransportDispatchEnvelope envelope : envelopes) {
+            items.add(toDispatchItem(envelope));
+        }
+        return List.copyOf(items);
     }
 
     public TransportDeliveryServiceStats stats() {

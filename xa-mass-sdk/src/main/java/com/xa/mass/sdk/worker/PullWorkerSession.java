@@ -115,6 +115,7 @@ public class PullWorkerSession {
         return taskResultIngestChannel.ingest(TransportResultEnvelope.fromDispatchContext(
                 adapterId,
                 dispatchItem.getWorkerId(),
+                dispatchItem.getWorkerId(),
                 workerId,
                 dispatchItem.attemptId(),
                 report
@@ -137,6 +138,7 @@ public class PullWorkerSession {
         );
         return taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
                 adapterId,
+                workerId,
                 workerId,
                 workerId,
                 report

@@ -62,9 +62,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
             return List.of();
         }
-        return deliveryService.pollEnvelopes(PROTOCOL, workerId, maxMessages, timeoutMillis).stream()
-                .map(TransportDeliveryService::toDispatchItem)
-                .toList();
+        return deliveryService.pollDispatchItems(PROTOCOL, workerId, maxMessages, timeoutMillis);
     }
 
     public void announceWorkerOnline(String workerId, String reason) {

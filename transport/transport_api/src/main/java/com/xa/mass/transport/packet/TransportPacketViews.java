@@ -41,7 +41,7 @@ public final class TransportPacketViews {
 
     public static TaskDispatchWireView dispatchWireView(TransportPacket packet) {
         requireDispatchPacket(packet);
-        Map<String, Object> payload = immutableMap(packet.payload());
+        Map<String, Object> payload = packet.payload();
         return new TaskDispatchWireView(
                 packet.taskId(),
                 packet.messageId(),
@@ -59,21 +59,22 @@ public final class TransportPacketViews {
     }
 
     public static TaskDispatchItem toTaskDispatchItem(TransportPacket packet) {
-        TaskDispatchWireView view = dispatchWireView(packet);
+        requireDispatchPacket(packet);
+        Map<String, Object> payload = packet.payload();
         return new TaskDispatchItem(
-                view.taskId(),
-                view.messageId(),
-                view.eventCode(),
-                view.taskName(),
-                view.project(),
-                view.userId(),
-                view.retryCount(),
+                packet.taskId(),
+                packet.messageId(),
+                packet.eventCode(),
+                stringValue(payload.get(TASK_NAME)),
+                stringValue(payload.get(PROJECT)),
+                stringValue(payload.get(USER_ID)),
+                intValue(payload.get(RETRY_COUNT)),
                 packet.attemptId(),
-                view.workerId(),
-                view.workerContextId(),
-                view.batchId(),
-                view.input(),
-                view.sharedConfig()
+                stringValue(payload.get(WORKER_ID)),
+                stringValue(payload.get(WORKER_CONTEXT_ID)),
+                stringValue(payload.get(BATCH_ID)),
+                mapValue(payload.get(INPUT)),
+                mapValue(payload.get(SHARED_CONFIG))
         );
     }
 
