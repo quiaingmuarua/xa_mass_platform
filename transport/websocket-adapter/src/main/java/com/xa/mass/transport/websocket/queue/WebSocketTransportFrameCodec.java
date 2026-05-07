@@ -94,22 +94,21 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String encodeCanonicalTaskDispatch(TransportPacket packet) {
-        Map<String, Object> payload = packet.payload();
         JsonObject frame = new JsonObject();
         frame.addProperty(MESSAGE_ID_FIELD, packet.messageId());
-        put(frame, WORKER_ID_FIELD, stringValue(payload.get(WORKER_ID_FIELD)));
-        put(frame, PROJECT_FIELD, stringValue(payload.get(PROJECT_FIELD)));
+        put(frame, WORKER_ID_FIELD, packet.payloadString(WORKER_ID_FIELD));
+        put(frame, PROJECT_FIELD, packet.payloadString(PROJECT_FIELD));
         if (packet.eventCode() != null) {
             frame.addProperty(EVENT_CODE_FIELD, packet.eventCode());
         }
         frame.addProperty("taskId", packet.taskId());
-        put(frame, "taskName", stringValue(payload.get("taskName")));
-        put(frame, "userId", stringValue(payload.get("userId")));
-        frame.addProperty("retryCount", intValue(payload.get("retryCount")));
-        put(frame, "workerContextId", stringValue(payload.get("workerContextId")));
-        put(frame, "batchId", stringValue(payload.get("batchId")));
-        frame.add("input", gson.toJsonTree(mapValue(payload.get("input"))));
-        frame.add("sharedConfig", gson.toJsonTree(mapValue(payload.get("sharedConfig"))));
+        put(frame, "taskName", packet.payloadString("taskName"));
+        put(frame, "userId", packet.payloadString("userId"));
+        frame.addProperty("retryCount", packet.payloadInt("retryCount"));
+        put(frame, "workerContextId", packet.payloadString("workerContextId"));
+        put(frame, "batchId", packet.payloadString("batchId"));
+        frame.add("input", gson.toJsonTree(packet.payloadObject("input")));
+        frame.add("sharedConfig", gson.toJsonTree(packet.payloadObject("sharedConfig")));
         return gson.toJson(frame);
     }
 
@@ -182,28 +181,6 @@ public final class WebSocketTransportFrameCodec {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> mapValue(Object value) {
-        if (value instanceof Map<?, ?> map && !map.isEmpty()) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
-
-    private static int intValue(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        return 0;
-    }
-
-    private static String stringValue(Object value) {
-        if (!(value instanceof String text) || text.isBlank()) {
-            return null;
-        }
-        return text.trim();
     }
 
     private static void put(JsonObject frame, String field, String value) {

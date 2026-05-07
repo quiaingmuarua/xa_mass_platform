@@ -711,7 +711,7 @@ class TaskResultService {
     }
 
     private TaskMsg copyTaskMessage(TaskMsg source) {
-        TaskMsg copy = new TaskMsg(source.getMessageId(), source.getTaskId(), source.getInput(), source.getPayloadRef());
+        TaskMsg copy = new TaskMsg(source.getMessageId(), source.getTaskId(), source.getPayloadRef());
         copy.setStatus(source.getStatus());
         copy.setAssignedTime(source.getAssignedTime());
         copy.setCreateTime(source.getCreateTime());
@@ -945,7 +945,6 @@ class TaskResultService {
                                       String errorCode,
                                       TaskMsgFinalReason finalReason,
                                       String payloadRef,
-                                      Map<String, Object> input,
                                       Map<String, Object> output) {
 
         private static RuntimeMessageView synthetic(String taskId, String messageId) {
@@ -969,7 +968,6 @@ class TaskResultService {
                     null,
                     null,
                     null,
-                    Map.of(),
                     null
             );
         }
@@ -997,7 +995,6 @@ class TaskResultService {
                     projection.getErrorCode(),
                     projection.getFinalReason(),
                     projection.getPayloadRef(),
-                    projection.getInput() == null ? Map.of() : new java.util.LinkedHashMap<>(projection.getInput()),
                     projection.getOutput() == null ? null : new java.util.LinkedHashMap<>(projection.getOutput())
             );
         }
@@ -1048,7 +1045,6 @@ class TaskResultService {
                     errorCode,
                     finalReason,
                     payloadRef,
-                    input,
                     output
             );
         }
@@ -1069,7 +1065,7 @@ class TaskResultService {
         }
 
         private TaskMsg toCompatibilityProjection() {
-            TaskMsg projection = new TaskMsg(messageId, taskId, input, payloadRef);
+            TaskMsg projection = new TaskMsg(messageId, taskId, payloadRef);
             projection.setStatus(status);
             projection.setAssignedTime(assignedTime);
             projection.setCreateTime(createTime);

@@ -187,16 +187,16 @@ public final class TaskDispatchItem {
                 packet.taskId(),
                 packet.messageId(),
                 packet.eventCode(),
-                stringValue(payload.get(TASK_NAME)),
-                stringValue(payload.get(PROJECT)),
-                stringValue(payload.get(USER_ID)),
-                intValue(payload.get(RETRY_COUNT)),
+                packet.payloadString(TASK_NAME),
+                packet.payloadString(PROJECT),
+                packet.payloadString(USER_ID),
+                packet.payloadInt(RETRY_COUNT),
                 packet.attemptId(),
-                stringValue(payload.get(WORKER_ID)),
-                stringValue(payload.get(WORKER_CONTEXT_ID)),
-                stringValue(payload.get(BATCH_ID)),
-                mapValue(payload.get(INPUT)),
-                mapValue(payload.get(SHARED_CONFIG)),
+                packet.payloadString(WORKER_ID),
+                packet.payloadString(WORKER_CONTEXT_ID),
+                packet.payloadString(BATCH_ID),
+                packet.payloadObject(INPUT),
+                packet.payloadObject(SHARED_CONFIG),
                 true,
                 payload
         );
@@ -292,28 +292,6 @@ public final class TaskDispatchItem {
         if (value != null && !value.isBlank()) {
             target.put(key, value);
         }
-    }
-
-    private static String stringValue(Object value) {
-        if (!(value instanceof String text) || text.isBlank()) {
-            return null;
-        }
-        return text.trim();
-    }
-
-    private static int intValue(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        return 0;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> mapValue(Object value) {
-        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
-            return Map.of();
-        }
-        return (Map<String, Object>) map;
     }
 
     @SuppressWarnings("unchecked")

@@ -39,6 +39,9 @@ Already true in current code:
 - compatibility `TaskMsgAttempt` writes are no longer allowed to gate dispatch
   or callback convergence; at very high message volume they are trace residue,
   not queue truth
+- result-side compatibility rewrites no longer need to preserve full
+  `TaskMsg.input`; bounded residue should converge toward `payloadRef` plus
+  logical status/output/error summary instead of replaying large inline payloads
 - duplicate, late, and no-active-lease callback trace paths must not re-read
   attempt projections just to decorate events; bounded message projection plus
   runtime lease identity is the hot-path ceiling

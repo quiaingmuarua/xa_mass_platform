@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -479,11 +478,6 @@ public final class TaskFlowLoadModelRunner {
         private final StorageProbe probe = new StorageProbe();
 
         @Override
-        public List<TaskMsg> getTaskMessages(String taskId) {
-            return probe.measure("getTaskMessages", () -> super.getTaskMessages(taskId));
-        }
-
-        @Override
         public TaskMessageStats getTaskMessageStats(String taskId) {
             return probe.measure("getTaskMessageStats", () -> super.getTaskMessageStats(taskId));
         }
@@ -491,12 +485,6 @@ public final class TaskFlowLoadModelRunner {
         @Override
         public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
             return probe.measure("getTaskMessageAttemptStats", () -> super.getTaskMessageAttemptStats(taskId));
-        }
-
-        @Override
-        public java.util.Optional<com.xa.mass.base.model.TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-            return probe.measure("getLatestActiveTaskMessageAttempt",
-                    () -> super.getLatestActiveTaskMessageAttempt(taskId, messageId));
         }
     }
 

@@ -91,10 +91,10 @@ public final class TaskResultReport {
         return new TaskResultReport(
                 packet.taskId(),
                 packet.messageId(),
-                booleanValue(payload.get(SUCCESS)),
-                stringValue(payload.get(DETAIL)),
-                stringValue(payload.get(ERROR_CODE)),
-                mapValue(payload.get(OUTPUT)),
+                packet.payloadBoolean(SUCCESS),
+                packet.payloadString(DETAIL),
+                packet.payloadString(ERROR_CODE),
+                packet.payloadObject(OUTPUT),
                 payload,
                 true
         );
@@ -138,22 +138,4 @@ public final class TaskResultReport {
         }
     }
 
-    private static boolean booleanValue(Object value) {
-        return Boolean.TRUE.equals(value);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> mapValue(Object value) {
-        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
-            return Map.of();
-        }
-        return (Map<String, Object>) map;
-    }
-
-    private static String stringValue(Object value) {
-        if (!(value instanceof String text) || text.isBlank()) {
-            return null;
-        }
-        return text.trim();
-    }
 }

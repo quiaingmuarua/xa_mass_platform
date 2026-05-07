@@ -531,6 +531,8 @@ class TaskManagerLifecycleTest {
         assertEquals(2, updatedTask.getTaskSuccessNumber());
         assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessageProjection(task.getTid(), messages.get(0).getMessageId()).getStatus());
         assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessageProjection(task.getTid(), messages.get(1).getMessageId()).getStatus());
+        assertTrue(taskManager.getTaskMessageProjection(task.getTid(), messages.get(0).getMessageId()).getInput().isEmpty());
+        assertTrue(taskManager.getTaskMessageProjection(task.getTid(), messages.get(1).getMessageId()).getInput().isEmpty());
     }
 
     @Test

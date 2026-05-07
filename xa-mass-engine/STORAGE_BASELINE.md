@@ -94,6 +94,10 @@ Rules:
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
   final summary write
+- result/expiry/retry compatibility rewrites should preserve only bounded
+  residue such as `payloadRef`, logical status, retry summary, output/error
+  summary, and latest-attempt linkage; they should not keep full input payload
+  materialized as a hot-path persistence requirement
 - result/expiry trace emission must consume runtime-native message snapshots;
   `TaskMsg` remains a bounded compatibility write/read shape, not the
   mandatory event input model for hot-path convergence
