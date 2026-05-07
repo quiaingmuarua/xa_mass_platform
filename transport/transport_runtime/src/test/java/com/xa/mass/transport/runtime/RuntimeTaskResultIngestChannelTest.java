@@ -10,7 +10,6 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.base.model.TaskCreateRequestDto;
@@ -58,7 +57,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
-        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        assignmentRuntimePort = taskManager;
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
     }
 
@@ -130,7 +129,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
-        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        assignmentRuntimePort = taskManager;
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
 
         Task task = createRunningTask("task-duplicate-no-attempt-read");
@@ -236,7 +235,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
-        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        assignmentRuntimePort = taskManager;
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
 
         Task task = createRunningTask("task-attempt-update-fails");

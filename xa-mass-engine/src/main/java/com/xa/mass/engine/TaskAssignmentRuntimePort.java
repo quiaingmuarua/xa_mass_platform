@@ -11,7 +11,11 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import java.util.List;
 
 /**
- * Narrow engine-internal port for task assignment and message claim flows.
+ * Narrow assignment/runtime seam used by listeners, starter wiring, and tests.
+ *
+ * <p>This interface is a selective assignment hot-path surface, not a license
+ * to add a second engine-internal adapter track when the owning engine object
+ * already implements it directly.</p>
  */
 public interface TaskAssignmentRuntimePort {
 

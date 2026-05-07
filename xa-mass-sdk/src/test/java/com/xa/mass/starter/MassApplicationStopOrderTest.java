@@ -17,7 +17,9 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -108,19 +110,18 @@ class MassApplicationStopOrderTest {
         when(inspector.listWorkerEndpoints()).thenReturn(List.of(
                 new WorkerEndpointSnapshot("route-public", "worker-1", true, "endpoint-1", "websocket")
         ));
-        when(channel.supportsAdapterRoute("route-public", "websocket")).thenReturn(true);
+        when(channel.adapterId()).thenReturn("websocket");
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
-        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
+        inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(channel));
         inject(app, "transportRuntimeRegistry", registry);
         inject(app, "endpointRegistry", endpointRegistry);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
         verify(channel).sendToAdapterRoute("route-public", "{\"hello\":1}", "trace-1");
-        verify(channel).supportsAdapterRoute("route-public", "websocket");
     }
 
     @Test
-    void rawTransportMessageUsesSupportingChannelWhenMultipleAdaptersExist() throws Exception {
+    void rawTransportMessageUsesChannelOwnedByResolvedAdapter() throws Exception {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
@@ -131,11 +132,11 @@ class MassApplicationStopOrderTest {
         when(inspector.listWorkerEndpoints()).thenReturn(List.of(
                 new WorkerEndpointSnapshot("route-private", "worker-2", true, "endpoint-2", "websocket")
         ));
-        when(first.supportsAdapterRoute("route-private", "websocket")).thenReturn(false);
-        when(second.supportsAdapterRoute("route-private", "websocket")).thenReturn(true);
+        when(first.adapterId()).thenReturn("socket");
+        when(second.adapterId()).thenReturn("websocket");
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
-        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+        inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(first, second));
         inject(app, "transportRuntimeRegistry", registry);
         inject(app, "endpointRegistry", endpointRegistry);
 
@@ -157,9 +158,11 @@ class MassApplicationStopOrderTest {
                 new WorkerEndpointSnapshot("route-a", "worker-3", true, "endpoint-a", "websocket"),
                 new WorkerEndpointSnapshot("route-b", "worker-3", true, "endpoint-b", "websocket")
         ));
+        when(first.adapterId()).thenReturn("websocket");
+        when(second.adapterId()).thenReturn("socket");
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
-        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+        inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(first, second));
         inject(app, "transportRuntimeRegistry", registry);
         inject(app, "endpointRegistry", endpointRegistry);
 
@@ -282,6 +285,14 @@ class MassApplicationStopOrderTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private Map<String, RawWorkerMessageChannel> rawChannels(RawWorkerMessageChannel... channels) {
+        Map<String, RawWorkerMessageChannel> byAdapterId = new LinkedHashMap<>();
+        for (RawWorkerMessageChannel channel : channels) {
+            byAdapterId.put(channel.adapterId().trim().toLowerCase(java.util.Locale.ROOT), channel);
+        }
+        return byAdapterId;
     }
 
     private static final class RecordingManagedTransportAdapter implements ManagedTransportAdapter {

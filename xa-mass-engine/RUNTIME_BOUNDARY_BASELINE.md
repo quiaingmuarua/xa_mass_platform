@@ -71,6 +71,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - engine code should depend on this seam directly through the smallest needed
   runtime or service ports; do not reintroduce pass-through projection bridges
   that add no ownership boundary
+- when assignment wiring already depends on `TaskAssignmentRuntimePort`, prefer
+  the engine owner implementing that seam directly over a second adapter class
+  that only forwards to `TaskManager`
 
 It must not redefine:
 

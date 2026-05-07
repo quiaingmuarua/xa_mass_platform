@@ -52,7 +52,7 @@ import java.util.function.Supplier;
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager {
+public class TaskManager implements TaskAssignmentRuntimePort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -231,7 +231,8 @@ public class TaskManager {
     /**
      * Persists a task update.
      */
-    boolean updateTask(Task task) {
+    @Override
+    public boolean updateTask(Task task) {
         LogUtils.setTaskId(task.getTid());
         LogUtils.logOperationStart("UPDATE_TASK", "TaskManager", "taskId", task.getTid());
 
@@ -381,19 +382,23 @@ public class TaskManager {
         return taskDetailStore.countTaskMessages(taskId);
     }
 
-    TaskMsg getTaskMessage(String taskId, String messageId) {
+    @Override
+    public TaskMsg getTaskMessage(String taskId, String messageId) {
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
-    void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+    @Override
+    public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         taskDetailStore.addTaskMessage(taskId, taskMsg);
     }
 
-    boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
+    @Override
+    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
-    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+    @Override
+    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
@@ -447,7 +452,8 @@ public class TaskManager {
         return taskDetailStore.getNonFinalTaskMessages(taskId);
     }
 
-    int countPendingDispatchableMessages(String taskId) {
+    @Override
+    public int countPendingDispatchableMessages(String taskId) {
         return taskRuntimeBridge.countPendingDispatchableMessages(taskId);
     }
 
@@ -669,9 +675,10 @@ public class TaskManager {
         dispatchRequestService.requestDelayed(task, delayMillis);
     }
 
-    List<ClaimedTaskWork> claimReady(String taskId,
-                                     List<WorkerClaimTarget> claimTargets,
-                                     TaskWorkClaimOptions claimOptions) {
+    @Override
+    public List<ClaimedTaskWork> claimReady(String taskId,
+                                            List<WorkerClaimTarget> claimTargets,
+                                            TaskWorkClaimOptions claimOptions) {
         return taskRuntimeBridge.claimReady(taskId, claimTargets, claimOptions);
     }
 
@@ -695,9 +702,10 @@ public class TaskManager {
         return taskRuntimeBridge.applyTaskWorkResult(result);
     }
 
-    boolean compensateDispatchSubmitFailure(Task task,
-                                            List<TaskDispatchBinding> dispatchBindings,
-                                            String detail) {
+    @Override
+    public boolean compensateDispatchSubmitFailure(Task task,
+                                                   List<TaskDispatchBinding> dispatchBindings,
+                                                   String detail) {
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return true;
         }

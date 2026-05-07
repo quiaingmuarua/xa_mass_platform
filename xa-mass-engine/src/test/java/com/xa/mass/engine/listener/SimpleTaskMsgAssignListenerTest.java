@@ -8,7 +8,6 @@ import com.xa.mass.base.model.*;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.base.model.TaskCreateRequestDto;
@@ -62,7 +61,7 @@ class SimpleTaskMsgAssignListenerTest {
                 .collect(Collectors.toList());
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(
-                new TaskManagerAssignmentRuntimePort(taskManager),
+                taskManager,
                 workerManager,
                 recordService,
                 (t, bindings) -> dispatched.set(bindings)
@@ -239,7 +238,7 @@ class SimpleTaskMsgAssignListenerTest {
 
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(
-                new TaskManagerAssignmentRuntimePort(taskManager),
+                taskManager,
                 workerManager,
                 recordService,
                 (t, bindings) -> dispatched.set(bindings)
@@ -283,7 +282,7 @@ class SimpleTaskMsgAssignListenerTest {
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
         listener = new SimpleTaskMsgAssignListener(
-                new TaskManagerAssignmentRuntimePort(taskManager),
+                taskManager,
                 workerManager,
                 recordService,
                 (t, bindings) -> {
@@ -314,11 +313,11 @@ class SimpleTaskMsgAssignListenerTest {
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
         verify(workerManager, times(2)).updateWorkerContextById(eq("tk1"), same(wc));
-        assertEquals(2, new TaskManagerAssignmentRuntimePort(taskManager).countPendingDispatchableMessages(task.getTid()));
+        assertEquals(2, taskManager.countPendingDispatchableMessages(task.getTid()));
 
         AtomicReference<List<TaskDispatchBinding>> recoveredDispatch = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(
-                new TaskManagerAssignmentRuntimePort(taskManager),
+                taskManager,
                 workerManager,
                 recordService,
                 (t, bindings) -> recoveredDispatch.set(bindings)
@@ -553,7 +552,7 @@ class SimpleTaskMsgAssignListenerTest {
 
     private SimpleTaskMsgAssignListener newAssignmentListener(TaskManager manager) {
         return new SimpleTaskMsgAssignListener(
-                new TaskManagerAssignmentRuntimePort(manager),
+                manager,
                 workerManager,
                 recordService
         );

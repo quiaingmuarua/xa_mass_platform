@@ -16,12 +16,6 @@ public interface RawWorkerMessageChannel {
     String adapterId();
 
     /**
-     * Returns whether this channel can confidently route a raw message to the
-     * given transport route under the current runtime state.
-     */
-    boolean supportsAdapterRoute(String routeKey, String requestedAdapterId);
-
-    /**
      * Sends a raw transport payload to a concrete route-addressed endpoint.
      */
     void sendToAdapterRoute(String routeKey, String rawJson, String traceId);

@@ -5,8 +5,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
@@ -138,7 +138,7 @@ public class StorageExample {
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
-        var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        TaskAssignmentRuntimePort assignmentRuntimePort = taskManager;
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,
@@ -261,7 +261,7 @@ public class StorageExample {
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
-        var assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        TaskAssignmentRuntimePort assignmentRuntimePort = taskManager;
         var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,

@@ -47,6 +47,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -68,7 +69,7 @@ public class MassApplication {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime;
     private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
-    private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
+    private final Map<String, RawWorkerMessageChannel> rawWorkerMessageChannelsByAdapterId = new LinkedHashMap<>();
     private final List<TransportServer> transportServers = new ArrayList<>();
 
     private final MassEngine engine;
@@ -204,7 +205,7 @@ public class MassApplication {
 
         try {
             managedTransportAdapters.clear();
-            rawWorkerMessageChannels.clear();
+            rawWorkerMessageChannelsByAdapterId.clear();
             transportServers.clear();
             startEventRuntimeTaskExecutor();
             endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
@@ -445,7 +446,11 @@ public class MassApplication {
 
     private void registerRawWorkerMessageChannel(RawWorkerMessageChannel rawWorkerMessageChannel) {
         if (rawWorkerMessageChannel != null) {
-            rawWorkerMessageChannels.add(rawWorkerMessageChannel);
+            String adapterId = requireRawWorkerMessageAdapterId(rawWorkerMessageChannel);
+            RawWorkerMessageChannel existing = rawWorkerMessageChannelsByAdapterId.putIfAbsent(adapterId, rawWorkerMessageChannel);
+            if (existing != null && existing != rawWorkerMessageChannel) {
+                throw new IllegalStateException("Duplicate raw worker message channel configured for adapterId '" + adapterId + "'");
+            }
         }
     }
 
@@ -491,24 +496,25 @@ public class MassApplication {
         if (rawJson == null) {
             throw new IllegalArgumentException("rawJson must not be null");
         }
-        if (rawWorkerMessageChannels.isEmpty() || transportRuntimeRegistry == null) {
+        if (rawWorkerMessageChannelsByAdapterId.isEmpty() || transportRuntimeRegistry == null) {
             return false;
         }
         String normalizedWorkerId = workerId.trim();
         String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(normalizedWorkerId);
+        RawWorkerMessageChannel rawWorkerMessageChannel = rawWorkerMessageChannelsByAdapterId.get(
+                workerAdapterId == null ? null : workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT)
+        );
+        if (rawWorkerMessageChannel == null) {
+            return false;
+        }
         String routeKey = resolveRawMessageRouteKey(normalizedWorkerId, workerAdapterId);
         if (routeKey == null) {
             logger.debug("Skip raw transport side-channel because no unique active route is available: workerId={}, adapterId={}",
                     normalizedWorkerId, workerAdapterId);
             return false;
         }
-        for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
-            if (rawWorkerMessageChannel.supportsAdapterRoute(routeKey, workerAdapterId)) {
-                rawWorkerMessageChannel.sendToAdapterRoute(routeKey, rawJson, traceId);
-                return true;
-            }
-        }
-        return false;
+        rawWorkerMessageChannel.sendToAdapterRoute(routeKey, rawJson, traceId);
+        return true;
     }
 
     private String resolveRawMessageRouteKey(String workerId, String adapterId) {
@@ -605,6 +611,14 @@ public class MassApplication {
             throw new IllegalStateException("Mass engine is unavailable for this application");
         }
         return engine;
+    }
+
+    private static String requireRawWorkerMessageAdapterId(RawWorkerMessageChannel rawWorkerMessageChannel) {
+        String adapterId = rawWorkerMessageChannel.adapterId();
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalStateException("Raw worker message channel must declare a non-blank adapterId");
+        }
+        return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
 }

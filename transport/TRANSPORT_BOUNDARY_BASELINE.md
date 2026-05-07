@@ -147,6 +147,9 @@ Current runtime rules:
 - route-key assembly is owned by transport runtime binding composition; the
   current default resolver uses worker id, but listeners must not hard-code
   worker id as the only valid delivery address
+- transport bindings must declare their route-key resolver explicitly at
+  assembly time; runtime must not hide `workerId -> routeKey` policy behind
+  builder defaults or shared fallback helpers
 - mainline polling/websocket/socket bindings currently resolve `routeKey` from
   worker id explicitly at binding assembly time; that is a current policy, not
   a transport-global invariant
