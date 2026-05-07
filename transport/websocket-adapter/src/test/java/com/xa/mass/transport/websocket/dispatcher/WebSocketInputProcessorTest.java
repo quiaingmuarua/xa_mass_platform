@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -44,8 +45,8 @@ class WebSocketInputProcessorTest {
     void unsupportedFrameShapeIsIgnoredWithoutOutput() {
         JsonObject unsupportedFrame = new JsonObject();
         unsupportedFrame.addProperty("messageId", "msg-1");
-        unsupportedFrame.addProperty("workerId", "worker-1");
-        unsupportedFrame.addProperty("project", "proj");
+        unsupportedFrame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
+        unsupportedFrame.addProperty(TransportPacket.PAYLOAD_PROJECT, "proj");
         unsupportedFrame.addProperty("eventCode", "mock.state.get");
 
         boolean result = inputProcessor.process(codec.getGson().toJson(unsupportedFrame));
@@ -103,8 +104,8 @@ class WebSocketInputProcessorTest {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 codec.getGson().toJson(frame),
@@ -140,9 +141,9 @@ class WebSocketInputProcessorTest {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
-        frame.add("output", payload("status", "SUCCESS"));
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+        frame.add(TransportPacket.PAYLOAD_OUTPUT, payload("status", "SUCCESS"));
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 "not-json-but-already-parsed",
@@ -192,12 +193,13 @@ class WebSocketInputProcessorTest {
     private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", messageId);
-        frame.addProperty("workerId", "worker-1");
-        frame.addProperty("project", "proj");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_PROJECT, "proj");
         frame.addProperty("taskId", taskId);
-        frame.addProperty("success", success);
-        frame.addProperty("detail", detail);
-        frame.add("output", payload("status", success ? "SUCCESS" : "FAILED", "mockData", detail));
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, success);
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, detail);
+        frame.add(TransportPacket.PAYLOAD_OUTPUT,
+                payload("status", success ? "SUCCESS" : "FAILED", "mockData", detail));
         return codec.getGson().toJson(frame);
     }
 

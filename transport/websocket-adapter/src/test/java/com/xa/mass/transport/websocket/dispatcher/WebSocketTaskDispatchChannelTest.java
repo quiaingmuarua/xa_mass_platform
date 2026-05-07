@@ -61,20 +61,20 @@ class WebSocketTaskDispatchChannelTest {
         JsonObject message = codec.parseObject(captor.getValue());
         assertNotNull(message);
         assertEquals("msg-1", message.get("messageId").getAsString());
-        assertEquals("worker-1", message.get("workerId").getAsString());
+        assertEquals("worker-1", message.get(TransportPacket.PAYLOAD_WORKER_ID).getAsString());
         assertEquals("task-1", message.get("taskId").getAsString());
         assertEquals("crawler.fetch-page", message.get("eventCode").getAsString());
-        assertEquals("worker-context-1", message.get("workerContextId").getAsString());
-        assertEquals("batch-0", message.get("batchId").getAsString());
-        assertEquals(0, message.get("retryCount").getAsInt());
+        assertEquals("worker-context-1", message.get(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID).getAsString());
+        assertEquals("batch-0", message.get(TransportPacket.PAYLOAD_BATCH_ID).getAsString());
+        assertEquals(0, message.get(TransportPacket.PAYLOAD_RETRY_COUNT).getAsInt());
 
-        JsonObject input = message.getAsJsonObject("input");
-        JsonObject sharedConfig = message.getAsJsonObject("sharedConfig");
+        JsonObject input = message.getAsJsonObject(TransportPacket.PAYLOAD_INPUT);
+        JsonObject sharedConfig = message.getAsJsonObject(TransportPacket.PAYLOAD_SHARED_CONFIG);
         assertNotNull(input);
         assertNotNull(sharedConfig);
         assertEquals("target-1", input.get("target").getAsString());
-        assertEquals("demoApp", message.get("project").getAsString());
-        assertEquals("agent-1", message.get("userId").getAsString());
+        assertEquals("demoApp", message.get(TransportPacket.PAYLOAD_PROJECT).getAsString());
+        assertEquals("agent-1", message.get(TransportPacket.PAYLOAD_USER_ID).getAsString());
         assertEquals("hello", sharedConfig.get("textContent").getAsString());
     }
 

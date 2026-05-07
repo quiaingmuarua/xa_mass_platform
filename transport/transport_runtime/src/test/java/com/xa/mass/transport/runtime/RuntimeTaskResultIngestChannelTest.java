@@ -20,6 +20,7 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -489,7 +490,7 @@ class RuntimeTaskResultIngestChannelTest {
         payload.put("status", status);
         payload.put("mockData", detail);
         if (errorCode != null) {
-            payload.put("errorCode", errorCode);
+            payload.put(TransportPacket.PAYLOAD_ERROR_CODE, errorCode);
         }
         return new TaskResultReport(
                 fixture.taskId(),

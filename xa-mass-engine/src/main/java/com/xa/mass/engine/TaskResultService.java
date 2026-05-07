@@ -422,7 +422,7 @@ class TaskResultService {
                     taskMsg.taskId(),
                     taskMsg.messageId()
             );
-            if (TaskMessageAttemptSupport.matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
+            if (matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
                 attemptId = latestAuditView.getAttemptId();
             }
         }
@@ -582,7 +582,10 @@ class TaskResultService {
         RuntimeMessageView failedView = summarizeBusinessFailure(retryBase, detail, errorCode);
         traceEventLogger.taskMsgStatusTransition(
                 failedView.toTraceView(),
-                activeAttempt,
+                activeAttempt.attemptId(),
+                activeAttempt.workerId(),
+                activeAttempt.workerContextId(),
+                activeAttempt.batchId(),
                 beforeRetryFailureStatus,
                 failedView.status(),
                 trigger,
@@ -592,7 +595,10 @@ class TaskResultService {
         RuntimeMessageView retrySummary = summarizeRetryReset(failedView);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(taskManager.getTask(taskId), true);
         traceEventLogger.taskMsgRetryReset(retrySummary.toTraceView(),
-                activeAttempt,
+                activeAttempt.attemptId(),
+                activeAttempt.workerId(),
+                activeAttempt.workerContextId(),
+                activeAttempt.batchId(),
                 workRetryDelayMillis,
                 trigger,
                 "TaskManager",
@@ -861,6 +867,24 @@ class TaskResultService {
 
     private TaskMsgAttempt getLatestTaskMessageAttemptAuditProjection(String taskId, String messageId) {
         return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+    }
+
+    private boolean matchesRuntimeLease(TaskMsgAttempt attempt,
+                                        ActiveLeaseRecord activeLease,
+                                        int attemptNo) {
+        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
+            return false;
+        }
+        if (attempt.getAttemptNo() != attemptNo) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
+            return false;
+        }
+        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
     }
 
     private boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {

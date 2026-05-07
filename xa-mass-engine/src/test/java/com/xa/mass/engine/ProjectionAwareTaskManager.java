@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMessageSnapshot;
@@ -110,13 +111,54 @@ public class ProjectionAwareTaskManager extends TaskManager {
         TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditView(taskId, messageId);
         TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.getStatus() : TaskMsgStatus.ASSIGNED;
         String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
-        return TaskMessageAttemptSupport.runtimeActiveProjection(
-                taskId,
-                messageId,
-                messageStatus,
-                preferredAttemptId,
-                activeLease,
-                latestAuditView
-        );
+        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
+        String attemptId = preferredAttemptId;
+        if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
+            attemptId = latestAuditView.getAttemptId();
+        }
+        if (attemptId == null || attemptId.isBlank()) {
+            attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
+        }
+        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
+        attempt.setWorkerId(activeLease.workerId());
+        attempt.setWorkerContextId(activeLease.workerContextId());
+        attempt.setBatchId(activeLease.batchId());
+        if (activeLease.leaseExpireAt() != null) {
+            attempt.setLeaseExpireTime(java.time.LocalDateTime.ofInstant(
+                    activeLease.leaseExpireAt(),
+                    java.time.ZoneId.systemDefault()
+            ));
+        }
+        if (activeLease.leasedAt() != null) {
+            attempt.setDispatchTime(java.time.LocalDateTime.ofInstant(
+                    activeLease.leasedAt(),
+                    java.time.ZoneId.systemDefault()
+            ));
+        }
+        attempt.setStatus(TaskMsgAttemptStatus.DISPATCHED);
+        if (messageStatus == TaskMsgStatus.RUNNING) {
+            attempt.setAckTime(java.time.LocalDateTime.now());
+            attempt.setStartTime(java.time.LocalDateTime.now());
+            attempt.setStatus(TaskMsgAttemptStatus.RUNNING);
+        }
+        return attempt;
+    }
+
+    private boolean matchesRuntimeLease(TaskMsgAttempt attempt,
+                                        ActiveLeaseRecord activeLease,
+                                        int attemptNo) {
+        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
+            return false;
+        }
+        if (attempt.getAttemptNo() != attemptNo) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
+            return false;
+        }
+        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
+            return false;
+        }
+        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
     }
 }

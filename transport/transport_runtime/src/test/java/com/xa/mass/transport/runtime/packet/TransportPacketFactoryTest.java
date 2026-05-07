@@ -76,7 +76,7 @@ class TransportPacketFactoryTest {
                 "polling",
                 "worker-1",
                 "trace-3",
-                Map.of("workerId", "worker-1", "reason", "connected")
+                Map.of(TransportPacket.PAYLOAD_WORKER_ID, "worker-1", "reason", "connected")
         );
 
         assertEquals(PacketType.WORKER_SYSTEM_EVENT, packet.type());
