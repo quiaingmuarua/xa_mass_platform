@@ -1,5 +1,7 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -9,6 +11,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TaskResultReportTest {
@@ -54,5 +57,43 @@ class TaskResultReportTest {
                 "output.unsupported contains unsupported non-JSON value type: java.lang.Object",
                 error.getMessage()
         );
+    }
+
+    @Test
+    void transportPayloadRoundTripStaysOwnedByTaskResultReport() {
+        TaskResultReport report = new TaskResultReport(
+                "task-1",
+                "msg-1",
+                true,
+                "ok",
+                "NONE",
+                Map.of("status", "SUCCESS")
+        );
+
+        Map<String, Object> payload = report.toTransportPayload();
+        TransportPacket packet = new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-1",
+                "trace-1",
+                PacketType.TASK_RESULT,
+                "polling",
+                "route-1",
+                "task-1",
+                "msg-1",
+                "attempt-1",
+                null,
+                TransportPacket.JSON_CONTENT_TYPE,
+                payload
+        );
+
+        TaskResultReport decoded = TaskResultReport.fromTransportPacket(packet);
+
+        assertSame(payload.get("output"), report.getOutput());
+        assertEquals(report.getTaskId(), decoded.getTaskId());
+        assertEquals(report.getMessageId(), decoded.getMessageId());
+        assertEquals(report.isSuccess(), decoded.isSuccess());
+        assertEquals(report.getDetail(), decoded.getDetail());
+        assertEquals(report.getErrorCode(), decoded.getErrorCode());
+        assertEquals(report.getOutput(), decoded.getOutput());
     }
 }

@@ -404,7 +404,7 @@ class TaskResultService {
             attemptId = taskMsg.latestAttemptId();
         }
         if (attemptId == null || attemptId.isBlank()) {
-            TaskMsgAttempt latestAuditView = taskManager.getLatestTaskMessageAttemptAuditView(
+            TaskMsgAttempt latestAuditView = taskManager.getLatestTaskMessageAttemptAuditProjection(
                     taskMsg.taskId(),
                     taskMsg.messageId()
             );

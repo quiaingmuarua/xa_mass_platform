@@ -3,9 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -51,12 +48,14 @@ public class TaskQueryService {
 
     /**
      * @deprecated compatibility residue read only; avoid introducing new
-     * callers that treat {@link TaskMsg} snapshots as engine truth.
+     * callers that treat compatibility snapshots as engine truth.
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        return taskManager != null ? taskManager.getTaskMessageSnapshot(taskId, limit) : taskQueries.getTaskMessageSnapshot(taskId, limit);
+    public TaskMessageSnapshotView getTaskMessageSnapshotView(String taskId, int limit) {
+        return taskManager != null
+                ? taskManager.getTaskMessageSnapshotView(taskId, limit)
+                : taskQueries.getTaskMessageSnapshotView(taskId, limit);
     }
 
     /**
@@ -64,10 +63,10 @@ public class TaskQueryService {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+    public TaskMessageView getTaskMessageView(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getTaskMessageProjection(taskId, messageId)
-                : taskQueries.getTaskMessageProjection(taskId, messageId);
+                ? taskManager.getTaskMessageView(taskId, messageId)
+                : taskQueries.getTaskMessageView(taskId, messageId);
     }
 
     /**
@@ -75,10 +74,10 @@ public class TaskQueryService {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    public List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
+    public List<TaskMessageAttemptView> getTaskMessageAttemptAuditViews(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getTaskMessageAttemptAuditTrail(taskId, messageId)
-                : taskQueries.getTaskMessageAttemptAuditTrail(taskId, messageId);
+                ? taskManager.getTaskMessageAttemptAuditViews(taskId, messageId)
+                : taskQueries.getTaskMessageAttemptAuditViews(taskId, messageId);
     }
 
     /**
@@ -86,10 +85,10 @@ public class TaskQueryService {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
+    public TaskMessageAttemptView getLatestTaskMessageAttemptView(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getLatestTaskMessageAttemptAuditView(taskId, messageId)
-                : taskQueries.getLatestTaskMessageAttemptAuditView(taskId, messageId);
+                ? taskManager.getLatestTaskMessageAttemptView(taskId, messageId)
+                : taskQueries.getLatestTaskMessageAttemptView(taskId, messageId);
     }
 
     /**
@@ -98,10 +97,10 @@ public class TaskQueryService {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+    public TaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getLatestActiveAttemptProjection(taskId, messageId)
-                : taskQueries.getLatestActiveTaskMessageAttempt(taskId, messageId);
+                ? taskManager.getLatestActiveTaskMessageAttemptView(taskId, messageId)
+                : taskQueries.getLatestActiveTaskMessageAttemptView(taskId, messageId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

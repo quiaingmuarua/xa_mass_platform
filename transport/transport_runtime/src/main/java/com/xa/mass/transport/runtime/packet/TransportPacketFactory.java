@@ -5,7 +5,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -70,7 +69,7 @@ public final class TransportPacketFactory {
                 normalize(attemptId),
                 null,
                 TransportPacket.JSON_CONTENT_TYPE,
-                resultPayload(report)
+                report.toTransportPayload()
         );
     }
 
@@ -93,21 +92,6 @@ public final class TransportPacketFactory {
                 TransportPacket.JSON_CONTENT_TYPE,
                 payload == null ? Map.of() : payload
         );
-    }
-
-    private static Map<String, Object> resultPayload(TaskResultReport report) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("success", report.isSuccess());
-        put(payload, "detail", report.getDetail());
-        put(payload, "errorCode", report.getErrorCode());
-        payload.put("output", report.getOutput() == null ? Map.of() : report.getOutput());
-        return payload;
-    }
-
-    private static void put(Map<String, Object> payload, String key, String value) {
-        if (value != null && !value.isBlank()) {
-            payload.put(key, value);
-        }
     }
 
     private static String normalize(String value) {

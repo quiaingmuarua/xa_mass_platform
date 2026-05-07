@@ -112,7 +112,7 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromDispatchContext(
+        return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
                 dispatchItem.getWorkerId(),
                 dispatchItem.getWorkerId(),
@@ -136,7 +136,7 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+        return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
                 workerId,
                 workerId,
@@ -149,3 +149,4 @@ public class PullWorkerSession {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
     }
 }
+

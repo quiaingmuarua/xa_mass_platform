@@ -39,6 +39,15 @@ public final class TransportResultEnvelope {
                                    String workerId,
                                    String endpointId,
                                    String attemptId,
+                                   TaskResultReport report) {
+        this(adapterId, routeKey, workerId, endpointId, attemptId, null, null, report);
+    }
+
+    public TransportResultEnvelope(String adapterId,
+                                   String routeKey,
+                                   String workerId,
+                                   String endpointId,
+                                   String attemptId,
                                    String leaseToken,
                                    TaskResultReport report) {
         this(adapterId, routeKey, workerId, endpointId, attemptId, leaseToken, null, report);
@@ -60,51 +69,6 @@ public final class TransportResultEnvelope {
         this.leaseToken = normalizeBlank(leaseToken);
         this.traceId = normalizeBlank(traceId);
         this.report = Objects.requireNonNull(report, "report");
-    }
-
-    public static TransportResultEnvelope fromReport(String adapterId,
-                                                     String routeKey,
-                                                     String workerId,
-                                                     String endpointId,
-                                                     TaskResultReport report) {
-        return new TransportResultEnvelope(adapterId, routeKey, workerId, endpointId, report);
-    }
-
-    public static TransportResultEnvelope fromReport(String adapterId,
-                                                     String routeKey,
-                                                     String workerId,
-                                                     String endpointId,
-                                                     String traceId,
-                                                     TaskResultReport report) {
-        return new TransportResultEnvelope(adapterId, routeKey, workerId, endpointId, null, null, traceId, report);
-    }
-
-    public static TransportResultEnvelope fromDispatchContext(String adapterId,
-                                                              String routeKey,
-                                                              String workerId,
-                                                              String endpointId,
-                                                              String attemptId,
-                                                              TaskResultReport report) {
-        return fromDispatchContext(adapterId, routeKey, workerId, endpointId, attemptId, null, report);
-    }
-
-    public static TransportResultEnvelope fromDispatchContext(String adapterId,
-                                                              String routeKey,
-                                                              String workerId,
-                                                              String endpointId,
-                                                              String attemptId,
-                                                              String traceId,
-                                                              TaskResultReport report) {
-        return new TransportResultEnvelope(
-                adapterId,
-                routeKey,
-                workerId,
-                endpointId,
-                attemptId,
-                null,
-                traceId,
-                report
-        );
     }
 
     public String getAdapterId() {

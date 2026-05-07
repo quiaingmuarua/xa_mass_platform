@@ -11,6 +11,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
+import com.xa.mass.engine.TaskMessageAttemptSupport;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -162,7 +163,7 @@ class RuntimeTaskResultIngestChannelTest {
     void resultEnvelopeDelegatesToTaskResultLifecycleWithoutChangingSemantics() {
         RunningTaskFixture fixture = createRunningTask("task-envelope");
 
-        boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+        boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
                 "worker-1",
@@ -264,10 +265,14 @@ class RuntimeTaskResultIngestChannelTest {
         RunningTaskFixture fixture = createRunningTask("task-envelope-no-active-attempt-read", false);
         trackingStorage.resetLatestActiveAttemptReadCount();
 
-        new TaskManagerResultIngestFacade(taskManager).getResultCorrelation(fixture.taskId(), fixture.messageId());
+        var correlation = new TaskManagerResultIngestFacade(taskManager).getResultCorrelation(
+                fixture.taskId(),
+                fixture.messageId()
+        );
 
         assertEquals(0, trackingStorage.latestActiveAttemptReadCount,
                 "result correlation should validate against runtime lease without reading active attempt residue");
+        assertEquals(fixture.attemptId(), correlation.projectedAttemptId());
     }
 
     @Test
@@ -347,11 +352,13 @@ class RuntimeTaskResultIngestChannelTest {
     void envelopeTraceIdFlowsIntoEngineCanonicalTraceEvents() {
         RunningTaskFixture fixture = createRunningTask("task-envelope-trace");
 
-        boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+        boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
                 "worker-1",
                 "worker-1",
+                null,
+                null,
                 "trace-envelope-1",
                 report(fixture, "SUCCESS", "ok-trace", null)
         ));
@@ -369,11 +376,13 @@ class RuntimeTaskResultIngestChannelTest {
         RunningTaskFixture fixture = createRunningTask("task-envelope-mdc-restore");
         MDC.put("traceId", "outer-trace");
         try {
-            boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+            boolean handled = channel.ingest(new TransportResultEnvelope(
                     "polling",
                     "worker-1",
                     "worker-1",
                     "worker-1",
+                    null,
+                    null,
                     "trace-envelope-2",
                     report(fixture, "SUCCESS", "ok-restore", null)
             ));
@@ -418,7 +427,13 @@ class RuntimeTaskResultIngestChannelTest {
                 1,
                 assignmentRuntimePort.getTaskMessageLeaseSeconds()
         );
-        String attemptId = "attempt-" + taskMsg.getMessageId() + "-1";
+        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+                taskMsg.getMessageId(),
+                1,
+                "worker-1",
+                "worker-context-1",
+                "batch-0"
+        );
         taskMsg.applyLatestAttemptProjection(attemptId, "worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
         taskStorage.updateTaskMessage(task.getTid(), taskMsg);
@@ -606,6 +621,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
+
 
 
 

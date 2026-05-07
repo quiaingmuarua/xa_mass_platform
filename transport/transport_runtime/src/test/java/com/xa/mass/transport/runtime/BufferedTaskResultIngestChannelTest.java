@@ -55,7 +55,7 @@ class BufferedTaskResultIngestChannelTest {
         };
 
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate);
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport("polling", "w1", "w1", "w1", report("t1", "m1"));
+        TransportResultEnvelope envelope = new TransportResultEnvelope("polling", "w1", "w1", "w1", report("t1", "m1"));
         boolean accepted = channel.ingest(envelope);
 
         assertTrue(accepted);
@@ -86,7 +86,7 @@ class BufferedTaskResultIngestChannelTest {
             assertTrue(channel.ingest(report("task", "msg-" + i)));
         }
 
-        // Unblock the slow delegate and immediately call shutdown â€” must drain all.
+        // Unblock the slow delegate and immediately call shutdown â€?must drain all.
         startLatch.countDown();
         channel.shutdown();
 
@@ -148,3 +148,4 @@ class BufferedTaskResultIngestChannelTest {
         return new TaskResultReport(taskId, messageId, true, "ok", null, Map.of());
     }
 }
+

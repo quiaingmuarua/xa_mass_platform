@@ -65,11 +65,13 @@ public final class WebSocketInputProcessor {
                     inboundMessage.getEndpointId(),
                     workerId
             );
-            boolean accepted = context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
+            boolean accepted = context.getTaskResultIngestChannel().ingest(new TransportResultEnvelope(
                     context.getAdapterId(),
                     routeKey,
                     workerId,
                     inboundMessage.getEndpointId(),
+                    null,
+                    null,
                     context.getFrameCodec().extractTraceId(frame),
                     report
             ));
@@ -102,3 +104,4 @@ public final class WebSocketInputProcessor {
         logger.error("WebSocket input processing failed", ex);
     }
 }
+

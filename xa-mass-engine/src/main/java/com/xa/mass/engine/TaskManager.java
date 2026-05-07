@@ -415,10 +415,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.getTaskMessages(taskId, limit);
     }
 
-    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+    TaskMessageSnapshotView getTaskMessageSnapshotView(String taskId, int limit) {
         int boundedLimit = Math.max(0, limit);
         if (boundedLimit == 0) {
-            return new TaskMessageSnapshot(List.of(), 0, false);
+            return new TaskMessageSnapshotView(List.of(), 0, false);
         }
         Task task = getTask(taskId);
         List<TaskMsg> fetched = taskDetailStore.getTaskMessages(taskId, Math.addExact(boundedLimit, 1));
@@ -427,8 +427,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         List<TaskMsg> runtimeAwareSnapshot = task != null && (task.getStatus() == null || !task.getStatus().isFinal())
                 ? CompatibilityProjectionSupport.overlayActiveLeaseView(snapshot, getActiveLeases(taskId), taskId)
                 : snapshot;
-        return new TaskMessageSnapshot(
-                CompatibilityProjectionSupport.overlayTerminalTaskView(task, runtimeAwareSnapshot),
+        return new TaskMessageSnapshotView(
+                CompatibilityProjectionSupport.overlayTerminalTaskView(task, runtimeAwareSnapshot).stream()
+                        .map(TaskMessageView::from)
+                        .toList(),
                 boundedLimit,
                 truncated
         );
@@ -439,6 +441,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * use {@link TaskQueryService} if they still need bounded projection reads
      * during migration.
      */
+    @Deprecated
+    @CompatibilityProjectionOnly
+    TaskMessageView getTaskMessageView(String taskId, String messageId) {
+        return TaskMessageView.from(getTaskMessageProjection(taskId, messageId));
+    }
+
     @Deprecated
     @CompatibilityProjectionOnly
     TaskMsg getTaskMessageProjection(String taskId, String messageId) {
@@ -479,13 +487,27 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     @Deprecated
     @CompatibilityProjectionOnly
-    List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
+    List<TaskMessageAttemptView> getTaskMessageAttemptAuditViews(String taskId, String messageId) {
+        return taskDetailStore.getTaskMessageAttempts(taskId, messageId).stream()
+                .map(TaskMessageAttemptView::from)
+                .toList();
     }
 
     @Deprecated
     @CompatibilityProjectionOnly
-    TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
+    TaskMessageAttemptView getLatestTaskMessageAttemptView(String taskId, String messageId) {
+        return TaskMessageAttemptView.from(getLatestTaskMessageAttemptAuditProjection(taskId, messageId));
+    }
+
+    @Deprecated
+    @CompatibilityProjectionOnly
+    TaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
+        return TaskMessageAttemptView.from(getLatestActiveAttemptProjection(taskId, messageId));
+    }
+
+    @Deprecated
+    @CompatibilityProjectionOnly
+    TaskMsgAttempt getLatestTaskMessageAttemptAuditProjection(String taskId, String messageId) {
         return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
@@ -501,7 +523,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             return null;
         }
         TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
-        TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditView(taskId, messageId);
+        TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
         TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.getStatus() : TaskMsgStatus.ASSIGNED;
         String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
         return TaskMessageAttemptSupport.runtimeActiveProjection(

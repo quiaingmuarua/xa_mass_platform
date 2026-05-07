@@ -3,9 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -24,19 +21,19 @@ public interface TaskQueryPort {
 
     /**
      * @deprecated compatibility residue read only; do not build new engine or
-     * external module behavior on top of {@link TaskMsg} snapshots.
+     * external module behavior on top of compatibility task-message snapshots.
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
+    TaskMessageSnapshotView getTaskMessageSnapshotView(String taskId, int limit);
 
     /**
      * @deprecated compatibility residue read only; runtime truth lives in task
-     * aggregate plus {@code TaskWorkRuntime}, not in a projected {@link TaskMsg}.
+     * aggregate plus {@code TaskWorkRuntime}, not in a stored projection row.
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    TaskMsg getTaskMessageProjection(String taskId, String messageId);
+    TaskMessageView getTaskMessageView(String taskId, String messageId);
 
     /**
      * @deprecated compatibility audit only; full attempt history belongs to
@@ -44,14 +41,14 @@ public interface TaskQueryPort {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId);
+    List<TaskMessageAttemptView> getTaskMessageAttemptAuditViews(String taskId, String messageId);
 
     /**
      * @deprecated compatibility audit only.
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId);
+    TaskMessageAttemptView getLatestTaskMessageAttemptView(String taskId, String messageId);
 
     /**
      * @deprecated transitional compatibility lookup only; active execution
@@ -59,7 +56,7 @@ public interface TaskQueryPort {
      */
     @Deprecated
     @CompatibilityProjectionOnly
-    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
+    TaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
 
     TaskStateResolutionResult resolveTaskState(String taskId);
 

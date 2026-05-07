@@ -192,11 +192,13 @@ public final class SocketTransportServer implements TransportServer {
                         continue;
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
-                    boolean accepted = taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+                    boolean accepted = taskResultIngestChannel.ingest(new TransportResultEnvelope(
                             adapterId,
                             boundRouteKey,
                             boundWorkerId,
                             endpointId,
+                            null,
+                            null,
                             frameCodec.extractTraceId(frame),
                             report
                     ));
@@ -262,3 +264,4 @@ public final class SocketTransportServer implements TransportServer {
         return null;
     }
 }
+

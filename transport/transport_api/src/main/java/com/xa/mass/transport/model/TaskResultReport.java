@@ -1,7 +1,10 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -12,6 +15,11 @@ import java.util.Map;
  * queues and codecs without relying on JVM-local object shapes.</p>
  */
 public final class TaskResultReport {
+
+    private static final String SUCCESS = "success";
+    private static final String DETAIL = "detail";
+    private static final String ERROR_CODE = "errorCode";
+    private static final String OUTPUT = "output";
 
     private final String taskId;
     private final String messageId;
@@ -58,7 +66,63 @@ public final class TaskResultReport {
         return output;
     }
 
+    public Map<String, Object> toTransportPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(SUCCESS, success);
+        put(payload, DETAIL, detail);
+        put(payload, ERROR_CODE, errorCode);
+        payload.put(OUTPUT, output);
+        return payload;
+    }
+
+    public static TaskResultReport fromTransportPacket(TransportPacket packet) {
+        requireResultPacket(packet);
+        Map<String, Object> payload = packet.payload();
+        return new TaskResultReport(
+                packet.taskId(),
+                packet.messageId(),
+                booleanValue(payload.get(SUCCESS)),
+                stringValue(payload.get(DETAIL)),
+                stringValue(payload.get(ERROR_CODE)),
+                mapValue(payload.get(OUTPUT))
+        );
+    }
+
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         return TransportJsonValueNormalizer.normalizeObject(values, "output");
+    }
+
+    private static void requireResultPacket(TransportPacket packet) {
+        if (packet == null) {
+            throw new IllegalArgumentException("packet must not be null");
+        }
+        if (packet.type() != PacketType.TASK_RESULT) {
+            throw new IllegalArgumentException("packet must be TASK_RESULT");
+        }
+    }
+
+    private static void put(Map<String, Object> payload, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            payload.put(key, value);
+        }
+    }
+
+    private static boolean booleanValue(Object value) {
+        return Boolean.TRUE.equals(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        return (Map<String, Object>) map;
+    }
+
+    private static String stringValue(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
     }
 }
