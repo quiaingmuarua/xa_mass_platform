@@ -121,13 +121,16 @@ result, and worker-system-event shapes. In the current mainline, dispatch is
 packet-backed first: `TransportDispatchEnvelope` carries a `TASK_DISPATCH`
 packet plus runtime delivery identity. Adapters may read packet fields for
 routing and frame assembly, but external worker wire behavior remains the
-current JSON contract.
+current JSON contract. `TransportPacket.payload` is a JSON object boundary,
+not an arbitrary JVM object slot. Durable queue codecs must be able to
+round-trip packet payloads without relying on Java-local runtime types.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
-fields such as `attemptId` and `leaseToken` may be used by runtime validation,
-but old workers that only submit `TaskResultReport` remain valid until the
-security model explicitly changes.
+fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by runtime
+validation, but old workers that only submit `TaskResultReport` remain valid
+until the security model explicitly changes. `routeKey` is the transport
+address truth; `workerId` or adapter-local endpoint ids are diagnostics only.
 
 `leaseToken` is reserved. Do not enforce it until there is an approved design
 for token generation, storage, expiry, retry interaction, old-worker behavior,
@@ -204,7 +207,9 @@ scan all attempts. Storage implementations should provide bounded lookups for:
 
 Dispatch is also a hot path. Delivery queues currently store
 `TransportDispatchEnvelope` values and should avoid deep-copying task payload
-maps beyond the immutable copies already owned by `TaskDispatchItem`.
+maps beyond the immutable copies already owned by packet assembly. Retryable
+dispatch outcomes must correlate by explicit `attemptId`; transport trace ids
+are diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. The current
 runtime uses an in-memory `TaskDispatchHandoff` plus `TaskDispatchHandoffPump`

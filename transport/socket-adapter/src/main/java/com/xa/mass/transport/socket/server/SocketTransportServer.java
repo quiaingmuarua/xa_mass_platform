@@ -194,6 +194,7 @@ public final class SocketTransportServer implements TransportServer {
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
                     boolean accepted = taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
                             adapterId,
+                            boundRouteKey,
                             boundWorkerId,
                             endpointId,
                             frameCodec.extractTraceId(frame),

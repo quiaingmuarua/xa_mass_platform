@@ -55,7 +55,7 @@ class BufferedTaskResultIngestChannelTest {
         };
 
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate);
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport("polling", "w1", "w1", report("t1", "m1"));
+        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport("polling", "w1", "w1", "w1", report("t1", "m1"));
         boolean accepted = channel.ingest(envelope);
 
         assertTrue(accepted);

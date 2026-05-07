@@ -41,7 +41,7 @@ public final class TransportPacketViews {
 
     public static TaskDispatchWireView dispatchWireView(TransportPacket packet) {
         requireDispatchPacket(packet);
-        Map<String, Object> payload = payloadMap(packet.payload());
+        Map<String, Object> payload = immutableMap(packet.payload());
         return new TaskDispatchWireView(
                 packet.taskId(),
                 packet.messageId(),
@@ -118,14 +118,6 @@ public final class TransportPacketViews {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> payloadMap(Object payload) {
-        if (!(payload instanceof Map<?, ?> map) || map.isEmpty()) {
-            return Map.of();
-        }
-        return immutableMap((Map<String, Object>) map);
+        return Map.copyOf(new LinkedHashMap<>(source));
     }
 }

@@ -35,7 +35,11 @@ public final class TransportDispatchEnvelope {
         return packet.routeKey();
     }
 
-    public String getCorrelationKey() {
+    public String getAttemptId() {
+        return packet.attemptId();
+    }
+
+    public String getTraceId() {
         return packet.traceId();
     }
 

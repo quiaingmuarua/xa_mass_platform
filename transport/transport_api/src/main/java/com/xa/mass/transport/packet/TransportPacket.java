@@ -2,6 +2,8 @@ package com.xa.mass.transport.packet;
 
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 public record TransportPacket(int version,
@@ -15,7 +17,7 @@ public record TransportPacket(int version,
                               String attemptId,
                               String eventCode,
                               String contentType,
-                              Object payload) {
+                              Map<String, Object> payload) {
 
     public static final int CURRENT_VERSION = 1;
     public static final String JSON_CONTENT_TYPE = "application/json";
@@ -34,6 +36,7 @@ public record TransportPacket(int version,
         attemptId = normalize(attemptId);
         eventCode = normalize(eventCode);
         contentType = requireText(contentType, "contentType");
+        payload = immutablePayload(payload);
     }
 
     public TransportPacket withTransportAddress(String adapterId, String routeKey) {
@@ -66,5 +69,12 @@ public record TransportPacket(int version,
             return null;
         }
         return value.trim();
+    }
+
+    private static Map<String, Object> immutablePayload(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Map.of();
+        }
+        return Map.copyOf(new LinkedHashMap<>(payload));
     }
 }

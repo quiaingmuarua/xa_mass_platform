@@ -128,7 +128,8 @@ class TransportDeliveryServiceTest {
         TaskDispatchItem item = item("msg-1", "worker-1");
         service.enqueue(List.of(envelope(item)));
 
-        assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+                .map(TransportDeliveryService::toDispatchItem)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
     }
@@ -139,7 +140,8 @@ class TransportDeliveryServiceTest {
         TaskDispatchItem item = item("msg-1", " worker-1 ");
         service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " worker-1 ", item)));
 
-        assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+                .map(TransportDeliveryService::toDispatchItem)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
     }
@@ -207,7 +209,7 @@ class TransportDeliveryServiceTest {
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
-        assertTrue(service.pollPayloads("polling", "worker-1", 10, 0).isEmpty());
+        assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
                 service.enqueue(List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
     }

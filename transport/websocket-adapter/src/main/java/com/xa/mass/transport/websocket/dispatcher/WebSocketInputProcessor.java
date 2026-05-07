@@ -57,12 +57,18 @@ public final class WebSocketInputProcessor {
         }
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
+            String workerId = WebSocketStringValues.firstNonBlank(
+                    context.getFrameCodec().extractWorkerId(frame),
+                    inboundMessage.getWorkerId()
+            );
+            String routeKey = WebSocketStringValues.firstNonBlank(
+                    inboundMessage.getEndpointId(),
+                    workerId
+            );
             boolean accepted = context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
                     context.getAdapterId(),
-                    WebSocketStringValues.firstNonBlank(
-                            context.getFrameCodec().extractWorkerId(frame),
-                            inboundMessage.getWorkerId()
-                    ),
+                    routeKey,
+                    workerId,
                     inboundMessage.getEndpointId(),
                     context.getFrameCodec().extractTraceId(frame),
                     report

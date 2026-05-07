@@ -58,6 +58,10 @@ Engine hot paths must treat these runtime semantics as authoritative:
   rebuild a bounded in-memory `TaskMsg` compatibility view, but it must not
   require persisting intermediate `ASSIGNED` or transient failure states before
   runtime result convergence can finish
+- when `TaskMsg.latestAttemptId` is missing during runtime result convergence,
+  engine may reuse the latest bounded compatibility attempt id only as a local
+  fallback to close the right audit row; runtime acceptance still comes from the
+  active lease, not from an active-attempt projection read
 - callback duplicate, late, and no-active-lease trace emission must use bounded
   runtime-synchronized `TaskMsg` projection fields first; trace must not force
   a hot-path latest-attempt projection lookup
@@ -76,7 +80,7 @@ Engine hot paths must treat these runtime semantics as authoritative:
 `TaskDetailStore` remains bounded compatibility residue only. It may support:
 
 - projection repair
-- active-attempt compatibility lookup
+- latest-attempt compatibility fallback for audit-row closure during transition
 - bounded shell/debug reads
 - focused tests and audit helpers
 - engine code should depend on this seam directly through the smallest needed

@@ -70,11 +70,11 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
             if (attemptId != null && !attemptId.isBlank()) {
                 bindingByAttemptId.put(attemptId, binding);
             }
-            grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
+             grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>())
                     .add(envelopeFactory.create(
                             adapter.adapterId(),
                             transportBinding.resolveRouteKey(binding, routeContext),
-                            payload.runtimeMetadata().attemptId(),
+                            null,
                             payload
                     ));
         }
@@ -96,14 +96,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
             }
             if (outcome.getStatus() == DispatchOutcomeStatus.SENT
                     || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
-                logger.debug("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, correlationKey={}, status={}",
+                logger.debug("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, attemptId={}, status={}",
                         outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
-                        outcome.getCorrelationKey(), outcome.getStatus());
+                        outcome.getAttemptId(), outcome.getStatus());
                 continue;
             }
-            logger.warn("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, correlationKey={}, status={}, retryable={}, reason={}, routedAdapter={}",
+            logger.warn("Transport dispatch outcome: adapterId={}, routeKey={}, deliveryId={}, attemptId={}, status={}, retryable={}, reason={}, routedAdapter={}",
                     outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
-                    outcome.getCorrelationKey(), outcome.getStatus(), outcome.isRetryable(), outcome.getReason(),
+                    outcome.getAttemptId(), outcome.getStatus(), outcome.isRetryable(), outcome.getReason(),
                     adapter != null ? adapter.adapterId() : null);
         }
     }
@@ -120,16 +120,16 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskDispatchBatc
             if (outcome == null || !outcome.isRetryable()) {
                 continue;
             }
-            String attemptId = outcome.getCorrelationKey();
+            String attemptId = outcome.getAttemptId();
             if (attemptId == null || attemptId.isBlank()) {
-                logger.warn("Skip retryable dispatch compensation because outcome correlationKey is missing: adapterId={}, routeKey={}, deliveryId={}, status={}, reason={}",
+                logger.warn("Skip retryable dispatch compensation because outcome attemptId is missing: adapterId={}, routeKey={}, deliveryId={}, status={}, reason={}",
                         outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
                         outcome.getStatus(), outcome.getReason());
                 continue;
             }
             TaskDispatchBinding binding = bindingByAttemptId.get(attemptId);
             if (binding == null) {
-                logger.warn("Skip retryable dispatch compensation because no dispatch binding matched correlationKey={}: adapterId={}, routeKey={}, deliveryId={}, status={}, reason={}",
+                logger.warn("Skip retryable dispatch compensation because no dispatch binding matched attemptId={}: adapterId={}, routeKey={}, deliveryId={}, status={}, reason={}",
                         attemptId, outcome.getAdapterId(), outcome.getRouteKey(), outcome.getDeliveryId(),
                         outcome.getStatus(), outcome.getReason());
                 continue;

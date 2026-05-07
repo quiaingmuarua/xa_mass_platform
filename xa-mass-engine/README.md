@@ -74,6 +74,10 @@ Keep these facts fixed unless the owning global baselines change:
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
   not the hot-path runtime owner
+- `TaskQueryService` methods that return `TaskMsg`, `TaskMsgAttempt`, or
+  `TaskMessageSnapshot` are migration residue only; new engine-facing callers
+  should treat them as explicit compatibility reads rather than the default
+  kernel query model
 - runtime ingest must stay correct when compatibility `TaskMsg` projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
   best-effort residue

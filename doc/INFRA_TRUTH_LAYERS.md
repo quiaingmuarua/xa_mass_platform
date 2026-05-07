@@ -43,6 +43,11 @@ more implemented than another.
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
+Current engine convergence rule: callback/expiry acceptance comes from runtime
+lease truth first. Compatibility `TaskMsg` / `TaskMsgAttempt` rows may be
+reconstructed or upserted afterward as bounded residue, but they do not decide
+whether a leased work item is valid.
+
 ## 3. Current Repo Reality
 
 | Area | Current code truth | Interpretation |

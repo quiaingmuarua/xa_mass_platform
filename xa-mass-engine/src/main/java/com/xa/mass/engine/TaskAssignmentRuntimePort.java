@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -22,6 +23,12 @@ public interface TaskAssignmentRuntimePort {
 
     long getTaskMessageLeaseSeconds();
 
+    /**
+     * @deprecated compatibility audit write only; dispatch ownership truth
+     * comes from runtime claim/lease state, not from persisted attempt rows.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt);
 
     boolean updateTask(Task task);

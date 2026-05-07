@@ -49,8 +49,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         List<DispatchOutcome> outcomes = deliveryService.enqueue(envelopes);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
-                logger.warn("Polling delivery rejected: routeKey={}, deliveryId={}, correlationKey={}, status={}, reason={}",
-                        outcome.getRouteKey(), outcome.getDeliveryId(), outcome.getCorrelationKey(),
+                logger.warn("Polling delivery rejected: routeKey={}, deliveryId={}, attemptId={}, status={}, reason={}",
+                        outcome.getRouteKey(), outcome.getDeliveryId(), outcome.getAttemptId(),
                         outcome.getStatus(), outcome.getReason());
             }
         }
@@ -62,7 +62,9 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
             return List.of();
         }
-        return deliveryService.pollPayloads(PROTOCOL, workerId, maxMessages, timeoutMillis);
+        return deliveryService.pollEnvelopes(PROTOCOL, workerId, maxMessages, timeoutMillis).stream()
+                .map(TransportDeliveryService::toDispatchItem)
+                .toList();
     }
 
     public void announceWorkerOnline(String workerId, String reason) {

@@ -54,7 +54,7 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
                     if (!sent) {
                         logger.warn("WebSocket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",
                                 envelope.getRouteKey(),
-                                envelope.getCorrelationKey());
+                                envelope.getTraceId());
                     }
                     return sent;
                 },

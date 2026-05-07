@@ -1,11 +1,14 @@
 package com.xa.mass.transport.model;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Transport-neutral task execution result reported by a worker.
+ *
+ * <p>{@code output} is a JSON-object payload boundary. Values must remain
+ * JSON-safe so result reports can round-trip through non-memory transport
+ * queues and codecs without relying on JVM-local object shapes.</p>
  */
 public final class TaskResultReport {
 
@@ -56,8 +59,8 @@ public final class TaskResultReport {
 
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
-            return Collections.emptyMap();
+            return Map.of();
         }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        return Map.copyOf(new LinkedHashMap<>(values));
     }
 }

@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -48,28 +49,55 @@ public class TaskQueryService {
         return taskManager != null ? taskManager.getTasksByStatus(status) : taskQueries.getTasksByStatus(status);
     }
 
+    /**
+     * @deprecated compatibility residue read only; avoid introducing new
+     * callers that treat {@link TaskMsg} snapshots as engine truth.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         return taskManager != null ? taskManager.getTaskMessageSnapshot(taskId, limit) : taskQueries.getTaskMessageSnapshot(taskId, limit);
     }
 
+    /**
+     * @deprecated compatibility residue read only.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getTaskMessageProjection(taskId, messageId)
                 : taskQueries.getTaskMessageProjection(taskId, messageId);
     }
 
+    /**
+     * @deprecated compatibility audit read only.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getTaskMessageAttemptAuditTrail(taskId, messageId)
                 : taskQueries.getTaskMessageAttemptAuditTrail(taskId, messageId);
     }
 
+    /**
+     * @deprecated compatibility audit read only.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getLatestTaskMessageAttemptAuditView(taskId, messageId)
                 : taskQueries.getLatestTaskMessageAttemptAuditView(taskId, messageId);
     }
 
+    /**
+     * @deprecated transitional compatibility lookup only; runtime lease state
+     * remains the active-attempt truth.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getLatestActiveAttemptProjection(taskId, messageId)

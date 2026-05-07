@@ -3,7 +3,6 @@ package com.xa.mass.transport.model;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -178,32 +177,17 @@ public final class TaskDispatchItem {
         );
     }
 
-    public Map<String, Object> mergedPayload() {
-        Map<String, Object> payload = new LinkedHashMap<>(input);
-        payload.putAll(sharedConfig);
-        payload.put("taskId", taskId);
-        payload.put("taskName", taskName);
-        payload.put("eventCode", eventCode);
-        payload.put("project", project);
-        payload.put("userId", userId);
-        payload.put("workerId", workerId);
-        payload.put("workerContextId", workerContextId);
-        payload.put("batchId", batchId);
-        payload.put("retryCount", retryCount);
-        return Collections.unmodifiableMap(payload);
-    }
-
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
-            return Collections.emptyMap();
+            return Map.of();
         }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        return Map.copyOf(new LinkedHashMap<>(values));
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> normalizeInput(TaskDispatchContext task, Map<String, Object> rawInput) {
         if (rawInput == null || rawInput.isEmpty()) {
-            return Collections.emptyMap();
+            return Map.of();
         }
         String payloadType = sdkPayloadType(task);
         if ("JSON".equals(payloadType)) {

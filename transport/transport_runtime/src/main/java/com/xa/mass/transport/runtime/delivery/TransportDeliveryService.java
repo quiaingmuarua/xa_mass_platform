@@ -5,6 +5,7 @@ import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.model.TaskDispatchWireView;
 import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.ArrayList;
@@ -52,7 +53,7 @@ public final class TransportDeliveryService {
         return deliveryStore.drain(adapterId, routeKey, maxItems);
     }
 
-    public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
         TransportDeliveryPollResult result;
         try {
             result = deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
@@ -63,10 +64,29 @@ public final class TransportDeliveryService {
         if (result.getStatus() != TransportDeliveryPollStatus.DELIVERED) {
             return List.of();
         }
-        return result.getEnvelopes().stream()
-                .map(TransportDispatchEnvelope::getPacket)
-                .map(TransportPacketViews::toTaskDispatchItem)
-                .toList();
+        return result.getEnvelopes();
+    }
+
+    public static TaskDispatchItem toDispatchItem(TransportDispatchEnvelope envelope) {
+        if (envelope == null) {
+            throw new IllegalArgumentException("envelope must not be null");
+        }
+        TaskDispatchWireView view = TransportPacketViews.dispatchWireView(envelope.getPacket());
+        return new TaskDispatchItem(
+                view.taskId(),
+                view.messageId(),
+                view.eventCode(),
+                view.taskName(),
+                view.project(),
+                view.userId(),
+                view.retryCount(),
+                envelope.getAttemptId(),
+                view.workerId(),
+                view.workerContextId(),
+                view.batchId(),
+                view.input(),
+                view.sharedConfig()
+        );
     }
 
     public TransportDeliveryServiceStats stats() {

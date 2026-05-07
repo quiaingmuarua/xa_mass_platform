@@ -14,19 +14,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class TransportDispatchEnvelopeTest {
 
     @Test
-    void constructorUsesNormalizedPacketAddressAndTraceFields() {
+    void constructorUsesNormalizedPacketAddressAndAttemptIdentity() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-1",
-                        " attempt-1 ",
+                        " trace-1 ",
                         PacketType.TASK_DISPATCH,
                         " WebSocket ",
                         " worker-1 ",
                         "task-1",
                         "msg-1",
-                        null,
+                        " attempt-1 ",
                         "crawler.fetch-page",
                         TransportPacket.JSON_CONTENT_TYPE,
                         Map.of()
@@ -36,13 +36,14 @@ class TransportDispatchEnvelopeTest {
 
         assertEquals("websocket", envelope.getAdapterId());
         assertEquals("worker-1", envelope.getRouteKey());
-        assertEquals("attempt-1", envelope.getCorrelationKey());
+        assertEquals("attempt-1", envelope.getAttemptId());
+        assertEquals("trace-1", envelope.getTraceId());
         assertEquals("delivery-1", envelope.getPacket().packetId());
         assertEquals("task-1", envelope.getPacket().taskId());
     }
 
     @Test
-    void constructorCarriesNullForBlankPacketAddressAndTraceFields() {
+    void constructorCarriesNullForBlankPacketAddressAndIdentityFields() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -64,7 +65,8 @@ class TransportDispatchEnvelopeTest {
 
         assertNull(envelope.getAdapterId());
         assertNull(envelope.getRouteKey());
-        assertNull(envelope.getCorrelationKey());
+        assertNull(envelope.getAttemptId());
+        assertNull(envelope.getTraceId());
     }
 
     @Test

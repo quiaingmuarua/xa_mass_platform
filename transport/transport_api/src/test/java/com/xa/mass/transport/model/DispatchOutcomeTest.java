@@ -23,7 +23,7 @@ class DispatchOutcomeTest {
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getRouteKey());
-        assertEquals("attempt-1", outcome.getCorrelationKey());
+        assertEquals("attempt-1", outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.SENT, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
@@ -49,7 +49,7 @@ class DispatchOutcomeTest {
         assertNull(outcome.getAdapterId());
         assertNull(outcome.getDeliveryId());
         assertNull(outcome.getRouteKey());
-        assertNull(outcome.getCorrelationKey());
+        assertNull(outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcome.getStatus());
         assertEquals("missing item", outcome.getReason());
     }
@@ -63,6 +63,7 @@ class DispatchOutcomeTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-1",
                 "worker-1",
                 "ctx-1",
                 "batch-1",

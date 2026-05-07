@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
@@ -432,7 +433,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
     }
 
-    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+    /**
+     * @deprecated compatibility residue read only; cross-module callers should
+     * use {@link TaskQueryService} if they still need bounded projection reads
+     * during migration.
+     */
+    @Deprecated
+    @CompatibilityProjectionOnly
+    TaskMsg getTaskMessageProjection(String taskId, String messageId) {
         Task task = getTask(taskId);
         TaskMsg projection = getStoredTaskMessageProjection(taskId, messageId);
         if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
@@ -450,27 +458,39 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
-    public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+    @Deprecated
+    @CompatibilityProjectionOnly
+    void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         taskDetailStore.addTaskMessage(taskId, taskMsg);
     }
 
-    public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+    @Deprecated
+    @CompatibilityProjectionOnly
+    boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
+    @Deprecated
+    @CompatibilityProjectionOnly
     public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
+    @Deprecated
+    @CompatibilityProjectionOnly
     List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
     }
 
+    @Deprecated
+    @CompatibilityProjectionOnly
     TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
         return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
+    @Deprecated
+    @CompatibilityProjectionOnly
     TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
         Task task = getTask(taskId);
         if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {

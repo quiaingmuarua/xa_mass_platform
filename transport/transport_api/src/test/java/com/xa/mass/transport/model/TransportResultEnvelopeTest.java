@@ -17,12 +17,14 @@ class TransportResultEnvelopeTest {
 
         TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
                 " WebSocket ",
+                " route-1 ",
                 " worker-1 ",
                 " endpoint-1 ",
                 report
         );
 
         assertEquals("websocket", envelope.getAdapterId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertEquals("worker-1", envelope.getWorkerId());
         assertEquals("endpoint-1", envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
@@ -37,12 +39,14 @@ class TransportResultEnvelopeTest {
     void metadataFieldsTolerateNullAndBlankValues() {
         TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
                 " ",
+                " ",
                 null,
                 "\t",
                 report()
         );
 
         assertNull(envelope.getAdapterId());
+        assertNull(envelope.getRouteKey());
         assertNull(envelope.getWorkerId());
         assertNull(envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
@@ -56,6 +60,7 @@ class TransportResultEnvelopeTest {
 
         TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchContext(
                 " Polling ",
+                " route-1 ",
                 " worker-1 ",
                 " endpoint-1 ",
                 " attempt-1 ",
@@ -63,6 +68,7 @@ class TransportResultEnvelopeTest {
         );
 
         assertEquals("polling", envelope.getAdapterId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertEquals("worker-1", envelope.getWorkerId());
         assertEquals("endpoint-1", envelope.getEndpointId());
         assertEquals("attempt-1", envelope.getAttemptId());
@@ -75,6 +81,7 @@ class TransportResultEnvelopeTest {
     void fromReportCarriesTraceIdWhenProvided() {
         TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
                 "polling",
+                "route-1",
                 "worker-1",
                 "endpoint-1",
                 " trace-123 ",
@@ -88,6 +95,7 @@ class TransportResultEnvelopeTest {
     void fromDispatchContextCarriesTraceIdWhenProvided() {
         TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchContext(
                 "polling",
+                "route-1",
                 "worker-1",
                 "endpoint-1",
                 "attempt-1",
@@ -102,7 +110,7 @@ class TransportResultEnvelopeTest {
     @Test
     void reportIsRequired() {
         assertThrows(NullPointerException.class,
-                () -> TransportResultEnvelope.fromReport("polling", "worker-1", "endpoint-1", null));
+                () -> TransportResultEnvelope.fromReport("polling", "route-1", "worker-1", "endpoint-1", null));
     }
 
     private TaskResultReport report() {

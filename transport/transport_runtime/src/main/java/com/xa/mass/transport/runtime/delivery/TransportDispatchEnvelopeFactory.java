@@ -41,14 +41,14 @@ public final class TransportDispatchEnvelopeFactory {
 
     public TransportDispatchEnvelope create(String adapterId,
                                             String routeKey,
-                                            String correlationKey,
+                                            String traceId,
                                             TaskDispatchItem payload) {
         String deliveryId = deliveryIdSupplier.get();
         TransportPacket packet = packetFactory.fromDispatchItem(
                 deliveryId,
                 adapterId,
                 routeKey,
-                correlationKey,
+                traceId,
                 payload
         );
         return new TransportDispatchEnvelope(

@@ -72,14 +72,24 @@ Rules:
 
 - do not expand shell/debug reads into pagination, analytics, or a product
   detail-query model
+- engine query seams that still return `TaskMsg`, `TaskMsgAttempt`, or
+  `TaskMessageSnapshot` should be explicitly marked compatibility-only and must
+  not be treated as the default external read API going forward
 - runtime mainline must not depend on full-message scans
 - full `TaskMsg` scans are allowed only in explicit projection-audit paths
 - `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
   for runtime-to-projection convergence, but transport result ingest no longer
   requires an active compatibility attempt row for envelope identity validation
+- runtime result convergence should prefer `TaskMsg.latestAttemptId`; when that
+  field is missing, a bounded latest-attempt audit read may be used only to
+  reuse the final audit row id, not to decide whether the runtime lease is
+  valid
 - `addTaskMessageAttempt(...)` and `updateTaskMessageAttempt(...)` are bounded
   compatibility writes only; dispatch, result convergence, and retry scheduling
   must continue from runtime truth even when these writes are missing or fail
+- result/expiry/retry paths should upsert only the bounded final/latest attempt
+  audit view rather than persisting intermediate recovered `DISPATCHED` or
+  transient `RUNNING` rows just to keep the engine mainline moving
 - callback/expiry/retry compensation may repair a bounded `TaskMsg` view in
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
