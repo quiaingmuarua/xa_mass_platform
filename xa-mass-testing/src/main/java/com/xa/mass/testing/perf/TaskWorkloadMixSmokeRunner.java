@@ -12,12 +12,10 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -31,6 +29,7 @@ import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
@@ -81,14 +80,12 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private SmokeReport run() throws Exception {
             InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-            TaskManager taskManager = new TaskManager(
-                    new NoOpTaskScheduler(),
-                    taskStorage,
-                    taskStorage,
-                    new InMemoryTaskWorkRuntime());
-            TaskCommandService taskCommands = new TaskCommandService(taskManager);
-            TaskEventService taskEvents = new TaskEventService(taskManager);
-            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
+            EngineConfig engineConfig = buildEngineConfig(taskStorage, new InMemoryTaskWorkRuntime());
+            TaskCommandService taskCommands = engineConfig.getTaskCommandService();
+            TaskEventService taskEvents = engineConfig.getTaskEventService();
+            TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+            TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
+            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
@@ -116,8 +113,6 @@ public final class TaskWorkloadMixSmokeRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
-                    new TaskManagerAssignmentRuntimePort(taskManager);
             SimpleTaskMsgAssignListener msgAssignListener =
                     new SimpleTaskMsgAssignListener(
                             assignmentRuntimePort,
@@ -135,7 +130,7 @@ public final class TaskWorkloadMixSmokeRunner {
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(new TaskManagerRuntimeMaintenancePort(taskManager), workerManager);
+                    new TaskResourceReleaseListener(maintenancePort, workerManager);
 
             try {
                 registerWorkers(workerManager, config.workerCount());
@@ -237,6 +232,16 @@ public final class TaskWorkloadMixSmokeRunner {
             dto.setInputs(buildInputs("bulk", config.bulkMessages()));
             dto.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
             return dto;
+        }
+
+        private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
+                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+            EngineConfig engineConfig = new EngineConfig();
+            engineConfig.setScheduler(new NoOpTaskScheduler());
+            engineConfig.setTaskStorage(taskStorage);
+            engineConfig.setTaskDetailStore(taskStorage);
+            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
+            return engineConfig;
         }
 
         private static TaskCreateRequestDto buildInteractiveRequest(SmokeConfig config) {

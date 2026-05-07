@@ -5,6 +5,8 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
@@ -83,6 +85,18 @@ public class XaMassServerApplication {
 
     @Value("${mass.runtime.redis.max-queued-items:1000000}")
     private int runtimeRedisMaxQueuedItems;
+
+    @Value("${mass.transport.delivery.store:memory}")
+    private String transportDeliveryStore;
+
+    @Value("${mass.transport.delivery.max-queued-items:100000}")
+    private int transportDeliveryMaxQueuedItems;
+
+    @Value("${mass.transport.delivery.max-items-per-route:10000}")
+    private int transportDeliveryMaxItemsPerRoute;
+
+    @Value("${mass.transport.delivery.redis.namespace:xa:mass:transport:delivery:v1}")
+    private String transportDeliveryRedisNamespace;
 
     @Value("${mass.storage.mode:memory}")
     private String storageMode;
@@ -174,7 +188,12 @@ public class XaMassServerApplication {
         }
         return builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
-                .transport(transport -> transport
+                .transport(transport -> {
+                    java.util.function.Supplier<TransportDeliveryStore> deliveryStoreFactory =
+                            resolveTransportDeliveryStoreFactory();
+                    transport
+                        .maxDeliveryQueuedItems(transportDeliveryMaxQueuedItems)
+                        .maxDeliveryItemsPerRoute(transportDeliveryMaxItemsPerRoute)
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(massWebSocketPort)
                                 .enabled(true)
@@ -185,10 +204,14 @@ public class XaMassServerApplication {
                                 .server(massSocketPort)
                                 .maxConnections(maxConnections))
                         .transportRuntimeMaxPendingTasks(transportRuntimeMaxPendingTasks)
-                        .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
-                        .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
+                                .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
+                                .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
+                                .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                                .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class));
+                    if (deliveryStoreFactory != null) {
+                        transport.deliveryStoreFactory(deliveryStoreFactory);
+                    }
+                })
                 .engine(engine -> {
                     engine.enabled(true)
                             .workerThreads(workerThreads)
@@ -293,6 +316,24 @@ public class XaMassServerApplication {
         }
         uri.append(redisHost).append(':').append(redisPort).append('/').append(Math.max(0, redisDatabase));
         return uri.toString();
+    }
+
+    private java.util.function.Supplier<TransportDeliveryStore> resolveTransportDeliveryStoreFactory() {
+        String normalizedMode = transportDeliveryStore == null
+                ? "memory"
+                : transportDeliveryStore.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedMode) {
+            case "", "memory" -> null;
+            case "redis" -> () -> new RedisTransportDeliveryStore(
+                    redisUri(),
+                    transportDeliveryRedisNamespace,
+                    transportDeliveryMaxQueuedItems,
+                    transportDeliveryMaxItemsPerRoute
+            );
+            default -> throw new IllegalArgumentException(
+                    "Unsupported mass.transport.delivery.store: " + transportDeliveryStore
+            );
+        };
     }
 
 }

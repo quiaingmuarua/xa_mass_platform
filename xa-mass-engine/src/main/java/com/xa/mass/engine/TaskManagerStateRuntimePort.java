@@ -15,9 +15,12 @@ import java.util.List;
 final class TaskManagerStateRuntimePort implements TaskStateRuntimePort {
 
     private final TaskManager taskManager;
+    private final TaskProjectionBridge taskProjectionBridge;
 
-    TaskManagerStateRuntimePort(TaskManager taskManager) {
+    TaskManagerStateRuntimePort(TaskManager taskManager,
+                                TaskProjectionBridge taskProjectionBridge) {
         this.taskManager = taskManager;
+        this.taskProjectionBridge = taskProjectionBridge;
     }
 
     @Override
@@ -47,12 +50,12 @@ final class TaskManagerStateRuntimePort implements TaskStateRuntimePort {
 
     @Override
     public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-        return taskManager.getTaskMessages(taskId);
+        return taskProjectionBridge.getTaskMessages(taskId);
     }
 
     @Override
     public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskManager.getTaskMessageAttemptStats(taskId, messageId);
+        return taskProjectionBridge.getTaskMessageAttemptStats(taskId, messageId);
     }
 }
 

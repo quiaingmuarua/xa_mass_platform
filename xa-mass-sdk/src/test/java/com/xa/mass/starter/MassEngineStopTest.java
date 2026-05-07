@@ -156,8 +156,8 @@ class MassEngineStopTest {
 
     @SuppressWarnings("unchecked")
     private int listenerCount(EngineConfig config, String fieldName) {
-        Object taskManager = config.getTaskManager();
-        Object eventPublisher = readField(taskManager, "eventPublisher");
+        Object taskEvents = config.getTaskEventService();
+        Object eventPublisher = readField(taskEvents, "registrar");
         return ((List<Object>) readField(eventPublisher, fieldName)).size();
     }
 

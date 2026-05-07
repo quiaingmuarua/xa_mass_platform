@@ -95,7 +95,7 @@ public class MassEngine {
             WorkerManager workerManager = config.getWorkerManager();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
-            TraceEventLogger traceEventLogger = config.getTaskManager().traceEvents();
+            TraceEventLogger traceEventLogger = config.getTraceEventLogger();
             var msgAssignListener = new SimpleTaskMsgAssignListener(
                     assignmentRuntimePort,
                     workerManager,

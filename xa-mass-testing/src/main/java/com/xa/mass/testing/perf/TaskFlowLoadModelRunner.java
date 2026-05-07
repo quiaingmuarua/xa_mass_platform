@@ -10,12 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -31,6 +29,7 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
@@ -91,14 +90,12 @@ public final class TaskFlowLoadModelRunner {
 
         private LoadReport run() throws Exception {
             InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
-            TaskManager taskManager = new TaskManager(
-                    new NoOpTaskScheduler(),
-                    taskStorage,
-                    taskStorage,
-                    new InMemoryTaskWorkRuntime());
-            TaskCommandService taskCommands = new TaskCommandService(taskManager);
-            TaskEventService taskEvents = new TaskEventService(taskManager);
-            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
+            EngineConfig engineConfig = buildEngineConfig(taskStorage, new InMemoryTaskWorkRuntime());
+            TaskCommandService taskCommands = engineConfig.getTaskCommandService();
+            TaskEventService taskEvents = engineConfig.getTaskEventService();
+            TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+            TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
+            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             CallbackMetrics callbackMetrics = new CallbackMetrics();
@@ -165,8 +162,6 @@ public final class TaskFlowLoadModelRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
-                    new TaskManagerAssignmentRuntimePort(taskManager);
             SimpleTaskMsgAssignListener msgAssignListener =
                     new SimpleTaskMsgAssignListener(
                             assignmentRuntimePort,
@@ -185,7 +180,7 @@ public final class TaskFlowLoadModelRunner {
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             MeasuredTaskResourceReleaseListener releaseListener =
                     new MeasuredTaskResourceReleaseListener(
-                            new TaskManagerRuntimeMaintenancePort(taskManager),
+                            maintenancePort,
                             workerManager,
                             releaseMetrics
                     );
@@ -282,6 +277,16 @@ public final class TaskFlowLoadModelRunner {
             dto.setInputs(buildInputs(config.messageCount()));
             dto.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
             return dto;
+        }
+
+        private static EngineConfig buildEngineConfig(InstrumentedTaskStorage taskStorage,
+                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+            EngineConfig engineConfig = new EngineConfig();
+            engineConfig.setScheduler(new NoOpTaskScheduler());
+            engineConfig.setTaskStorage(taskStorage);
+            engineConfig.setTaskDetailStore(taskStorage);
+            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
+            return engineConfig;
         }
 
         private static List<Map<String, Object>> buildInputs(int messageCount) {
@@ -415,7 +420,7 @@ public final class TaskFlowLoadModelRunner {
     private static final class MeasuredTaskResourceReleaseListener extends TaskResourceReleaseListener {
         private final ReleaseMetrics metrics;
 
-        private MeasuredTaskResourceReleaseListener(TaskManagerRuntimeMaintenancePort maintenancePort,
+        private MeasuredTaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
                                                     WorkerManager workerManager,
                                                     ReleaseMetrics metrics) {
             super(maintenancePort, workerManager);

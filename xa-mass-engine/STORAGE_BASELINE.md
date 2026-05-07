@@ -88,6 +88,9 @@ Current implementation facts that matter architecturally:
 
 - SDK/server embed the storage implementations explicitly
 - engine depends on contracts only
+- engine reaches `TaskDetailStore` through an internal `TaskProjectionBridge`
+  so runtime ports can consume bounded projection helpers without growing
+  `TaskManager` into the default detail-store facade
 - the JDBC path is a control-plane adapter, not a `TaskMsg` analytics backend
 - in-memory helper indexes are allowed when they protect hot paths from full
   scans, but they remain helper indexes rather than second lifecycle truth

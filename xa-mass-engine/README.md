@@ -57,6 +57,14 @@ Keep these facts fixed unless the owning global baselines change:
   reconciliation
 - `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
   including enqueue, claim, lease, and discard/apply helpers
+- `TaskProjectionBridge` owns engine-side access to the bounded
+  `TaskDetailStore` compatibility projection so lifecycle/result/assignment
+  ports do not default to `TaskManager` reach-through for detail access
+- `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
+  shell-facing command/query services; keep those services off raw
+  `TaskManager` growth even when compatibility constructors remain
+- `TaskResultIngestPort` is the narrow backing seam for transport-facing
+  result ingress; keep callback acceptance off the raw `TaskManager` facade
 - `TaskAssignWorker` owns lane-local assignment signal admission; queue-full
   pressure must converge through internal retry/defer behavior instead of
   silently dropping `READY` / redispatch signals
@@ -167,6 +175,8 @@ Engine-local owner docs:
 
 - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md):
   current policy ownership and precedence
+- [`RUNTIME_BOUNDARY_BASELINE.md`](./RUNTIME_BOUNDARY_BASELINE.md):
+  current runtime cutover, recovery, and truth-layer boundary
 - [`STORAGE_BASELINE.md`](./STORAGE_BASELINE.md):
   current engine-facing storage/runtime boundary
 - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md):

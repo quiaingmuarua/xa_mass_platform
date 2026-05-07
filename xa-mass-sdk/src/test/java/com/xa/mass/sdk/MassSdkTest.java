@@ -1337,34 +1337,14 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigRejectsSchedulerMismatchAfterTaskManagerIsConfigured() {
+    void engineConfigRejectsSchedulerMismatchAfterEngineAssemblyIsMaterialized() {
         EngineConfig config = new EngineConfig();
         SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
         config.setScheduler(scheduler);
-        config.setTaskManager(new com.xa.mass.engine.TaskManager(
-                scheduler,
-                storage,
-                storage,
-                new InMemoryTaskWorkRuntime()
-        ));
+        config.getTaskCommandService();
 
         assertThrows(IllegalStateException.class,
                 () -> config.setScheduler(new SimpleTaskScheduler()));
-    }
-
-    @Test
-    void engineConfigRejectsTaskManagerSchedulerMismatchAfterSchedulerIsConfigured() {
-        EngineConfig config = new EngineConfig();
-        config.setScheduler(new SimpleTaskScheduler());
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
-
-        assertThrows(IllegalArgumentException.class,
-                () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(
-                        new SimpleTaskScheduler(),
-                        storage,
-                        storage,
-                        new InMemoryTaskWorkRuntime())));
     }
 
     @Test
@@ -1373,17 +1353,21 @@ class MassSdkTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
 
         config.setTaskWorkRuntime(runtime);
-
-        TaskManager taskManager = config.getTaskManager();
-
         assertSame(runtime, config.getTaskWorkRuntime());
-        assertSame(runtime, taskManager.getTaskWorkRuntime());
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("runtime-assembly");
+        dto.setProject("demoApp");
+        dto.setUserId("sdk-test");
+        dto.setInputs(List.of(Map.of("target", "alpha")));
+        dto.setBatchSize(1);
+        Task task = config.getTaskCommandService().createTask(dto);
+        assertEquals(1, runtime.stats(task.getTid()).readyCount());
     }
 
     @Test
     void engineConfigRejectsTaskWorkRuntimeMismatchAfterTaskManagerIsConfigured() {
         EngineConfig config = new EngineConfig();
-        config.getTaskManager();
+        config.getTaskCommandService();
 
         assertThrows(IllegalStateException.class,
                 () -> config.setTaskWorkRuntime(new InMemoryTaskWorkRuntime()));
@@ -1405,36 +1389,12 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigResetsRuntimeBoundariesWhenTaskManagerChanges() {
-        EngineConfig config = new EngineConfig();
-
-        TaskResultIngestFacade oldResultIngestFacade = config.getTaskResultIngestFacade();
-        TaskAssignmentRuntimePort oldAssignmentRuntimePort = config.getTaskAssignmentRuntimePort();
-        TaskRuntimeMaintenancePort oldRuntimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
-        TaskRuntimeRecoveryPort oldRuntimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
-
-        InMemoryTaskStorage replacementStorage = new InMemoryTaskStorage();
-        TaskManager replacement = new TaskManager(
-                config.getScheduler(),
-                replacementStorage,
-                replacementStorage,
-                new InMemoryTaskWorkRuntime()
-        );
-        config.setTaskManager(replacement);
-
-        assertNotSame(oldResultIngestFacade, config.getTaskResultIngestFacade());
-        assertNotSame(oldAssignmentRuntimePort, config.getTaskAssignmentRuntimePort());
-        assertNotSame(oldRuntimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
-        assertNotSame(oldRuntimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
-    }
-
-    @Test
     void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskStorage() {
         EngineConfig config = new EngineConfig();
 
         config.setTaskStorage(new InMemoryTaskStorage());
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskManager);
+        IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskCommandService);
         assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
                 error.getMessage());
     }

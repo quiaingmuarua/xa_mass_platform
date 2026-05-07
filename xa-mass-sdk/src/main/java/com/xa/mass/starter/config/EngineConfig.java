@@ -39,9 +39,9 @@ import java.util.Map;
 /**
  * Runtime engine configuration.
  *
- * <p>`TaskManager` injection is kept as an assembly seam. Downstream runtime
+ * <p>This config owns the embedded engine assembly state. Downstream runtime
  * code should prefer the derived command/query/facade/port surfaces exposed by
- * this config rather than carrying the raw manager farther. Worker/rule
+ * this config rather than carrying raw engine assembly internals. Worker/rule
  * managers are derived helpers over storage contracts, not independent config
  * slots with their own truth.
  */
@@ -59,6 +59,7 @@ public class EngineConfig {
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
+    private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private TaskStorage taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
@@ -132,8 +133,8 @@ public class EngineConfig {
         if (scheduler == null) {
             throw new IllegalArgumentException("scheduler must not be null");
         }
-        if (this.taskManager != null && this.taskManager.getScheduler() != scheduler) {
-            throw new IllegalStateException("Cannot replace scheduler after taskManager has been configured");
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace scheduler after engine assembly has been materialized");
         }
         this.scheduler = scheduler;
     }
@@ -144,37 +145,6 @@ public class EngineConfig {
 
     public void setMatchingStrategy(TaskWorkerMatchingStrategy matchingStrategy) {
         this.matchingStrategy = matchingStrategy;
-    }
-
-    public TaskManager getTaskManager() {
-        return ensureTaskManager();
-    }
-
-    public void setTaskManager(TaskManager taskManager) {
-        if (taskManager == null) {
-            this.taskManager = null;
-            this.taskCommandService = null;
-            this.taskEventService = null;
-            this.taskQueryService = null;
-            this.taskResultIngestFacade = null;
-            this.taskAssignmentRuntimePort = null;
-            this.taskRuntimeMaintenancePort = null;
-            this.taskRuntimeRecoveryPort = null;
-            return;
-        }
-        if (taskManager.getScheduler() != scheduler) {
-            throw new IllegalArgumentException("Configured taskManager must use the same scheduler as EngineConfig");
-        }
-        this.taskManager = taskManager;
-        this.taskWorkRuntime = taskManager.getTaskWorkRuntime();
-        this.taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
-        this.taskCommandService = null;
-        this.taskEventService = null;
-        this.taskQueryService = null;
-        this.taskResultIngestFacade = null;
-        this.taskAssignmentRuntimePort = null;
-        this.taskRuntimeMaintenancePort = null;
-        this.taskRuntimeRecoveryPort = null;
     }
 
     public TaskCommandService getTaskCommandService() {
@@ -226,6 +196,13 @@ public class EngineConfig {
         return taskRuntimeRecoveryPort;
     }
 
+    public com.xa.mass.engine.util.TraceEventLogger getTraceEventLogger() {
+        if (traceEventLogger == null) {
+            traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(getExecutionEventSink());
+        }
+        return traceEventLogger;
+    }
+
     public TaskWorkRuntime getTaskWorkRuntime() {
         return taskWorkRuntime;
     }
@@ -234,8 +211,8 @@ public class EngineConfig {
         if (taskWorkRuntime == null) {
             throw new IllegalArgumentException("taskWorkRuntime must not be null");
         }
-        if (this.taskManager != null && this.taskManager.getTaskWorkRuntime() != taskWorkRuntime) {
-            throw new IllegalStateException("Cannot replace taskWorkRuntime after taskManager has been configured");
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace taskWorkRuntime after engine assembly has been materialized");
         }
         this.taskWorkRuntime = taskWorkRuntime;
     }
@@ -323,7 +300,11 @@ public class EngineConfig {
         if (executionEventSink == null) {
             throw new IllegalArgumentException("executionEventSink must not be null");
         }
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace executionEventSink after engine assembly has been materialized");
+        }
         this.executionEventSink = executionEventSink;
+        this.traceEventLogger = null;
     }
 
     public EngineRuntimeBridge getRuntimeBridge() {

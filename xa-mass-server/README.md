@@ -224,6 +224,10 @@ Observability:
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
+| `mass.transport.delivery.store` | `memory` | embedded transport delivery-store backend; `memory` or `redis` |
+| `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
+| `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
+| `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
 | `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
@@ -239,6 +243,9 @@ JDBC storage scope:
 - default runtime stays `memory`; opt into H2 explicitly with
   `mass.storage.mode=jdbc-h2`
 - opt into PostgreSQL with `mass.storage.mode=jdbc-postgres`
+- task-work runtime backend and transport delivery-store backend are configured
+  separately; `mass.runtime.mode` controls engine work runtime, while
+  `mass.transport.delivery.store` controls dispatch queue backend
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`

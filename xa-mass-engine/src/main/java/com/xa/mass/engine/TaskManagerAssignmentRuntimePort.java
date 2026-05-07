@@ -20,9 +20,16 @@ import java.util.List;
 public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRuntimePort {
 
     private final TaskManager taskManager;
+    private final TaskProjectionBridge taskProjectionBridge;
 
     public TaskManagerAssignmentRuntimePort(TaskManager taskManager) {
+        this(taskManager, taskManager.projectionBridge());
+    }
+
+    public TaskManagerAssignmentRuntimePort(TaskManager taskManager,
+                                            TaskProjectionBridge taskProjectionBridge) {
         this.taskManager = taskManager;
+        this.taskProjectionBridge = taskProjectionBridge;
     }
 
     @Override
@@ -37,22 +44,22 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
 
     @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager.getTaskMessage(taskId, messageId);
+        return taskProjectionBridge.getTaskMessage(taskId, messageId);
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskManager.updateTaskMessage(taskId, taskMsg);
+        return taskProjectionBridge.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+        return taskProjectionBridge.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskProjectionBridge.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override

@@ -1,0 +1,121 @@
+# Runtime Boundary Baseline
+
+Status: current engine runtime boundary baseline.
+
+This file freezes the engine-side runtime boundary so memory and Redis can
+share one behavioral contract without turning storage, projection, or starter
+assembly into a second runtime truth.
+
+Use with:
+
+- [README.md](./README.md)
+- [STORAGE_BASELINE.md](./STORAGE_BASELINE.md)
+- [../doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
+- [../platform_infra/README.md](../platform_infra/README.md)
+
+## Scope
+
+This baseline only covers the engine-facing runtime boundary:
+
+- what `TaskWorkRuntime` owns
+- what storage and compatibility projection do not own
+- what runtime switching does and does not promise
+- what recovery paths may infer from runtime truth
+
+It does not redesign transport, public API shape, or future trace-sink
+implementation.
+
+## Runtime Truth
+
+`TaskWorkRuntime` is the only runtime truth for:
+
+- ready queue membership
+- delayed visibility / retry re-entry timing
+- exclusive claim ownership
+- active lease identity and expiry
+- runtime backpressure and queue-admission rejection
+- per-task runtime counters used by engine progress convergence
+
+Engine hot paths must treat these runtime semantics as authoritative:
+
+- `enqueue(...)` is the runtime-owned admission point for logical work
+- `readyTaskIds(limit)` is the startup and redispatch recovery surface
+- `claimReady(...)` is the exclusive runtime claim path
+- `applyResult(...)` is the only runtime result convergence path
+- `pollExpiredLeases(...)` reports runtime expiry truth
+- `discardTask(...)` removes runtime residue without redefining storage truth
+
+## Storage And Projection Non-Truth
+
+`TaskStorage` owns control-plane shell truth only:
+
+- `Task` shell state
+- worker / worker-context registration truth
+- rule definition truth
+
+`TaskDetailStore` remains bounded compatibility residue only. It may support:
+
+- projection repair
+- active-attempt compatibility lookup
+- bounded shell/debug reads
+- focused tests and audit helpers
+
+It must not redefine:
+
+- ready queue truth
+- lease truth
+- retry visibility truth
+- startup recovery truth
+- task progress correctness in place of runtime counters
+
+## Cutover Semantics
+
+Runtime implementation choice belongs to startup assembly, not to engine
+callers. Engine depends on `TaskWorkRuntime`; starter wiring chooses memory or
+Redis.
+
+Current truth:
+
+- code paths are implementation-agnostic once a `TaskWorkRuntime` is injected
+- runtime implementation is selected before `TaskManager` assembly
+- runtime implementation must not be replaced after `TaskManager` is configured
+- memory -> Redis is an explicit cutover, not an online hot-switch contract
+
+Do not describe runtime selection as seamless state migration unless backlog,
+delay, and lease transfer semantics are explicitly implemented and verified.
+
+## Recovery Rules
+
+Startup or replay recovery must trust runtime truth first:
+
+- dispatch recovery reads `TaskWorkRuntime.readyTaskIds(limit)`
+- storage task status alone must not imply dispatchable runtime work
+- runtime task ids missing from storage are filtered as residue, not promoted
+  into synthetic storage truth
+
+Recovery must not rely on:
+
+- scanning full `TaskMsg` projections to reconstruct queue truth
+- inferring ready work from `TaskStatus.READY` alone
+- replaying projection history into runtime on every startup
+
+## Forbidden Drift
+
+Do not add these regressions:
+
+- a second engine runtime facade beside `TaskWorkRuntime`
+- projection-driven recovery or finality correctness
+- storage scans in hot paths to reconstruct ready queues
+- starter or transport code that mutates runtime truth outside the contract
+- docs that imply runtime implementation switching is hot or automatic
+
+## Current Residue
+
+Current bounded residue that remains acceptable:
+
+- `TaskMsg` and `TaskMsgAttempt` compatibility projection
+- active-attempt projection repair when runtime lease exists but projection is
+  missing
+- bounded debug reads exposed by shell-facing query services
+
+These are current compatibility facts, not target runtime truth.

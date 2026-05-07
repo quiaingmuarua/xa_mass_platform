@@ -21,54 +21,58 @@ import java.util.Objects;
  */
 public class TaskQueryService {
 
-    private final TaskManager taskManager;
+    private final TaskQueryPort taskQueries;
 
     public TaskQueryService(TaskManager taskManager) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
+        this(new TaskManagerQueryPort(taskManager));
+    }
+
+    public TaskQueryService(TaskQueryPort taskQueries) {
+        this.taskQueries = Objects.requireNonNull(taskQueries, "taskQueries");
     }
 
     public Task getTask(String taskId) {
-        return taskManager.getTask(taskId);
+        return taskQueries.getTask(taskId);
     }
 
     public List<Task> listTasksPaged(int offset, int limit) {
-        return taskManager.listTasksPaged(offset, limit);
+        return taskQueries.listTasksPaged(offset, limit);
     }
 
     public List<Task> getTasksByStatus(TaskStatus status) {
-        return taskManager.getTasksByStatus(status);
+        return taskQueries.getTasksByStatus(status);
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskManager.getTaskMessages(taskId, limit);
+        return taskQueries.getTaskMessages(taskId, limit);
     }
 
     public long countTaskMessages(String taskId) {
-        return taskManager.countTaskMessages(taskId);
+        return taskQueries.countTaskMessages(taskId);
     }
 
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager.getTaskMessage(taskId, messageId);
+        return taskQueries.getTaskMessage(taskId, messageId);
     }
 
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskManager.getTaskMessageAttempts(taskId, messageId);
+        return taskQueries.getTaskMessageAttempts(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+        return taskQueries.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return taskQueries.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return taskManager.resolveTaskState(taskId);
+        return taskQueries.resolveTaskState(taskId);
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return taskManager.validateTaskState(taskId);
+        return taskQueries.validateTaskState(taskId);
     }
 
 }

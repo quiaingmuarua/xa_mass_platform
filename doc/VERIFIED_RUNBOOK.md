@@ -136,7 +136,7 @@ Assignment and dispatch:
 Result write-back and closure:
 
 - Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
-- `RuntimeTaskResultIngestChannel` writes results through `TaskManager.handleTaskMessageResult(...)`.
+- `RuntimeTaskResultIngestChannel` writes results through the engine result-ingest facade (`TaskResultIngestFacade` / `TaskManagerResultIngestFacade`).
 - callbacks must resolve a unique active `TaskMsgAttempt`.
 - retryable failure closes the attempt, resets the logical message to `INIT`, and does not publish logical-final semantics.
 - success, retry exhaustion, expiry, and manual terminal drain close the logical message.

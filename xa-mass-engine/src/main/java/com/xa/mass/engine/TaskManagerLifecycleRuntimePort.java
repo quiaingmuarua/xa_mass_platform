@@ -16,9 +16,12 @@ import java.util.List;
 final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort {
 
     private final TaskManager taskManager;
+    private final TaskProjectionBridge taskProjectionBridge;
 
-    TaskManagerLifecycleRuntimePort(TaskManager taskManager) {
+    TaskManagerLifecycleRuntimePort(TaskManager taskManager,
+                                    TaskProjectionBridge taskProjectionBridge) {
         this.taskManager = taskManager;
+        this.taskProjectionBridge = taskProjectionBridge;
     }
 
     @Override
@@ -98,7 +101,7 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
 
     @Override
     public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskManager.getNonFinalTaskMessages(taskId);
+        return taskProjectionBridge.getNonFinalTaskMessages(taskId);
     }
 
     @Override
@@ -108,27 +111,27 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskManager.updateTaskMessage(taskId, taskMsg);
+        return taskProjectionBridge.updateTaskMessage(taskId, taskMsg);
     }
 
     @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskManager.updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskProjectionBridge.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskProjectionBridge.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestTaskMessageAttempt(taskId, messageId);
+        return taskProjectionBridge.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return taskProjectionBridge.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 }
 

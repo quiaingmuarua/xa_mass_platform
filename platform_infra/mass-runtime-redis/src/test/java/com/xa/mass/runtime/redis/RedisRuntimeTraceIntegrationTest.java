@@ -8,8 +8,10 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyStatus;
@@ -50,6 +52,7 @@ class RedisRuntimeTraceIntegrationTest {
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private TaskManagerResultIngestFacade resultFacade;
+    private TaskRuntimeMaintenancePort maintenancePort;
     private RecordingExecutionEventSink traceSink;
     private AtomicReference<Instant> now;
 
@@ -76,6 +79,7 @@ class RedisRuntimeTraceIntegrationTest {
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         resultFacade = new TaskManagerResultIngestFacade(taskManager);
+        maintenancePort = new TaskManagerRuntimeMaintenancePort(taskManager);
     }
 
     @AfterEach
@@ -208,7 +212,7 @@ class RedisRuntimeTraceIntegrationTest {
     void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
 
-        boolean expired = taskManager.expireTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
+        boolean expired = maintenancePort.expireTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
 
         assertTrue(expired);
         TaskMsg updated = taskQueries.getTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());

@@ -11,10 +11,14 @@ import java.util.Map;
  */
 public final class TaskManagerResultIngestFacade implements TaskResultIngestFacade {
 
-    private final TaskManager taskManager;
+    private final TaskResultIngestPort resultIngestPort;
 
     public TaskManagerResultIngestFacade(TaskManager taskManager) {
-        this.taskManager = taskManager;
+        this(new TaskManagerResultIngestPort(taskManager));
+    }
+
+    public TaskManagerResultIngestFacade(TaskResultIngestPort resultIngestPort) {
+        this.resultIngestPort = resultIngestPort;
     }
 
     @Override
@@ -24,11 +28,11 @@ public final class TaskManagerResultIngestFacade implements TaskResultIngestFaca
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        return taskManager.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
+        return resultIngestPort.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
     }
 
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return resultIngestPort.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 }

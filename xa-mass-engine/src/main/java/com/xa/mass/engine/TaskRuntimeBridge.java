@@ -43,6 +43,9 @@ final class TaskRuntimeBridge {
         if (limit <= 0) {
             return List.of();
         }
+        // Recovery trusts runtime-ready truth first and only resolves the
+        // surviving task shells from storage. Missing shells are treated as
+        // residue, not as a reason to infer readiness from storage status.
         return taskWorkRuntime.readyTaskIds(limit).stream()
                 .map(taskId -> taskStorage.getTask(taskId).orElse(null))
                 .filter(task -> task != null)

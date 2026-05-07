@@ -225,7 +225,8 @@ Must hold:
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
 - **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
-  `TaskManager.expireTaskMessage()`. This always marks the concrete compatibility attempt `EXPIRED` and publishes
+  the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireTaskMessage(...)`). This always marks the
+  concrete compatibility attempt `EXPIRED` and publishes
   `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset
   `EXPIRED -> INIT`, `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without
   `taskMessageLogicallyFinal`. If retry budget is exhausted, the logical message stays `EXPIRED` and

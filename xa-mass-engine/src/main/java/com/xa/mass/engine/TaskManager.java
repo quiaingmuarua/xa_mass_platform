@@ -60,6 +60,7 @@ public class TaskManager {
 
     private final TaskStorage taskStorage;
     private final TaskDetailStore taskDetailStore;
+    private final TaskProjectionBridge taskProjectionBridge;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -106,12 +107,19 @@ public class TaskManager {
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        this.taskProjectionBridge = new TaskProjectionBridge(taskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
         this.eventPublisher = new TaskEventPublisher();
-        this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this), traceEventLogger);
-        this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this), traceEventLogger);
+        this.stateResolver = new TaskStateResolver(
+                new TaskManagerStateRuntimePort(this, taskProjectionBridge),
+                traceEventLogger
+        );
+        this.stateValidator = new TaskStateValidator(
+                new TaskManagerStateRuntimePort(this, taskProjectionBridge),
+                traceEventLogger
+        );
         this.taskRuntimeBridge = new TaskRuntimeBridge(
                 taskStorage,
                 requiredTaskWorkRuntime,
@@ -128,12 +136,12 @@ public class TaskManager {
                 new LocalDelayedDispatchSchedule()
         );
         this.lifecycleService = new TaskLifecycleService(
-                new TaskManagerLifecycleRuntimePort(this),
+                new TaskManagerLifecycleRuntimePort(this, taskProjectionBridge),
                 stateResolver,
                 traceEventLogger
         );
         this.resultService = new TaskResultService(
-                new TaskManagerResultRuntimePort(this),
+                new TaskManagerResultRuntimePort(this, taskProjectionBridge),
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -349,7 +357,7 @@ public class TaskManager {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        taskDetailStore.addTaskMessage(taskId, taskMsg);
+        taskProjectionBridge.addTaskMessage(taskId, taskMsg);
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -360,7 +368,7 @@ public class TaskManager {
      * business-detail path.
      */
     List<TaskMsg> getTaskMessages(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
+        return taskProjectionBridge.getTaskMessages(taskId);
     }
 
     /**
@@ -368,39 +376,39 @@ public class TaskManager {
      * analysis contract.
      */
     List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskDetailStore.getTaskMessages(taskId, limit);
+        return taskProjectionBridge.getTaskMessages(taskId, limit);
     }
 
     long countTaskMessages(String taskId) {
-        return taskDetailStore.countTaskMessages(taskId);
+        return taskProjectionBridge.countTaskMessages(taskId);
     }
 
     TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
+        return taskProjectionBridge.getTaskMessage(taskId, messageId);
     }
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
+        return taskProjectionBridge.updateTaskMessage(taskId, taskMsg);
     }
 
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskProjectionBridge.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
+        return taskProjectionBridge.getTaskMessageAttempts(taskId, messageId);
     }
 
     TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskProjectionBridge.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskProjectionBridge.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskProjectionBridge.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     public long getTaskMessageLeaseSeconds() {
@@ -417,7 +425,7 @@ public class TaskManager {
     /**
      * Expires a single in-flight task message and recalculates task convergence.
      */
-    public boolean expireTaskMessage(String taskId, String messageId) {
+    boolean expireTaskMessage(String taskId, String messageId) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.expireTaskMessage(taskId, messageId));
         if (outcome.progressDirty()) {
@@ -430,11 +438,11 @@ public class TaskManager {
      * Returns the current persisted task-message aggregate for a task.
      */
     TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
-        return taskDetailStore.getTaskMessageStats(taskId);
+        return taskProjectionBridge.getTaskMessageStats(taskId);
     }
 
     List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskDetailStore.getNonFinalTaskMessages(taskId);
+        return taskProjectionBridge.getNonFinalTaskMessages(taskId);
     }
 
     int countPendingDispatchableMessages(String taskId) {
@@ -470,7 +478,7 @@ public class TaskManager {
     }
 
     TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+        return taskProjectionBridge.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     boolean deleteTaskRecord(String taskId) {
@@ -516,8 +524,12 @@ public class TaskManager {
         return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
     }
 
-    public TaskScheduler getScheduler() {
+    TaskScheduler getScheduler() {
         return this.taskScheduler;
+    }
+
+    TaskProjectionBridge projectionBridge() {
+        return taskProjectionBridge;
     }
 
     /**
@@ -535,7 +547,7 @@ public class TaskManager {
         taskRuntimeBridge.shutdown();
     }
 
-    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
+    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
@@ -544,7 +556,7 @@ public class TaskManager {
         return outcome.accepted();
     }
 
-    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
@@ -553,12 +565,12 @@ public class TaskManager {
         return outcome.accepted();
     }
 
-    public boolean handleTaskMessageResult(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
+    boolean handleTaskMessageResult(String taskId,
+                                    String messageId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
@@ -637,11 +649,11 @@ public class TaskManager {
         return sourceRef.trim();
     }
 
-    public TaskWorkRuntime getTaskWorkRuntime() {
+    TaskWorkRuntime getTaskWorkRuntime() {
         return taskRuntimeBridge.runtime();
     }
 
-    public com.xa.mass.engine.util.TraceEventLogger traceEvents() {
+    com.xa.mass.engine.util.TraceEventLogger traceEvents() {
         return traceEventLogger;
     }
 
