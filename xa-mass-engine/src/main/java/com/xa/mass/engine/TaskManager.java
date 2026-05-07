@@ -356,19 +356,37 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                       String messageId,
                       java.util.Map<String, Object> input,
                       int maxRetryCount) {
+        addRuntimeIngressItem(RuntimeTaskIngressItem.fromInput(taskId, messageId, input, maxRetryCount));
+    }
+
+    void addTaskPayloadRef(String taskId,
+                           String messageId,
+                           String payloadRef,
+                           int maxRetryCount) {
+        addRuntimeIngressItem(new RuntimeTaskIngressItem(
+                taskId,
+                messageId,
+                Map.of(),
+                payloadRef,
+                0,
+                maxRetryCount
+        ));
+    }
+
+    private void addRuntimeIngressItem(RuntimeTaskIngressItem ingressItem) {
+        String taskId = ingressItem.taskId();
+        String messageId = ingressItem.messageId();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId,
                 "messageId", messageId);
 
-        WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, messageId, input, 0, maxRetryCount);
+        WorkEnqueueOutcome outcome = enqueueTaskWork(ingressItem);
         if (!taskRuntimeBridge.isTaskWorkEnqueueAccepted(outcome)) {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
-        taskMsg.setMaxRetryCount(maxRetryCount);
-        addTaskMessageProjection(taskId, taskMsg);
+        addTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -401,7 +419,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return new TaskMessageSnapshot(snapshot, boundedLimit, truncated);
     }
 
-    public TaskMsg getTaskMessage(String taskId, String messageId) {
+    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+        return CompatibilityProjectionSupport.overlayTerminalTaskView(
+                getTask(taskId),
+                getStoredTaskMessageProjection(taskId, messageId)
+        );
+    }
+
+    TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
@@ -409,7 +434,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         taskDetailStore.addTaskMessage(taskId, taskMsg);
     }
 
-    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
+    public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
@@ -433,23 +458,23 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     @Override
-    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+    public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+    List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
     }
 
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+    TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
         return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+    TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
         return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+    boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
@@ -482,10 +507,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      */
     TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
         return taskDetailStore.getTaskMessageStats(taskId);
-    }
-
-    List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskDetailStore.getNonFinalTaskMessages(taskId);
     }
 
     @Override
@@ -784,13 +805,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         }
     }
 
-    private WorkEnqueueOutcome enqueueTaskWork(String taskId,
-                                               String messageId,
-                                               java.util.Map<String, Object> input,
-                                               int retryCount,
-                                               int maxRetryCount) {
-        return taskRuntimeBridge.enqueueTaskWork(taskId, messageId, input, retryCount, maxRetryCount);
+    private WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {
+        return taskRuntimeBridge.enqueueTaskWork(ingressItem);
     }
 }
+
 
 

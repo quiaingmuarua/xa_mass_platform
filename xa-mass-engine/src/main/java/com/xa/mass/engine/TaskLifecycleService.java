@@ -21,7 +21,6 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -410,11 +409,36 @@ class TaskLifecycleService {
     }
 
     private void cancelPendingMessages(Task task) {
-        String taskId = task.getTid();
-        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = activeLeaseByMessageId(taskId);
-        for (TaskMsg msg : taskManager.getNonFinalTaskMessages(taskId)) {
-            cancelPendingMessage(task, msg, activeLeaseByMessageId.get(msg.getMessageId()));
+        // Runtime owns the authoritative set of in-flight work. Do not scan the
+        // full TaskMsg compatibility projection during task termination.
+        for (ActiveLeaseRecord activeLease : taskManager.getActiveLeases(task.getTid())) {
+            if (activeLease == null || activeLease.messageId() == null || activeLease.messageId().isBlank()) {
+                continue;
+            }
+            TaskMsg msg = resolveOrRecoverTaskMessageProjection(task, activeLease);
+            if (msg == null) {
+                continue;
+            }
+            cancelPendingMessage(task, msg, activeLease);
         }
+    }
+
+    private TaskMsg resolveOrRecoverTaskMessageProjection(Task task, ActiveLeaseRecord activeLease) {
+        TaskMsg msg = taskManager.getStoredTaskMessageProjection(task.getTid(), activeLease.messageId());
+        if (msg != null) {
+            return msg;
+        }
+        TaskMsg recovered = new TaskMsg(activeLease.messageId(), task.getTid(), Map.of());
+        recovered.setRetryCount(Math.max(0, activeLease.retryCount()));
+        recovered.applyLatestAttemptProjection(
+                null,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId()
+        );
+        recovered.markAsAssigned();
+        taskManager.addTaskMessageProjection(task.getTid(), recovered);
+        return recovered;
     }
 
     private void cancelPendingMessage(Task task, TaskMsg msg, ActiveLeaseRecord activeLease) {
@@ -448,7 +472,7 @@ class TaskLifecycleService {
             }
             status = msg.getStatus();
         } else if (runtimeOwnedMessage) {
-            activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
+            activeAttempt = taskManager.getLatestActiveAttemptProjection(task.getTid(), msg.getMessageId());
         }
         if (activeAttempt != null) {
             if (TaskMessageAttemptSupport.projectExpired(
@@ -505,7 +529,7 @@ class TaskLifecycleService {
             return;
         }
 
-        taskManager.updateTaskMessage(task.getTid(), msg);
+        taskManager.updateTaskMessageProjection(task.getTid(), msg);
         if (attemptClosed && activeAttempt != null) {
             traceEventLogger.taskMessageAttemptClosed(
                     task,
@@ -532,7 +556,7 @@ class TaskLifecycleService {
                                                     String messageId,
                                                     TaskMsgAttempt attempt) {
         try {
-            if (!taskManager.updateTaskMessageAttempt(taskId, messageId, attempt)) {
+            if (!taskManager.updateTaskMessageAttemptAuditProjection(taskId, messageId, attempt)) {
                 logger.warn("Failed to update compatibility attempt projection during terminal cleanup: taskId={}, messageId={}, attemptId={}",
                         taskId, messageId, attempt != null ? attempt.getAttemptId() : null);
             }
@@ -542,14 +566,5 @@ class TaskLifecycleService {
         }
     }
 
-    private Map<String, ActiveLeaseRecord> activeLeaseByMessageId(String taskId) {
-        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new HashMap<>();
-        for (ActiveLeaseRecord lease : taskManager.getActiveLeases(taskId)) {
-            if (lease == null || lease.messageId() == null || lease.messageId().isBlank()) {
-                continue;
-            }
-            activeLeaseByMessageId.put(lease.messageId(), lease);
-        }
-        return activeLeaseByMessageId;
-    }
 }
+

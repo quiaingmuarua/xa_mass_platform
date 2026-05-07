@@ -1,5 +1,6 @@
 package com.xa.mass.storage.api;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
@@ -22,18 +23,24 @@ import java.util.Optional;
  */
 public interface TaskDetailStore {
 
+    @CompatibilityProjectionOnly
     void addTaskMessage(String taskId, TaskMsg taskMsg);
 
+    @CompatibilityProjectionOnly
     List<TaskMsg> getTaskMessages(String taskId);
 
+    @CompatibilityProjectionOnly
     List<TaskMsg> getTaskMessages(String taskId, int limit);
 
+    @CompatibilityProjectionOnly
     List<TaskMsg> getNonFinalTaskMessages(String taskId);
 
     long countTaskMessages(String taskId);
 
+    @CompatibilityProjectionOnly
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
 
+    @CompatibilityProjectionOnly
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
     /**
@@ -41,6 +48,7 @@ public interface TaskDetailStore {
      * claimed for dispatch. Implementations must preserve any existing bounded
      * projection fields that are not part of active assignment ownership.
      */
+    @CompatibilityProjectionOnly
     TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
                                                      String messageId,
                                                      int retryCount,
@@ -49,14 +57,19 @@ public interface TaskDetailStore {
                                                      String workerContextId,
                                                      String batchId);
 
+    @CompatibilityProjectionOnly
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
+    @CompatibilityProjectionOnly
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
 
+    @CompatibilityProjectionOnly
     Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
 
+    @CompatibilityProjectionOnly
     Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 
+    @CompatibilityProjectionOnly
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     TaskMessageStats getTaskMessageStats(String taskId);

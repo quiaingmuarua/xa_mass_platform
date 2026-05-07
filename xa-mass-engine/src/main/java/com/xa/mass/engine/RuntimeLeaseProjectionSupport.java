@@ -48,7 +48,7 @@ final class RuntimeLeaseProjectionSupport {
         if (taskManager == null || taskMsg == null || activeLease == null) {
             return null;
         }
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveAttemptProjection(taskMsg.getTaskId(), taskMsg.getMessageId());
         if (activeAttempt != null) {
             return activeAttempt;
         }
@@ -67,7 +67,7 @@ final class RuntimeLeaseProjectionSupport {
                 activeLease.batchId(),
                 activeLease.leaseExpireAt()
         );
-        tryAddTaskMessageAttempt(taskManager, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
+        tryAddTaskMessageAttemptAuditProjection(taskManager, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
         return recoveredAttempt;
     }
 
@@ -114,18 +114,18 @@ final class RuntimeLeaseProjectionSupport {
         if (!projectionChanged) {
             return true;
         }
-        return taskManager.updateTaskMessage(taskId, taskMsg);
+        return taskManager.updateTaskMessageProjection(taskId, taskMsg);
     }
 
-    private static void tryAddTaskMessageAttempt(TaskManager taskManager,
-                                                 String taskId,
-                                                 String messageId,
-                                                 TaskMsgAttempt attempt) {
+    private static void tryAddTaskMessageAttemptAuditProjection(TaskManager taskManager,
+                                                                String taskId,
+                                                                String messageId,
+                                                                TaskMsgAttempt attempt) {
         if (taskManager == null || attempt == null) {
             return;
         }
         try {
-            taskManager.addTaskMessageAttempt(taskId, messageId, attempt);
+            taskManager.addTaskMessageAttemptAuditProjection(taskId, messageId, attempt);
         } catch (RuntimeException ignored) {
             // Compatibility attempt persistence is best-effort during runtime recovery.
         }
@@ -157,3 +157,4 @@ final class RuntimeLeaseProjectionSupport {
         }
     }
 }
+

@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 
@@ -11,6 +12,7 @@ import java.util.Objects;
 /**
  * One concrete execution attempt for a logical task message.
  */
+@CompatibilityProjectionOnly
 public class TaskMsgAttempt {
     private String attemptId;
     private String taskId;

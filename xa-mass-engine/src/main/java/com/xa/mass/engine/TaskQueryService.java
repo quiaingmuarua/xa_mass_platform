@@ -54,25 +54,25 @@ public class TaskQueryService {
 
     public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getTaskMessage(taskId, messageId)
+                ? taskManager.getTaskMessageProjection(taskId, messageId)
                 : taskQueries.getTaskMessageProjection(taskId, messageId);
     }
 
     public List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getTaskMessageAttempts(taskId, messageId)
+                ? taskManager.getTaskMessageAttemptAuditTrail(taskId, messageId)
                 : taskQueries.getTaskMessageAttemptAuditTrail(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getLatestTaskMessageAttempt(taskId, messageId)
+                ? taskManager.getLatestTaskMessageAttemptAuditView(taskId, messageId)
                 : taskQueries.getLatestTaskMessageAttemptAuditView(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return taskManager != null
-                ? taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId)
+                ? taskManager.getLatestActiveAttemptProjection(taskId, messageId)
                 : taskQueries.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
@@ -85,3 +85,4 @@ public class TaskQueryService {
     }
 
 }
+

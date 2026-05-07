@@ -68,7 +68,7 @@ public final class TaskDispatchBinding {
                 taskMsg != null ? taskMsg.getMessageId() : null,
                 null,
                 taskMsg != null ? taskMsg.getInput() : null,
-                null,
+                taskMsg != null ? taskMsg.getPayloadRef() : null,
                 taskMsg != null ? taskMsg.getRetryCount() : 0,
                 attempt != null ? attempt.getAttemptId() : null,
                 attempt != null ? attempt.getAttemptNo() : 1,
@@ -132,7 +132,7 @@ public final class TaskDispatchBinding {
      * callers during the migration away from projection-driven dispatch.
      */
     public TaskMsg taskMsg() {
-        TaskMsg taskMsg = new TaskMsg(messageId, taskId, payload);
+        TaskMsg taskMsg = new TaskMsg(messageId, taskId, payload, payloadRef);
         taskMsg.setRetryCount(retryCount);
         taskMsg.applyLatestAttemptProjection(attemptId, workerId, workerContextId, batchId);
         return taskMsg;

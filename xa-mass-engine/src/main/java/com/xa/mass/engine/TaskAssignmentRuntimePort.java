@@ -31,7 +31,7 @@ public interface TaskAssignmentRuntimePort {
                                                      String workerContextId,
                                                      String batchId);
 
-    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
+    void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt);
 
     boolean updateTask(Task task);
 

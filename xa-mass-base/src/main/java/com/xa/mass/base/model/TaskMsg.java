@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
@@ -13,6 +14,7 @@ import java.util.Objects;
  * Task message entity.
  * Records assignment, dispatch, and execution progress for a single work item.
  */
+@CompatibilityProjectionOnly
 public class TaskMsg {
     private String messageId;
     private String taskId;
@@ -35,6 +37,7 @@ public class TaskMsg {
     private String errorMessage;
     private String errorCode;
     private TaskMsgFinalReason finalReason;
+    private String payloadRef;
     private Map<String, Object> input;
     private Map<String, Object> output;
 
@@ -51,6 +54,18 @@ public class TaskMsg {
         this();
         this.messageId = messageId;
         this.taskId = taskId;
+        this.input = input != null ? new HashMap<>(input) : new HashMap<>();
+    }
+
+    public TaskMsg(String messageId, String taskId, String payloadRef) {
+        this(messageId, taskId, Map.of(), payloadRef);
+    }
+
+    public TaskMsg(String messageId, String taskId, Map<String, Object> input, String payloadRef) {
+        this();
+        this.messageId = messageId;
+        this.taskId = taskId;
+        this.payloadRef = payloadRef;
         this.input = input != null ? new HashMap<>(input) : new HashMap<>();
     }
 
@@ -218,6 +233,14 @@ public class TaskMsg {
 
     public void setFinalReason(TaskMsgFinalReason finalReason) {
         this.finalReason = finalReason;
+    }
+
+    public String getPayloadRef() {
+        return payloadRef;
+    }
+
+    public void setPayloadRef(String payloadRef) {
+        this.payloadRef = payloadRef;
     }
 
     public Map<String, Object> getInput() {
@@ -433,6 +456,7 @@ public class TaskMsg {
                 ", latestAttemptWorkerContextId='" + latestAttemptWorkerContextId + '\'' +
                 ", status=" + status +
                 ", latestAttemptBatchId='" + latestAttemptBatchId + '\'' +
+                ", payloadRef='" + payloadRef + '\'' +
                 ", retryCount=" + retryCount +
                 '}';
     }

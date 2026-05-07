@@ -93,23 +93,19 @@ final class TaskRuntimeBridge {
         return taskWorkRuntime.applyResult(result);
     }
 
-    WorkEnqueueOutcome enqueueTaskWork(String taskId,
-                                       String messageId,
-                                       java.util.Map<String, Object> input,
-                                       int retryCount,
-                                       int maxRetryCount) {
-        if (messageId == null || messageId.isBlank()) {
+    WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {
+        if (ingressItem == null || ingressItem.messageId() == null || ingressItem.messageId().isBlank()) {
             return null;
         }
-        Task task = taskStorage.getTask(taskId).orElse(null);
+        Task task = taskStorage.getTask(ingressItem.taskId()).orElse(null);
         TaskWorkEnvelope item = new TaskWorkEnvelope(
-                taskId,
-                messageId,
+                ingressItem.taskId(),
+                ingressItem.messageId(),
                 task != null ? TaskSharedConfig.sdkEventCode(task) : null,
-                input,
-                null,
-                retryCount,
-                maxRetryCount,
+                ingressItem.inlinePayload(),
+                ingressItem.payloadRef(),
+                ingressItem.retryCount(),
+                ingressItem.maxRetryCount(),
                 null,
                 null,
                 Instant.now()

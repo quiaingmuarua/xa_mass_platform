@@ -353,7 +353,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     private void tryAddAttemptProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         try {
-            assignmentRuntime.addTaskMessageAttempt(taskId, messageId, attempt);
+            assignmentRuntime.addTaskMessageAttemptAuditProjection(taskId, messageId, attempt);
         } catch (RuntimeException e) {
             log.warn("Failed to persist compatibility attempt projection for taskId={}, messageId={}, attemptId={}; dispatch will continue on runtime truth",
                     taskId, messageId, attempt.getAttemptId(), e);
