@@ -98,8 +98,8 @@ Concrete adapters own protocol I/O only:
 
 Transport internals should prefer direct access to the hybrid's real owner
 fields. Packet assembly, routing, and internal result correlation should read
-`TaskDispatchItem` directly instead of rebuilding internal projection wrappers
-around the same data. Add a projection only when it carries a distinct protocol
+`TaskDispatchItem` directly instead of rebuilding internal wrapper objects
+around the same data. Add a derived view only when it carries a distinct protocol
 or lifecycle boundary.
 
 The internal attempt identity is intentionally exposed through `attemptId()`, not
@@ -208,7 +208,7 @@ scan all attempts. Storage implementations should provide bounded lookups for:
 
 ```text
 (taskId, messageId) -> active runtime lease
-(taskId, messageId) -> latest-attempt compatibility projection
+(taskId, messageId) -> latest-attempt compatibility residue view
 ```
 
 Dispatch is also a hot path. Delivery queues currently store

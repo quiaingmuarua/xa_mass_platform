@@ -2010,7 +2010,9 @@ class TaskManagerLifecycleTest {
         taskManager.updateTaskMessageProjection(task.getTid(), assigned);
         TaskMsgAttempt activeAttempt = taskManager.getLatestActiveAttemptProjection(task.getTid(), assigned.getMessageId());
         assertNotNull(activeAttempt);
-        assertTrue(activeAttempt.markRunning());
+        if (activeAttempt.getStatus() != TaskMsgAttemptStatus.RUNNING) {
+            assertTrue(activeAttempt.markRunning());
+        }
         taskManager.updateTaskMessageAttemptAuditProjection(task.getTid(), assigned.getMessageId(), activeAttempt);
         return assigned;
     }

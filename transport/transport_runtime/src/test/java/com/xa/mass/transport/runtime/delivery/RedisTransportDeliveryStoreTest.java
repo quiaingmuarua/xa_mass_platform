@@ -6,7 +6,6 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -170,7 +169,7 @@ class RedisTransportDeliveryStoreTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item)
+                        item.toTransportPayload()
                 ),
                 1L
         );
@@ -191,7 +190,7 @@ class RedisTransportDeliveryStoreTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item)
+                        item.toTransportPayload()
                 ),
                 1L
         );
@@ -204,3 +203,4 @@ class RedisTransportDeliveryStoreTest {
                 .toList();
     }
 }
+

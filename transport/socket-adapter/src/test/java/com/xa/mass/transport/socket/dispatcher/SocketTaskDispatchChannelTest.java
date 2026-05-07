@@ -6,7 +6,6 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -94,9 +93,10 @@ class SocketTaskDispatchChannelTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item)
+                        item.toTransportPayload()
                 ),
                 1L
         );
     }
 }
+

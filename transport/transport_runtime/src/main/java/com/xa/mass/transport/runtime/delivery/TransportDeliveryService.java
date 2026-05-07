@@ -5,7 +5,6 @@ import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -74,7 +73,7 @@ public final class TransportDeliveryService {
         if (envelope == null) {
             throw new IllegalArgumentException("envelope must not be null");
         }
-        return TransportPacketViews.toTaskDispatchItem(envelope.getPacket());
+        return TaskDispatchItem.fromTransportPacket(envelope.getPacket());
     }
 
     public static List<TaskDispatchItem> toDispatchItems(List<TransportDispatchEnvelope> envelopes) {
@@ -181,3 +180,4 @@ public final class TransportDeliveryService {
         }
     }
 }
+

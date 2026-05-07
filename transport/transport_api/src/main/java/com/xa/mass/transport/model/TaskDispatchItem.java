@@ -2,6 +2,8 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,6 +22,16 @@ import java.util.Objects;
  * across adapter codec and worker API tests.</p>
  */
 public final class TaskDispatchItem {
+
+    private static final String TASK_NAME = "taskName";
+    private static final String PROJECT = "project";
+    private static final String USER_ID = "userId";
+    private static final String RETRY_COUNT = "retryCount";
+    private static final String WORKER_ID = "workerId";
+    private static final String WORKER_CONTEXT_ID = "workerContextId";
+    private static final String BATCH_ID = "batchId";
+    private static final String INPUT = "input";
+    private static final String SHARED_CONFIG = "sharedConfig";
 
     private final String taskId;
     private final String messageId;
@@ -160,6 +172,26 @@ public final class TaskDispatchItem {
         );
     }
 
+    public static TaskDispatchItem fromTransportPacket(TransportPacket packet) {
+        requireDispatchPacket(packet);
+        Map<String, Object> payload = packet.payload();
+        return fromDecodedTransportPayload(
+                packet.taskId(),
+                packet.messageId(),
+                packet.eventCode(),
+                stringValue(payload.get(TASK_NAME)),
+                stringValue(payload.get(PROJECT)),
+                stringValue(payload.get(USER_ID)),
+                intValue(payload.get(RETRY_COUNT)),
+                packet.attemptId(),
+                stringValue(payload.get(WORKER_ID)),
+                stringValue(payload.get(WORKER_CONTEXT_ID)),
+                stringValue(payload.get(BATCH_ID)),
+                mapValue(payload.get(INPUT)),
+                mapValue(payload.get(SHARED_CONFIG))
+        );
+    }
+
     public String getTaskName() {
         return taskName;
     }
@@ -200,6 +232,20 @@ public final class TaskDispatchItem {
         return sharedConfig;
     }
 
+    public Map<String, Object> toTransportPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        put(payload, TASK_NAME, taskName);
+        put(payload, PROJECT, project);
+        put(payload, USER_ID, userId);
+        payload.put(RETRY_COUNT, retryCount);
+        put(payload, WORKER_ID, workerId);
+        put(payload, WORKER_CONTEXT_ID, workerContextId);
+        put(payload, BATCH_ID, batchId);
+        payload.put(INPUT, input);
+        payload.put(SHARED_CONFIG, sharedConfig);
+        return payload;
+    }
+
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
             return Map.of();
@@ -212,6 +258,43 @@ public final class TaskDispatchItem {
             return Map.of();
         }
         return values;
+    }
+
+    private static void requireDispatchPacket(TransportPacket packet) {
+        if (packet == null) {
+            throw new IllegalArgumentException("packet must not be null");
+        }
+        if (packet.type() != PacketType.TASK_DISPATCH) {
+            throw new IllegalArgumentException("packet must be TASK_DISPATCH");
+        }
+    }
+
+    private static void put(Map<String, Object> target, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            target.put(key, value);
+        }
+    }
+
+    private static String stringValue(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        return (Map<String, Object>) map;
     }
 
     @SuppressWarnings("unchecked")

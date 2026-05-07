@@ -290,7 +290,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work) {
         int attemptNo = Math.max(0, work.retryCount()) + 1;
-        String attemptId = java.util.UUID.randomUUID().toString();
+        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+                work.messageId(),
+                attemptNo,
+                work.workerId(),
+                work.workerContextId(),
+                work.batchId()
+        );
         TaskMsgAttempt attempt = TaskMessageAttemptSupport.buildDispatchedProjection(
                 attemptId,
                 task.getTid(),

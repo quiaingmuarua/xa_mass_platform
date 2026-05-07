@@ -47,7 +47,7 @@ public final class TaskMessageAttemptSupport {
         if (taskId == null || messageId == null || activeLease == null) {
             return null;
         }
-        return buildDispatchedProjection(
+        TaskMsgAttempt attempt = buildDispatchedProjection(
                 attemptId,
                 taskId,
                 messageId,
@@ -57,6 +57,10 @@ public final class TaskMessageAttemptSupport {
                 activeLease.batchId(),
                 activeLease.leaseExpireAt()
         );
+        if (attempt != null && activeLease.leasedAt() != null) {
+            attempt.setDispatchTime(LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault()));
+        }
+        return attempt;
     }
 
     static boolean matchesRuntimeLease(TaskMsgAttempt attempt,
@@ -77,19 +81,34 @@ public final class TaskMessageAttemptSupport {
         return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
     }
 
-    static String runtimeAttemptId(String messageId,
-                                   int attemptNo,
-                                   ActiveLeaseRecord activeLease) {
+    public static String runtimeAttemptId(String messageId,
+                                          int attemptNo,
+                                          ActiveLeaseRecord activeLease) {
         String normalizedMessageId = messageId == null || messageId.isBlank() ? "unknown-message" : messageId;
         if (activeLease == null) {
             return "runtime-attempt-" + normalizedMessageId + "-" + attemptNo;
         }
+        return runtimeAttemptId(
+                messageId,
+                attemptNo,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId()
+        );
+    }
+
+    public static String runtimeAttemptId(String messageId,
+                                          int attemptNo,
+                                          String workerId,
+                                          String workerContextId,
+                                          String batchId) {
+        String normalizedMessageId = messageId == null || messageId.isBlank() ? "unknown-message" : messageId;
         return "runtime-attempt-"
                 + normalizedMessageId
                 + "-" + attemptNo
-                + "-" + normalizeAttemptIdToken(activeLease.workerId())
-                + "-" + normalizeAttemptIdToken(activeLease.workerContextId())
-                + "-" + normalizeAttemptIdToken(activeLease.batchId());
+                + "-" + normalizeAttemptIdToken(workerId)
+                + "-" + normalizeAttemptIdToken(workerContextId)
+                + "-" + normalizeAttemptIdToken(batchId);
     }
 
     static TaskMsgAttempt runtimeActiveProjection(String taskId,

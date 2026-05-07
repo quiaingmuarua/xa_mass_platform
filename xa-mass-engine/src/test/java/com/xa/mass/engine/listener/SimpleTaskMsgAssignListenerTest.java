@@ -114,10 +114,10 @@ class SimpleTaskMsgAssignListenerTest {
         assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
         List<TaskMsgAttempt> attempts = stored.stream()
-                .map(msg -> taskStorage.getTaskMessageAttempts(task.getTid(), msg.getMessageId()))
-                .flatMap(List::stream)
+                .map(msg -> taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId()))
                 .collect(Collectors.toList());
         assertEquals(4, attempts.size());
+        assertTrue(stored.stream().allMatch(msg -> taskStorage.getTaskMessageAttempts(task.getTid(), msg.getMessageId()).isEmpty()));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getAttemptNo() == 1));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.DISPATCHED));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
@@ -144,8 +144,7 @@ class SimpleTaskMsgAssignListenerTest {
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = taskStorage.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId())
-                .orElse(null);
+        TaskMsgAttempt attempt = taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
         assertNotNull(attempt.getLeaseExpireTime());
@@ -194,8 +193,7 @@ class SimpleTaskMsgAssignListenerTest {
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = taskStorage.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId())
-                .orElse(null);
+        TaskMsgAttempt attempt = taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
         assertNotNull(attempt.getLeaseExpireTime());

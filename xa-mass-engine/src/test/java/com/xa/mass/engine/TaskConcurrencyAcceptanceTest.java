@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
@@ -549,7 +550,9 @@ class TaskConcurrencyAcceptanceTest {
         assertTrue(taskManager.updateTaskMessageProjection(task.getTid(), assigned));
         TaskMsgAttempt activeAttempt = taskManager.getLatestActiveAttemptProjection(task.getTid(), assigned.getMessageId());
         assertNotNull(activeAttempt);
-        assertTrue(activeAttempt.markRunning());
+        if (activeAttempt.getStatus() != TaskMsgAttemptStatus.RUNNING) {
+            assertTrue(activeAttempt.markRunning());
+        }
         assertTrue(taskManager.updateTaskMessageAttemptAuditProjection(task.getTid(), assigned.getMessageId(), activeAttempt));
         return assigned;
     }

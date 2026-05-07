@@ -2,7 +2,6 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -70,7 +69,7 @@ class TransportDispatchEnvelopeTest {
     }
 
     @Test
-    void packetProjectionRebuildsDispatchItemWhenExplicitlyRequested() {
+    void packetViewRebuildsDispatchItemWhenExplicitlyRequested() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -100,7 +99,7 @@ class TransportDispatchEnvelopeTest {
                 10L
         );
 
-        TaskDispatchItem projected = TransportPacketViews.toTaskDispatchItem(envelope.getPacket());
+        TaskDispatchItem projected = TaskDispatchItem.fromTransportPacket(envelope.getPacket());
 
         assertNotNull(projected);
         assertEquals("msg-1", projected.getMessageId());
@@ -108,3 +107,4 @@ class TransportDispatchEnvelopeTest {
         assertEquals("target-1", projected.getInput().get("target"));
     }
 }
+

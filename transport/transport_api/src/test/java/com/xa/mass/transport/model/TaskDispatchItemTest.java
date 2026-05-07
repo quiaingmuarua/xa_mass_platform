@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class TaskDispatchItemTest {
 
@@ -59,7 +60,7 @@ class TaskDispatchItemTest {
     }
 
     @Test
-    void exposesDispatchFieldsDirectlyWithoutExtraProjectionObjects() {
+    void exposesDispatchFieldsDirectlyWithoutExtraWrapperObjects() {
         Task task = taskWithSdkPayloadType("JSON");
 
         TaskDispatchItem item = TaskDispatchItem.from(TaskDispatchContext.from(task), binding(Map.of(
@@ -74,6 +75,31 @@ class TaskDispatchItemTest {
         assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
         assertEquals("https://example.test/page-1", item.getInput().get("url"));
+    }
+
+    @Test
+    void decodedTransportPayloadReusesTrustedImmutableMaps() {
+        Map<String, Object> input = Map.of("target", "worker-a");
+        Map<String, Object> sharedConfig = Map.of("mode", "fast");
+
+        TaskDispatchItem item = TaskDispatchItem.fromDecodedTransportPayload(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "agent",
+                0,
+                "attempt-1",
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                input,
+                sharedConfig
+        );
+
+        assertSame(input, item.getInput());
+        assertSame(sharedConfig, item.getSharedConfig());
     }
 
     private Task taskWithSdkPayloadType(String payloadType) {

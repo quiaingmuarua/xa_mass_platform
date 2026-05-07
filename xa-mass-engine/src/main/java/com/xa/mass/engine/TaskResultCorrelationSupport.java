@@ -12,11 +12,20 @@ final class TaskResultCorrelationSupport {
                                                   String messageId,
                                                   String projectedAttemptId,
                                                   ActiveLeaseRecord activeLease) {
+        String runtimeAttemptId = activeLease != null
+                ? TaskMessageAttemptSupport.runtimeAttemptId(
+                messageId,
+                Math.max(1, activeLease.retryCount() + 1),
+                activeLease
+        )
+                : null;
         return new TaskResultCorrelation(
                 taskId,
                 messageId,
                 activeLease != null,
-                projectedAttemptId,
+                projectedAttemptId != null && !projectedAttemptId.isBlank()
+                        ? projectedAttemptId
+                        : runtimeAttemptId,
                 activeLease != null ? activeLease.leaseToken() : null,
                 activeLease != null ? activeLease.workerId() : null,
                 activeLease != null ? activeLease.workerContextId() : null,

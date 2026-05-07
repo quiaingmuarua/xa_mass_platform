@@ -4,7 +4,6 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,7 +48,7 @@ public final class TransportPacketFactory {
                 item.attemptId(),
                 item.getEventCode(),
                 TransportPacket.JSON_CONTENT_TYPE,
-                TransportPacketViews.dispatchPayload(item)
+                item.toTransportPayload()
         );
     }
 
@@ -118,3 +117,4 @@ public final class TransportPacketFactory {
         return value.trim();
     }
 }
+

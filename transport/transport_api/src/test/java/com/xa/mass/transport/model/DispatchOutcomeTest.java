@@ -2,7 +2,6 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -84,9 +83,10 @@ class DispatchOutcomeTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        TransportPacketViews.dispatchPayload(item)
+                        item.toTransportPayload()
                 ),
                 10L
         );
     }
 }
+
