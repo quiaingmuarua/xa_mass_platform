@@ -1,6 +1,9 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
@@ -9,9 +12,11 @@ import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -120,6 +125,65 @@ class SocketTransportServerTest {
                 waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
                         "hello frame should register socket routeKey independently");
                 assertFalse(sessionManager.isAdapterRouteOnline("socket", "worker-1"));
+            }
+        } finally {
+            server.stop();
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
+    }
+
+    @Test
+    void canonicalTaskResultIngressUsesBoundRouteKeyAndMessageIdTraceFallback() throws Exception {
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
+        SocketSessionManager sessionManager = new SocketSessionManager(null);
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        SocketTransportServer server = new SocketTransportServer(
+                "socket",
+                "127.0.0.1",
+                0,
+                10,
+                sessionManager,
+                new SocketTransportFrameCodec(),
+                new TaskResultIngestChannel() {
+                    @Override
+                    public boolean ingest(TaskResultReport report) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean ingest(TransportResultEnvelope envelope) {
+                        capturedEnvelope.set(envelope);
+                        return true;
+                    }
+                },
+                null,
+                executor
+        );
+
+        try {
+            server.start();
+            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.newLine();
+                writer.write("""
+                        {"messageId":"msg-1","taskId":"task-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}
+                        """.trim());
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> capturedEnvelope.get() != null,
+                        "canonical socket result should be ingested");
+                assertEquals("socket", capturedEnvelope.get().getAdapterId());
+                assertEquals("socket-route-9", capturedEnvelope.get().getRouteKey());
+                assertEquals("worker-1", capturedEnvelope.get().getWorkerId());
+                assertEquals("msg-1", capturedEnvelope.get().getTraceId());
+                assertEquals("task-1", capturedEnvelope.get().getTaskId());
+                assertEquals("msg-1", capturedEnvelope.get().getMessageId());
             }
         } finally {
             server.stop();

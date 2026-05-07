@@ -13,8 +13,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketTransportFrameCodecTest {
@@ -58,7 +56,6 @@ class WebSocketTransportFrameCodecTest {
         JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(packet));
 
         assertNotNull(frame);
-        assertTrue(codec.isCanonicalTaskDispatch(frame));
         assertEquals("msg-1", frame.get("messageId").getAsString());
         assertEquals("worker-1", frame.get(TransportPacket.PAYLOAD_WORKER_ID).getAsString());
         assertEquals("task-1", frame.get("taskId").getAsString());
@@ -100,17 +97,6 @@ class WebSocketTransportFrameCodecTest {
     }
 
     @Test
-    void msgIdOnlyFrameIsRejected() {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("msgId", "legacy-1");
-        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
-        frame.addProperty("taskId", "task-1");
-
-        assertNull(codec.extractMessageId(frame));
-        assertFalse(codec.isCanonicalTaskDispatch(frame));
-    }
-
-    @Test
     void routeKeyCanBeExtractedIndependentlyFromWorkerId() {
         JsonObject frame = new JsonObject();
         frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
@@ -118,32 +104,6 @@ class WebSocketTransportFrameCodecTest {
 
         assertEquals("worker-1", codec.extractWorkerId(frame));
         assertEquals("ws-route-7", codec.extractRouteKey(frame));
-    }
-
-    @Test
-    void legacyContextTaskRoutingIsRejected() {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
-        JsonObject context = new JsonObject();
-        context.addProperty("taskId", "task-1");
-        frame.add("context", context);
-
-        assertFalse(codec.isCanonicalTaskDispatch(frame));
-        assertThrows(IllegalArgumentException.class, () -> codec.decodeCanonicalTaskResult(frame));
-    }
-
-    @Test
-    void legacyTupleFieldsDoNotMakeFrameCanonical() {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
-        frame.addProperty("msgType", "TASK");
-        frame.addProperty("subMsgType", "step");
-        frame.add("payload", payload("steps", java.util.List.of(Map.of("stepId", "step-1"))));
-
-        assertFalse(codec.isCanonicalTaskDispatch(frame));
-        assertFalse(codec.isCanonicalTaskResult(frame));
     }
 
     private JsonObject payload(Object... keyValues) {

@@ -85,14 +85,6 @@ public final class WebSocketTransportFrameCodec {
                 && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
-    public boolean isCanonicalTaskDispatch(JsonObject frame) {
-        return frame != null
-                && !isResponse(frame)
-                && readString(frame, "taskId") != null
-                && extractMessageId(frame) != null
-                && !hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
-    }
-
     public String encodeCanonicalTaskDispatch(TransportPacket packet) {
         JsonObject frame = new JsonObject();
         frame.addProperty(MESSAGE_ID_FIELD, packet.messageId());
@@ -142,11 +134,6 @@ public final class WebSocketTransportFrameCodec {
 
     public Gson getGson() {
         return gson;
-    }
-
-    private boolean isResponse(JsonObject frame) {
-        Boolean response = readBoolean(frame, "response");
-        return Boolean.TRUE.equals(response);
     }
 
     private Boolean readBoolean(JsonObject object, String field) {

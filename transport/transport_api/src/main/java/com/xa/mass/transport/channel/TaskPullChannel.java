@@ -13,5 +13,16 @@ public interface TaskPullChannel {
         return pollTaskMessages(workerId, maxMessages, 0L);
     }
 
-    List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis);
+    default List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTaskMessagesResult(workerId, maxMessages, timeoutMillis).getItems();
+    }
+
+    default TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages) {
+        return pollTaskMessagesResult(workerId, maxMessages, 0L);
+    }
+
+    default TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
+        List<TaskDispatchItem> items = pollTaskMessages(workerId, maxMessages, timeoutMillis);
+        return items == null || items.isEmpty() ? TaskPullResult.empty() : TaskPullResult.delivered(items);
+    }
 }

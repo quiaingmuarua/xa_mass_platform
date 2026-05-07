@@ -177,11 +177,12 @@ public final class SocketTransportServer implements TransportServer {
                     continue;
                 }
                 if (frameCodec.isHeartbeatFrame(frame)) {
+                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
                     if (systemEventChannel != null) {
                         systemEventChannel.publishWorkerHeartbeat(
                                 boundWorkerId,
                                 "socket heartbeat",
-                                frameCodec.extractTraceId(frame)
+                                traceId
                         );
                     }
                     continue;
@@ -192,6 +193,7 @@ public final class SocketTransportServer implements TransportServer {
                         continue;
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
+                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
                     boolean accepted = taskResultIngestChannel.ingest(new TransportResultEnvelope(
                             adapterId,
                             boundRouteKey,
@@ -199,7 +201,7 @@ public final class SocketTransportServer implements TransportServer {
                             endpointId,
                             null,
                             null,
-                            frameCodec.extractTraceId(frame),
+                            traceId,
                             report
                     ));
                     if (!accepted) {

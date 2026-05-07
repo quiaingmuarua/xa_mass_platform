@@ -20,6 +20,12 @@ import java.util.Map;
 public final class SocketTransportFrameCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketTransportFrameCodec.class);
+    private static final String TYPE_FIELD = "type";
+    private static final String ROUTE_KEY_FIELD = "routeKey";
+    private static final String TRACE_ID_FIELD = "traceId";
+    private static final String TASK_ID_FIELD = "taskId";
+    private static final String MESSAGE_ID_FIELD = "messageId";
+    private static final String EVENT_CODE_FIELD = "eventCode";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
 
@@ -44,12 +50,12 @@ public final class SocketTransportFrameCodec {
     }
 
     public boolean isHelloFrame(JsonObject frame) {
-        return "hello".equalsIgnoreCase(readString(frame, "type"))
+        return "hello".equalsIgnoreCase(readString(frame, TYPE_FIELD))
                 && readString(frame, TransportPacket.PAYLOAD_WORKER_ID) != null;
     }
 
     public boolean isHeartbeatFrame(JsonObject frame) {
-        return "heartbeat".equalsIgnoreCase(readString(frame, "type"));
+        return "heartbeat".equalsIgnoreCase(readString(frame, TYPE_FIELD));
     }
 
     public String extractWorkerId(JsonObject frame) {
@@ -57,30 +63,38 @@ public final class SocketTransportFrameCodec {
     }
 
     public String extractRouteKey(JsonObject frame) {
-        return readString(frame, "routeKey");
+        return readString(frame, ROUTE_KEY_FIELD);
     }
 
     public String extractTraceId(JsonObject frame) {
-        return readString(frame, "traceId");
+        return readString(frame, TRACE_ID_FIELD);
+    }
+
+    public String extractMessageId(JsonObject frame) {
+        return readString(frame, MESSAGE_ID_FIELD);
+    }
+
+    public String extractEventCode(JsonObject frame) {
+        return readString(frame, EVENT_CODE_FIELD);
     }
 
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
-                && readString(frame, "eventCode") == null
-                && readString(frame, "taskId") != null
-                && readString(frame, "messageId") != null
+                && extractEventCode(frame) == null
+                && readString(frame, TASK_ID_FIELD) != null
+                && extractMessageId(frame) != null
                 && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
     public String encodeCanonicalTaskDispatch(TransportPacket packet) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", packet.messageId());
+        frame.addProperty(MESSAGE_ID_FIELD, packet.messageId());
         put(frame, TransportPacket.PAYLOAD_WORKER_ID, packet.payloadString(TransportPacket.PAYLOAD_WORKER_ID));
         put(frame, TransportPacket.PAYLOAD_PROJECT, packet.payloadString(TransportPacket.PAYLOAD_PROJECT));
         if (packet.eventCode() != null) {
-            frame.addProperty("eventCode", packet.eventCode());
+            frame.addProperty(EVENT_CODE_FIELD, packet.eventCode());
         }
-        frame.addProperty("taskId", packet.taskId());
+        frame.addProperty(TASK_ID_FIELD, packet.taskId());
         put(frame, TransportPacket.PAYLOAD_TASK_NAME, packet.payloadString(TransportPacket.PAYLOAD_TASK_NAME));
         put(frame, TransportPacket.PAYLOAD_USER_ID, packet.payloadString(TransportPacket.PAYLOAD_USER_ID));
         frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT));
@@ -92,8 +106,8 @@ public final class SocketTransportFrameCodec {
     }
 
     public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
-        String taskId = readString(frame, "taskId");
-        String messageId = readString(frame, "messageId");
+        String taskId = readString(frame, TASK_ID_FIELD);
+        String messageId = extractMessageId(frame);
         if (taskId == null || messageId == null) {
             throw new IllegalArgumentException("taskId/messageId are required");
         }

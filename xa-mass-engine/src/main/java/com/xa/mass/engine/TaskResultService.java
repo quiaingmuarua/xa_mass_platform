@@ -62,10 +62,10 @@ class TaskResultService {
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                getStoredTaskMessageProjection(taskId, messageId),
+                null,
                 activeLease,
                 "EXPIRE_TASK_MESSAGE",
-                "runtime active lease synchronized compatibility projection"
+                "runtime active lease defines expiry admissibility"
         );
         if (activeProjection == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message projection could not be recovered", 0);
@@ -103,6 +103,20 @@ class TaskResultService {
         persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
                 "mark attempt expired");
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
+        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+        activeProjection = buildActiveRuntimeProjection(
+                taskId,
+                messageId,
+                storedProjection,
+                activeLease,
+                "EXPIRE_TASK_MESSAGE",
+                "runtime lease accepted expiry before compatibility projection convergence"
+        );
+        if (activeProjection == null) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "expiry compatibility base view could not be recovered", 0);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        messageState = activeProjection.messageState();
         RuntimeMessageView expiredSummary = summarizeExpired(messageState, expiryDetail);
         traceEventLogger.leaseExpired(
                 expiredSummary.toTraceView(),
@@ -311,10 +325,10 @@ class TaskResultService {
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                getStoredTaskMessageProjection(taskId, messageId),
+                null,
                 activeLease,
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
-                "runtime active lease synchronized compatibility projection"
+                "runtime active lease defines dispatch compensation admissibility"
         );
         if (activeProjection == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} was not found in task {}",
@@ -339,6 +353,21 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
+        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+        activeProjection = buildActiveRuntimeProjection(
+                taskId,
+                messageId,
+                storedProjection,
+                activeLease,
+                "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
+                "runtime lease accepted dispatch compensation before compatibility projection convergence"
+        );
+        if (activeProjection == null) {
+            logger.warn("Runtime accepted dispatch submit compensation for task {} msg {} but compatibility base view could not be recovered",
+                    taskId, messageId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        messageState = activeProjection.messageState();
         RuntimeMessageView retrySummary = resetForRetryWithoutPublishingAttemptClosure(
                 taskId,
                 messageState,
@@ -636,17 +665,7 @@ class TaskResultService {
         if (taskMsg.status() != TaskMsgStatus.INIT || activeAttempt == null) {
             return null;
         }
-        TaskMsg assignedView = taskMsg.toCompatibilityProjection();
-        assignedView.applyLatestAttemptProjection(
-                activeAttempt.attemptId(),
-                activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
-                activeAttempt.batchId()
-        );
-        if (!assignedView.markAsAssigned()) {
-            return null;
-        }
-        return RuntimeMessageView.from(assignedView);
+        return taskMsg.withAssignedAttempt(activeAttempt);
     }
 
     private TaskMessageMutationOutcome handleRetryExhaustedFailure(String taskId,
@@ -698,84 +717,34 @@ class TaskResultService {
     }
 
     private RuntimeMessageView summarizeRunning(RuntimeMessageView base) {
-        TaskMsg running = copyTaskMessage(base.toCompatibilityProjection());
-        running.setStatus(TaskMsgStatus.RUNNING);
-        return RuntimeMessageView.from(running);
+        return base.markRunning();
     }
 
     private RuntimeMessageView summarizeSuccess(RuntimeMessageView base,
                                                 String detail,
                                                 Map<String, Object> output) {
-        TaskMsg success = copyTaskMessage(base.toCompatibilityProjection());
-        success.forceFinalize(TaskMsgStatus.SUCCESS, TaskMsgFinalReason.BUSINESS_SUCCESS, detail);
-        success.setOutput(output);
-        success.setErrorCode(null);
-        return RuntimeMessageView.from(success);
+        return base.completeSuccess(output);
     }
 
     private RuntimeMessageView summarizeBusinessFailure(RuntimeMessageView base,
                                                         String detail,
                                                         String errorCode) {
-        TaskMsg failed = copyTaskMessage(base.toCompatibilityProjection());
-        failed.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.BUSINESS_FAILED, detail);
-        failed.setErrorCode(errorCode);
-        failed.setOutput(null);
-        return RuntimeMessageView.from(failed);
+        return base.completeFailure(TaskMsgFinalReason.BUSINESS_FAILED, detail, errorCode, null);
     }
 
     private RuntimeMessageView summarizeExpired(RuntimeMessageView base, String detail) {
-        TaskMsg expired = copyTaskMessage(base.toCompatibilityProjection());
-        expired.forceFinalize(TaskMsgStatus.EXPIRED, TaskMsgFinalReason.LEASE_EXPIRED, detail);
-        expired.setOutput(null);
-        return RuntimeMessageView.from(expired);
+        return base.completeExpiry(detail, base.errorCode());
     }
 
     private RuntimeMessageView summarizeRetryReset(RuntimeMessageView failedView) {
-        TaskMsg retrySummary = copyTaskMessage(failedView.toCompatibilityProjection());
-        retrySummary.setRetryCount(retrySummary.getRetryCount() + 1);
-        retrySummary.setStatus(TaskMsgStatus.INIT);
-        retrySummary.clearLatestAttemptProjection();
-        retrySummary.setStartTime(null);
-        retrySummary.setCompleteTime(null);
-        retrySummary.setErrorMessage(null);
-        retrySummary.setErrorCode(null);
-        retrySummary.setOutput(null);
-        retrySummary.setFinalReason(null);
-        return RuntimeMessageView.from(retrySummary);
+        return failedView.resetForRetry();
     }
 
     private RuntimeMessageView summarizeRetryExhaustedFailure(RuntimeMessageView base,
                                                               String detail,
                                                               String errorCode,
                                                               Map<String, Object> output) {
-        TaskMsg failure = copyTaskMessage(base.toCompatibilityProjection());
-        failure.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.RETRY_EXHAUSTED, detail);
-        failure.setErrorCode(errorCode);
-        failure.setOutput(output);
-        return RuntimeMessageView.from(failure);
-    }
-
-    private TaskMsg copyTaskMessage(TaskMsg source) {
-        TaskMsg copy = new TaskMsg(source.getMessageId(), source.getTaskId(), source.getPayloadRef());
-        copy.setStatus(source.getStatus());
-        copy.setAssignedTime(source.getAssignedTime());
-        copy.setCreateTime(source.getCreateTime());
-        copy.setUpdateTime(source.getUpdateTime());
-        copy.setStartTime(source.getStartTime());
-        copy.setCompleteTime(source.getCompleteTime());
-        copy.setRetryCount(source.getRetryCount());
-        copy.setMaxRetryCount(source.getMaxRetryCount());
-        copy.setErrorMessage(source.getErrorMessage());
-        copy.setErrorCode(source.getErrorCode());
-        copy.setFinalReason(source.getFinalReason());
-        copy.setOutput(source.getOutput());
-        copy.applyLatestAttemptProjection(
-                source.latestAttemptId(),
-                source.getLatestAttemptWorkerId(),
-                source.getLatestAttemptWorkerContextId(),
-                source.getLatestAttemptBatchId()
-        );
-        return copy;
+        return base.completeFailure(TaskMsgFinalReason.RETRY_EXHAUSTED, detail, errorCode, output);
     }
 
     private boolean persistTaskMessageProjection(String taskId,
@@ -1349,6 +1318,190 @@ class TaskResultService {
                     finalReason,
                     payloadRef,
                     output
+            );
+        }
+
+        private RuntimeMessageView withAssignedAttempt(AttemptProjectionView attempt) {
+            if (attempt == null) {
+                return null;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime nextAssignedTime = assignedTime != null ? assignedTime : now;
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    attempt.attemptId(),
+                    attempt.workerId(),
+                    attempt.workerContextId(),
+                    attempt.batchId(),
+                    TaskMsgStatus.ASSIGNED,
+                    nextAssignedTime,
+                    createTime,
+                    now,
+                    startTime,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    errorMessage,
+                    errorCode,
+                    finalReason,
+                    payloadRef,
+                    output == null ? null : new java.util.LinkedHashMap<>(output)
+            );
+        }
+
+        private RuntimeMessageView markRunning() {
+            if (status == TaskMsgStatus.RUNNING) {
+                return this;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    latestAttemptId,
+                    latestAttemptWorkerId,
+                    latestAttemptWorkerContextId,
+                    latestAttemptBatchId,
+                    TaskMsgStatus.RUNNING,
+                    assignedTime,
+                    createTime,
+                    now,
+                    startTime != null ? startTime : now,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    errorMessage,
+                    errorCode,
+                    finalReason,
+                    payloadRef,
+                    output == null ? null : new java.util.LinkedHashMap<>(output)
+            );
+        }
+
+        private RuntimeMessageView completeSuccess(Map<String, Object> nextOutput) {
+            LocalDateTime now = LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    latestAttemptId,
+                    latestAttemptWorkerId,
+                    latestAttemptWorkerContextId,
+                    latestAttemptBatchId,
+                    TaskMsgStatus.SUCCESS,
+                    assignedTime,
+                    createTime,
+                    updateTime,
+                    startTime,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    null,
+                    null,
+                    TaskMsgFinalReason.BUSINESS_SUCCESS,
+                    payloadRef,
+                    nextOutput == null ? null : new java.util.LinkedHashMap<>(nextOutput)
+            ).complete(now);
+        }
+
+        private RuntimeMessageView completeFailure(TaskMsgFinalReason nextFinalReason,
+                                                  String nextDetail,
+                                                  String nextErrorCode,
+                                                  Map<String, Object> nextOutput) {
+            LocalDateTime now = LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    latestAttemptId,
+                    latestAttemptWorkerId,
+                    latestAttemptWorkerContextId,
+                    latestAttemptBatchId,
+                    TaskMsgStatus.FAILED,
+                    assignedTime,
+                    createTime,
+                    updateTime,
+                    startTime,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    nextDetail,
+                    nextErrorCode,
+                    nextFinalReason,
+                    payloadRef,
+                    nextOutput == null ? null : new java.util.LinkedHashMap<>(nextOutput)
+            ).complete(now);
+        }
+
+        private RuntimeMessageView completeExpiry(String nextDetail, String nextErrorCode) {
+            LocalDateTime now = LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    latestAttemptId,
+                    latestAttemptWorkerId,
+                    latestAttemptWorkerContextId,
+                    latestAttemptBatchId,
+                    TaskMsgStatus.EXPIRED,
+                    assignedTime,
+                    createTime,
+                    updateTime,
+                    startTime,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    nextDetail,
+                    nextErrorCode,
+                    TaskMsgFinalReason.LEASE_EXPIRED,
+                    payloadRef,
+                    null
+            ).complete(now);
+        }
+
+        private RuntimeMessageView resetForRetry() {
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    null,
+                    null,
+                    null,
+                    null,
+                    TaskMsgStatus.INIT,
+                    assignedTime,
+                    createTime,
+                    updateTime,
+                    null,
+                    null,
+                    retryCount + 1,
+                    maxRetryCount,
+                    null,
+                    null,
+                    null,
+                    payloadRef,
+                    null
+            );
+        }
+
+        private RuntimeMessageView complete(LocalDateTime completedAt) {
+            LocalDateTime now = completedAt != null ? completedAt : LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    latestAttemptId,
+                    latestAttemptWorkerId,
+                    latestAttemptWorkerContextId,
+                    latestAttemptBatchId,
+                    status,
+                    assignedTime,
+                    createTime,
+                    now,
+                    startTime,
+                    now,
+                    retryCount,
+                    maxRetryCount,
+                    errorMessage,
+                    errorCode,
+                    finalReason,
+                    payloadRef,
+                    output == null ? null : new java.util.LinkedHashMap<>(output)
             );
         }
 
