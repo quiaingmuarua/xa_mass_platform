@@ -111,10 +111,7 @@ final class RuntimeLeaseProjectionSupport {
             );
             projectionChanged = true;
         }
-        if (!projectionChanged) {
-            return true;
-        }
-        return taskManager.updateTaskMessageProjection(taskId, taskMsg);
+        return true;
     }
 
     private static void tryAddTaskMessageAttemptAuditProjection(TaskManager taskManager,

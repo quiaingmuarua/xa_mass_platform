@@ -184,7 +184,7 @@ public class TransportRuntimeComposition {
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        if (!usesDefaultWorkerTransportRuntimeFactory()) {
+        if (usesCustomWorkerTransportRuntimeFactory()) {
             if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
                 return requestedAdapterId.trim().toLowerCase(java.util.Locale.ROOT);
             }
@@ -195,14 +195,12 @@ public class TransportRuntimeComposition {
     }
 
     public List<TransportAdapterBootstrap> resolveTransportAdapterBootstraps() {
-        List<TransportAdapterBootstrap> bootstraps = new ArrayList<>();
-        bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
-        bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
-        bootstraps.addAll(resolveSupplementalBundledWebSocketTransportAdapterBootstraps());
-        bootstraps.addAll(resolveSupplementalBundledSocketTransportAdapterBootstraps());
-        bootstraps.addAll(supplementalTransportAdapterBootstraps);
+        List<TransportAdapterBootstrap> bootstraps = bootstrapCandidates().stream()
+                .filter(BootstrapCandidate::runtimeEnabled)
+                .map(BootstrapCandidate::bootstrap)
+                .toList();
         validateUniqueAdapterIds(bootstraps);
-        return List.copyOf(bootstraps);
+        return bootstraps;
     }
 
     public int getMaxDeliveryQueuedItems() {
@@ -262,42 +260,11 @@ public class TransportRuntimeComposition {
                 PollingWorkerAdapter.PROTOCOL,
                 WorkerTransportHints.POLLING
         ));
-        TransportAdapterBootstrap primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
-        if (primaryTransportAdapterBootstrap != null) {
-            TransportAdapterDescriptor primaryDescriptor = primaryBootstrap.descriptor();
-            if (primaryDescriptor != null) {
-                descriptors.add(primaryDescriptor);
+        for (BootstrapCandidate candidate : bootstrapCandidates()) {
+            if (!candidate.registrationEnabled()) {
+                continue;
             }
-        } else if (bundledWebSocketAdapterConfig.isEnabled()) {
-            TransportAdapterDescriptor webSocketDescriptor = primaryBootstrap.descriptor();
-            if (webSocketDescriptor != null) {
-                descriptors.add(webSocketDescriptor);
-            }
-        }
-        if (bundledSocketAdapterConfig.isEnabled()) {
-            TransportAdapterDescriptor socketDescriptor = resolveBundledSocketTransportAdapterBootstrap().descriptor();
-            if (socketDescriptor != null) {
-                descriptors.add(socketDescriptor);
-            }
-        }
-        for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
-            if (config.isEnabled()) {
-                TransportAdapterDescriptor descriptor = new WebSocketTransportAdapterBootstrap(config).descriptor();
-                if (descriptor != null) {
-                    descriptors.add(descriptor);
-                }
-            }
-        }
-        for (SocketAdapterConfig config : supplementalSocketAdapterConfigs) {
-            if (config.isEnabled()) {
-                TransportAdapterDescriptor descriptor = new SocketTransportAdapterBootstrap(config).descriptor();
-                if (descriptor != null) {
-                    descriptors.add(descriptor);
-                }
-            }
-        }
-        for (TransportAdapterBootstrap bootstrap : supplementalTransportAdapterBootstraps) {
-            TransportAdapterDescriptor descriptor = bootstrap.descriptor();
+            TransportAdapterDescriptor descriptor = candidate.bootstrap().descriptor();
             if (descriptor != null) {
                 descriptors.add(descriptor);
             }
@@ -306,9 +273,40 @@ public class TransportRuntimeComposition {
         return List.copyOf(descriptors);
     }
 
-    private boolean usesDefaultWorkerTransportRuntimeFactory() {
-        return workerTransportRuntimeFactory == null
-                || workerTransportRuntimeFactory instanceof DefaultWorkerTransportRuntimeFactory;
+    private boolean usesCustomWorkerTransportRuntimeFactory() {
+        return workerTransportRuntimeFactory != null;
+    }
+
+    private List<BootstrapCandidate> bootstrapCandidates() {
+        List<BootstrapCandidate> candidates = new ArrayList<>();
+        candidates.add(new BootstrapCandidate(
+                resolvePrimaryTransportAdapterBootstrap(),
+                true,
+                primaryTransportAdapterBootstrap != null || bundledWebSocketAdapterConfig.isEnabled()
+        ));
+        candidates.add(new BootstrapCandidate(
+                resolveBundledSocketTransportAdapterBootstrap(),
+                true,
+                bundledSocketAdapterConfig.isEnabled()
+        ));
+        for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
+            candidates.add(new BootstrapCandidate(
+                    new WebSocketTransportAdapterBootstrap(config),
+                    true,
+                    config.isEnabled()
+            ));
+        }
+        for (SocketAdapterConfig config : supplementalSocketAdapterConfigs) {
+            candidates.add(new BootstrapCandidate(
+                    new SocketTransportAdapterBootstrap(config),
+                    true,
+                    config.isEnabled()
+            ));
+        }
+        for (TransportAdapterBootstrap bootstrap : supplementalTransportAdapterBootstraps) {
+            candidates.add(new BootstrapCandidate(bootstrap, true, true));
+        }
+        return List.copyOf(candidates);
     }
 
     private static boolean hasAnyEnabledWebSocketConfig(List<WebSocketAdapterConfig> configs) {
@@ -341,6 +339,11 @@ public class TransportRuntimeComposition {
                 throw new IllegalStateException("Duplicate transport adapterId configured: " + normalized);
             }
         }
+    }
+
+    private record BootstrapCandidate(TransportAdapterBootstrap bootstrap,
+                                      boolean runtimeEnabled,
+                                      boolean registrationEnabled) {
     }
 }
 

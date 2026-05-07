@@ -136,16 +136,9 @@ Canonical trace objects: `com.xa.mass.trace.sink.ExecutionEvent` and `ExecutionE
 
 ## Agent Contract (Hard Rules)
 
-From `AGENTS.md`:
-
-- No compatibility obligation for superseded internal paths; update in-repo callers instead of preserving old paths
-- `@Deprecated` is a temporary convergence marker only; do not maintain deprecated and replacement as two live tracks
-- Never extend deprecated or legacy seams
-- A failing test is never a reason to add a compatibility layer
-- When code changes a documented contract or ownership rule, update the owning doc in the same change
-- Do not let transport-specific shapes redefine the kernel
-- Do not add scan-heavy observability or reconciliation loops to hot paths
-- Bias transport and lifecycle writes toward idempotent operations and retry safety
+Use `AGENTS.md` as the single source for agent behavior, refactor discipline,
+rename discipline, and compatibility/convergence rules. Do not maintain a
+second summarized rule set here.
 
 **Multi-file or core change planning must include:** scope, out-of-scope, files and symbols, alternatives considered, costs, test impact with classifications, risk, and verification steps.
 

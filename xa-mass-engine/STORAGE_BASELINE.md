@@ -78,6 +78,10 @@ Rules:
 - `addTaskMessageAttempt(...)` and `updateTaskMessageAttempt(...)` are bounded
   compatibility writes only; dispatch, result convergence, and retry scheduling
   must continue from runtime truth even when these writes are missing or fail
+- callback/expiry/retry compensation may repair a bounded `TaskMsg` view in
+  memory from runtime lease truth, but must not depend on persisting
+  intermediate `ASSIGNED` or transient `FAILED` projection rows before the
+  final summary write
 - `getTaskMessage(...)` may still be used to repair or recreate a bounded
   compatibility `TaskMsg` view, but dispatch payload construction must not
   require reading projection input from this seam

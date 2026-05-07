@@ -176,25 +176,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public synchronized TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
-                                                                         String messageId,
-                                                                         int retryCount,
-                                                                         String attemptId,
-                                                                         String workerId,
-                                                                         String workerContextId,
-                                                                         String batchId) {
-        return runtimeProjection.synchronizeAssignedTaskMessageProjection(
-                taskId,
-                messageId,
-                retryCount,
-                attemptId,
-                workerId,
-                workerContextId,
-                batchId
-        );
-    }
-
-    @Override
     public synchronized void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         runtimeProjection.addTaskMessageAttempt(taskId, messageId, attempt);
     }

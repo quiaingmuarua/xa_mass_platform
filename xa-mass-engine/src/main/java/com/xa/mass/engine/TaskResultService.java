@@ -187,19 +187,19 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        if (task.getStatus().isFinal()) {
-            traceEventLogger.callbackIgnoredLate(taskMsg,
-                    "task already terminal in status " + task.getStatus());
-            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                    taskId, messageId, taskMsg.getStatus());
-            return TaskMessageMutationOutcome.acceptedNoop();
-        }
-
         if (taskMsg.isCompleted()) {
             traceEventLogger.callbackIgnoredDuplicate(taskMsg,
                     "task message already final in status " + taskMsg.getStatus());
             logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
                     messageId, taskId, taskMsg.getStatus());
+            return TaskMessageMutationOutcome.acceptedNoop();
+        }
+
+        if (task.getStatus().isFinal()) {
+            traceEventLogger.callbackIgnoredLate(taskMsg,
+                    "task already terminal in status " + task.getStatus());
+            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                    taskId, messageId, taskMsg.getStatus());
             return TaskMessageMutationOutcome.acceptedNoop();
         }
 
@@ -497,6 +497,12 @@ class TaskResultService {
         persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
                 "revoke attempt for retry");
 
+        if (!ensureRetryResetCompatibilityView(taskMsg, activeAttempt)) {
+            logger.warn("Failed to recover retry-reset compatibility view for task message {} from status {}",
+                    messageId, taskMsg.getStatus());
+            return TaskMessageMutationOutcome.rejected();
+        }
+
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.BUSINESS_FAILED)) {
             logger.warn("Failed to mark task message {} as FAILED before retry reset", messageId);
@@ -511,10 +517,6 @@ class TaskResultService {
                 "TaskManager",
                 "task message marked failed before retry reset"
         );
-        if (!taskManager.updateTaskMessageProjection(taskId, taskMsg)) {
-            logger.warn("Failed to persist intermediate failed state for task message {} in task {}", messageId, taskId);
-            return TaskMessageMutationOutcome.rejected();
-        }
 
         taskMsg.incrementRetryCount();
         taskMsg.resetForRetry();
@@ -530,6 +532,26 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
         return TaskMessageMutationOutcome.acceptedDirty();
+    }
+
+    private boolean ensureRetryResetCompatibilityView(TaskMsg taskMsg,
+                                                      TaskMsgAttempt activeAttempt) {
+        if (taskMsg == null) {
+            return false;
+        }
+        if (taskMsg.getStatus() == TaskMsgStatus.ASSIGNED || taskMsg.getStatus() == TaskMsgStatus.RUNNING) {
+            return true;
+        }
+        if (taskMsg.getStatus() != TaskMsgStatus.INIT || activeAttempt == null) {
+            return false;
+        }
+        taskMsg.applyLatestAttemptProjection(
+                activeAttempt.getAttemptId(),
+                activeAttempt.getWorkerId(),
+                activeAttempt.getWorkerContextId(),
+                activeAttempt.getBatchId()
+        );
+        return taskMsg.markAsAssigned();
     }
 
     private TaskMessageMutationOutcome handleRetryExhaustedFailure(String taskId,

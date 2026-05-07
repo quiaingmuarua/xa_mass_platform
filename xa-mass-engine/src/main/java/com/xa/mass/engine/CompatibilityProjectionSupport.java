@@ -138,7 +138,7 @@ final class CompatibilityProjectionSupport {
 
     private static TaskMsg copyOf(TaskMsg source) {
         TaskMsg copy = new TaskMsg(source.getMessageId(), source.getTaskId(), source.getInput(), source.getPayloadRef());
-        copy.setStatus(source.getStatus());
+        rehydrateCompatibilityStatus(copy, source);
         copy.setAssignedTime(source.getAssignedTime());
         copy.setCreateTime(source.getCreateTime());
         copy.setUpdateTime(source.getUpdateTime());
@@ -157,6 +157,33 @@ final class CompatibilityProjectionSupport {
                 source.getLatestAttemptBatchId()
         );
         return copy;
+    }
+
+    private static void rehydrateCompatibilityStatus(TaskMsg target, TaskMsg source) {
+        TaskMsgStatus status = source.getStatus();
+        if (status == null || status == TaskMsgStatus.INIT) {
+            return;
+        }
+        switch (status) {
+            case ASSIGNED -> {
+                if (!target.markAsAssigned()) {
+                    throw new IllegalStateException("Unable to project ASSIGNED status for message " + source.getMessageId());
+                }
+            }
+            case RUNNING -> {
+                if (!target.markAsAssigned() || !target.markAsRunning()) {
+                    throw new IllegalStateException("Unable to project RUNNING status for message " + source.getMessageId());
+                }
+            }
+            case SUCCESS, FAILED, EXPIRED -> target.forceFinalize(
+                    status,
+                    source.getFinalReason(),
+                    source.getErrorMessage()
+            );
+            default -> throw new IllegalStateException(
+                    "Unsupported projected status " + status + " for message " + source.getMessageId()
+            );
+        }
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {
