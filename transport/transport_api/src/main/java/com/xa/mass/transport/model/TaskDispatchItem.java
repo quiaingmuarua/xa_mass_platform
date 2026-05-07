@@ -4,6 +4,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,6 +47,7 @@ public final class TaskDispatchItem {
     private final String batchId;
     private final Map<String, Object> input;
     private final Map<String, Object> sharedConfig;
+    private final Map<String, Object> transportPayload;
 
     public TaskDispatchItem(String taskId,
                             String messageId,
@@ -77,7 +79,7 @@ public final class TaskDispatchItem {
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
         this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
-                attemptId, workerId, workerContextId, batchId, input, sharedConfig, false);
+                attemptId, workerId, workerContextId, batchId, input, sharedConfig, false, null);
     }
 
     private TaskDispatchItem(String taskId,
@@ -93,7 +95,8 @@ public final class TaskDispatchItem {
                              String batchId,
                              Map<String, Object> input,
                              Map<String, Object> sharedConfig,
-                             boolean trustedImmutablePayload) {
+                             boolean trustedImmutablePayload,
+                             Map<String, Object> transportPayload) {
         this.taskId = taskId;
         this.messageId = messageId;
         this.eventCode = eventCode;
@@ -105,8 +108,12 @@ public final class TaskDispatchItem {
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
-        this.input = trustedImmutablePayload ? trustedMap(input) : immutableCopy(input);
-        this.sharedConfig = trustedImmutablePayload ? trustedMap(sharedConfig) : immutableCopy(sharedConfig);
+        this.input = trustedImmutablePayload ? trustedMap(input) : normalizeObject(input, INPUT);
+        this.sharedConfig = trustedImmutablePayload ? trustedMap(sharedConfig) : normalizeObject(sharedConfig, SHARED_CONFIG);
+        this.transportPayload = transportPayload != null
+                ? trustedMap(transportPayload)
+                : buildTransportPayload(taskName, project, userId, retryCount, workerId, workerContextId, batchId,
+                this.input, this.sharedConfig);
     }
 
     public String getTaskId() {
@@ -168,14 +175,15 @@ public final class TaskDispatchItem {
                 batchId,
                 input,
                 sharedConfig,
-                true
+                true,
+                null
         );
     }
 
     public static TaskDispatchItem fromTransportPacket(TransportPacket packet) {
         requireDispatchPacket(packet);
         Map<String, Object> payload = packet.payload();
-        return fromDecodedTransportPayload(
+        return new TaskDispatchItem(
                 packet.taskId(),
                 packet.messageId(),
                 packet.eventCode(),
@@ -188,7 +196,9 @@ public final class TaskDispatchItem {
                 stringValue(payload.get(WORKER_CONTEXT_ID)),
                 stringValue(payload.get(BATCH_ID)),
                 mapValue(payload.get(INPUT)),
-                mapValue(payload.get(SHARED_CONFIG))
+                mapValue(payload.get(SHARED_CONFIG)),
+                true,
+                payload
         );
     }
 
@@ -233,6 +243,18 @@ public final class TaskDispatchItem {
     }
 
     public Map<String, Object> toTransportPayload() {
+        return transportPayload;
+    }
+
+    private static Map<String, Object> buildTransportPayload(String taskName,
+                                                             String project,
+                                                             String userId,
+                                                             int retryCount,
+                                                             String workerId,
+                                                             String workerContextId,
+                                                             String batchId,
+                                                             Map<String, Object> input,
+                                                             Map<String, Object> sharedConfig) {
         Map<String, Object> payload = new LinkedHashMap<>();
         put(payload, TASK_NAME, taskName);
         put(payload, PROJECT, project);
@@ -243,14 +265,11 @@ public final class TaskDispatchItem {
         put(payload, BATCH_ID, batchId);
         payload.put(INPUT, input);
         payload.put(SHARED_CONFIG, sharedConfig);
-        return payload;
+        return Map.copyOf(payload);
     }
 
-    private static Map<String, Object> immutableCopy(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(new LinkedHashMap<>(values));
+    private static Map<String, Object> normalizeObject(Map<String, Object> values, String fieldName) {
+        return TransportJsonValueNormalizer.normalizeObject(values, fieldName);
     }
 
     private static Map<String, Object> trustedMap(Map<String, Object> values) {
@@ -306,7 +325,7 @@ public final class TaskDispatchItem {
         if ("JSON".equals(payloadType)) {
             Object data = rawInput.get("data");
             if (data instanceof Map<?, ?> map) {
-                return immutableCopy((Map<String, Object>) map);
+                return normalizeObject((Map<String, Object>) map, INPUT);
             }
         }
         if ("TEXT".equals(payloadType)) {
@@ -315,7 +334,7 @@ public final class TaskDispatchItem {
                 return Map.of("text", value);
             }
         }
-        return immutableCopy(rawInput);
+        return normalizeObject(rawInput, INPUT);
     }
 
     private static String sdkPayloadType(TaskDispatchContext task) {

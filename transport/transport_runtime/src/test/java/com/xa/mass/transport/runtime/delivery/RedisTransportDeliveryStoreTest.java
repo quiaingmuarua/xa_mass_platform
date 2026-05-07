@@ -4,8 +4,8 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -155,43 +155,21 @@ class RedisTransportDeliveryStoreTest {
     }
 
     private TransportDispatchEnvelope envelope(String adapterId, TaskDispatchItem item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
-                "delivery-" + adapterId + "-" + item.getMessageId(),
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        "delivery-" + adapterId + "-" + item.getMessageId(),
-                        item.attemptId(),
-                        PacketType.TASK_DISPATCH,
-                        adapterId,
-                        item.getWorkerId(),
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        item.toTransportPayload()
-                ),
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchItem(adapterId, item.getWorkerId(), item.attemptId(), item),
                 1L
         );
     }
 
     private TransportDispatchEnvelope invalidEnvelope(String adapterId, TaskDispatchItem item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
-                "delivery-" + adapterId + "-" + item.getMessageId(),
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        "delivery-" + adapterId + "-" + item.getMessageId(),
-                        item.attemptId(),
-                        PacketType.TASK_DISPATCH,
-                        adapterId,
-                        " ",
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        item.toTransportPayload()
-                ),
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchItem(adapterId, " ", item.attemptId(), item),
                 1L
         );
     }

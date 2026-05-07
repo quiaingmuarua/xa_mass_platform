@@ -89,11 +89,13 @@ class TaskResultReportTest {
         TaskResultReport decoded = TaskResultReport.fromTransportPacket(packet);
 
         assertSame(payload.get("output"), report.getOutput());
+        assertSame(payload, report.toTransportPayload());
         assertEquals(report.getTaskId(), decoded.getTaskId());
         assertEquals(report.getMessageId(), decoded.getMessageId());
         assertEquals(report.isSuccess(), decoded.isSuccess());
         assertEquals(report.getDetail(), decoded.getDetail());
         assertEquals(report.getErrorCode(), decoded.getErrorCode());
         assertEquals(report.getOutput(), decoded.getOutput());
+        assertSame(packet.payload(), decoded.toTransportPayload());
     }
 }

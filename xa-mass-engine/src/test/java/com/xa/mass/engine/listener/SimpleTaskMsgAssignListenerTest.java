@@ -169,16 +169,16 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskMessageView> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(msg -> TaskMsgStatus.valueOf(msg.status())).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", null, null, null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMessageView::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -293,10 +293,10 @@ class SimpleTaskMsgAssignListenerTest {
 
         assertEquals(1, dispatched.size());
         TaskMsg stored = storedMessages(task.getTid()).get(0);
-        TaskMsg visible = taskQueries.getTaskMessageProjection(task.getTid(), stored.getMessageId());
+        TaskMessageView visible = taskQueries.getTaskMessageView(task.getTid(), stored.getMessageId());
         assertEquals(TaskMsgStatus.INIT, stored.getStatus());
-        assertEquals(TaskMsgStatus.ASSIGNED, visible.getStatus());
-        assertEquals("d1", visible.getLatestAttemptWorkerId());
+        assertEquals("ASSIGNED", visible.status());
+        assertEquals("d1", visible.latestAttemptWorkerId());
         assertTrue(failingStorage.getTaskMessageAttempts(task.getTid(), stored.getMessageId()).isEmpty());
     }
 
@@ -427,16 +427,16 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(4, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskMessageView> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(msg -> TaskMsgStatus.valueOf(msg.status())).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1", "d2", null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMessageView::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -450,15 +450,15 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskMessageView> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(msg -> TaskMsgStatus.valueOf(msg.status())).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d1", null, null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMessageView::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -473,14 +473,14 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskMessageView> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(msg -> TaskMsgStatus.valueOf(msg.status())).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1"),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMessageView::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -489,9 +489,9 @@ class SimpleTaskMsgAssignListenerTest {
         task.setBatchSize(10);
         assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
-        List<TaskMsg> stored = projectedMessages(task.getTid());
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() != null && !msg.getLatestAttemptBatchId().isBlank()));
+        List<TaskMessageView> stored = projectedMessages(task.getTid());
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() != null && !msg.latestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
                 any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
@@ -549,9 +549,9 @@ class SimpleTaskMsgAssignListenerTest {
         return taskStorage.getTaskMessages(taskId, Math.toIntExact(count));
     }
 
-    private List<TaskMsg> projectedMessages(String taskId) {
+    private List<TaskMessageView> projectedMessages(String taskId) {
         return storedMessages(taskId).stream()
-                .map(msg -> taskQueries.getTaskMessageProjection(taskId, msg.getMessageId()))
+                .map(msg -> taskQueries.getTaskMessageView(taskId, msg.getMessageId()))
                 .collect(Collectors.toList());
     }
 

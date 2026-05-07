@@ -70,6 +70,7 @@ class TransportDispatchEnvelopeTest {
 
     @Test
     void packetViewRebuildsDispatchItemWhenExplicitlyRequested() {
+        TaskDispatchItem item = dispatchItem();
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
                 new TransportPacket(
@@ -79,22 +80,12 @@ class TransportDispatchEnvelopeTest {
                         PacketType.TASK_DISPATCH,
                         "websocket",
                         "worker-1",
-                        "task-1",
-                        "msg-1",
-                        "attempt-1",
-                        "crawler.fetch-page",
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        Map.of(
-                                "taskName", "task-name",
-                                "project", "demoApp",
-                                "userId", "agent",
-                                "retryCount", 1,
-                                "workerId", "worker-1",
-                                "workerContextId", "ctx-1",
-                                "batchId", "batch-1",
-                                "input", Map.of("target", "target-1"),
-                                "sharedConfig", Map.of("debug", true)
-                        )
+                        item.toTransportPayload()
                 ),
                 10L
         );
@@ -105,6 +96,24 @@ class TransportDispatchEnvelopeTest {
         assertEquals("msg-1", projected.getMessageId());
         assertEquals("attempt-1", projected.attemptId());
         assertEquals("target-1", projected.getInput().get("target"));
+    }
+
+    private TaskDispatchItem dispatchItem() {
+        return new TaskDispatchItem(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "agent",
+                1,
+                "attempt-1",
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                Map.of("target", "target-1"),
+                Map.of("debug", true)
+        );
     }
 }
 

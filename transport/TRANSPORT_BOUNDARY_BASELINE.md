@@ -130,6 +130,10 @@ or array shapes only: `String`, `Number`, `Boolean`, `null`,
 Transport must reject unsupported JVM-only objects at payload assembly time
 instead of letting different codecs or queue implementations observe different
 behavior.
+`TaskDispatchItem` and `TaskResultReport` are the primary owners of their
+transport payload views: they should freeze nested JSON-safe values once and
+expose a stable payload map for packet assembly instead of rebuilding wrapper
+maps repeatedly across hot paths.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope

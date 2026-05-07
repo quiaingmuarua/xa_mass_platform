@@ -4,8 +4,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -66,20 +65,8 @@ class RuntimeDispatchOutcomesTest {
                                               TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        deliveryId,
-                        traceId,
-                        PacketType.TASK_DISPATCH,
-                        adapterId,
-                        routeKey,
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        item.toTransportPayload()
-                ),
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchItem(adapterId, routeKey, traceId, item),
                 1L
         );
     }

@@ -12,6 +12,8 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskMessageAttemptSupport;
+import com.xa.mass.engine.TaskMessageAttemptView;
+import com.xa.mass.engine.TaskMessageView;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -69,13 +71,13 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("SUCCESS", updated.getOutput().get("status"));
-        assertEquals("ok", updated.getOutput().get("mockData"));
-        TaskMsgAttempt attempt = latestAttemptAuditView(fixture);
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("SUCCESS", updated.output().get("status"));
+        assertEquals("ok", updated.output().get("mockData"));
+        TaskMessageAttemptView attempt = latestAttemptAuditView(fixture);
         assertNotNull(attempt);
-        assertEquals("SUCCESS", attempt.getOutput().get("status"));
+        assertEquals("SUCCESS", attempt.output().get("status"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
@@ -87,18 +89,18 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.INIT, updated.getStatus());
-        assertEquals(1, updated.getRetryCount());
-        assertNull(updated.getErrorMessage());
-        assertNull(updated.getErrorCode());
-        TaskMsgAttempt attempt = latestAttemptAuditView(fixture);
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("INIT", updated.status());
+        assertEquals(1, updated.retryCount());
+        assertNull(updated.errorMessage());
+        assertNull(updated.errorCode());
+        TaskMessageAttemptView attempt = latestAttemptAuditView(fixture);
         assertNotNull(attempt);
-        assertEquals(TaskMsgAttemptStatus.REVOKED, attempt.getStatus());
-        assertEquals(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY, attempt.getFinalReason());
-        assertEquals("boom", attempt.getErrorMessage());
-        assertEquals("RATE_LIMITED", attempt.getErrorCode());
-        assertNull(attempt.getOutput());
+        assertEquals("REVOKED", attempt.status());
+        assertEquals(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY.name(), attempt.finalReason());
+        assertEquals("boom", attempt.errorMessage());
+        assertEquals("RATE_LIMITED", attempt.errorCode());
+        assertNull(attempt.output());
         assertEquals(TaskStatus.RUNNING, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
@@ -111,9 +113,9 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertNull(updated.getErrorMessage());
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertNull(updated.errorMessage());
     }
 
     @Test
@@ -153,10 +155,10 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("SUCCESS", updated.getOutput().get("status"));
-        assertEquals("ok-from-report", updated.getOutput().get("mockData"));
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("SUCCESS", updated.output().get("status"));
+        assertEquals("ok-from-report", updated.output().get("mockData"));
     }
 
     @Test
@@ -172,9 +174,9 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok-envelope", updated.getOutput().get("mockData"));
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("ok-envelope", updated.output().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
@@ -193,9 +195,9 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("ok-mismatch", updated.output().get("mockData"));
     }
 
     @Test
@@ -213,12 +215,12 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok-no-attempt-row", updated.getOutput().get("mockData"));
-        TaskMsgAttempt recoveredAttempt = latestAttemptAuditView(fixture);
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("ok-no-attempt-row", updated.output().get("mockData"));
+        TaskMessageAttemptView recoveredAttempt = latestAttemptAuditView(fixture);
         assertNotNull(recoveredAttempt);
-        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
+        assertEquals("SUCCEEDED", recoveredAttempt.status());
     }
 
     @Test
@@ -244,9 +246,9 @@ class RuntimeTaskResultIngestChannelTest {
                 "missing attempt residue should be recreated once as the final bounded audit view");
         assertTrue(countingStorage.updateAttemptCount <= 1,
                 "result convergence should not keep restamping intermediate attempt states when only runtime lease exists");
-        TaskMsgAttempt recoveredAttempt = latestAttemptAuditView(fixture);
+        TaskMessageAttemptView recoveredAttempt = latestAttemptAuditView(fixture);
         assertNotNull(recoveredAttempt);
-        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
+        assertEquals("SUCCEEDED", recoveredAttempt.status());
     }
 
     @Test
@@ -342,9 +344,9 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-update-fails", null));
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok-update-fails", updated.getOutput().get("mockData"));
+        TaskMessageView updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals("SUCCESS", updated.status());
+        assertEquals("ok-update-fails", updated.output().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 

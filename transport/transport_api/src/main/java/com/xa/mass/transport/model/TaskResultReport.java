@@ -27,6 +27,7 @@ public final class TaskResultReport {
     private final String detail;
     private final String errorCode;
     private final Map<String, Object> output;
+    private final Map<String, Object> transportPayload;
 
     public TaskResultReport(String taskId,
                             String messageId,
@@ -34,12 +35,26 @@ public final class TaskResultReport {
                             String detail,
                             String errorCode,
                             Map<String, Object> output) {
+        this(taskId, messageId, success, detail, errorCode, output, null, false);
+    }
+
+    private TaskResultReport(String taskId,
+                             String messageId,
+                             boolean success,
+                             String detail,
+                             String errorCode,
+                             Map<String, Object> output,
+                             Map<String, Object> transportPayload,
+                             boolean trustedImmutableOutput) {
         this.taskId = taskId;
         this.messageId = messageId;
         this.success = success;
         this.detail = detail;
         this.errorCode = errorCode;
-        this.output = immutableCopy(output);
+        this.output = trustedImmutableOutput ? trustedMap(output) : immutableCopy(output);
+        this.transportPayload = transportPayload != null
+                ? trustedMap(transportPayload)
+                : buildTransportPayload(success, detail, errorCode, this.output);
     }
 
     public String getTaskId() {
@@ -67,12 +82,7 @@ public final class TaskResultReport {
     }
 
     public Map<String, Object> toTransportPayload() {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(SUCCESS, success);
-        put(payload, DETAIL, detail);
-        put(payload, ERROR_CODE, errorCode);
-        payload.put(OUTPUT, output);
-        return payload;
+        return transportPayload;
     }
 
     public static TaskResultReport fromTransportPacket(TransportPacket packet) {
@@ -84,12 +94,33 @@ public final class TaskResultReport {
                 booleanValue(payload.get(SUCCESS)),
                 stringValue(payload.get(DETAIL)),
                 stringValue(payload.get(ERROR_CODE)),
-                mapValue(payload.get(OUTPUT))
+                mapValue(payload.get(OUTPUT)),
+                payload,
+                true
         );
+    }
+
+    private static Map<String, Object> buildTransportPayload(boolean success,
+                                                             String detail,
+                                                             String errorCode,
+                                                             Map<String, Object> output) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(SUCCESS, success);
+        put(payload, DETAIL, detail);
+        put(payload, ERROR_CODE, errorCode);
+        payload.put(OUTPUT, output);
+        return Map.copyOf(payload);
     }
 
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
         return TransportJsonValueNormalizer.normalizeObject(values, "output");
+    }
+
+    private static Map<String, Object> trustedMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        return values;
     }
 
     private static void requireResultPacket(TransportPacket packet) {
