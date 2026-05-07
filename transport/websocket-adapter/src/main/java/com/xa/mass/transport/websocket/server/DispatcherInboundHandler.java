@@ -47,9 +47,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
             String workerId = resolveWorkerId(frame, ctx);
             String routeKey = resolveRouteKey(frame, workerId, ctx);
-            String messageId = frameCodec.extractMessageId(frame);
-            if (workerId == null || routeKey == null || messageId == null) {
-                sendError(ctx, "MISSING_FIELDS", "workerId/routeKey/messageId are required");
+            if (workerId == null || routeKey == null) {
+                sendError(ctx, "MISSING_FIELDS", "workerId/routeKey are required");
                 return;
             }
             org.slf4j.MDC.put("event", "channelRead0");
@@ -58,7 +57,13 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
-            org.slf4j.MDC.put("traceId", messageId);
+            String traceId = WebSocketStringValues.firstNonBlank(
+                    frameCodec.extractTraceId(frame),
+                    frameCodec.extractMessageId(frame)
+            );
+            if (traceId != null) {
+                org.slf4j.MDC.put("traceId", traceId);
+            }
             String project = frameCodec.extractProject(frame);
             if (project != null) {
                 org.slf4j.MDC.put("project", project);
@@ -72,6 +77,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             inboundMessageSink.accept(WebSocketInboundMessage.of(
                     raw,
                     workerId,
+                    routeKey,
                     ctx.channel().id().asShortText(),
                     frame
             ));

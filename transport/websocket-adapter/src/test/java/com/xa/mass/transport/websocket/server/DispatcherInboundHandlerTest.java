@@ -80,7 +80,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingWorkerIdOrMessageIdSendsMissingFieldsError() throws Exception {
+    void missingWorkerIdOrRouteKeySendsMissingFieldsError() throws Exception {
         handler.channelRead0(ctx, frame("{\"eventCode\":\"mock.state.get\"}"));
 
         String sent = sentFrame.get();
@@ -124,6 +124,7 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionManager.getWorkerConnectionCount());
@@ -153,6 +154,7 @@ class DispatcherInboundHandlerTest {
 
         assertNull(sentFrame.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("ws-route-11", acceptedInboundMessage.get().getRouteKey());
         assertNotNull(sessionManager.getChannelContext("ws-route-11"));
         assertNull(sessionManager.getChannelContext("worker-1"));
     }
@@ -211,7 +213,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingMessageIdSendsMissingFieldsError() throws Exception {
+    void controlFrameWithoutMessageIdStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1",
                 new DefaultHttpHeaders(),
@@ -225,9 +227,10 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(controlJson));
 
-        String sent = sentFrame.get();
-        assertNotNull(sent);
-        assertTrue(sent.contains("MISSING_FIELDS"));
+        assertNull(sentFrame.get());
+        assertNotNull(acceptedInboundMessage.get());
+        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
     }
 
     @Test

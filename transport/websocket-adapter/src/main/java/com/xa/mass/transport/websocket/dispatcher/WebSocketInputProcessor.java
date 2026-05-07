@@ -62,7 +62,8 @@ public final class WebSocketInputProcessor {
                     inboundMessage.getWorkerId()
             );
             String routeKey = WebSocketStringValues.firstNonBlank(
-                    inboundMessage.getEndpointId(),
+                    context.getFrameCodec().extractRouteKey(frame),
+                    inboundMessage.getRouteKey(),
                     workerId
             );
             boolean accepted = context.getTaskResultIngestChannel().ingest(new TransportResultEnvelope(

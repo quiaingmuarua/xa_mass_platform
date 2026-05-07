@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -77,6 +78,7 @@ class WebSocketInputProcessorTest {
         assertNotNull(capturedEnvelope.get());
         assertEquals("websocket", capturedEnvelope.get().getAdapterId());
         assertEquals("worker-1", capturedEnvelope.get().getWorkerId());
+        assertEquals("worker-1", capturedEnvelope.get().getRouteKey());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
         assertTrue(capturedEnvelope.get().getReport().isSuccess());
@@ -110,12 +112,14 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 codec.getGson().toJson(frame),
                 "worker-from-handshake",
+                "route-from-handshake",
                 "endpoint-1"
         ));
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("worker-from-handshake", capturedEnvelope.get().getWorkerId());
+        assertEquals("route-from-handshake", capturedEnvelope.get().getRouteKey());
         assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
@@ -148,6 +152,7 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 "not-json-but-already-parsed",
                 "worker-from-session",
+                "route-from-session",
                 "endpoint-1",
                 frame
         ));
@@ -155,9 +160,47 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("worker-from-session", capturedEnvelope.get().getWorkerId());
+        assertEquals("route-from-session", capturedEnvelope.get().getRouteKey());
         assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+    }
+
+    @Test
+    void canonicalTaskResultPrefersInlineRouteKeyOverSessionMetadata() {
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                capturedEnvelope.set(envelope);
+                return true;
+            }
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-1");
+        frame.addProperty("taskId", "task-1");
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty("routeKey", "inline-route");
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+
+        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
+                codec.getGson().toJson(frame),
+                "worker-from-session",
+                "route-from-session",
+                "endpoint-1"
+        ));
+
+        assertTrue(result);
+        assertNotNull(capturedEnvelope.get());
+        assertEquals("inline-route", capturedEnvelope.get().getRouteKey());
+        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
     }
 
     @Test
@@ -178,6 +221,40 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
 
         assertFalse(result);
+    }
+
+    @Test
+    void canonicalTaskResultWithoutMessageIdIsRejectedWithoutIngest() {
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                capturedEnvelope.set(new TransportResultEnvelope("websocket", "route-1", "worker-1", "endpoint-1", report));
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                capturedEnvelope.set(envelope);
+                return true;
+            }
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        JsonObject frame = new JsonObject();
+        frame.addProperty("taskId", "task-1");
+        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+
+        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
+                codec.getGson().toJson(frame),
+                "worker-1",
+                "route-1",
+                "endpoint-1"
+        ));
+
+        assertTrue(result);
+        assertNull(capturedEnvelope.get());
     }
 
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {

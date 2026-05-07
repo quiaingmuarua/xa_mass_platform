@@ -912,6 +912,41 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void callbackWithRuntimeLeaseOverridesFinalTaskMsgProjectionResidue() {
+        Task task = taskManager.createTask(buildRequest("task-result-runtime-final-projection-residue", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        assignMessage(task, message, "worker-final-residue", "worker-context-final-residue", "batch-final-residue");
+        message.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.BUSINESS_FAILED, "stale-final-projection");
+        message.setErrorCode("STALE");
+        message.setOutput(java.util.Map.of("stale", true));
+        taskManager.updateTaskMessageProjection(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(
+                task.getTid(),
+                message.getMessageId(),
+                true,
+                "done",
+                null,
+                java.util.Map.of("fresh", true)
+        ));
+
+        TaskMsg updatedMessage = taskManager.getTaskMessageProjection(task.getTid(), message.getMessageId());
+        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttemptAuditView(task.getTid(), message.getMessageId());
+
+        assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, updatedMessage.getFinalReason());
+        assertNull(updatedMessage.getErrorCode());
+        assertEquals(java.util.Map.of("fresh", true), updatedMessage.getOutput());
+        assertEquals("worker-final-residue", updatedMessage.getLatestAttemptWorkerId());
+        assertNotNull(latestAttempt);
+        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, latestAttempt.getStatus());
+    }
+
+    @Test
     void retryableFailurePublishesAttemptClosedBeforeDispatchRequested() {
         Task task = taskManager.createTask(buildRequest("task-result-retry-order", List.of("alpha")));
         taskManager.approveTask(task.getTid());

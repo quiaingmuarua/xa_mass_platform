@@ -190,18 +190,16 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
-        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
-
-        if (storedProjection != null && storedProjection.isCompleted()) {
-            traceEventLogger.callbackIgnoredDuplicate(TaskMessageTraceView.from(storedProjection),
-                    "task message already final in status " + storedProjection.getStatus());
-            logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                    messageId, taskId, storedProjection.getStatus());
-            return TaskMessageMutationOutcome.acceptedNoop();
-        }
-
         if (task.getStatus().isFinal()) {
+            TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+            ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+            if (storedProjection != null && storedProjection.isCompleted()) {
+                traceEventLogger.callbackIgnoredDuplicate(TaskMessageTraceView.from(storedProjection),
+                        "task message already final in status " + storedProjection.getStatus());
+                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                        messageId, taskId, storedProjection.getStatus());
+                return TaskMessageMutationOutcome.acceptedNoop();
+            }
             TaskMessageTraceView lateView = resolveTraceTaskMessageView(taskId, messageId, storedProjection, activeLease);
             traceEventLogger.callbackIgnoredLate(lateView,
                     "task already terminal in status " + task.getStatus());
@@ -210,7 +208,16 @@ class TaskResultService {
             return TaskMessageMutationOutcome.acceptedNoop();
         }
 
+        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
         if (activeLease == null) {
+            TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+            if (storedProjection != null && storedProjection.isCompleted()) {
+                traceEventLogger.callbackIgnoredDuplicate(TaskMessageTraceView.from(storedProjection),
+                        "task message already final in status " + storedProjection.getStatus());
+                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                        messageId, taskId, storedProjection.getStatus());
+                return TaskMessageMutationOutcome.acceptedNoop();
+            }
             TaskMessageTraceView noLeaseView = resolveTraceTaskMessageView(taskId, messageId, storedProjection, null);
             traceEventLogger.callbackRejectedNoActiveLease(
                     noLeaseView,
@@ -219,13 +226,14 @@ class TaskResultService {
             logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
+
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                storedProjection,
+                null,
                 activeLease,
                 "HANDLE_TASK_MESSAGE_RESULT",
-                "runtime active lease synchronized compatibility projection"
+                "runtime active lease defines callback admissibility"
         );
         if (activeProjection == null) {
             logger.warn("Cannot handle task message result because msg {} was not found in task {} and no runtime projection could be recovered",
@@ -242,10 +250,6 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        traceEventLogger.callbackAccepted(
-                messageState.toTraceView(),
-                success ? "success callback received" : "failure callback received");
-
         if (!activeAttempt.projectCallbackAccepted(taskManager.getTaskMessageLeaseSeconds())) {
             logger.warn("Cannot advance attempt {} for task message {} from status {}",
                     activeAttempt.attemptId(), messageId, activeAttempt.status());
@@ -260,6 +264,25 @@ class TaskResultService {
                     messageId, workOutcome.status());
             return TaskMessageMutationOutcome.rejected();
         }
+
+        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
+        activeProjection = buildActiveRuntimeProjection(
+                taskId,
+                messageId,
+                storedProjection,
+                activeLease,
+                "HANDLE_TASK_MESSAGE_RESULT",
+                "runtime lease accepted callback before compatibility projection convergence"
+        );
+        if (activeProjection == null) {
+            logger.warn("Runtime accepted callback for task {} msg {} but compatibility base view could not be recovered",
+                    taskId, messageId);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        messageState = activeProjection.messageState();
+        traceEventLogger.callbackAccepted(
+                messageState.toTraceView(),
+                success ? "success callback received" : "failure callback received");
 
         if (success) {
             return handleSuccess(taskId, messageState, activeAttempt, detail, output);
@@ -400,6 +423,9 @@ class TaskResultService {
         RuntimeMessageView baseView = storedProjection != null
                 ? RuntimeMessageView.from(storedProjection)
                 : RuntimeMessageView.synthetic(taskId, messageId);
+        if (baseView != null && activeLease != null && baseView.isCompleted()) {
+            baseView = baseView.reopenForActiveLease(activeLease);
+        }
         return baseView.overlayActiveLease(activeLease);
     }
 
@@ -1246,6 +1272,38 @@ class TaskResultService {
 
         private boolean isCompleted() {
             return status != null && status.isFinal();
+        }
+
+        private RuntimeMessageView reopenForActiveLease(ActiveLeaseRecord activeLease) {
+            if (!isCompleted() || activeLease == null) {
+                return this;
+            }
+            int runtimeRetryCount = Math.max(0, activeLease.retryCount());
+            LocalDateTime leasedAt = activeLease.leasedAt() == null
+                    ? null
+                    : LocalDateTime.ofInstant(activeLease.leasedAt(), java.time.ZoneId.systemDefault());
+            LocalDateTime now = LocalDateTime.now();
+            return new RuntimeMessageView(
+                    messageId,
+                    taskId,
+                    null,
+                    activeLease.workerId(),
+                    activeLease.workerContextId(),
+                    activeLease.batchId(),
+                    TaskMsgStatus.ASSIGNED,
+                    assignedTime != null ? assignedTime : leasedAt != null ? leasedAt : now,
+                    createTime,
+                    now,
+                    null,
+                    null,
+                    runtimeRetryCount,
+                    maxRetryCount,
+                    null,
+                    null,
+                    null,
+                    payloadRef,
+                    null
+            );
         }
 
         private RuntimeMessageView overlayActiveLease(ActiveLeaseRecord activeLease) {
