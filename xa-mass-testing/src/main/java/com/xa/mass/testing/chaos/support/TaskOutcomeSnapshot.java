@@ -1,6 +1,6 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,16 +46,16 @@ public record TaskOutcomeSnapshot(String taskId,
                                          String status,
                                          String finalReason,
                                          String leaseExpireTime) {
-        public static AttemptOutcomeSnapshot fromAttempt(TaskMsgAttempt attempt) {
+        public static AttemptOutcomeSnapshot fromAttempt(SdkTaskMessageAttemptView attempt) {
             return new AttemptOutcomeSnapshot(
-                    attempt.getAttemptNo(),
-                    attempt.getAttemptId(),
-                    attempt.getWorkerId(),
-                    attempt.getWorkerContextId(),
-                    attempt.getBatchId(),
-                    ChaosSupport.enumName(attempt.getStatus()),
-                    ChaosSupport.enumName(attempt.getFinalReason()),
-                    attempt.getLeaseExpireTime() != null ? String.valueOf(attempt.getLeaseExpireTime()) : null
+                    attempt.attemptNo(),
+                    attempt.attemptId(),
+                    attempt.workerId(),
+                    attempt.workerContextId(),
+                    attempt.batchId(),
+                    attempt.status(),
+                    attempt.finalReason(),
+                    attempt.leaseExpireTime() != null ? String.valueOf(attempt.leaseExpireTime()) : null
             );
         }
 

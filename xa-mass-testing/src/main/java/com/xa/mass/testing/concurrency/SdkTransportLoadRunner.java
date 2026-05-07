@@ -9,11 +9,11 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -376,15 +376,15 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
-                List<TaskMsg> messages = messageSnapshot.messages();
+                SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
+                List<SdkTaskMessageView> messages = messageSnapshot.messages();
                 total += messages.size();
-                for (TaskMsg message : messages) {
-                    if (message.getStatus() == TaskMsgStatus.SUCCESS) {
+                for (SdkTaskMessageView message : messages) {
+                    if (TaskMsgStatus.SUCCESS.name().equals(message.status())) {
                         success++;
-                    } else if (message.getStatus() == TaskMsgStatus.FAILED) {
+                    } else if (TaskMsgStatus.FAILED.name().equals(message.status())) {
                         failed++;
-                    } else if (message.getStatus() == TaskMsgStatus.EXPIRED) {
+                    } else if (TaskMsgStatus.EXPIRED.name().equals(message.status())) {
                         expired++;
                     }
                 }

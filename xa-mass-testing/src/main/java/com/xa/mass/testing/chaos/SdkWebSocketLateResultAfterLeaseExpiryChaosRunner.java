@@ -7,8 +7,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
@@ -117,10 +117,10 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         Map.of("source", "SdkWebSocketLateResultAfterLeaseExpiryChaosRunner")
                 ));
 
-                TaskMsg message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
+                SdkTaskMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
                         "first active attempt should stay bound to the chaos worker before lease expiry"
@@ -146,7 +146,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 runtime.waitForAttemptCount(
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
@@ -159,29 +159,29 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "late-result chaos task must converge"
                 );
 
-                TaskMsg terminalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> terminalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
+                SdkTaskMessageView terminalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
+                List<SdkTaskMessageAttemptView> terminalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
                 ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
 
-                TaskMsgAttempt expiredAttempt = terminalAttempts.get(0);
-                TaskMsgAttempt successAttempt = terminalAttempts.get(1);
-                LocalDateTime initialLeaseExpireTime = expiredAttempt.getLeaseExpireTime();
+                SdkTaskMessageAttemptView expiredAttempt = terminalAttempts.get(0);
+                SdkTaskMessageAttemptView successAttempt = terminalAttempts.get(1);
+                LocalDateTime initialLeaseExpireTime = expiredAttempt.leaseExpireTime();
 
-                ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.getWorkerId()),
+                ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the chaos worker");
-                ChaosSupport.require(expiredAttempt.getStatus() == TaskMsgAttemptStatus.EXPIRED,
+                ChaosSupport.require(TaskMsgAttemptStatus.EXPIRED.name().equals(expiredAttempt.status()),
                         "first attempt should close as EXPIRED");
-                ChaosSupport.require(expiredAttempt.getFinalReason() == TaskMsgAttemptFinalReason.LEASE_EXPIRED,
+                ChaosSupport.require(TaskMsgAttemptFinalReason.LEASE_EXPIRED.name().equals(expiredAttempt.finalReason()),
                         "first attempt final reason should be LEASE_EXPIRED");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.getWorkerId()),
+                ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
                         "second attempt should belong to the steady worker");
-                ChaosSupport.require(successAttempt.getStatus() == TaskMsgAttemptStatus.SUCCEEDED,
+                ChaosSupport.require(TaskMsgAttemptStatus.SUCCEEDED.name().equals(successAttempt.status()),
                         "second attempt should close as SUCCEEDED");
-                ChaosSupport.require(terminalMessage.getStatus() == TaskMsgStatus.SUCCESS,
+                ChaosSupport.require(TaskMsgStatus.SUCCESS.name().equals(terminalMessage.status()),
                         "logical message should converge to SUCCESS before late replay");
-                ChaosSupport.require(terminalMessage.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS,
+                ChaosSupport.require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(terminalMessage.finalReason()),
                         "logical message final reason should be BUSINESS_SUCCESS before late replay");
-                ChaosSupport.require(terminalMessage.getRetryCount() == 1,
+                ChaosSupport.require(terminalMessage.retryCount() == 1,
                         "logical message retryCount should record one expiry-driven retry before late replay");
 
                 activeChaosWorker.reconnectAndSubmitLateResult();
@@ -193,18 +193,18 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 ChaosSupport.maybeSleep(config.postReplayObserveDelayMillis());
 
                 TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTid(), 1);
-                TaskMsg finalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
+                SdkTaskMessageView finalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
+                List<SdkTaskMessageAttemptView> finalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");
-                ChaosSupport.require(finalMessage.getStatus() == TaskMsgStatus.SUCCESS,
+                ChaosSupport.require(TaskMsgStatus.SUCCESS.name().equals(finalMessage.status()),
                         "late stale result must not change logical message success");
-                ChaosSupport.require(finalMessage.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS,
+                ChaosSupport.require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(finalMessage.finalReason()),
                         "late stale result must not change logical final reason");
-                ChaosSupport.require(finalMessage.getRetryCount() == 1,
+                ChaosSupport.require(finalMessage.retryCount() == 1,
                         "late stale result must not change retryCount");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.getLatestAttemptWorkerId()),
+                ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
                         "late stale result must not steal latest attempt ownership");
                 ChaosSupport.require(TaskStatus.TERMINAL == runtime.app().getTask(task.getTid()).getStatus(),
                         "late stale result must not reopen the task");
@@ -234,12 +234,12 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 return new ChaosReport(
                         extractPort(runtime.serverUri(CHAOS_WORKER_ID)),
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         chaosWorker.disconnectCycles(),
                         chaosWorker.reconnectCycles(),
                         chaosWorker.lateResultSubmissions(),
                         finalAttempts.size(),
-                        finalMessage.getRetryCount(),
+                        finalMessage.retryCount(),
                         afterReplayOutcome.terminalReason(),
                         ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath

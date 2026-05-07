@@ -8,6 +8,7 @@ import com.xa.mass.base.model.*;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.base.model.TaskCreateRequestDto;
@@ -40,6 +41,7 @@ class SimpleTaskMsgAssignListenerTest {
     private InMemoryTaskStorage taskStorage;
     private TaskManager taskManager;
     private TaskCommandService taskCommands;
+    private TaskQueryService taskQueries;
     private SimpleTaskMsgAssignListener listener;
 
     @BeforeEach
@@ -49,6 +51,7 @@ class SimpleTaskMsgAssignListenerTest {
         taskStorage = new InMemoryTaskStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
     }
 
@@ -73,10 +76,10 @@ class SimpleTaskMsgAssignListenerTest {
 
         List<TaskDispatchBinding> pushed = dispatched.get();
         assertNotNull(pushed);
-        assertEquals(storedMsgIds, pushed.stream().map(binding -> binding.taskMsg().getMessageId()).collect(Collectors.toList()));
+        assertEquals(storedMsgIds, pushed.stream().map(TaskDispatchBinding::messageId).collect(Collectors.toList()));
         assertEquals(List.of("target-0", "target-1", "target-2"),
-                pushed.stream().map(binding -> binding.taskMsg().getInput().get("target")).collect(Collectors.toList()));
-        assertTrue(pushed.stream().allMatch(binding -> binding.attempt().getWorkerId() != null));
+                pushed.stream().map(binding -> binding.payload().get("target")).collect(Collectors.toList()));
+        assertTrue(pushed.stream().allMatch(binding -> binding.workerId() != null));
     }
 
     @Test
@@ -207,6 +210,7 @@ class SimpleTaskMsgAssignListenerTest {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
@@ -227,6 +231,7 @@ class SimpleTaskMsgAssignListenerTest {
         ProjectionPayloadScrubbingStorage scrubbingStorage = new ProjectionPayloadScrubbingStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(1);
@@ -255,6 +260,7 @@ class SimpleTaskMsgAssignListenerTest {
         TrackingTaskMessageReadStorage trackingStorage = new TrackingTaskMessageReadStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
@@ -275,6 +281,7 @@ class SimpleTaskMsgAssignListenerTest {
         taskStorage = failingStorage;
         taskManager = new TaskManager(new NoopTaskScheduler(), failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(1);
@@ -286,7 +293,7 @@ class SimpleTaskMsgAssignListenerTest {
 
         assertEquals(1, dispatched.size());
         TaskMsg stored = storedMessages(task.getTid()).get(0);
-        TaskMsg visible = taskManager.getTaskMessageProjection(task.getTid(), stored.getMessageId());
+        TaskMsg visible = taskQueries.getTaskMessageProjection(task.getTid(), stored.getMessageId());
         assertEquals(TaskMsgStatus.INIT, stored.getStatus());
         assertEquals(TaskMsgStatus.ASSIGNED, visible.getStatus());
         assertEquals("d1", visible.getLatestAttemptWorkerId());
@@ -544,7 +551,7 @@ class SimpleTaskMsgAssignListenerTest {
 
     private List<TaskMsg> projectedMessages(String taskId) {
         return storedMessages(taskId).stream()
-                .map(msg -> taskManager.getTaskMessageProjection(taskId, msg.getMessageId()))
+                .map(msg -> taskQueries.getTaskMessageProjection(taskId, msg.getMessageId()))
                 .collect(Collectors.toList());
     }
 

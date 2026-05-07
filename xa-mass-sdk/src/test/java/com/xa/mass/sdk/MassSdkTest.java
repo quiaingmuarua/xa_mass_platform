@@ -1237,7 +1237,10 @@ class MassSdkTest {
         TaskQueryService taskQueries = mock(TaskQueryService.class);
         EngineConfig config = mock(EngineConfig.class);
         TaskMsg message = new TaskMsg();
+        message.setTaskId("task-1");
+        message.setMessageId("msg-1");
         TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
+        activeAttempt.setAttemptId("attempt-1");
         List<TaskMsgAttempt> attempts = List.of(activeAttempt);
 
         when(delegate.getEngine()).thenReturn(engine);

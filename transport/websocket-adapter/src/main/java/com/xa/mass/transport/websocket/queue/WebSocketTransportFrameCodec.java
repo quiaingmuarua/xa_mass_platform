@@ -7,10 +7,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
-import com.xa.mass.transport.model.TaskDispatchWireView;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.packet.TransportPacketViews;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,32 +94,22 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String encodeCanonicalTaskDispatch(TransportPacket packet) {
-        TaskDispatchWireView view = TransportPacketViews.dispatchWireView(packet);
+        Map<String, Object> payload = packet.payload();
         JsonObject frame = new JsonObject();
-        frame.addProperty(MESSAGE_ID_FIELD, view.messageId());
-        frame.addProperty(WORKER_ID_FIELD, view.workerId());
-        if (view.project() != null) {
-            frame.addProperty(PROJECT_FIELD, view.project());
+        frame.addProperty(MESSAGE_ID_FIELD, packet.messageId());
+        put(frame, WORKER_ID_FIELD, stringValue(payload.get(WORKER_ID_FIELD)));
+        put(frame, PROJECT_FIELD, stringValue(payload.get(PROJECT_FIELD)));
+        if (packet.eventCode() != null) {
+            frame.addProperty(EVENT_CODE_FIELD, packet.eventCode());
         }
-        if (view.eventCode() != null) {
-            frame.addProperty(EVENT_CODE_FIELD, view.eventCode());
-        }
-        frame.addProperty("taskId", view.taskId());
-        if (view.taskName() != null) {
-            frame.addProperty("taskName", view.taskName());
-        }
-        if (view.userId() != null) {
-            frame.addProperty("userId", view.userId());
-        }
-        frame.addProperty("retryCount", view.retryCount());
-        if (view.workerContextId() != null) {
-            frame.addProperty("workerContextId", view.workerContextId());
-        }
-        if (view.batchId() != null) {
-            frame.addProperty("batchId", view.batchId());
-        }
-        frame.add("input", gson.toJsonTree(view.input() != null ? view.input() : Map.of()));
-        frame.add("sharedConfig", gson.toJsonTree(view.sharedConfig() != null ? view.sharedConfig() : Map.of()));
+        frame.addProperty("taskId", packet.taskId());
+        put(frame, "taskName", stringValue(payload.get("taskName")));
+        put(frame, "userId", stringValue(payload.get("userId")));
+        frame.addProperty("retryCount", intValue(payload.get("retryCount")));
+        put(frame, "workerContextId", stringValue(payload.get("workerContextId")));
+        put(frame, "batchId", stringValue(payload.get("batchId")));
+        frame.add("input", gson.toJsonTree(mapValue(payload.get("input"))));
+        frame.add("sharedConfig", gson.toJsonTree(mapValue(payload.get("sharedConfig"))));
         return gson.toJson(frame);
     }
 
@@ -193,6 +181,34 @@ public final class WebSocketTransportFrameCodec {
             return value == null || value.isBlank() ? null : value.trim();
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> map && !map.isEmpty()) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
+    }
+
+    private static String stringValue(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private static void put(JsonObject frame, String field, String value) {
+        if (value != null) {
+            frame.addProperty(field, value);
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.xa.mass.base.runtime.dispatch;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
@@ -62,6 +63,7 @@ public final class TaskDispatchBinding {
      * Temporary compatibility constructor used by tests and bounded callers
      * that still build bindings from compatibility projections.
      */
+    @Deprecated
     public TaskDispatchBinding(TaskMsg taskMsg, TaskMsgAttempt attempt) {
         this(
                 taskMsg != null ? taskMsg.getTaskId() : null,
@@ -131,6 +133,8 @@ public final class TaskDispatchBinding {
      * Compatibility projection view used only by bounded tests and temporary
      * callers during the migration away from projection-driven dispatch.
      */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMsg taskMsg() {
         TaskMsg taskMsg = new TaskMsg(messageId, taskId, payload, payloadRef);
         taskMsg.setRetryCount(retryCount);
@@ -142,6 +146,8 @@ public final class TaskDispatchBinding {
      * Compatibility projection view used only by bounded tests and temporary
      * callers during the migration away from projection-driven dispatch.
      */
+    @Deprecated
+    @CompatibilityProjectionOnly
     public TaskMsgAttempt attempt() {
         TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
         attempt.setWorkerId(workerId);

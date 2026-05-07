@@ -3,12 +3,12 @@ package com.xa.mass.testing.chaos.support;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -145,7 +145,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         ChaosSupport.waitForCondition(() -> !app.isWorkerOnline(workerId), timeoutSeconds, failureMessage);
     }
 
-    public TaskMsg waitForSingleMessage(String taskId, int timeoutSeconds) throws Exception {
+    public SdkTaskMessageView waitForSingleMessage(String taskId, int timeoutSeconds) throws Exception {
         ChaosSupport.waitForCondition(
                 () -> app.getTaskMessageSnapshot(taskId, 1).messages().size() == 1,
                 timeoutSeconds,
@@ -154,19 +154,22 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return app.getTaskMessageSnapshot(taskId, 1).messages().get(0);
     }
 
-    public TaskMsgAttempt waitForActiveAttemptOnWorker(String taskId,
-                                                       String messageId,
-                                                       String workerId,
-                                                       int timeoutSeconds,
-                                                       String failureMessage) throws Exception {
+    public SdkTaskMessageAttemptView waitForActiveAttemptOnWorker(String taskId,
+                                                                  String messageId,
+                                                                  String workerId,
+                                                                  int timeoutSeconds,
+                                                                  String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(() -> {
-            TaskMsgAttempt attempt = app.getLatestActiveTaskMessageAttempt(taskId, messageId);
+            SdkTaskMessageAttemptView attempt = app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
             return attempt != null
-                    && workerId.equals(attempt.getWorkerId())
-                    && attempt.getStatus() != null
-                    && !attempt.getStatus().isFinal();
+                    && workerId.equals(attempt.workerId())
+                    && attempt.status() != null
+                    && !attempt.status().equals("SUCCEEDED")
+                    && !attempt.status().equals("FAILED")
+                    && !attempt.status().equals("EXPIRED")
+                    && !attempt.status().equals("REVOKED");
         }, timeoutSeconds, failureMessage);
-        return app.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
     }
 
     public void waitForAttemptCount(String taskId,
@@ -175,7 +178,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                     int timeoutSeconds,
                                     String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> app.getTaskMessageAttemptAuditTrail(taskId, messageId).size() >= minimumAttempts,
+                () -> app.getTaskMessageAttemptViews(taskId, messageId).size() >= minimumAttempts,
                 timeoutSeconds,
                 failureMessage
         );
@@ -199,17 +202,17 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public TaskOutcomeSnapshot snapshotTaskOutcome(String taskId, int messageLimit) {
         Task task = app.getTask(taskId);
         ChaosSupport.require(task != null, "task should exist: " + taskId);
-        TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, messageLimit);
-        List<TaskMsg> messages = messageSnapshot.messages();
+        SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, messageLimit);
+        List<SdkTaskMessageView> messages = messageSnapshot.messages();
         List<TaskOutcomeSnapshot.MessageOutcomeSnapshot> snapshots = new ArrayList<>(messages.size());
-        for (TaskMsg message : messages) {
-            List<TaskMsgAttempt> attempts = app.getTaskMessageAttemptAuditTrail(taskId, message.getMessageId());
+        for (SdkTaskMessageView message : messages) {
+            List<SdkTaskMessageAttemptView> attempts = app.getTaskMessageAttemptViews(taskId, message.messageId());
             snapshots.add(new TaskOutcomeSnapshot.MessageOutcomeSnapshot(
-                    message.getMessageId(),
-                    ChaosSupport.enumName(message.getStatus()),
-                    ChaosSupport.enumName(message.getFinalReason()),
-                    message.getRetryCount(),
-                    message.getLatestAttemptWorkerId(),
+                    message.messageId(),
+                    message.status(),
+                    message.finalReason(),
+                    message.retryCount(),
+                    message.latestAttemptWorkerId(),
                     attempts.stream().map(TaskOutcomeSnapshot.AttemptOutcomeSnapshot::fromAttempt).toList()
             ));
         }

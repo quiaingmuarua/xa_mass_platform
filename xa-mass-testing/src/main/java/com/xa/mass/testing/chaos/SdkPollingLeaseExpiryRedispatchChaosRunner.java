@@ -6,8 +6,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -111,7 +111,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         Map.of("source", "SdkPollingLeaseExpiryRedispatchChaosRunner")
                 ));
 
-                TaskMsg message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
+                SdkTaskMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
                 ChaosSupport.waitForCondition(
                         () -> activeChaosWorker.stalledDispatches() >= 1,
                         config.timeoutSeconds(),
@@ -119,7 +119,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 );
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
                         "first active attempt should stay bound to the polling chaos worker before lease expiry"
@@ -141,7 +141,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
 
                 runtime.waitForAttemptCount(
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and polling redispatch"
@@ -153,32 +153,32 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         config.timeoutSeconds(),
                         "polling lease-expiry redispatch task must converge"
                 );
-                TaskMsg finalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
+                SdkTaskMessageView finalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
+                List<SdkTaskMessageAttemptView> finalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
-                TaskMsgAttempt expiredAttempt = finalAttempts.get(0);
-                TaskMsgAttempt successAttempt = finalAttempts.get(1);
-                LocalDateTime initialLeaseExpireTime = expiredAttempt.getLeaseExpireTime();
+                SdkTaskMessageAttemptView expiredAttempt = finalAttempts.get(0);
+                SdkTaskMessageAttemptView successAttempt = finalAttempts.get(1);
+                LocalDateTime initialLeaseExpireTime = expiredAttempt.leaseExpireTime();
 
-                ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.getWorkerId()),
+                ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the polling chaos worker");
-                ChaosSupport.require(expiredAttempt.getStatus() == TaskMsgAttemptStatus.EXPIRED,
+                ChaosSupport.require(TaskMsgAttemptStatus.EXPIRED.name().equals(expiredAttempt.status()),
                         "first attempt should close as EXPIRED");
-                ChaosSupport.require(expiredAttempt.getFinalReason() == TaskMsgAttemptFinalReason.LEASE_EXPIRED,
+                ChaosSupport.require(TaskMsgAttemptFinalReason.LEASE_EXPIRED.name().equals(expiredAttempt.finalReason()),
                         "first attempt final reason should be LEASE_EXPIRED");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.getWorkerId()),
+                ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
                         "second attempt should belong to the steady polling worker");
-                ChaosSupport.require(successAttempt.getStatus() == TaskMsgAttemptStatus.SUCCEEDED,
+                ChaosSupport.require(TaskMsgAttemptStatus.SUCCEEDED.name().equals(successAttempt.status()),
                         "second attempt should close as SUCCEEDED");
                 ChaosSupport.require(finalMessage != null, "final logical message should exist");
-                ChaosSupport.require(finalMessage.getStatus() == TaskMsgStatus.SUCCESS,
+                ChaosSupport.require(TaskMsgStatus.SUCCESS.name().equals(finalMessage.status()),
                         "logical message should converge to SUCCESS after polling redispatch");
-                ChaosSupport.require(finalMessage.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS,
+                ChaosSupport.require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(finalMessage.finalReason()),
                         "logical message final reason should be BUSINESS_SUCCESS");
-                ChaosSupport.require(finalMessage.getRetryCount() == 1,
+                ChaosSupport.require(finalMessage.retryCount() == 1,
                         "logical message retryCount should record one expiry-driven retry");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.getLatestAttemptWorkerId()),
+                ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
                         "latest attempt worker should be the steady polling worker");
                 ChaosSupport.require(outcome.status().equals(TaskStatus.TERMINAL.name()),
                         "task should converge to TERMINAL");
@@ -205,11 +205,11 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
 
                 return new ChaosReport(
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         chaosWorker.stalledDispatches(),
                         steadyWorker.successfulResults(),
                         finalAttempts.size(),
-                        finalMessage.getRetryCount(),
+                        finalMessage.retryCount(),
                         outcome.terminalReason(),
                         ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath

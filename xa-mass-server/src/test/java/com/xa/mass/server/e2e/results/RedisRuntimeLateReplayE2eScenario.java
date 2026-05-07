@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
@@ -105,10 +105,10 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 Object originalResult = terminal.messages().get(0).get("result");
 
                 String messageId = String.valueOf(terminal.messages().get(0).get("messageId"));
-                List<TaskMsgAttempt> attemptsBeforeReplay = app.getTaskMessageAttemptAuditTrail(taskId, messageId);
+                List<SdkTaskMessageAttemptView> attemptsBeforeReplay = app.getTaskMessageAttemptViews(taskId, messageId);
                 assertEquals(2, attemptsBeforeReplay.size(), "redis runtime should produce one expired attempt and one success attempt");
-                assertEquals(TaskMsgAttemptStatus.EXPIRED, attemptsBeforeReplay.get(0).getStatus());
-                assertEquals(TaskMsgAttemptStatus.SUCCEEDED, attemptsBeforeReplay.get(1).getStatus());
+                assertEquals(TaskMsgAttemptStatus.EXPIRED.name(), attemptsBeforeReplay.get(0).status());
+                assertEquals(TaskMsgAttemptStatus.SUCCEEDED.name(), attemptsBeforeReplay.get(1).status());
 
                 ReplayWebSocketClient replayClient = connectClientWithRetries(
                         () -> new ReplayWebSocketClient(wsUri, CHAOS_WORKER_ID),
@@ -134,10 +134,10 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 assertEquals(STEADY_WORKER_ID, message.get("latestAttemptWorkerId"));
                 assertEquals(originalResult, message.get("result"));
 
-                List<TaskMsgAttempt> attemptsAfterReplay = app.getTaskMessageAttemptAuditTrail(taskId, messageId);
+                List<SdkTaskMessageAttemptView> attemptsAfterReplay = app.getTaskMessageAttemptViews(taskId, messageId);
                 assertEquals(2, attemptsAfterReplay.size(), "stale replay must not create a new attempt");
-                assertEquals(TaskMsgAttemptStatus.EXPIRED, attemptsAfterReplay.get(0).getStatus());
-                assertEquals(TaskMsgAttemptStatus.SUCCEEDED, attemptsAfterReplay.get(1).getStatus());
+                assertEquals(TaskMsgAttemptStatus.EXPIRED.name(), attemptsAfterReplay.get(0).status());
+                assertEquals(TaskMsgAttemptStatus.SUCCEEDED.name(), attemptsAfterReplay.get(1).status());
             } finally {
                 steadyClient.disconnect();
             }

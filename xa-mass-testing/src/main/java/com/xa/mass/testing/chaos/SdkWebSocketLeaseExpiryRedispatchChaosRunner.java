@@ -10,10 +10,10 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -132,7 +132,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, CHAOS_WORKER_ID, "chaos worker should be online before scenario starts");
 
                 Task task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
-                TaskMsg message = waitForSingleMessage(app, task.getTid());
+                SdkTaskMessageView message = waitForSingleMessage(app, task.getTid());
 
                 waitForCondition(
                         () -> activeChaosWorker.disconnectCycles() >= 1,
@@ -145,10 +145,10 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                         "runtime should observe the chaos worker offline after disconnect"
                 );
 
-                TaskMsgAttempt firstAttempt = waitForActiveAttemptOnWorker(
+                SdkTaskMessageAttemptView firstAttempt = waitForActiveAttemptOnWorker(
                         app,
                         task.getTid(),
-                        message.getMessageId(),
+                        message.messageId(),
                         CHAOS_WORKER_ID,
                         "first active attempt should stay bound to the chaos worker before lease expiry"
                 );
@@ -157,39 +157,39 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> app.getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId()).size() >= 2,
+                        () -> app.getTaskMessageAttemptViews(task.getTid(), message.messageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
 
                 TaskOutcome outcome = waitForTerminalTask(app, task.getTid(), "lease-expiry redispatch task must converge");
-                TaskMsg finalMessage = app.getTaskMessageProjection(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = app.getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
+                SdkTaskMessageView finalMessage = app.getTaskMessageView(task.getTid(), message.messageId());
+                List<SdkTaskMessageAttemptView> finalAttempts = app.getTaskMessageAttemptViews(task.getTid(), message.messageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
-                TaskMsgAttempt expiredAttempt = finalAttempts.get(0);
-                TaskMsgAttempt successAttempt = finalAttempts.get(1);
+                SdkTaskMessageAttemptView expiredAttempt = finalAttempts.get(0);
+                SdkTaskMessageAttemptView successAttempt = finalAttempts.get(1);
 
-                require(CHAOS_WORKER_ID.equals(expiredAttempt.getWorkerId()),
+                require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the chaos worker");
-                require(expiredAttempt.getStatus() == TaskMsgAttemptStatus.EXPIRED,
+                require(TaskMsgAttemptStatus.EXPIRED.name().equals(expiredAttempt.status()),
                         "first attempt should close as EXPIRED");
-                require(expiredAttempt.getFinalReason() == TaskMsgAttemptFinalReason.LEASE_EXPIRED,
+                require(TaskMsgAttemptFinalReason.LEASE_EXPIRED.name().equals(expiredAttempt.finalReason()),
                         "first attempt final reason should be LEASE_EXPIRED");
 
-                require(STEADY_WORKER_ID.equals(successAttempt.getWorkerId()),
+                require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
                         "second attempt should belong to the steady worker");
-                require(successAttempt.getStatus() == TaskMsgAttemptStatus.SUCCEEDED,
+                require(TaskMsgAttemptStatus.SUCCEEDED.name().equals(successAttempt.status()),
                         "second attempt should close as SUCCEEDED");
 
                 require(finalMessage != null, "final task message should exist");
-                require(finalMessage.getStatus() == TaskMsgStatus.SUCCESS,
+                require(TaskMsgStatus.SUCCESS.name().equals(finalMessage.status()),
                         "logical message should converge to SUCCESS after redispatch");
-                require(finalMessage.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS,
+                require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(finalMessage.finalReason()),
                         "logical message final reason should be BUSINESS_SUCCESS");
-                require(finalMessage.getRetryCount() == 1,
+                require(finalMessage.retryCount() == 1,
                         "logical message retryCount should record one expiry-driven retry");
-                require(STEADY_WORKER_ID.equals(finalMessage.getLatestAttemptWorkerId()),
+                require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
                         "latest attempt worker should be the steady worker");
 
                 require(outcome.status().equals(TaskStatus.TERMINAL.name()),
@@ -209,13 +209,13 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                         config,
                         runtime,
                         outcome,
-                        firstAttempt.getLeaseExpireTime(),
+                        firstAttempt.leaseExpireTime(),
                         new MessageProjection(
-                                finalMessage.getMessageId(),
-                                finalMessage.getStatus() != null ? finalMessage.getStatus().name() : null,
-                                finalMessage.getFinalReason() != null ? finalMessage.getFinalReason().name() : null,
-                                finalMessage.getRetryCount(),
-                                finalMessage.getLatestAttemptWorkerId()
+                                finalMessage.messageId(),
+                                finalMessage.status(),
+                                finalMessage.finalReason(),
+                                finalMessage.retryCount(),
+                                finalMessage.latestAttemptWorkerId()
                         ),
                         finalAttempts.stream().map(AttemptProjection::fromAttempt).toList(),
                         chaosWorker.snapshot(),
@@ -226,12 +226,12 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 return new ChaosReport(
                         runtime.transportPort(),
                         task.getTid(),
-                        finalMessage.getMessageId(),
+                        finalMessage.messageId(),
                         chaosWorker.disconnectCycles(),
                         chaosWorker.receivedDispatches(),
                         steadyWorker.receivedDispatches(),
                         finalAttempts.size(),
-                        finalMessage.getRetryCount(),
+                        finalMessage.retryCount(),
                         outcome.terminalReason(),
                         nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath
@@ -306,7 +306,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             waitForCondition(() -> app.isWorkerOnline(workerId), config.timeoutSeconds(), failureMessage);
         }
 
-        private TaskMsg waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
+        private SdkTaskMessageView waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
             waitForCondition(
                     () -> app.getTaskMessageSnapshot(taskId, 1).messages().size() == 1,
                     config.timeoutSeconds(),
@@ -315,18 +315,18 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             return app.getTaskMessageSnapshot(taskId, 1).messages().get(0);
         }
 
-        private TaskMsgAttempt waitForActiveAttemptOnWorker(MassSdkApplication app,
-                                                            String taskId,
-                                                            String messageId,
-                                                            String workerId,
-                                                            String failureMessage) throws Exception {
+        private SdkTaskMessageAttemptView waitForActiveAttemptOnWorker(MassSdkApplication app,
+                                                                       String taskId,
+                                                                       String messageId,
+                                                                       String workerId,
+                                                                       String failureMessage) throws Exception {
             waitForCondition(() -> {
-                TaskMsgAttempt attempt = app.getLatestActiveTaskMessageAttempt(taskId, messageId);
+                SdkTaskMessageAttemptView attempt = app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
                 return attempt != null
-                        && workerId.equals(attempt.getWorkerId())
-                        && !attempt.getStatus().isFinal();
+                        && workerId.equals(attempt.workerId())
+                        && !List.of("SUCCEEDED", "FAILED", "EXPIRED", "REVOKED").contains(attempt.status());
             }, config.timeoutSeconds(), failureMessage);
-            return app.getLatestActiveTaskMessageAttempt(taskId, messageId);
+            return app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
         }
 
         private TaskOutcome waitForTerminalTask(MassSdkApplication app, String taskId, String failureMessage) throws Exception {
@@ -341,17 +341,17 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, 1);
-            List<TaskMsg> messages = messageSnapshot.messages();
+            SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, 1);
+            List<SdkTaskMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
-            for (TaskMsg message : messages) {
-                List<TaskMsgAttempt> attempts = app.getTaskMessageAttemptAuditTrail(taskId, message.getMessageId());
+            for (SdkTaskMessageView message : messages) {
+                List<SdkTaskMessageAttemptView> attempts = app.getTaskMessageAttemptViews(taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
-                        message.getMessageId(),
-                        message.getStatus() != null ? message.getStatus().name() : null,
-                        message.getFinalReason() != null ? message.getFinalReason().name() : null,
-                        message.getRetryCount(),
-                        message.getLatestAttemptWorkerId(),
+                        message.messageId(),
+                        message.status(),
+                        message.finalReason(),
+                        message.retryCount(),
+                        message.latestAttemptWorkerId(),
                         attempts.stream().map(AttemptProjection::fromAttempt).toList()
                 ));
             }
@@ -595,16 +595,16 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                      String status,
                                      String finalReason,
                                      String leaseExpireTime) {
-        private static AttemptProjection fromAttempt(TaskMsgAttempt attempt) {
+        private static AttemptProjection fromAttempt(SdkTaskMessageAttemptView attempt) {
             return new AttemptProjection(
-                    attempt.getAttemptNo(),
-                    attempt.getAttemptId(),
-                    attempt.getWorkerId(),
-                    attempt.getWorkerContextId(),
-                    attempt.getBatchId(),
-                    attempt.getStatus() != null ? attempt.getStatus().name() : null,
-                    attempt.getFinalReason() != null ? attempt.getFinalReason().name() : null,
-                    attempt.getLeaseExpireTime() != null ? String.valueOf(attempt.getLeaseExpireTime()) : null
+                    attempt.attemptNo(),
+                    attempt.attemptId(),
+                    attempt.workerId(),
+                    attempt.workerContextId(),
+                    attempt.batchId(),
+                    attempt.status(),
+                    attempt.finalReason(),
+                    attempt.leaseExpireTime() != null ? String.valueOf(attempt.leaseExpireTime()) : null
             );
         }
 

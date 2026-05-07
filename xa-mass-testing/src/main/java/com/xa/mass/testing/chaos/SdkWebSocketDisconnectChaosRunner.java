@@ -7,18 +7,18 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.SdkTaskMessageAttemptView;
+import com.xa.mass.sdk.SdkTaskMessageSnapshot;
+import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -277,26 +277,24 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
-            List<TaskMsg> messages = messageSnapshot.messages();
+            SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
+            List<SdkTaskMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
-            for (TaskMsg message : messages) {
-                List<TaskMsgAttempt> attempts = app.getTaskMessageAttemptAuditTrail(taskId, message.getMessageId());
+            for (SdkTaskMessageView message : messages) {
+                List<SdkTaskMessageAttemptView> attempts = app.getTaskMessageAttemptViews(taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
-                        message.getMessageId(),
-                        message.getStatus() != null ? message.getStatus().name() : null,
-                        message.getFinalReason() != null ? message.getFinalReason().name() : null,
-                        message.getLatestAttemptWorkerId(),
+                        message.messageId(),
+                        message.status(),
+                        message.finalReason(),
+                        message.latestAttemptWorkerId(),
                         attempts.size(),
                         attempts.stream()
-                                .map(TaskMsgAttempt::getStatus)
+                                .map(SdkTaskMessageAttemptView::status)
                                 .filter(Objects::nonNull)
-                                .map(Enum::name)
                                 .toList(),
                         attempts.stream()
-                                .map(TaskMsgAttempt::getFinalReason)
+                                .map(SdkTaskMessageAttemptView::finalReason)
                                 .filter(Objects::nonNull)
-                                .map(Enum::name)
                                 .toList()
                 ));
             }

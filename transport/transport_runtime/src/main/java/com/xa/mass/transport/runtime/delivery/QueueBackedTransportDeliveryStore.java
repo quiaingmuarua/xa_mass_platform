@@ -185,8 +185,8 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
     private static TransportDispatchEnvelope normalizeEnvelope(TransportDispatchEnvelope envelope,
                                                                String normalizedAdapterId,
                                                                String normalizedRouteKey) {
-        if (normalizedAdapterId.equals(envelope.getAdapterId())
-                && normalizedRouteKey.equals(envelope.getRouteKey())) {
+        if (Objects.equals(normalizedAdapterId, envelope.getAdapterId())
+                && Objects.equals(normalizedRouteKey, envelope.getRouteKey())) {
             return envelope;
         }
         TransportPacket normalizedPacket = envelope.getPacket().withTransportAddress(normalizedAdapterId, normalizedRouteKey);
