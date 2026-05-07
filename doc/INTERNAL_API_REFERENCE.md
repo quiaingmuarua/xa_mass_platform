@@ -338,8 +338,8 @@ Response notes:
 - returns `task`
 - returns a bounded `items` snapshot derived from persisted `TaskMsg.input`
 - optional `limit` controls the snapshot size; default `100`, hard-capped at `500`
-- `itemsTotal` reports the total task-message count and `itemsTruncated` reports
-  whether the bounded snapshot omitted items
+- task detail does not scan total task-message count; it returns only
+  `itemsReturned`, `itemsLimit`, and `itemsTruncated` for the bounded snapshot
 - returns `stateValidation`
 - explicit compatibility/projection audit is available separately at `/status/api/tasks/{taskId}/projection-audit`
 - `task.project` is serialized as the canonical project code
@@ -591,11 +591,11 @@ Query params:
 
 Response shape:
 
-- primary per-item payload truth is `messages[*].input` and `messages[*].output`
-- `target` is only a conventional key inside `messages[*].input`
-- raw top-level target projections are not part of the message read model
-- `total` reports the task-message count; `truncated=true` means the bounded
-  snapshot omitted messages
+- returns a bounded compatibility summary snapshot, not a full payload/detail API
+- response intentionally omits `messages[*].input` and `messages[*].output`
+- `returned` reports the bounded snapshot size; `truncated=true` means the
+  controller fetched one extra row and omitted the tail without scanning total
+  task-message count
 - SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match the internal ownership stamp
 
 ```json
@@ -603,14 +603,15 @@ Response shape:
   "code": 0,
   "msg": "ok",
   "data": {
-    "total": 2,
     "limit": 100,
+    "returned": 2,
     "truncated": false,
     "messages": [
       {
         "messageId": "msg-1",
         "taskId": "task-uuid",
         "status": "SUCCESS",
+        "latestAttemptId": "attempt-msg-1-1",
         "latestAttemptWorkerId": "worker-a",
         "latestAttemptWorkerContextId": "worker-context-a",
         "latestAttemptBatchId": "batch-1",
@@ -619,11 +620,7 @@ Response shape:
         "finalReason": "BUSINESS_SUCCESS",
         "result": "ok",
         "errorMessage": null,
-        "errorCode": null,
-        "input": {
-          "target": "target-001"
-        },
-        "output": {}
+        "errorCode": null
       }
     ]
   }

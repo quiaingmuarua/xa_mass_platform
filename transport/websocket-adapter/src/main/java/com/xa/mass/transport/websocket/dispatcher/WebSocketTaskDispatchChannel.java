@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
@@ -19,10 +18,10 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
-    private final WebSocketDispatchRuntimeContext context;
+    private final WebSocketDispatcherContext context;
     private final TransportDeliveryService deliveryService;
 
-    public WebSocketTaskDispatchChannel(WebSocketDispatchRuntimeContext context,
+    public WebSocketTaskDispatchChannel(WebSocketDispatcherContext context,
                                         TransportDeliveryService deliveryService) {
         this.context = context;
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");

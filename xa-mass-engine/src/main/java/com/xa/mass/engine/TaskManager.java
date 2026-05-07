@@ -390,8 +390,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.getTaskMessages(taskId, limit);
     }
 
-    long countTaskMessages(String taskId) {
-        return taskDetailStore.countTaskMessages(taskId);
+    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        int boundedLimit = Math.max(0, limit);
+        if (boundedLimit == 0) {
+            return new TaskMessageSnapshot(List.of(), 0, false);
+        }
+        List<TaskMsg> fetched = taskDetailStore.getTaskMessages(taskId, Math.addExact(boundedLimit, 1));
+        boolean truncated = fetched.size() > boundedLimit;
+        List<TaskMsg> snapshot = truncated ? fetched.subList(0, boundedLimit) : fetched;
+        return new TaskMessageSnapshot(snapshot, boundedLimit, truncated);
     }
 
     public TaskMsg getTaskMessage(String taskId, String messageId) {

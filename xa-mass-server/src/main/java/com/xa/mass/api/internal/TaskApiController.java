@@ -15,6 +15,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -209,8 +210,8 @@ public class TaskApiController {
             }
 
             String taskId = task.getTid();
-            List<TaskMsg> messages = taskQueries.getTaskMessages(taskId, 1);
-            String messageId = messages.isEmpty() ? "" : messages.get(0).getMessageId();
+            TaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, 1);
+            String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).getMessageId();
 
             Optional<TaskMsg> result = syncBridge.await(correlationId, future, resolvedTimeoutMs);
 
@@ -253,17 +254,17 @@ public class TaskApiController {
                 return notFound("Task not found: " + taskId);
             }
             resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            long itemTotal = taskQueries.countTaskMessages(taskId);
-            List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId, boundedLimit).stream()
+            TaskMessageSnapshot taskItemSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            List<Map<String, Object>> items = taskItemSnapshot.messages().stream()
                     .map(TaskMsg::getInput)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", toTaskDetailTaskView(task));
             response.put("items", items);
-            response.put("itemsTotal", itemTotal);
             response.put("itemsLimit", boundedLimit);
-            response.put("itemsTruncated", itemTotal > items.size());
+            response.put("itemsReturned", items.size());
+            response.put("itemsTruncated", taskItemSnapshot.truncated());
             response.put("security", taskSecurityViewSupport.toSecurityView(task));
             response.put("stateValidation", taskQueries.validateTaskState(taskId));
             return ok(response);
@@ -492,15 +493,14 @@ public class TaskApiController {
                 resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
             }
             int boundedLimit = resolveTaskMessageLimit(limit);
-            long total = taskQueries.countTaskMessages(taskId);
-            List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId, boundedLimit);
-            List<Map<String, Object>> messages = taskMessages.stream()
-                    .map(this::toTaskMessageView)
+            TaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            List<Map<String, Object>> messages = messageSnapshot.messages().stream()
+                    .map(this::toTaskMessageSummaryView)
                     .collect(Collectors.toList());
             return ok(Map.of(
-                    "total", total,
-                    "limit", boundedLimit,
-                    "truncated", total > messages.size(),
+                    "limit", messageSnapshot.limit(),
+                    "returned", messageSnapshot.returned(),
+                    "truncated", messageSnapshot.truncated(),
                     "messages", messages
             ));
         } catch (SdkUnauthenticatedException e) {
@@ -522,11 +522,12 @@ public class TaskApiController {
         return Math.min(requestedLimit, MAX_TASK_MESSAGE_SNAPSHOT_LIMIT);
     }
 
-    private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {
+    private Map<String, Object> toTaskMessageSummaryView(TaskMsg taskMsg) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("messageId", taskMsg.getMessageId());
         view.put("taskId", taskMsg.getTaskId());
         view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
+        view.put("latestAttemptId", taskMsg.latestAttemptId());
         view.put("latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId());
         view.put("latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId());
         view.put("latestAttemptBatchId", taskMsg.getLatestAttemptBatchId());
@@ -540,8 +541,6 @@ public class TaskApiController {
         view.put("updateTime", taskMsg.getUpdateTime());
         view.put("startTime", taskMsg.getStartTime());
         view.put("completeTime", taskMsg.getCompleteTime());
-        view.put("input", taskMsg.getInput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getInput()));
-        view.put("output", taskMsg.getOutput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getOutput()));
         return view;
     }
 

@@ -90,7 +90,7 @@ class MassEngineStartRecoveryTest {
             assertEquals(task.getTid(), dispatchBindings.get(0).taskMsg().getTaskId());
             assertEquals("worker-1", dispatchBindings.get(0).attempt().getWorkerId());
 
-            TaskMsg message = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+            TaskMsg message = taskQueries.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
             assertEquals(TaskMsgStatus.ASSIGNED, message.getStatus());
             assertNotNull(taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
         } finally {

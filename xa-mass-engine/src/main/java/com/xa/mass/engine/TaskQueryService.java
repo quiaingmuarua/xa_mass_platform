@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -46,12 +47,8 @@ public class TaskQueryService {
         return taskManager != null ? taskManager.getTasksByStatus(status) : taskQueries.getTasksByStatus(status);
     }
 
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskManager != null ? taskManager.getTaskMessages(taskId, limit) : taskQueries.getTaskMessages(taskId, limit);
-    }
-
-    public long countTaskMessages(String taskId) {
-        return taskManager != null ? taskManager.countTaskMessages(taskId) : taskQueries.countTaskMessages(taskId);
+    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        return taskManager != null ? taskManager.getTaskMessageSnapshot(taskId, limit) : taskQueries.getTaskMessageSnapshot(taskId, limit);
     }
 
     public TaskMsg getTaskMessage(String taskId, String messageId) {

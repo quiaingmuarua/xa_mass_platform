@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -146,11 +147,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public TaskMsg waitForSingleMessage(String taskId, int timeoutSeconds) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> app.getTaskMessages(taskId, 1).size() == 1,
+                () -> app.getTaskMessageSnapshot(taskId, 1).messages().size() == 1,
                 timeoutSeconds,
                 "task should materialize exactly one logical message"
         );
-        return app.getTaskMessages(taskId, 1).get(0);
+        return app.getTaskMessageSnapshot(taskId, 1).messages().get(0);
     }
 
     public TaskMsgAttempt waitForActiveAttemptOnWorker(String taskId,
@@ -198,7 +199,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public TaskOutcomeSnapshot snapshotTaskOutcome(String taskId, int messageLimit) {
         Task task = app.getTask(taskId);
         ChaosSupport.require(task != null, "task should exist: " + taskId);
-        List<TaskMsg> messages = app.getTaskMessages(taskId, messageLimit);
+        TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, messageLimit);
+        List<TaskMsg> messages = messageSnapshot.messages();
         List<TaskOutcomeSnapshot.MessageOutcomeSnapshot> snapshots = new ArrayList<>(messages.size());
         for (TaskMsg message : messages) {
             List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());

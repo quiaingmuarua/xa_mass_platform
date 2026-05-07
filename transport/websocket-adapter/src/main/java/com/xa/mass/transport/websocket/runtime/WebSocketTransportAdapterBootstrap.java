@@ -11,7 +11,6 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
@@ -39,7 +38,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     @Override
     public void contribute(TransportAdapterBootstrapContext context) {
         ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
-        WebSocketDispatchRuntimeContext dispatcherContext = new WebSocketDispatcherContext(
+        WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
@@ -90,7 +89,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
     }
 
-    private TransportServer createTransportServer(WebSocketDispatchRuntimeContext dispatcherContext,
+    private TransportServer createTransportServer(WebSocketDispatcherContext dispatcherContext,
                                                   ServerSessionManager sessionManager) {
         if (!config.isServerEnabled()) {
             return null;

@@ -9,6 +9,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -36,7 +37,6 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -1813,8 +1813,9 @@ class MassSdkTest {
             Task task = (Task) response.getData();
             Assertions.assertEquals("crawlerApp", task.getProject());
             Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            Assertions.assertEquals(1, app.getTaskMessages(task.getTid(), 1).size());
-            Assertions.assertEquals("json", app.getTaskMessages(task.getTid(), 1).get(0).getInput().get("type"));
+            TaskMessageSnapshot snapshot = app.getTaskMessageSnapshot(task.getTid(), 1);
+            Assertions.assertEquals(1, snapshot.returned());
+            Assertions.assertEquals("json", snapshot.messages().get(0).getInput().get("type"));
         } finally {
             app.stop();
         }
@@ -2651,7 +2652,7 @@ class MassSdkTest {
             assertNotNull(terminalTask);
             Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
 
-            TaskMsg finalMessage = app.getTaskMessages(task.getTid(), 1).get(0);
+            TaskMsg finalMessage = app.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
             Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
             Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
         } finally {
@@ -2780,13 +2781,8 @@ class MassSdkTest {
         assertMissingMethod(TransportConfig.class, "resolveWorkerTransportRuntimeFactory");
         assertMissingMethod(TransportConfig.class, "resolveTransportAdapterBootstrap");
         assertMissingMethod(TransportConfig.class, "resolveSocketTransportAdapterBootstrap");
-        assertMissingMethod(
-                TransportConfig.class,
-                "createTransportServer",
-                WebSocketDispatchRuntimeContext.class,
-                WorkerEndpointRegistry.class,
-                int.class
-        );
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext"));
         assertMissingMethod(TransportRuntimeComposition.class, "isTransportServerEnabled");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportServerPort");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
@@ -2817,7 +2813,7 @@ class MassSdkTest {
                 () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
-                () -> app.getTaskMessages("task-1", 1),
+                () -> app.getTaskMessageSnapshot("task-1", 1),
                 () -> app.getTaskMessage("task-1", "msg-1"),
                 () -> app.getTaskMessageAttempts("task-1", "msg-1"),
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),

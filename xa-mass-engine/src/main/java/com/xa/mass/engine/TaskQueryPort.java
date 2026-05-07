@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -20,9 +21,7 @@ public interface TaskQueryPort {
 
     List<Task> getTasksByStatus(TaskStatus status);
 
-    List<TaskMsg> getTaskMessages(String taskId, int limit);
-
-    long countTaskMessages(String taskId);
+    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 
     TaskMsg getTaskMessage(String taskId, String messageId);
 

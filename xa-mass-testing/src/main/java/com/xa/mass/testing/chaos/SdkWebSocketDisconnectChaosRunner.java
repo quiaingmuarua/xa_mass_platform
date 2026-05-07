@@ -9,6 +9,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
@@ -276,7 +277,8 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            List<TaskMsg> messages = app.getTaskMessages(taskId, config.messagesPerTask());
+            TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
+            List<TaskMsg> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
                 List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());

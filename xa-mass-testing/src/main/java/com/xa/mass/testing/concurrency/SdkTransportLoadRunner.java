@@ -10,6 +10,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -375,7 +376,8 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                List<TaskMsg> messages = app.getTaskMessages(taskId, config.messagesPerTask());
+                TaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
+                List<TaskMsg> messages = messageSnapshot.messages();
                 total += messages.size();
                 for (TaskMsg message : messages) {
                     if (message.getStatus() == TaskMsgStatus.SUCCESS) {

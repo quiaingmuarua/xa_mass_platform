@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 
 import java.util.List;
 
@@ -16,15 +17,13 @@ public interface TaskQueryOperations {
 
     List<Task> getTasksByStatus(TaskStatus status);
 
-    List<TaskMsg> getTaskMessages(String taskId, int limit);
+    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 
     TaskMsg getTaskMessage(String taskId, String messageId);
 
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
-
-    long countTaskMessages(String taskId);
 
     Object validateTaskState(String taskId);
 

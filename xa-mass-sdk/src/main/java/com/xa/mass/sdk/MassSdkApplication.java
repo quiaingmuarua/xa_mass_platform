@@ -9,6 +9,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -227,8 +228,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return requireStartedTaskQueries().getTaskMessages(taskId, limit);
+    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        return requireStartedTaskQueries().getTaskMessageSnapshot(taskId, limit);
     }
 
     @Override
@@ -244,11 +245,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         return requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId);
-    }
-
-    @Override
-    public long countTaskMessages(String taskId) {
-        return requireStartedTaskQueries().countTaskMessages(taskId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

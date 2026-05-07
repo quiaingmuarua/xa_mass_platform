@@ -243,7 +243,7 @@ class RedisRuntimeTraceIntegrationTest {
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg message = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+        TaskMsg message = taskQueries.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
         message.setMaxRetryCount(maxRetryCount);
         taskStorage.updateTaskMessage(task.getTid(), message);
 

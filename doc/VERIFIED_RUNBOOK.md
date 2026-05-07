@@ -109,8 +109,8 @@ curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}/messages
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
-- task detail response includes `items` from persisted `TaskMsg.input` and `stateValidation`
-- message read model exposes `input`, `output`, and compatibility latest-attempt projections such as `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
+- task detail response includes a bounded `items` snapshot plus `itemsReturned`, `itemsLimit`, `itemsTruncated`, and `stateValidation`
+- message read model is a bounded compatibility summary; it exposes logical status and latest-attempt summary fields without materializing full `input`/`output`
 
 ## 4. Runtime Facts To Trust
 
