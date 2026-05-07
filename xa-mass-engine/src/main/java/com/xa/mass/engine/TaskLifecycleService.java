@@ -426,32 +426,37 @@ class TaskLifecycleService {
         TaskMsgStatus status = msg.getStatus();
         TaskMsgAttempt activeAttempt = null;
         boolean attemptClosed = false;
+        boolean runtimeOwnedMessage = activeLease != null
+                || status == TaskMsgStatus.ASSIGNED
+                || status == TaskMsgStatus.RUNNING;
         if (activeLease != null) {
-            RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
-                    RuntimeLeaseProjectionSupport.recoverAndSynchronizeActiveAttempt(
-                            lifecycleRuntime,
-                            task.getTid(),
-                            msg,
-                            activeLease,
-                            traceEventLogger,
-                            "CANCEL_PENDING_MESSAGES",
-                            "runtime active lease synchronized compatibility projection before terminal cleanup"
-                    );
-            activeAttempt = leaseSync.activeAttempt();
-            if (activeAttempt != null && !leaseSync.synchronizedProjection()) {
-                return;
+            activeAttempt = RuntimeLeaseProjectionSupport.resolveOrRecoverActiveAttempt(
+                    lifecycleRuntime,
+                    msg,
+                    activeLease
+            );
+            if (!RuntimeLeaseProjectionSupport.synchronizeProjectionFromRuntimeLease(
+                    lifecycleRuntime,
+                    task.getTid(),
+                    msg,
+                    activeAttempt,
+                    activeLease,
+                    traceEventLogger,
+                    "CANCEL_PENDING_MESSAGES",
+                    "runtime active lease synchronized compatibility projection before terminal cleanup")) {
+                logger.warn("Failed to synchronize compatibility projection from runtime lease during terminal cleanup: taskId={}, messageId={}",
+                        task.getTid(), msg.getMessageId());
             }
             status = msg.getStatus();
-        } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
+        } else if (runtimeOwnedMessage) {
             activeAttempt = lifecycleRuntime.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
         }
         if (activeAttempt != null) {
-            if (activeAttempt != null
-                    && TaskMessageAttemptSupport.expireAttempt(
+            if (TaskMessageAttemptSupport.projectExpired(
                     activeAttempt,
                     TaskMsgAttemptFinalReason.MANUAL_CANCELLED,
                     "task cancelled")) {
-                lifecycleRuntime.updateTaskMessageAttempt(task.getTid(), msg.getMessageId(), activeAttempt);
+                persistAttemptProjectionBestEffort(task.getTid(), msg.getMessageId(), activeAttempt);
                 attemptClosed = true;
             }
         }
@@ -471,7 +476,7 @@ class TaskLifecycleService {
                     "TaskManager",
                     "task cancelled before dispatch"
             );
-        } else if (activeLease != null || activeAttempt != null) {
+        } else if (runtimeOwnedMessage) {
             updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
             if (updated) {
                 traceEventLogger.taskMsgStatusTransition(
@@ -522,6 +527,20 @@ class TaskLifecycleService {
                 "task termination finalized the logical message"
         );
         lifecycleRuntime.publishTaskMessageLogicallyFinal(task, msg);
+    }
+
+    private void persistAttemptProjectionBestEffort(String taskId,
+                                                    String messageId,
+                                                    TaskMsgAttempt attempt) {
+        try {
+            if (!lifecycleRuntime.updateTaskMessageAttempt(taskId, messageId, attempt)) {
+                logger.warn("Failed to update compatibility attempt projection during terminal cleanup: taskId={}, messageId={}, attemptId={}",
+                        taskId, messageId, attempt != null ? attempt.getAttemptId() : null);
+            }
+        } catch (RuntimeException e) {
+            logger.warn("Failed to update compatibility attempt projection during terminal cleanup: taskId={}, messageId={}, attemptId={}",
+                    taskId, messageId, attempt != null ? attempt.getAttemptId() : null, e);
+        }
     }
 
     private Map<String, ActiveLeaseRecord> activeLeaseByMessageId(String taskId) {

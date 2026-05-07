@@ -1735,6 +1735,26 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg2.getFinalReason());
     }
 
+    @Test
+    void cancelTaskDrainsAssignedMessageWithoutRuntimeLeaseOrAttemptProjection() {
+        Task task = taskManager.createTask(buildRequest("cancel-no-attempt-residue", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        assertTrue(message.markAsAssigned());
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        TaskMsg cancelled = taskManager.getTaskMessage(task.getTid(), message.getMessageId());
+        assertEquals(TaskMsgStatus.EXPIRED, cancelled.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, cancelled.getFinalReason());
+        assertTrue(cancelled.isCompleted());
+        assertNull(taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
+    }
+
     // ---- Bug4: Task.isCompleted() only returns true when status is final ----
 
     @Test

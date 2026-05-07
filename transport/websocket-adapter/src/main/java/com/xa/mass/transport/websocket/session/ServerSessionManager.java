@@ -85,7 +85,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
     }
 
-    @Override
     public boolean sendToRoute(String routeKey, String message) {
         WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         if (endpoint != null && endpoint.isActive()) {
@@ -96,7 +95,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return false;
     }
 
-    @Override
     public boolean isRouteOnline(String routeKey) {
         return hasActiveChannel(routeKey);
     }

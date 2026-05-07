@@ -17,9 +17,9 @@ entry for `transport/`.
 - `routeKey` is the transport delivery address. Current mainline bindings resolve
   it from `workerId` by default, but adapter ingress may bind an explicit
   `routeKey` instead. That is policy, not a transport-global invariant.
-- route-only endpoint operations are adapter-local convenience only. In a
-  multi-adapter runtime, callers must route with `adapterId + routeKey` rather
-  than asking a composite registry to guess ownership.
+- route-only endpoint helpers may exist inside one concrete adapter, but the
+  transport-neutral runtime surface must route with `adapterId + routeKey`
+  only. Composite registries must not guess ownership from route-only access.
 - `TransportPacket` is the internal flat transport envelope. Dispatch now
   creates packet-backed envelopes before adapter delivery, but worker-facing
   websocket/socket/polling JSON remains unchanged in this phase.

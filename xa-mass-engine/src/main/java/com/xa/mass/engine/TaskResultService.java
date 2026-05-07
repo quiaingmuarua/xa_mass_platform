@@ -79,7 +79,7 @@ class TaskResultService {
         }
         TaskMsgAttempt activeAttempt = leaseSync.activeAttempt();
         if (activeAttempt != null) {
-            if (!TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
+            if (!TaskMessageAttemptSupport.projectExpired(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                         + activeAttempt.getStatus(), 0);
                 return TaskMessageMutationOutcome.rejected();
@@ -188,9 +188,7 @@ class TaskResultService {
         }
 
         if (taskMsg.isCompleted()) {
-            TaskMsgAttempt latestAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
             traceEventLogger.callbackIgnoredDuplicate(taskMsg,
-                    latestAttempt,
                     "task message already final in status " + taskMsg.getStatus());
             logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
                     messageId, taskId, taskMsg.getStatus());
@@ -198,9 +196,7 @@ class TaskResultService {
         }
 
         if (task.getStatus().isFinal()) {
-            TaskMsgAttempt latestAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
             traceEventLogger.callbackIgnoredLate(taskMsg,
-                    latestAttempt,
                     "task already terminal in status " + task.getStatus());
             logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
                     taskId, messageId, taskMsg.getStatus());
@@ -208,10 +204,8 @@ class TaskResultService {
         }
 
         if (activeLease == null) {
-            TaskMsgAttempt latestAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
             traceEventLogger.callbackRejectedNoActiveLease(
                     taskMsg,
-                    latestAttempt,
                     "callback arrived without any active runtime lease"
             );
             logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
@@ -244,7 +238,6 @@ class TaskResultService {
         }
         if (!isCallbackAcceptableMessageState(taskMsg)) {
             traceEventLogger.callbackRejectedInvalidState(taskMsg,
-                    activeAttempt,
                     "callback arrived while message status is " + taskMsg.getStatus());
             logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
                     messageId, taskId, taskMsg.getStatus());
@@ -253,10 +246,9 @@ class TaskResultService {
 
         traceEventLogger.callbackAccepted(
                 taskMsg,
-                activeAttempt,
                 success ? "success callback received" : "failure callback received");
 
-        if (!TaskMessageAttemptSupport.advanceAttemptForCallback(
+        if (!TaskMessageAttemptSupport.projectCallbackAccepted(
                 activeAttempt,
                 resultRuntime.getTaskMessageLeaseSeconds())) {
             logger.warn("Cannot advance attempt {} for task message {} from status {}",
@@ -378,21 +370,16 @@ class TaskResultService {
         if (activeLease == null || dispatchBinding == null) {
             return null;
         }
-        TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
+        TaskMsgAttempt recoveredAttempt = TaskMessageAttemptSupport.buildDispatchedProjection(
                 dispatchBinding.attemptId(),
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
-                dispatchBinding.attemptNo()
+                dispatchBinding.attemptNo(),
+                dispatchBinding.workerId(),
+                dispatchBinding.workerContextId(),
+                dispatchBinding.batchId(),
+                activeLease.leaseExpireAt()
         );
-        recoveredAttempt.setWorkerId(dispatchBinding.workerId());
-        recoveredAttempt.setWorkerContextId(dispatchBinding.workerContextId());
-        recoveredAttempt.setBatchId(dispatchBinding.batchId());
-        if (!recoveredAttempt.markLeased(java.time.LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault()))) {
-            return null;
-        }
-        if (!recoveredAttempt.markDispatched()) {
-            return null;
-        }
         persistAttemptProjectionAddBestEffort(taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt,
                 "recover dispatch compensation attempt projection");
         return recoveredAttempt;
@@ -426,11 +413,10 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
         taskMsg.setOutput(output);
-        if (!activeAttempt.markSucceeded()) {
+        if (!TaskMessageAttemptSupport.projectSucceeded(activeAttempt, output)) {
             logger.warn("Failed to mark attempt {} as SUCCEEDED", activeAttempt.getAttemptId());
             return TaskMessageMutationOutcome.rejected();
         }
-        activeAttempt.setOutput(output);
         traceEventLogger.taskMsgStatusTransition(
                 taskMsg,
                 activeAttempt,
@@ -496,13 +482,10 @@ class TaskResultService {
                                                                                     String resetReason) {
         String messageId = taskMsg.getMessageId();
         TaskMsgAttemptStatus beforeRevokedStatus = activeAttempt.getStatus();
-        if (!activeAttempt.markRevokedForRetry()) {
+        if (!TaskMessageAttemptSupport.projectRetryRevoked(activeAttempt, detail, errorCode)) {
             logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
             return TaskMessageMutationOutcome.rejected();
         }
-        activeAttempt.setErrorMessage(detail);
-        activeAttempt.setErrorCode(errorCode);
-        activeAttempt.setOutput(null);
         traceEventLogger.taskMsgAttemptStatusTransition(
                 activeAttempt,
                 beforeRevokedStatus,
@@ -556,11 +539,15 @@ class TaskResultService {
                                                                    String errorCode,
                                                                    Map<String, Object> output) {
         String messageId = taskMsg.getMessageId();
-        if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail, errorCode)) {
+        if (!TaskMessageAttemptSupport.projectFailed(
+                activeAttempt,
+                TaskMsgAttemptFinalReason.BUSINESS_FAILURE,
+                detail,
+                errorCode,
+                output)) {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
             return TaskMessageMutationOutcome.rejected();
         }
-        activeAttempt.setOutput(output);
         persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
                 "mark attempt failure");
 

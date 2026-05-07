@@ -82,7 +82,6 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    @Override
     public boolean sendToRoute(String routeKey, String message) {
         SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         if (endpoint == null || !endpoint.isActive()) {
@@ -99,7 +98,6 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    @Override
     public boolean isRouteOnline(String routeKey) {
         SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         return endpoint != null && endpoint.isActive();

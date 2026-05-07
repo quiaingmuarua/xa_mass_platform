@@ -121,6 +121,30 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
+    void duplicateResponseDoesNotReadAttemptProjectionOnlyForTrace() {
+        scheduler = new RecordingTaskScheduler();
+        TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
+        taskStorage = trackingStorage;
+        taskWorkRuntime = new InMemoryTaskWorkRuntime();
+        traceSink = new RecordingExecutionEventSink();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
+        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
+
+        Task task = createRunningTask("task-duplicate-no-attempt-read");
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+
+        assertTrue(channel.ingest(report(task, taskMsg, "SUCCESS", "ok-first", null)));
+        trackingStorage.resetLatestAttemptReadCount();
+
+        assertTrue(channel.ingest(report(task, taskMsg, "FAILED", "late-duplicate", null)));
+        assertEquals(0, trackingStorage.latestAttemptReadCount,
+                "duplicate result trace should use bounded message projection instead of re-reading attempt rows");
+    }
+
+    @Test
     void transportNeutralResultReportCanBeIngestedWithoutWebSocketMessageObject() {
         Task task = createRunningTask("task-transport-neutral");
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
@@ -383,6 +407,20 @@ class RuntimeTaskResultIngestChannelTest {
         @Override
         public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
             return false;
+        }
+    }
+
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+        private int latestAttemptReadCount;
+
+        @Override
+        public java.util.Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+            latestAttemptReadCount++;
+            return super.getLatestTaskMessageAttempt(taskId, messageId);
+        }
+
+        private void resetLatestAttemptReadCount() {
+            latestAttemptReadCount = 0;
         }
     }
 }

@@ -6,8 +6,6 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -59,21 +57,16 @@ final class RuntimeLeaseProjectionSupport {
         if (recoveredAttemptId == null || recoveredAttemptId.isBlank()) {
             recoveredAttemptId = "recovered-attempt-" + taskMsg.getMessageId() + "-" + nextAttemptNo + "-" + UUID.randomUUID();
         }
-        TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
+        TaskMsgAttempt recoveredAttempt = TaskMessageAttemptSupport.buildDispatchedProjection(
                 recoveredAttemptId,
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
-                nextAttemptNo
+                nextAttemptNo,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId(),
+                activeLease.leaseExpireAt()
         );
-        recoveredAttempt.setWorkerId(activeLease.workerId());
-        recoveredAttempt.setWorkerContextId(activeLease.workerContextId());
-        recoveredAttempt.setBatchId(activeLease.batchId());
-        if (!recoveredAttempt.markLeased(LocalDateTime.ofInstant(activeLease.leaseExpireAt(), ZoneId.systemDefault()))) {
-            return null;
-        }
-        if (!recoveredAttempt.markDispatched()) {
-            return null;
-        }
         tryAddTaskMessageAttempt(projectionPort, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
         return recoveredAttempt;
     }

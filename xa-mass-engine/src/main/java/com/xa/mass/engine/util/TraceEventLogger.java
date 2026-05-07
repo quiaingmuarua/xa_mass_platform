@@ -2,6 +2,7 @@ package com.xa.mass.engine.util;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
@@ -131,22 +132,55 @@ public final class TraceEventLogger {
         if (attempt == null) {
             return;
         }
+        taskMsgAttemptStatusTransition(
+                attempt.getTaskId(),
+                attempt.getMessageId(),
+                attempt.getAttemptId(),
+                attempt.getAttemptNo(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
+                attempt.getFinalReason(),
+                fromStatus,
+                toStatus,
+                trigger,
+                source,
+                reason
+        );
+    }
+
+    public void taskMsgAttemptStatusTransition(String taskId,
+                                               String messageId,
+                                               String attemptId,
+                                               Integer attemptNo,
+                                               String workerId,
+                                               String workerContextId,
+                                               String batchId,
+                                               TaskMsgAttemptFinalReason finalReason,
+                                               TaskMsgAttemptStatus fromStatus,
+                                               TaskMsgAttemptStatus toStatus,
+                                               String trigger,
+                                               String source,
+                                               String reason) {
+        if (attemptId == null || attemptId.isBlank()) {
+            return;
+        }
         emit(event(ExecutionEventType.TASK_MSG_ATTEMPT_STATUS_TRANSITION)
                 .identity(identity -> identity
-                        .taskId(attempt.getTaskId())
-                        .messageId(attempt.getMessageId())
-                        .attemptId(attempt.getAttemptId())
-                        .workerId(attempt.getWorkerId())
-                        .workerContextId(attempt.getWorkerContextId()))
+                        .taskId(taskId)
+                        .messageId(messageId)
+                        .attemptId(attemptId)
+                        .workerId(workerId)
+                        .workerContextId(workerContextId))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
                         "reason", reason,
                         "result", "SUCCESS",
-                        "attemptNo", attempt.getAttemptNo(),
-                        "finalReason", enumName(attempt.getFinalReason()),
-                        "batchId", attempt.getBatchId()
+                        "attemptNo", attemptNo,
+                        "finalReason", enumName(finalReason),
+                        "batchId", batchId
                 ))
                 .build());
     }

@@ -50,6 +50,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - compatibility `TaskMsgAttempt` writes are best-effort residue only; runtime
   dispatch ownership, retry truth, and callback acceptance must remain correct
   when those writes lag or are absent
+- callback duplicate, late, and no-active-lease trace emission must use bounded
+  runtime-synchronized `TaskMsg` projection fields first; trace must not force
+  a hot-path latest-attempt projection lookup
 
 ## Storage And Projection Non-Truth
 

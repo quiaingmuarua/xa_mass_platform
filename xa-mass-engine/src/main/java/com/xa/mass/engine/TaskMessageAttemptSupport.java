@@ -1,48 +1,146 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * Shared helper methods for task-message attempt lifecycle handling.
  */
-final class TaskMessageAttemptSupport {
+public final class TaskMessageAttemptSupport {
 
     private TaskMessageAttemptSupport() {
     }
 
-    static boolean advanceAttemptForCallback(TaskMsgAttempt attempt, long leaseSeconds) {
-        if (attempt == null || attempt.getStatus() == null) {
-            return false;
+    public static TaskMsgAttempt buildDispatchedProjection(String attemptId,
+                                                           String taskId,
+                                                           String messageId,
+                                                           int attemptNo,
+                                                           String workerId,
+                                                           String workerContextId,
+                                                           String batchId,
+                                                           Instant leaseExpireAt) {
+        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
+        attempt.setWorkerId(workerId);
+        attempt.setWorkerContextId(workerContextId);
+        attempt.setBatchId(batchId);
+        if (leaseExpireAt != null) {
+            attempt.setLeaseExpireTime(LocalDateTime.ofInstant(leaseExpireAt, ZoneId.systemDefault()));
         }
-        if (attempt.getStatus().isFinal()) {
-            return true;
-        }
-        return switch (attempt.getStatus()) {
-            case CREATED -> attempt.markLeased(LocalDateTime.now().plusSeconds(leaseSeconds))
-                    && attempt.markDispatched()
-                    && attempt.markRunning();
-            case LEASED -> attempt.markDispatched() && attempt.markRunning();
-            case DISPATCHED, ACKED -> attempt.markRunning();
-            case RUNNING -> true;
-            default -> false;
-        };
+        attempt.setStatus(TaskMsgAttemptStatus.DISPATCHED);
+        return attempt;
     }
 
-    static boolean expireAttempt(TaskMsgAttempt attempt,
-                                 TaskMsgAttemptFinalReason finalReason,
-                                 String errorMessage) {
+    public static TaskMsgAttempt buildDispatchedProjection(TaskMsg taskMsg,
+                                                           ActiveLeaseRecord activeLease,
+                                                           String attemptId,
+                                                           int attemptNo) {
+        if (taskMsg == null || activeLease == null) {
+            return null;
+        }
+        return buildDispatchedProjection(
+                attemptId,
+                taskMsg.getTaskId(),
+                taskMsg.getMessageId(),
+                attemptNo,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId(),
+                activeLease.leaseExpireAt()
+        );
+    }
+
+    static boolean projectCallbackAccepted(TaskMsgAttempt attempt, long leaseSeconds) {
+        if (attempt == null) {
+            return false;
+        }
+        TaskMsgAttemptStatus currentStatus = attempt.getStatus();
+        if (currentStatus == null) {
+            return false;
+        }
+        if (currentStatus.isFinal()) {
+            return true;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (attempt.getLeaseExpireTime() == null) {
+            attempt.setLeaseExpireTime(now.plusSeconds(leaseSeconds));
+        }
+        if (attempt.getDispatchTime() == null) {
+            attempt.setDispatchTime(now);
+        }
+        if (attempt.getAckTime() == null) {
+            attempt.setAckTime(now);
+        }
+        if (attempt.getStartTime() == null) {
+            attempt.setStartTime(now);
+        }
+        attempt.setStatus(TaskMsgAttemptStatus.RUNNING);
+        return true;
+    }
+
+    static boolean projectExpired(TaskMsgAttempt attempt,
+                                  TaskMsgAttemptFinalReason finalReason,
+                                  String errorMessage) {
         if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
             return false;
         }
-        return switch (attempt.getStatus()) {
-            case CREATED, LEASED, DISPATCHED, ACKED, RUNNING -> attempt.markExpired(finalReason, errorMessage);
-            default -> false;
-        };
+        attempt.setStatus(TaskMsgAttemptStatus.EXPIRED);
+        attempt.setFinalReason(finalReason);
+        attempt.setErrorMessage(errorMessage);
+        return true;
+    }
+
+    static boolean projectSucceeded(TaskMsgAttempt attempt, java.util.Map<String, Object> output) {
+        if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
+            return false;
+        }
+        if (attempt.getStartTime() == null) {
+            attempt.setStartTime(LocalDateTime.now());
+        }
+        attempt.setStatus(TaskMsgAttemptStatus.SUCCEEDED);
+        attempt.setFinalReason(TaskMsgAttemptFinalReason.SUCCESS);
+        attempt.setOutput(output);
+        return true;
+    }
+
+    static boolean projectRetryRevoked(TaskMsgAttempt attempt,
+                                       String errorMessage,
+                                       String errorCode) {
+        if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
+            return false;
+        }
+        attempt.setStatus(TaskMsgAttemptStatus.REVOKED);
+        attempt.setFinalReason(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY);
+        attempt.setErrorMessage(errorMessage);
+        attempt.setErrorCode(errorCode);
+        attempt.setOutput(null);
+        return true;
+    }
+
+    static boolean projectFailed(TaskMsgAttempt attempt,
+                                 TaskMsgAttemptFinalReason finalReason,
+                                 String errorMessage,
+                                 String errorCode,
+                                 java.util.Map<String, Object> output) {
+        if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
+            return false;
+        }
+        if (attempt.getStartTime() == null) {
+            attempt.setStartTime(LocalDateTime.now());
+        }
+        attempt.setStatus(TaskMsgAttemptStatus.FAILED);
+        attempt.setFinalReason(finalReason);
+        attempt.setErrorMessage(errorMessage);
+        attempt.setErrorCode(errorCode);
+        attempt.setOutput(output);
+        return true;
     }
 
     static boolean isTaskMsgFinalReasonCompatible(TaskMsg taskMsg) {

@@ -51,27 +51,15 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
     }
 
     @Override
-    public synchronized boolean sendToRoute(String routeKey, String message) {
-        WorkerEndpointRegistry registry = resolveSingleRegistryForRouteOnlyAccess(routeKey);
-        return registry != null && registry.sendToRoute(routeKey, message);
-    }
-
-    @Override
-    public synchronized boolean isRouteOnline(String routeKey) {
-        WorkerEndpointRegistry registry = resolveSingleRegistryForRouteOnlyAccess(routeKey);
-        return registry != null && registry.isRouteOnline(routeKey);
-    }
-
-    @Override
     public synchronized boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
         WorkerEndpointRegistry registry = registryForAdapter(adapterId);
-        return registry != null && registry.sendToRoute(routeKey, message);
+        return registry != null && registry.sendToAdapterRoute(adapterId, routeKey, message);
     }
 
     @Override
     public synchronized boolean isAdapterRouteOnline(String adapterId, String routeKey) {
         WorkerEndpointRegistry registry = registryForAdapter(adapterId);
-        return registry != null && registry.isRouteOnline(routeKey);
+        return registry != null && registry.isAdapterRouteOnline(adapterId, routeKey);
     }
 
     @Override
@@ -111,15 +99,6 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
         return List.copyOf(unique);
     }
 
-    private WorkerEndpointRegistry resolveSingleRegistryForRouteOnlyAccess(String routeKey) {
-        String normalizedRouteKey = normalizeRouteKey(routeKey);
-        if (normalizedRouteKey == null) {
-            return null;
-        }
-        List<WorkerEndpointRegistry> registries = uniqueRegistries();
-        return registries.size() == 1 ? registries.get(0) : null;
-    }
-
     private WorkerEndpointRegistry registryForAdapter(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             return null;
@@ -132,12 +111,5 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    private static String normalizeRouteKey(String routeKey) {
-        if (routeKey == null || routeKey.isBlank()) {
-            return null;
-        }
-        return routeKey.trim();
     }
 }

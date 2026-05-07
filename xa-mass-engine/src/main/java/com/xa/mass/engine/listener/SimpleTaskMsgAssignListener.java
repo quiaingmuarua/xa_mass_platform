@@ -13,6 +13,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskMessageAttemptSupport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
@@ -24,8 +25,6 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -304,37 +303,44 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     private TaskDispatchBinding bindTaskMessage(Task task, TaskMsg taskMsg, ClaimedTaskWork work) {
         int attemptNo = Math.max(work.retryCount(), taskMsg.getRetryCount()) + 1;
-        TaskMsgAttempt attempt = new TaskMsgAttempt(
-                java.util.UUID.randomUUID().toString(),
+        String attemptId = java.util.UUID.randomUUID().toString();
+        TaskMsgAttempt attempt = TaskMessageAttemptSupport.buildDispatchedProjection(
+                attemptId,
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
-                attemptNo
+                attemptNo,
+                work.workerId(),
+                work.workerContextId(),
+                work.batchId(),
+                work.leaseExpireAt()
         );
-        attempt.setWorkerId(work.workerId());
-        attempt.setWorkerContextId(work.workerContextId());
-        attempt.setBatchId(work.batchId());
         taskMsg.applyLatestAttemptProjection(attempt.getAttemptId(), work.workerId(), work.workerContextId(), work.batchId());
-        TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
-        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(work.leaseExpireAt(), ZoneId.systemDefault());
-        if (!attempt.markLeased(leaseExpireTime)) {
-            return null;
-        }
         traceEventLogger.taskMsgAttemptStatusTransition(
-                attempt,
-                initialAttemptStatus,
-                attempt.getStatus(),
+                taskMsg.getTaskId(),
+                taskMsg.getMessageId(),
+                attempt.getAttemptId(),
+                attempt.getAttemptNo(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
+                null,
+                TaskMsgAttemptStatus.CREATED,
+                TaskMsgAttemptStatus.LEASED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskMsgAssignListener",
                 "attempt leased for dispatch"
         );
-        TaskMsgAttemptStatus beforeDispatch = attempt.getStatus();
-        if (!attempt.markDispatched()) {
-            return null;
-        }
         traceEventLogger.taskMsgAttemptStatusTransition(
-                attempt,
-                beforeDispatch,
-                attempt.getStatus(),
+                taskMsg.getTaskId(),
+                taskMsg.getMessageId(),
+                attempt.getAttemptId(),
+                attempt.getAttemptNo(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
+                null,
+                TaskMsgAttemptStatus.LEASED,
+                TaskMsgAttemptStatus.DISPATCHED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskMsgAssignListener",
                 "attempt dispatched"

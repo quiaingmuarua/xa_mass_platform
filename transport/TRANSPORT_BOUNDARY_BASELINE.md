@@ -161,9 +161,9 @@ Current runtime rules:
 - queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
 - `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as
   task, attempt, lease, or business routing truth
-- route-only endpoint lookups are a single-adapter convenience only; once more
-  than one endpoint registry is composed, callers must use adapter-scoped
-  route operations instead of inferring ownership from endpoint snapshots
+- route-only endpoint helpers may exist only inside one concrete adapter
+  implementation; the shared runtime/registry contract must use adapter-scoped
+  route operations rather than inferring ownership from endpoint snapshots
 - worker-addressed debug/raw side-channels are not route truth; if they remain,
   they must first resolve one unique active `(adapterId, routeKey)` from
   endpoint state before adapter send
