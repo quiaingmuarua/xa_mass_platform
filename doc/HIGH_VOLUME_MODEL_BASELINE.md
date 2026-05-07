@@ -17,7 +17,8 @@ Trust: code and verified behavior override this design/refactor reference.
 Already true in current code:
 
 - the first `TaskWorkRuntime` slice is landed, and its shared runtime contract now lives in `platform_infra/mass-runtime-api`
-- `TaskManager` still writes `Task` plus persisted `TaskMsg` compatibility projections
+- `TaskManager` still writes `Task`, while `TaskMsg` compatibility projections are
+  best-effort residue written after runtime enqueue instead of the ingest truth
 - initial or appended work is also written into `TaskWorkRuntime`
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
 - engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone

@@ -147,8 +147,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     /**
      * Creates the task shell, initializes intake/source/runtime truth, ingests
-     * initial inputs, enqueues runtime work, and writes bounded compatibility
-     * {@link TaskMsg} projection rows.
+     * initial inputs, enqueues runtime work, and best-effort writes bounded
+     * compatibility {@link TaskMsg} projection rows.
      *
      * <p>This path is intentionally kept stable in this round. It is the next
      * internal split candidate, but should not accumulate more unrelated
@@ -386,7 +386,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        addTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
+        try {
+            addTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
+        } catch (RuntimeException e) {
+            logger.warn("Runtime ingress accepted for taskId={}, messageId={} but compatibility TaskMsg projection write failed",
+                    taskId, messageId, e);
+        }
 
         LogUtils.logOperationSuccess("task message added", 0);
     }

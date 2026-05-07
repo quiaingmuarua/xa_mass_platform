@@ -8,6 +8,8 @@ implementation modules or storage implementations.
 
 ## Role
 
+`engine` is a runtime kernel, not a CRUD backend module.
+
 - task lifecycle transitions and terminal convergence
 - task-level worker matching and assignment orchestration
 - result ingest application and retry/finality decisions
@@ -34,6 +36,9 @@ Runtime-facing glue should prefer narrow engine ports and facades such as:
 - `TaskRuntimeRecoveryPort`
 - `TaskEventListenerRegistrar`
 - `TaskEventService`
+
+Keep these seams only when they carry a real cross-module or runtime boundary.
+Internal orchestrator size alone is not a refactor trigger.
 
 Do not default new cross-module callers to the full `TaskManager` facade.
 When a seam is transport-neutral and cross-module by nature, prefer a small
@@ -69,6 +74,9 @@ Keep these facts fixed unless the owning global baselines change:
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
   not the hot-path runtime owner
+- runtime ingest must stay correct when compatibility `TaskMsg` projection writes
+  fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
+  best-effort residue
 - assignment diagnostics are append-only bounded residue; matching and dispatch
   mainline should depend on a write-only recorder, not on report/history APIs
 - dispatch submit failure after claim/attempt creation must compensate inline

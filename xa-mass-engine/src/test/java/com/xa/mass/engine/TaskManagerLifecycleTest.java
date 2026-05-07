@@ -280,6 +280,65 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void runtimeIngressStillConvergesWhenInitialTaskMsgProjectionWriteFails() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        TaskManager manager = new TaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("payload-ref-best-effort-ingress");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+
+        Task task = manager.createTask(dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        String messageId = java.util.UUID.randomUUID().toString();
+        String payloadRef = "s3://bucket/payloads/demo-best-effort.json";
+        failingStorage.failNextTaskMessageAdd();
+
+        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 2);
+
+        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+
+        ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-best-effort", "worker-context-best-effort", "batch-best-effort", 1)),
+                1,
+                manager.getTaskMessageLeaseSeconds()
+        ).get(0);
+        assertEquals(messageId, claimed.messageId());
+        assertEquals(payloadRef, claimed.payloadRef());
+        assertTrue(claimed.payload().isEmpty());
+
+        assertTrue(manager.handleTaskMessageResult(
+                task.getTid(),
+                messageId,
+                true,
+                "done",
+                null,
+                java.util.Map.of("outcome", "success")
+        ));
+
+        TaskMsg projection = manager.getTaskMessageProjection(task.getTid(), messageId);
+        assertNotNull(projection);
+        assertEquals(TaskMsgStatus.SUCCESS, projection.getStatus());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, projection.getFinalReason());
+        assertTrue(projection.getInput().isEmpty());
+        assertEquals(java.util.Map.of("outcome", "success"), projection.getOutput());
+    }
+
+    @Test
     void createBatchTaskRejectsOversizedInlineInputs() {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("oversized-inline");
@@ -2029,6 +2088,23 @@ class TaskManagerLifecycleTest {
             fullSnapshotReadCount.set(0);
             attemptSnapshotReadCount.set(0);
             attemptStatsReadCount.set(0);
+        }
+    }
+
+    private static final class ProjectionWriteFailingTaskStorage extends InMemoryTaskStorage {
+        private volatile boolean failNextTaskMessageAdd;
+
+        @Override
+        public void addTaskMessage(String taskId, TaskMsg taskMsg) {
+            if (failNextTaskMessageAdd) {
+                failNextTaskMessageAdd = false;
+                throw new IllegalStateException("simulated projection add failure");
+            }
+            super.addTaskMessage(taskId, taskMsg);
+        }
+
+        private void failNextTaskMessageAdd() {
+            failNextTaskMessageAdd = true;
         }
     }
 }

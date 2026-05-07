@@ -63,58 +63,56 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void successResponseUpdatesStoredTaskMessage() {
-        Task task = createRunningTask("task-success");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-success");
 
-        boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
+        boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
-        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(fixture.taskId(), fixture.messageId());
         assertNotNull(attempt);
         assertEquals("SUCCESS", attempt.getOutput().get("status"));
-        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
     @Test
     void failureResponseFollowsRuntimeRetryBudgetInsteadOfStaleTaskMessageProjection() {
-        Task task = createRunningTask("task-failure");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-failure");
+        TaskMsg taskMsg = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         taskMsg.setMaxRetryCount(0);
-        taskStorage.updateTaskMessage(task.getTid(), taskMsg);
+        taskStorage.updateTaskMessage(fixture.taskId(), taskMsg);
 
-        boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
+        boolean handled = channel.ingest(report(fixture, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.INIT, updated.getStatus());
         assertEquals(1, updated.getRetryCount());
         assertNull(updated.getErrorMessage());
         assertNull(updated.getErrorCode());
-        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(fixture.taskId(), fixture.messageId());
         assertNotNull(attempt);
         assertEquals(TaskMsgAttemptStatus.REVOKED, attempt.getStatus());
         assertEquals(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY, attempt.getFinalReason());
         assertEquals("boom", attempt.getErrorMessage());
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
         assertNull(attempt.getOutput());
-        assertEquals(TaskStatus.RUNNING, taskQueries.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
     @Test
     void duplicateResponseKeepsFirstFinalResultAndStillReturnsHandled() {
-        Task task = createRunningTask("task-duplicate");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-duplicate");
 
-        boolean firstHandled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
-        boolean secondHandled = channel.ingest(report(task, taskMsg, "FAILED", "boom", null));
+        boolean firstHandled = channel.ingest(report(fixture, "SUCCESS", "ok", null));
+        boolean secondHandled = channel.ingest(report(fixture, "FAILED", "boom", null));
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
     }
@@ -132,25 +130,23 @@ class RuntimeTaskResultIngestChannelTest {
         assignmentRuntimePort = taskManager;
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
 
-        Task task = createRunningTask("task-duplicate-no-attempt-read");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-duplicate-no-attempt-read");
 
-        assertTrue(channel.ingest(report(task, taskMsg, "SUCCESS", "ok-first", null)));
+        assertTrue(channel.ingest(report(fixture, "SUCCESS", "ok-first", null)));
         trackingStorage.resetLatestAttemptReadCount();
 
-        assertTrue(channel.ingest(report(task, taskMsg, "FAILED", "late-duplicate", null)));
+        assertTrue(channel.ingest(report(fixture, "FAILED", "late-duplicate", null)));
         assertEquals(0, trackingStorage.latestAttemptReadCount,
                 "duplicate result trace should use bounded message projection instead of re-reading attempt rows");
     }
 
     @Test
     void transportNeutralResultReportCanBeIngestedWithoutWebSocketMessageObject() {
-        Task task = createRunningTask("task-transport-neutral");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-transport-neutral");
 
         boolean handled = channel.ingest(new TaskResultReport(
-                task.getTid(),
-                taskMsg.getMessageId(),
+                fixture.taskId(),
+                fixture.messageId(),
                 true,
                 "ok-from-report",
                 null,
@@ -158,7 +154,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
@@ -166,27 +162,25 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void resultEnvelopeDelegatesToTaskResultLifecycleWithoutChangingSemantics() {
-        Task task = createRunningTask("task-envelope");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-envelope");
 
         boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
                 "polling",
                 "worker-1",
                 "worker-1",
-                report(task, taskMsg, "SUCCESS", "ok-envelope", null)
+                report(fixture, "SUCCESS", "ok-envelope", null)
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-envelope", updated.getOutput().get("mockData"));
-        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
     @Test
     void mismatchedEnvelopeAttemptIdentityStillDelegatesDuringLogOnlyStage() {
-        Task task = createRunningTask("task-envelope-attempt-mismatch");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-envelope-attempt-mismatch");
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
@@ -194,36 +188,83 @@ class RuntimeTaskResultIngestChannelTest {
                 "worker-1",
                 "wrong-attempt",
                 null,
-                report(task, taskMsg, "SUCCESS", "ok-mismatch", null)
+                report(fixture, "SUCCESS", "ok-mismatch", null)
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
     }
 
     @Test
     void envelopeAttemptValidationDoesNotRequirePersistedAttemptProjectionRow() {
-        Task task = createRunningTask("task-envelope-no-attempt-row", false);
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-envelope-no-attempt-row", false);
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
                 "worker-1",
-                taskMsg.latestAttemptId(),
+                fixture.attemptId(),
                 null,
-                report(task, taskMsg, "SUCCESS", "ok-no-attempt-row", null)
+                report(fixture, "SUCCESS", "ok-no-attempt-row", null)
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-no-attempt-row", updated.getOutput().get("mockData"));
-        TaskMsgAttempt recoveredAttempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt recoveredAttempt = taskQueries.getLatestTaskMessageAttemptAuditView(fixture.taskId(), fixture.messageId());
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
+    }
+
+    @Test
+    void resultCorrelationDoesNotReadActiveAttemptProjection() {
+        scheduler = new RecordingTaskScheduler();
+        ActiveAttemptTrackingStorage trackingStorage = new ActiveAttemptTrackingStorage();
+        taskStorage = trackingStorage;
+        taskWorkRuntime = new InMemoryTaskWorkRuntime();
+        traceSink = new RecordingExecutionEventSink();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
+        assignmentRuntimePort = taskManager;
+        channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
+
+        RunningTaskFixture fixture = createRunningTask("task-envelope-no-active-attempt-read", false);
+        trackingStorage.resetLatestActiveAttemptReadCount();
+
+        new TaskManagerResultIngestFacade(taskManager).getResultCorrelation(fixture.taskId(), fixture.messageId());
+
+        assertEquals(0, trackingStorage.latestActiveAttemptReadCount,
+                "result correlation should validate against runtime lease without reading active attempt projection");
+    }
+
+    @Test
+    void missingTaskMessageReadProjectionKeepsCompatibilityReinsertBounded() {
+        scheduler = new RecordingTaskScheduler();
+        ProjectionHiddenReadStorage projectionHiddenStorage = new ProjectionHiddenReadStorage();
+        taskStorage = projectionHiddenStorage;
+        taskWorkRuntime = new InMemoryTaskWorkRuntime();
+        traceSink = new RecordingExecutionEventSink();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
+        assignmentRuntimePort = taskManager;
+        channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
+
+        RunningTaskFixture fixture = createRunningTask("task-hidden-message-read");
+        projectionHiddenStorage.resetCompatibilityAddCount();
+
+        boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-hidden-read", null));
+
+        assertTrue(handled);
+        assertTrue(projectionHiddenStorage.compatibilityAddCount <= 1,
+                "result convergence should keep TaskMsg compatibility reinsert bounded when read projection is hidden");
+        TaskMsg updated = projectionHiddenStorage.getTaskMessages(fixture.taskId()).get(0);
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-hidden-read", updated.getOutput().get("mockData"));
     }
 
     @Test
@@ -238,43 +279,40 @@ class RuntimeTaskResultIngestChannelTest {
         assignmentRuntimePort = taskManager;
         channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
 
-        Task task = createRunningTask("task-attempt-update-fails");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-attempt-update-fails");
 
-        boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok-update-fails", null));
+        boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-update-fails", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(fixture.taskId(), fixture.messageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-update-fails", updated.getOutput().get("mockData"));
-        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
     }
 
     @Test
     void envelopeTraceIdFlowsIntoEngineCanonicalTraceEvents() {
-        Task task = createRunningTask("task-envelope-trace");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-envelope-trace");
 
         boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
                 "polling",
                 "worker-1",
                 "worker-1",
                 "trace-envelope-1",
-                report(task, taskMsg, "SUCCESS", "ok-trace", null)
+                report(fixture, "SUCCESS", "ok-trace", null)
         ));
 
         assertTrue(handled);
         assertTrue(traceSink.events.stream().anyMatch(event ->
                 event.getEventType() == ExecutionEventType.CALLBACK_ACCEPTED
                         && "trace-envelope-1".equals(event.getTraceId())
-                        && task.getTid().equals(event.getIdentity().taskId())
-                        && taskMsg.getMessageId().equals(event.getIdentity().messageId())));
+                        && fixture.taskId().equals(event.getIdentity().taskId())
+                        && fixture.messageId().equals(event.getIdentity().messageId())));
     }
 
     @Test
     void envelopeTraceIdTemporarilyOverridesExistingMdcTraceId() {
-        Task task = createRunningTask("task-envelope-mdc-restore");
-        TaskMsg taskMsg = firstMessage(task.getTid());
+        RunningTaskFixture fixture = createRunningTask("task-envelope-mdc-restore");
         MDC.put("traceId", "outer-trace");
         try {
             boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
@@ -282,22 +320,22 @@ class RuntimeTaskResultIngestChannelTest {
                     "worker-1",
                     "worker-1",
                     "trace-envelope-2",
-                    report(task, taskMsg, "SUCCESS", "ok-restore", null)
+                    report(fixture, "SUCCESS", "ok-restore", null)
             ));
 
             assertTrue(handled);
             assertTrue(traceSink.events.stream().anyMatch(event ->
                     event.getEventType() == ExecutionEventType.CALLBACK_ACCEPTED
                             && "trace-envelope-2".equals(event.getTraceId())
-                            && task.getTid().equals(event.getIdentity().taskId())
-                            && taskMsg.getMessageId().equals(event.getIdentity().messageId())));
+                            && fixture.taskId().equals(event.getIdentity().taskId())
+                            && fixture.messageId().equals(event.getIdentity().messageId())));
         } finally {
             assertEquals("outer-trace", MDC.get("traceId"));
             MDC.remove("traceId");
         }
     }
 
-    private Task createRunningTask(String taskName) {
+    private RunningTaskFixture createRunningTask(String taskName) {
         return createRunningTask(taskName, true);
     }
 
@@ -305,7 +343,7 @@ class RuntimeTaskResultIngestChannelTest {
         return taskQueries.getTaskMessageSnapshot(taskId, 1).messages().get(0);
     }
 
-    private Task createRunningTask(String taskName, boolean persistAttemptProjection) {
+    private RunningTaskFixture createRunningTask(String taskName, boolean persistAttemptProjection) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
@@ -322,6 +360,7 @@ class RuntimeTaskResultIngestChannelTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg taskMsg = firstMessage(task.getTid());
+        String messageId = taskMsg.getMessageId();
         taskWorkRuntime.claimReady(
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
@@ -334,7 +373,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage.updateTaskMessage(task.getTid(), taskMsg);
 
         if (!persistAttemptProjection) {
-            return task;
+            return new RunningTaskFixture(task.getTid(), messageId, attemptId);
         }
 
         TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId,
@@ -345,10 +384,10 @@ class RuntimeTaskResultIngestChannelTest {
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
         assertTrue(attempt.markDispatched());
         taskStorage.addTaskMessageAttempt(task.getTid(), taskMsg.getMessageId(), attempt);
-        return task;
+        return new RunningTaskFixture(task.getTid(), messageId, attemptId);
     }
 
-    private TaskResultReport report(Task task, TaskMsg taskMsg, String status, String detail, String errorCode) {
+    private TaskResultReport report(RunningTaskFixture fixture, String status, String detail, String errorCode) {
         java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("status", status);
         payload.put("mockData", detail);
@@ -356,13 +395,16 @@ class RuntimeTaskResultIngestChannelTest {
             payload.put("errorCode", errorCode);
         }
         return new TaskResultReport(
-                task.getTid(),
-                taskMsg.getMessageId(),
+                fixture.taskId(),
+                fixture.messageId(),
                 "SUCCESS".equalsIgnoreCase(status),
                 detail,
                 errorCode,
                 payload
         );
+    }
+
+    private record RunningTaskFixture(String taskId, String messageId, String attemptId) {
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {
@@ -424,6 +466,39 @@ class RuntimeTaskResultIngestChannelTest {
 
         private void resetLatestAttemptReadCount() {
             latestAttemptReadCount = 0;
+        }
+    }
+
+    private static final class ActiveAttemptTrackingStorage extends InMemoryTaskStorage {
+        private int latestActiveAttemptReadCount;
+
+        @Override
+        public java.util.Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+            latestActiveAttemptReadCount++;
+            return super.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        }
+
+        private void resetLatestActiveAttemptReadCount() {
+            latestActiveAttemptReadCount = 0;
+        }
+    }
+
+    private static final class ProjectionHiddenReadStorage extends InMemoryTaskStorage {
+        private int compatibilityAddCount;
+
+        @Override
+        public java.util.Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public void addTaskMessage(String taskId, TaskMsg taskMsg) {
+            compatibilityAddCount++;
+            super.addTaskMessage(taskId, taskMsg);
+        }
+
+        private void resetCompatibilityAddCount() {
+            compatibilityAddCount = 0;
         }
     }
 }

@@ -39,15 +39,10 @@ public final class TaskManagerResultIngestFacade implements TaskResultIngestFaca
     @Override
     public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
         if (taskManager != null) {
-            String projectedAttemptId = null;
-            var activeAttemptProjection = taskManager.getLatestActiveAttemptProjection(taskId, messageId);
-            if (activeAttemptProjection != null) {
-                projectedAttemptId = activeAttemptProjection.getAttemptId();
-            }
             return TaskResultCorrelationSupport.fromRuntimeState(
                     taskId,
                     messageId,
-                    projectedAttemptId,
+                    null,
                     taskManager.getActiveLease(taskId, messageId).orElse(null)
             );
         }

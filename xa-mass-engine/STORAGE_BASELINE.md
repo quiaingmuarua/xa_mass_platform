@@ -34,6 +34,8 @@ What the engine assumes today:
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility projections used
   by result repair, attempt identity validation, focused tests, and explicit
   projection audit
+- ingest enqueue must not roll back or fail runtime admission just because the
+  compatibility `TaskMsg` row could not be written in the same turn
 - dispatch handoff no longer requires `TaskMsg.input` or a persisted
   `TaskMsgAttempt` object graph as the transport payload; runtime-native
   dispatch binding now carries message payload, retry summary, and

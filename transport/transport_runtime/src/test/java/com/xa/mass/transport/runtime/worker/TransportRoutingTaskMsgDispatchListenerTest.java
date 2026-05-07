@@ -1,8 +1,6 @@
 package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -58,17 +56,10 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg wsMsg = new TaskMsg();
-        wsMsg.setTaskId("task-1");
-        wsMsg.setMessageId("msg-ws");
-        TaskMsgAttempt wsAttempt = attempt("task-1", "msg-ws", "attempt-ws", "ws-worker", null, "batch-ws");
-
-        TaskMsg pollMsg = new TaskMsg();
-        pollMsg.setTaskId("task-1");
-        pollMsg.setMessageId("msg-poll");
-        TaskMsgAttempt pollAttempt = attempt("task-1", "msg-poll", "attempt-poll", "poll-worker", null, "batch-poll");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(wsMsg, wsAttempt), new TaskDispatchBinding(pollMsg, pollAttempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-ws", "attempt-ws", "ws-worker", null, "batch-ws"),
+                binding("task-1", "msg-poll", "attempt-poll", "poll-worker", null, "batch-poll")
+        ));
 
         assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMessageIds);
         assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
@@ -95,12 +86,9 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-rt");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-rt", "attempt-rt", "ws-worker", null, "batch-rt");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-rt", "attempt-rt", "ws-worker", null, "batch-rt")
+        ));
 
         assertEquals(List.of("msg-rt"), realtimeAdapter.dispatchedMessageIds);
     }
@@ -122,14 +110,11 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-1");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "missing-transport-worker", null, "batch-1");
-
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)))
+                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(
+                        binding("task-1", "msg-1", "attempt-1", "missing-transport-worker", null, "batch-1")
+                ))
         );
         assertEquals("Cannot resolve transport binding for worker missing-transport-worker: transportHint must not be blank",
                 error.getMessage());
@@ -153,14 +138,11 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-1");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "unsupported-transport-worker", null, "batch-1");
-
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)))
+                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(
+                        binding("task-1", "msg-1", "attempt-1", "unsupported-transport-worker", null, "batch-1")
+                ))
         );
         assertEquals("Cannot resolve transport binding for worker unsupported-transport-worker: Unsupported worker transportHint 'grpc'; available transportHints=[polling]",
                 error.getMessage());
@@ -185,16 +167,12 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-backpressure");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-backpressure", "attempt-backpressure", "poll-worker", null, "batch-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-backpressure", "attempt-backpressure", "poll-worker", null, "batch-1")
+        ));
 
         assertEquals(List.of("msg-backpressure"), pollingAdapter.dispatchedMessageIds);
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE_REJECTED), pollingAdapter.outcomeStatuses());
-        assertTrue(taskMsg.getStatus() == null || !taskMsg.getStatus().isFinal());
     }
 
     @Test
@@ -222,12 +200,9 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-offline");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-offline", "attempt-offline", "poll-worker", null, "batch-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-offline", "attempt-offline", "poll-worker", null, "batch-1")
+        ));
 
         assertEquals(1, compensated.size());
         assertEquals(List.of("msg-offline"),
@@ -255,12 +230,9 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-1");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-1")
+        ));
 
         assertEquals("delivery-1", pollingAdapter.outcomes.get(0).getDeliveryId());
         assertEquals(123456789L, pollingAdapter.lastEnvelopes.get(0).getCreatedAtEpochMillis());
@@ -292,12 +264,9 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId("task-1");
-        taskMsg.setMessageId("msg-1");
-        TaskMsgAttempt attempt = attempt("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-9");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-1", "attempt-1", "poll-worker", null, "batch-9")
+        ));
 
         assertEquals("endpoint:batch-9", pollingAdapter.lastEnvelopes.get(0).getRouteKey());
     }
@@ -381,17 +350,26 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 .build();
     }
 
-    private static TaskMsgAttempt attempt(String taskId,
-                                          String messageId,
-                                          String attemptId,
-                                          String workerId,
-                                          String workerContextId,
-                                          String batchId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, 1);
-        attempt.setWorkerId(workerId);
-        attempt.setWorkerContextId(workerContextId);
-        attempt.setBatchId(batchId);
-        return attempt;
+    private static TaskDispatchBinding binding(String taskId,
+                                               String messageId,
+                                               String attemptId,
+                                               String workerId,
+                                               String workerContextId,
+                                               String batchId) {
+        return new TaskDispatchBinding(
+                taskId,
+                messageId,
+                null,
+                java.util.Map.of("target", workerId),
+                null,
+                0,
+                attemptId,
+                1,
+                null,
+                workerId,
+                workerContextId,
+                batchId
+        );
     }
 
     private static TaskDispatchContext taskContext(Task task) {

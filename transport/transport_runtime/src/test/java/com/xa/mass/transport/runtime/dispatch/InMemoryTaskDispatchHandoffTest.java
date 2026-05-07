@@ -1,7 +1,5 @@
 package com.xa.mass.transport.runtime.dispatch;
 
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -51,14 +49,6 @@ class InMemoryTaskDispatchHandoffTest {
     }
 
     private static TaskDispatchBatch batch(String taskId, String messageId) {
-        TaskMsg taskMsg = new TaskMsg();
-        taskMsg.setTaskId(taskId);
-        taskMsg.setMessageId(messageId);
-
-        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + messageId, taskId, messageId, 1);
-        attempt.setWorkerId("worker-" + messageId);
-        attempt.setBatchId("batch-" + messageId);
-
         return new TaskDispatchBatch(
                 new TaskDispatchContext(
                         taskId,
@@ -68,7 +58,20 @@ class InMemoryTaskDispatchHandoffTest {
                         "demo.event",
                         Map.of("routingCode", "us")
                 ),
-                List.of(new TaskDispatchBinding(taskMsg, attempt))
+                List.of(new TaskDispatchBinding(
+                        taskId,
+                        messageId,
+                        "demo.event",
+                        Map.of("routingCode", "us"),
+                        null,
+                        0,
+                        "attempt-" + messageId,
+                        1,
+                        null,
+                        "worker-" + messageId,
+                        null,
+                        "batch-" + messageId
+                ))
         );
     }
 }

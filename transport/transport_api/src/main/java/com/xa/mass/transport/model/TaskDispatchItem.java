@@ -1,7 +1,5 @@
 package com.xa.mass.transport.model;
 
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 
@@ -112,10 +110,6 @@ public final class TaskDispatchItem {
                 normalizeInput(task, dispatchBinding.payload()),
                 task.sharedConfig()
         );
-    }
-
-    public static TaskDispatchItem from(TaskDispatchContext task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return from(task, new TaskDispatchBinding(taskMsg, attempt));
     }
 
     public String getTaskName() {
