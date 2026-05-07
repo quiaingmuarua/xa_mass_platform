@@ -168,6 +168,7 @@ The returned `MassSdkApplication` exposes:
 - common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and compatibility diagnostics after `start()`: bounded `getTaskMessageSnapshot(..., limit)`, `resolveTaskState(...)`, `validateTaskState(...)`, `auditTaskProjectionState(...)` (`validateTaskState(...)` stays bounded runtime validation; `auditTaskProjectionState(...)` is the explicit deep compatibility-projection audit)
+- explicit compatibility detail after `start()`: `getTaskMessageProjection(...)`, `getTaskMessageAttemptAuditTrail(...)`, `getLatestActiveTaskMessageAttempt(...)`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
@@ -183,7 +184,7 @@ Current SDK contracts:
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
-| diagnostics/detail | `validateTaskState(...)` is bounded runtime validation, `auditTaskProjectionState(...)` is explicit diagnostic audit, and `getTaskMessageSnapshot(..., limit)` is compatibility/demo detail; production detail belongs in logs, trace, audit sinks, or async persistence |
+| diagnostics/detail | `validateTaskState(...)` is bounded runtime validation, `auditTaskProjectionState(...)` is explicit diagnostic audit, `getTaskMessageSnapshot(..., limit)` is bounded compatibility/demo detail, and `getTaskMessageProjection(...)` / `getTaskMessageAttemptAuditTrail(...)` are explicit residue reads; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 

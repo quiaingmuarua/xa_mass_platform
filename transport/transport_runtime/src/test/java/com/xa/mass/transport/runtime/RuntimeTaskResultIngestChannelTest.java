@@ -69,11 +69,11 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
-        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("SUCCESS", attempt.getOutput().get("status"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
@@ -89,12 +89,12 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.INIT, updated.getStatus());
         assertEquals(1, updated.getRetryCount());
         assertNull(updated.getErrorMessage());
         assertNull(updated.getErrorCode());
-        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt attempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals(TaskMsgAttemptStatus.REVOKED, attempt.getStatus());
         assertEquals(TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY, attempt.getFinalReason());
@@ -114,7 +114,7 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
     }
@@ -158,7 +158,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
@@ -177,7 +177,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-envelope", updated.getOutput().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
@@ -198,7 +198,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-mismatch", updated.getOutput().get("mockData"));
     }
@@ -218,10 +218,10 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-no-attempt-row", updated.getOutput().get("mockData"));
-        TaskMsgAttempt recoveredAttempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        TaskMsgAttempt recoveredAttempt = taskQueries.getLatestTaskMessageAttemptAuditView(task.getTid(), taskMsg.getMessageId());
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
     }
@@ -244,7 +244,7 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok-update-fails", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        TaskMsg updated = taskQueries.getTaskMessageProjection(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok-update-fails", updated.getOutput().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
@@ -427,5 +427,6 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
+
 
 

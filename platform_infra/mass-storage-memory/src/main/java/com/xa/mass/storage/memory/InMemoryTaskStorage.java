@@ -481,7 +481,7 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             taskMsg.setRetryCount(Math.max(0, retryCount));
             taskMsg.applyLatestAttemptProjection(attemptId, workerId, workerContextId, batchId);
             if (taskMsg.getStatus() != TaskMsgStatus.ASSIGNED) {
-                taskMsg.setStatus(TaskMsgStatus.ASSIGNED);
+                taskMsg.markAsAssigned();
             }
             if (taskMsg.getAssignedTime() == null) {
                 taskMsg.setAssignedTime(LocalDateTime.now());

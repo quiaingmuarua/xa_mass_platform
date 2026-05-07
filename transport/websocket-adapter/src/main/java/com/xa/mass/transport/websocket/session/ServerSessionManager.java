@@ -5,6 +5,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
+import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -23,7 +24,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
-    private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
+    private volatile WorkerSystemEventChannel systemEventChannel = new RuntimeEventBusWorkerSystemEventChannel();
 
     public ServerSessionManager() {
         this(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
@@ -158,7 +159,9 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
-        this.systemEventChannel = systemEventChannel != null ? systemEventChannel : new EventBusWorkerSystemEventChannel();
+        this.systemEventChannel = systemEventChannel != null
+                ? systemEventChannel
+                : new RuntimeEventBusWorkerSystemEventChannel();
     }
 
     public String getAdapterId() {

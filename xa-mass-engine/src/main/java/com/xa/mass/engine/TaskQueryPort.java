@@ -23,11 +23,11 @@ public interface TaskQueryPort {
 
     TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 
-    TaskMsg getTaskMessage(String taskId, String messageId);
+    TaskMsg getTaskMessageProjection(String taskId, String messageId);
 
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
+    List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId);
 
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId);
+    TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId);
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 

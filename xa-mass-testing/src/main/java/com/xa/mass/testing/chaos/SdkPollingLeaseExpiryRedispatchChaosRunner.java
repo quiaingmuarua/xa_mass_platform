@@ -153,8 +153,8 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         config.timeoutSeconds(),
                         "polling lease-expiry redispatch task must converge"
                 );
-                TaskMsg finalMessage = runtime.app().getTaskMessage(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttempts(task.getTid(), message.getMessageId());
+                TaskMsg finalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
+                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 TaskMsgAttempt expiredAttempt = finalAttempts.get(0);
@@ -442,3 +442,4 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
         }
     }
 }
+

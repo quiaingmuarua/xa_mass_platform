@@ -175,7 +175,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                     int timeoutSeconds,
                                     String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> app.getTaskMessageAttempts(taskId, messageId).size() >= minimumAttempts,
+                () -> app.getTaskMessageAttemptAuditTrail(taskId, messageId).size() >= minimumAttempts,
                 timeoutSeconds,
                 failureMessage
         );
@@ -203,7 +203,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         List<TaskMsg> messages = messageSnapshot.messages();
         List<TaskOutcomeSnapshot.MessageOutcomeSnapshot> snapshots = new ArrayList<>(messages.size());
         for (TaskMsg message : messages) {
-            List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());
+            List<TaskMsgAttempt> attempts = app.getTaskMessageAttemptAuditTrail(taskId, message.getMessageId());
             snapshots.add(new TaskOutcomeSnapshot.MessageOutcomeSnapshot(
                     message.getMessageId(),
                     ChaosSupport.enumName(message.getStatus()),
@@ -283,3 +283,4 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         }
     }
 }
+

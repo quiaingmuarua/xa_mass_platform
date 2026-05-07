@@ -105,7 +105,7 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 Object originalResult = terminal.messages().get(0).get("result");
 
                 String messageId = String.valueOf(terminal.messages().get(0).get("messageId"));
-                List<TaskMsgAttempt> attemptsBeforeReplay = app.getTaskMessageAttempts(taskId, messageId);
+                List<TaskMsgAttempt> attemptsBeforeReplay = app.getTaskMessageAttemptAuditTrail(taskId, messageId);
                 assertEquals(2, attemptsBeforeReplay.size(), "redis runtime should produce one expired attempt and one success attempt");
                 assertEquals(TaskMsgAttemptStatus.EXPIRED, attemptsBeforeReplay.get(0).getStatus());
                 assertEquals(TaskMsgAttemptStatus.SUCCEEDED, attemptsBeforeReplay.get(1).getStatus());
@@ -134,7 +134,7 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 assertEquals(STEADY_WORKER_ID, message.get("latestAttemptWorkerId"));
                 assertEquals(originalResult, message.get("result"));
 
-                List<TaskMsgAttempt> attemptsAfterReplay = app.getTaskMessageAttempts(taskId, messageId);
+                List<TaskMsgAttempt> attemptsAfterReplay = app.getTaskMessageAttemptAuditTrail(taskId, messageId);
                 assertEquals(2, attemptsAfterReplay.size(), "stale replay must not create a new attempt");
                 assertEquals(TaskMsgAttemptStatus.EXPIRED, attemptsAfterReplay.get(0).getStatus());
                 assertEquals(TaskMsgAttemptStatus.SUCCEEDED, attemptsAfterReplay.get(1).getStatus());
@@ -186,3 +186,4 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
         }
     }
 }
+

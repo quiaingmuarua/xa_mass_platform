@@ -15,10 +15,11 @@ import java.util.Objects;
  * Preferred engine bounded-read surface for cross-module task inspection.
  *
  * <p>Read tiers exposed here are intentionally narrow:
- * task shell / aggregate reads are mainline, bounded {@link TaskMsg} /
- * {@link TaskMsgAttempt} reads remain shell/debug compatibility helpers, and
- * projection audit stays diagnostic-only. This surface must not become a
- * pagination/history or runtime-correctness contract.
+ * task shell / aggregate reads are mainline, bounded {@link TaskMsg}
+ * projection reads and {@link TaskMsgAttempt} audit reads remain
+ * shell/debug compatibility helpers, and projection audit stays
+ * diagnostic-only. This surface must not become a pagination/history or
+ * runtime-correctness contract.
  */
 public class TaskQueryService {
 
@@ -51,20 +52,22 @@ public class TaskQueryService {
         return taskManager != null ? taskManager.getTaskMessageSnapshot(taskId, limit) : taskQueries.getTaskMessageSnapshot(taskId, limit);
     }
 
-    public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskManager != null ? taskManager.getTaskMessage(taskId, messageId) : taskQueries.getTaskMessage(taskId, messageId);
+    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+        return taskManager != null
+                ? taskManager.getTaskMessage(taskId, messageId)
+                : taskQueries.getTaskMessageProjection(taskId, messageId);
     }
 
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+    public List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getTaskMessageAttempts(taskId, messageId)
-                : taskQueries.getTaskMessageAttempts(taskId, messageId);
+                : taskQueries.getTaskMessageAttemptAuditTrail(taskId, messageId);
     }
 
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+    public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
         return taskManager != null
                 ? taskManager.getLatestTaskMessageAttempt(taskId, messageId)
-                : taskQueries.getLatestTaskMessageAttempt(taskId, messageId);
+                : taskQueries.getLatestTaskMessageAttemptAuditView(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {

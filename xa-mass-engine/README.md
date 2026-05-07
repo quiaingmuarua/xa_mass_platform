@@ -57,9 +57,6 @@ Keep these facts fixed unless the owning global baselines change:
   reconciliation
 - `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
   including enqueue, claim, lease, and discard/apply helpers
-- `TaskProjectionBridge` owns engine-side access to the bounded
-  `TaskDetailStore` compatibility projection so lifecycle/result/assignment
-  ports do not default to `TaskManager` reach-through for detail access
 - `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
   shell-facing command/query services; keep those services off raw
   `TaskManager` growth even when compatibility constructors remain
@@ -79,6 +76,9 @@ Keep these facts fixed unless the owning global baselines change:
   fallback, not the mainline
 - engine-provided message reads are compatibility helpers, not the future
   business-detail query model
+- cross-module `TaskMsg` reads should stay explicit about intent:
+  projection-style reads for bounded logical message views and audit-style
+  reads for attempt timelines
 - cross-module callers that only need worker registration lookup should depend
   on storage lookup contracts rather than carrying `WorkerManager`
 - cross-module callers that only need rule definition/evaluator registration

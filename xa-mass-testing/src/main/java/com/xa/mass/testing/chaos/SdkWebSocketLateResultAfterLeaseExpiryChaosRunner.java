@@ -159,8 +159,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "late-result chaos task must converge"
                 );
 
-                TaskMsg terminalMessage = runtime.app().getTaskMessage(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> terminalAttempts = runtime.app().getTaskMessageAttempts(task.getTid(), message.getMessageId());
+                TaskMsg terminalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
+                List<TaskMsgAttempt> terminalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
                 ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
 
                 TaskMsgAttempt expiredAttempt = terminalAttempts.get(0);
@@ -193,8 +193,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 ChaosSupport.maybeSleep(config.postReplayObserveDelayMillis());
 
                 TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTid(), 1);
-                TaskMsg finalMessage = runtime.app().getTaskMessage(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttempts(task.getTid(), message.getMessageId());
+                TaskMsg finalMessage = runtime.app().getTaskMessageProjection(task.getTid(), message.getMessageId());
+                List<TaskMsgAttempt> finalAttempts = runtime.app().getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");
@@ -544,3 +544,4 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
         }
     }
 }
+

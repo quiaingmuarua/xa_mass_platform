@@ -157,14 +157,14 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> app.getTaskMessageAttempts(task.getTid(), message.getMessageId()).size() >= 2,
+                        () -> app.getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
 
                 TaskOutcome outcome = waitForTerminalTask(app, task.getTid(), "lease-expiry redispatch task must converge");
-                TaskMsg finalMessage = app.getTaskMessage(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = app.getTaskMessageAttempts(task.getTid(), message.getMessageId());
+                TaskMsg finalMessage = app.getTaskMessageProjection(task.getTid(), message.getMessageId());
+                List<TaskMsgAttempt> finalAttempts = app.getTaskMessageAttemptAuditTrail(task.getTid(), message.getMessageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 TaskMsgAttempt expiredAttempt = finalAttempts.get(0);
@@ -345,7 +345,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             List<TaskMsg> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
-                List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());
+                List<TaskMsgAttempt> attempts = app.getTaskMessageAttemptAuditTrail(taskId, message.getMessageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.getMessageId(),
                         message.getStatus() != null ? message.getStatus().name() : null,
@@ -897,4 +897,5 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
     }
 }
+
 

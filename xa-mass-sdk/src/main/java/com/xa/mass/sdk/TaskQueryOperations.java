@@ -8,7 +8,7 @@ import com.xa.mass.base.model.TaskMessageSnapshot;
 
 import java.util.List;
 
-/** Query/read surface for task inspection. */
+/** Query/read surface for bounded task inspection plus explicit compatibility residue reads. */
 public interface TaskQueryOperations {
 
     Task getTask(String taskId);
@@ -19,9 +19,9 @@ public interface TaskQueryOperations {
 
     TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 
-    TaskMsg getTaskMessage(String taskId, String messageId);
+    TaskMsg getTaskMessageProjection(String taskId, String messageId);
 
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
+    List<TaskMsgAttempt> getTaskMessageAttemptAuditTrail(String taskId, String messageId);
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 

@@ -63,6 +63,7 @@ Current runtime-essential helpers:
 Current shell/debug compatibility reads:
 
 - `getTaskMessages(...)`
+- `getTaskMessage(...)`
 - `getTaskMessageAttempts(...)`
 - `countTaskMessages(...)`
 
@@ -98,9 +99,9 @@ Current implementation facts that matter architecturally:
 
 - SDK/server embed the storage implementations explicitly
 - engine depends on contracts only
-- engine reaches `TaskDetailStore` through an internal `TaskProjectionBridge`
-  so runtime ports can consume bounded projection helpers without growing
-  `TaskManager` into the default detail-store facade
+- engine still reaches `TaskDetailStore` through `TaskManager`-owned internal
+  helpers; there is no separate bridge layer that pretends bounded projection
+  access has a distinct runtime lifecycle
 - the JDBC path is a control-plane adapter, not a `TaskMsg` analytics backend
 - in-memory helper indexes are allowed when they protect hot paths from full
   scans, but they remain helper indexes rather than second lifecycle truth
@@ -110,7 +111,8 @@ Current implementation facts that matter architecturally:
 The shortest convergence path remains:
 
 1. keep runtime-critical projection helpers narrow
-2. stop growing shell/debug message reads
+2. keep cross-module message/attempt reads explicitly named as projection or
+   audit surfaces, not general query APIs
 3. move future detail, analytics, and timelines into trace or async audit sinks
 
 The next step is not "make engine storage query richer". It is "reduce who

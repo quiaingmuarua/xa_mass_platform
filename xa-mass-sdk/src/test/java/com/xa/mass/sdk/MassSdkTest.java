@@ -1232,7 +1232,7 @@ class MassSdkTest {
     }
 
     @Test
-    void taskMessageAttemptQueriesUseSdkSurface() {
+    void taskProjectionAndAttemptAuditQueriesUseSdkSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskQueryService taskQueries = mock(TaskQueryService.class);
@@ -1245,14 +1245,14 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskQueryService()).thenReturn(taskQueries);
-        when(taskQueries.getTaskMessage("task-1", "msg-1")).thenReturn(message);
-        when(taskQueries.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
+        when(taskQueries.getTaskMessageProjection("task-1", "msg-1")).thenReturn(message);
+        when(taskQueries.getTaskMessageAttemptAuditTrail("task-1", "msg-1")).thenReturn(attempts);
         when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        assertSame(message, app.getTaskMessage("task-1", "msg-1"));
-        assertSame(attempts, app.getTaskMessageAttempts("task-1", "msg-1"));
+        assertSame(message, app.getTaskMessageProjection("task-1", "msg-1"));
+        assertSame(attempts, app.getTaskMessageAttemptAuditTrail("task-1", "msg-1"));
         assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
     }
 
@@ -2783,6 +2783,8 @@ class MassSdkTest {
         assertMissingMethod(TransportConfig.class, "resolveSocketTransportAdapterBootstrap");
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.session.EventBusWorkerSystemEventChannel"));
         assertMissingMethod(TransportRuntimeComposition.class, "isTransportServerEnabled");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportServerPort");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
@@ -2814,8 +2816,8 @@ class MassSdkTest {
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
                 () -> app.getTaskMessageSnapshot("task-1", 1),
-                () -> app.getTaskMessage("task-1", "msg-1"),
-                () -> app.getTaskMessageAttempts("task-1", "msg-1"),
+                () -> app.getTaskMessageProjection("task-1", "msg-1"),
+                () -> app.getTaskMessageAttemptAuditTrail("task-1", "msg-1"),
                 () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),
@@ -3147,4 +3149,5 @@ class MassSdkTest {
     }
 
 }
+
 
