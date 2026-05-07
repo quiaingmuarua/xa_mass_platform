@@ -15,6 +15,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.*;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -831,10 +832,10 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
-                events.add("attempt-closed:" + attempt.getStatus()));
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
-                events.add("logical-final:" + currentMessage.getStatus()));
+        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+                events.add("attempt-closed:" + attempt.status()));
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+                events.add("logical-final:" + event.status()));
         taskManager.events().addTaskDispatchListener(currentTask ->
                 events.add("dispatch:" + currentTask.getStatus()));
 
@@ -854,7 +855,7 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message);
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) -> events.add("logical-final"));
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) -> events.add("logical-final"));
         taskManager.events().addTaskTerminalListener(currentTask -> events.add("terminal"));
 
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMessageId(), true, "done"));
@@ -1102,7 +1103,8 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.MANUAL_CANCELLED, updatedTask.getTerminalReason());
         assertEquals(0, updatedTask.getTaskSuccessNumber());
-        // cancelTask now drains in-flight ASSIGNED messages to EXPIRED
+        // terminal task reads overlay the compatibility view without rewriting
+        // every queued or leased TaskMsg projection row
         assertEquals(TaskMsgStatus.EXPIRED, updatedMessage.getStatus());
     }
 
@@ -1691,10 +1693,10 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
-                events.add("attempt-closed:" + attempt.getStatus()));
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
-                events.add("logical-final:" + currentMessage.getStatus()));
+        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+                events.add("attempt-closed:" + attempt.status()));
+        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+                events.add("logical-final:" + event.status()));
         taskManager.events().addTaskDispatchListener(currentTask ->
                 events.add("dispatch:" + currentTask.getStatus()));
 
@@ -1732,10 +1734,10 @@ class TaskManagerLifecycleTest {
                 taskManager.getTaskMessageProjection(task.getTid(), message.getMessageId()).getStatus());
     }
 
-    // ---- Bug3: cancelTask drains in-flight messages ----
+    // ---- Bug3: cancelTask should stay task/runtime-first ----
 
     @Test
-    void cancelTaskDrainsAllNonFinalMessagesToTerminalState() {
+    void cancelTaskLeavesStoredTaskMsgProjectionUntouchedAndOverlaysTerminalView() {
         Task task = taskManager.createTask(buildRequest("cancel-cleanup", List.of("a", "b", "c")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1750,24 +1752,30 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.cancelTask(task.getTid()));
 
-        TaskMsg msg0 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(0).getMessageId());
-        TaskMsg msg1 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(1).getMessageId());
-        TaskMsg msg2 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(2).getMessageId());
+        TaskMsg storedMsg0 = taskManager.getStoredTaskMessageProjection(task.getTid(), messages.get(0).getMessageId());
+        TaskMsg storedMsg1 = taskManager.getStoredTaskMessageProjection(task.getTid(), messages.get(1).getMessageId());
+        TaskMsg storedMsg2 = taskManager.getStoredTaskMessageProjection(task.getTid(), messages.get(2).getMessageId());
+        TaskMsg viewMsg0 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(0).getMessageId());
+        TaskMsg viewMsg1 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(1).getMessageId());
+        TaskMsg viewMsg2 = taskManager.getTaskMessageProjection(task.getTid(), messages.get(2).getMessageId());
 
-        // INIT -> FAILED; ASSIGNED -> EXPIRED
-        assertTrue(msg0.isCompleted(), "assigned message should be in final state after cancel");
-        assertEquals(TaskMsgStatus.EXPIRED, msg0.getStatus());
-        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg0.getFinalReason());
-        assertTrue(msg1.isCompleted(), "INIT message should be in final state after cancel");
-        assertEquals(TaskMsgStatus.FAILED, msg1.getStatus());
-        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg1.getFinalReason());
-        assertTrue(msg2.isCompleted(), "INIT message should be in final state after cancel");
-        assertEquals(TaskMsgStatus.FAILED, msg2.getStatus());
-        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg2.getFinalReason());
+        assertEquals(TaskMsgStatus.ASSIGNED, storedMsg0.getStatus());
+        assertEquals(TaskMsgStatus.INIT, storedMsg1.getStatus());
+        assertEquals(TaskMsgStatus.INIT, storedMsg2.getStatus());
+
+        assertTrue(viewMsg0.isCompleted(), "assigned message should read as final after cancel");
+        assertEquals(TaskMsgStatus.EXPIRED, viewMsg0.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, viewMsg0.getFinalReason());
+        assertTrue(viewMsg1.isCompleted(), "INIT message should read as final after cancel");
+        assertEquals(TaskMsgStatus.FAILED, viewMsg1.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, viewMsg1.getFinalReason());
+        assertTrue(viewMsg2.isCompleted(), "INIT message should read as final after cancel");
+        assertEquals(TaskMsgStatus.FAILED, viewMsg2.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, viewMsg2.getFinalReason());
     }
 
     @Test
-    void cancelTaskDrainsAssignedMessageWithoutRuntimeLeaseOrAttemptProjection() {
+    void cancelTaskOverlaysAssignedMessageWithoutRestampingStoredProjection() {
         Task task = taskManager.createTask(buildRequest("cancel-no-attempt-residue", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1779,11 +1787,36 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.cancelTask(task.getTid()));
 
+        TaskMsg stored = taskManager.getStoredTaskMessageProjection(task.getTid(), message.getMessageId());
         TaskMsg cancelled = taskManager.getTaskMessageProjection(task.getTid(), message.getMessageId());
+        assertEquals(TaskMsgStatus.ASSIGNED, stored.getStatus());
         assertEquals(TaskMsgStatus.EXPIRED, cancelled.getStatus());
         assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, cancelled.getFinalReason());
         assertTrue(cancelled.isCompleted());
         assertNull(taskManager.getLatestActiveAttemptProjection(task.getTid(), message.getMessageId()));
+    }
+
+    @Test
+    void terminalTaskMessageSnapshotOverlaysCompatibilityViewWithoutMutatingStoredRows() {
+        Task task = taskManager.createTask(buildRequest("cancel-snapshot-overlay", List.of("a", "b")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        assignMessage(task, messages.get(0));
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        TaskMessageSnapshot snapshot = taskManager.getTaskMessageSnapshot(task.getTid(), 10);
+        assertEquals(2, snapshot.messages().size());
+        assertEquals(List.of(TaskMsgStatus.EXPIRED, TaskMsgStatus.FAILED),
+                snapshot.messages().stream().map(TaskMsg::getStatus).toList());
+
+        TaskMsg storedAssigned = taskManager.getStoredTaskMessageProjection(task.getTid(), messages.get(0).getMessageId());
+        TaskMsg storedQueued = taskManager.getStoredTaskMessageProjection(task.getTid(), messages.get(1).getMessageId());
+        assertEquals(TaskMsgStatus.ASSIGNED, storedAssigned.getStatus());
+        assertEquals(TaskMsgStatus.INIT, storedQueued.getStatus());
     }
 
     // ---- Bug4: Task.isCompleted() only returns true when status is final ----

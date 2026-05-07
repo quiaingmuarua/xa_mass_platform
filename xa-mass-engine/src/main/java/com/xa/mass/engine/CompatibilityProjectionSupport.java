@@ -6,6 +6,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,6 +43,20 @@ final class CompatibilityProjectionSupport {
                 : TaskMsgStatus.FAILED;
         projected.forceFinalize(finalStatus, toMessageFinalReason(terminalReason), terminalDetail(terminalReason));
         return projected;
+    }
+
+    static List<TaskMsg> overlayTerminalTaskView(Task task, List<TaskMsg> storedProjections) {
+        if (storedProjections == null || storedProjections.isEmpty()) {
+            return List.of();
+        }
+        if (task == null || task.getStatus() == null || !task.getStatus().isFinal()) {
+            return List.copyOf(storedProjections);
+        }
+        List<TaskMsg> projected = new ArrayList<>(storedProjections.size());
+        for (TaskMsg storedProjection : storedProjections) {
+            projected.add(overlayTerminalTaskView(task, storedProjection));
+        }
+        return List.copyOf(projected);
     }
 
     private static TaskMsg copyOf(TaskMsg source) {

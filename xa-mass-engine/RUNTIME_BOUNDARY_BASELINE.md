@@ -57,6 +57,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - callback duplicate, late, and no-active-lease trace emission must use bounded
   runtime-synchronized `TaskMsg` projection fields first; trace must not force
   a hot-path latest-attempt projection lookup
+- task termination / cancellation must drain runtime active leases only; queued
+  or merely projected `TaskMsg` rows must not be scanned just to stamp terminal
+  status into compatibility residue
 
 ## Storage And Projection Non-Truth
 
@@ -143,6 +146,8 @@ Current bounded residue that remains acceptable:
   missing
 - bounded compatibility `TaskMsg` recovery from runtime lease truth when result
   ingest arrives after projection loss
+- read-time compatibility overlay that projects terminal task closure onto a
+  non-final `TaskMsg` view without rewriting every queued message row
 - bounded debug reads exposed by shell-facing query services
 
 These are current compatibility facts, not target runtime truth.

@@ -1,8 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -165,24 +163,27 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
-    public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+    public void publishTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
         for (TaskMessageAttemptClosedListener listener : taskMessageAttemptClosedListeners) {
             try {
-                listener.onTaskMessageAttemptClosed(task, taskMsg, attempt);
+                listener.onTaskMessageAttemptClosed(task, event);
             } catch (Exception e) {
                 logger.error("Task message attempt-closed listener failed for task {}, msg {}, attempt {}",
-                        task.getTid(), taskMsg.getMessageId(), attempt != null ? attempt.getAttemptId() : "null", e);
+                        task.getTid(),
+                        event != null ? event.messageId() : "null",
+                        event != null ? event.attemptId() : "null",
+                        e);
             }
         }
     }
 
-    public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
+    public void publishTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event) {
         for (TaskMessageLogicallyFinalListener listener : taskMessageLogicallyFinalListeners) {
             try {
-                listener.onTaskMessageLogicallyFinal(task, taskMsg);
+                listener.onTaskMessageLogicallyFinal(task, event);
             } catch (Exception e) {
                 logger.error("Task message logically-final listener failed for task {}, msg {}",
-                        task.getTid(), taskMsg.getMessageId(), e);
+                        task.getTid(), event != null ? event.messageId() : "null", e);
             }
         }
     }

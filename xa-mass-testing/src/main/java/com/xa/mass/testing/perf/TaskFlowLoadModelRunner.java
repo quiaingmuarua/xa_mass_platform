@@ -436,10 +436,10 @@ public final class TaskFlowLoadModelRunner {
         }
 
         @Override
-        public void onTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, com.xa.mass.base.model.TaskMsgAttempt attempt) {
+        public void onTaskMessageAttemptClosed(Task task, com.xa.mass.engine.TaskMessageAttemptClosedEvent event) {
             metrics.attemptClosedInvocations.increment();
             long start = System.nanoTime();
-            super.onTaskMessageAttemptClosed(task, taskMsg, attempt);
+            super.onTaskMessageAttemptClosed(task, event);
             metrics.totalAttemptClosedNanos.add(System.nanoTime() - start);
         }
     }

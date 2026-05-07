@@ -2,10 +2,9 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.TaskMessageAttemptClosedEvent;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
@@ -44,10 +43,6 @@ class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg msg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        msg.setLatestAttemptWorkerId("worker-1");
-        msg.setLatestAttemptWorkerContextId("wctx-1");
-
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
@@ -66,10 +61,6 @@ class TaskResourceReleaseListenerTest {
     void terminalTaskEmitsReleaseTrace() {
         Task task = new Task();
         task.setTid("task-1");
-
-        TaskMsg msg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        msg.setLatestAttemptWorkerId("worker-1");
-        msg.setLatestAttemptWorkerContextId("wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
@@ -98,10 +89,6 @@ class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        TaskMsg msg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        msg.setLatestAttemptWorkerId("worker-1");
-        msg.setLatestAttemptWorkerContextId("wctx-1");
-
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("other-task");
         wctx.startOccupying();
@@ -121,10 +108,6 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        finalMsg.setLatestAttemptWorkerId("worker-1");
-        finalMsg.setLatestAttemptWorkerContextId("wctx-1");
-        finalMsg.setStatus(TaskMsgStatus.SUCCESS);
         TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
@@ -136,7 +119,7 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -149,16 +132,7 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        finalMsg.setLatestAttemptWorkerId("worker-1");
-        finalMsg.setLatestAttemptWorkerContextId("wctx-1");
-        finalMsg.setStatus(TaskMsgStatus.SUCCESS);
         TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        TaskMsg retriedMsg = new TaskMsg("msg-2", "task-1", java.util.Map.of("target", "target-b"));
-        retriedMsg.setLatestAttemptWorkerId("worker-1");
-        retriedMsg.setLatestAttemptWorkerContextId("wctx-1");
-        retriedMsg.setStatus(TaskMsgStatus.INIT);
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
@@ -169,7 +143,7 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -182,21 +156,11 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        finalMsg.setLatestAttemptWorkerId("worker-1");
-        finalMsg.setLatestAttemptWorkerContextId("wctx-1");
-        finalMsg.setStatus(TaskMsgStatus.SUCCESS);
         TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        TaskMsg runningMsg = new TaskMsg("msg-2", "task-1", java.util.Map.of("target", "target-b"));
-        runningMsg.setLatestAttemptWorkerId("worker-1");
-        runningMsg.setLatestAttemptWorkerContextId("wctx-1");
-        runningMsg.setStatus(TaskMsgStatus.RUNNING);
-        TaskMsgAttempt activeAttempt = activeAttempt("task-1", "msg-2", "attempt-2", "worker-1", "wctx-1");
 
         when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, finalMsg, closedAttempt);
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
 
         verify(workerManager, never()).unlockWorker("worker-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -206,10 +170,6 @@ class TaskResourceReleaseListenerTest {
     void terminalTaskEmitsReleaseFailureTraceWhenWorkerContextCannotReturnToIdle() {
         Task task = new Task();
         task.setTid("task-1");
-
-        TaskMsg msg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-a"));
-        msg.setLatestAttemptWorkerId("worker-1");
-        msg.setLatestAttemptWorkerContextId("wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
@@ -243,21 +203,6 @@ class TaskResourceReleaseListenerTest {
         assertTrue(attempt.markDispatched());
         assertTrue(attempt.markRunning());
         assertTrue(attempt.markSucceeded());
-        return attempt;
-    }
-
-    private TaskMsgAttempt activeAttempt(String taskId,
-                                         String messageId,
-                                         String attemptId,
-                                         String workerId,
-                                         String workerContextId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, 1);
-        attempt.setWorkerId(workerId);
-        attempt.setWorkerContextId(workerContextId);
-        assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(1)));
-        assertTrue(attempt.markDispatched());
-        assertTrue(attempt.markRunning());
-        assertEquals(TaskMsgAttemptStatus.RUNNING, attempt.getStatus());
         return attempt;
     }
 

@@ -3,9 +3,8 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.TaskMessageAttemptClosedEvent;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -68,11 +67,11 @@ public class TaskResourceReleaseListener {
         }
     }
 
-    public void onTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        if (task == null || taskMsg == null || attempt == null || task.getStatus().isFinal()) {
+    public void onTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
+        if (task == null || event == null || task.getStatus().isFinal()) {
             return;
         }
-        String workerId = attempt.getWorkerId();
+        String workerId = event.workerId();
         if (workerId == null || workerId.isBlank()) {
             return;
         }
@@ -80,7 +79,7 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, attempt.getWorkerContextId());
+        releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, event.workerContextId());
         workerManager.unlockWorker(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId,
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");

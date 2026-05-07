@@ -84,6 +84,8 @@ Temporary residue is acceptable only when all of these are true:
 - not used as the sole source of correctness when the canonical layer differs
 - documented as current implementation drift in the owner README
 - easy to delete or replace once the canonical layer lands
+- task-level stop or terminal convergence does not require iterating the full
+  residue set just to restamp state that runtime already owns
 
 Temporary residue is not acceptable when it becomes:
 

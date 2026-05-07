@@ -1,6 +1,6 @@
 # High-Volume Model Baseline
 
-Last updated: 2026-04-27
+Last updated: 2026-05-07
 
 Status: design/refactor reference, not current runtime truth.
 
@@ -23,7 +23,11 @@ Already true in current code:
 - engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone
 - runtime owns active lease and expiry indexes
 - task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
-- task terminal cleanup can now read only non-final `TaskMsg` projections instead of materializing the full task-message snapshot
+- task terminal cleanup no longer needs to scan queued/non-final `TaskMsg`
+  projections; runtime active leases are the only terminal-drain ownership
+- task cancellation no longer synchronously rewrites every queued compatibility
+  `TaskMsg` row; terminal task/message reads overlay the bounded final view
+  instead of turning cancel into a per-message CRUD sweep
 - bounded `validateTaskState(...)` no longer needs full `TaskMsg` scans; deep projection checks are now an explicit audit path instead of the default validation meaning
 - engine -> transport dispatch now carries a runtime-native binding built from
   claimed runtime work instead of transporting persisted `TaskMsg.input` as the
@@ -45,6 +49,9 @@ Still too heavy on the hot path:
 - read models still assume one task can cheaply expose all messages
 - full attempt history is still too expensive as default hot-path truth
 - some persistence surfaces still expose full-message reads that are acceptable for audit only, not runtime readiness truth
+- `TaskMsg` remains too available as a compatibility model; query-time residue
+  is still present even though task-stop mainline no longer restamps every
+  queued message row
 - task orchestration is not fully separated from downstream detail-analysis needs yet
 
 ## 2. Frozen Design

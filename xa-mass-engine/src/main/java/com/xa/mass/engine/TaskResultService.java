@@ -676,7 +676,10 @@ class TaskResultService {
                                       String trigger,
                                       String reason) {
         traceEventLogger.taskMessageAttemptClosed(task, taskMsg, attempt, trigger, "TaskManager", reason);
-        taskManager.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
+        taskManager.publishTaskMessageAttemptClosed(
+                task,
+                TaskMessageAttemptClosedEvent.from(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt)
+        );
     }
 
     private void publishMessageLogicallyFinal(Task task,
@@ -685,7 +688,7 @@ class TaskResultService {
                                               String trigger,
                                               String reason) {
         traceEventLogger.taskMessageLogicallyFinal(task, taskMsg, attempt, trigger, "TaskManager", reason);
-        taskManager.publishTaskMessageLogicallyFinal(task, taskMsg);
+        taskManager.publishTaskMessageLogicallyFinal(task, TaskMessageLogicallyFinalEvent.from(taskMsg));
     }
 
     static final class TaskMessageMutationOutcome {

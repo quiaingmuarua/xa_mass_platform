@@ -413,10 +413,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (boundedLimit == 0) {
             return new TaskMessageSnapshot(List.of(), 0, false);
         }
+        Task task = getTask(taskId);
         List<TaskMsg> fetched = taskDetailStore.getTaskMessages(taskId, Math.addExact(boundedLimit, 1));
         boolean truncated = fetched.size() > boundedLimit;
         List<TaskMsg> snapshot = truncated ? fetched.subList(0, boundedLimit) : fetched;
-        return new TaskMessageSnapshot(snapshot, boundedLimit, truncated);
+        return new TaskMessageSnapshot(
+                CompatibilityProjectionSupport.overlayTerminalTaskView(task, snapshot),
+                boundedLimit,
+                truncated
+        );
     }
 
     public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
@@ -471,6 +476,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
+        Task task = getTask(taskId);
+        if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
+            return null;
+        }
         return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
@@ -790,12 +799,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return true;
     }
 
-    void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        eventPublisher.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
+    void publishTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
+        eventPublisher.publishTaskMessageAttemptClosed(task, event);
     }
 
-    void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
-        eventPublisher.publishTaskMessageLogicallyFinal(task, taskMsg);
+    void publishTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event) {
+        eventPublisher.publishTaskMessageLogicallyFinal(task, event);
     }
 
     private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {

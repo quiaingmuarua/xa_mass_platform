@@ -1,7 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 
 /**
  * Listener for a logical task message reaching a stable final state.
@@ -9,5 +8,5 @@ import com.xa.mass.base.model.TaskMsg;
 @FunctionalInterface
 public interface TaskMessageLogicallyFinalListener {
 
-    void onTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg);
+    void onTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event);
 }

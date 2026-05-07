@@ -181,7 +181,8 @@ public class TaskApiController {
             String correlationId = UUID.randomUUID().toString();
 
             // Register future BEFORE task creation to close the timing gap.
-            CompletableFuture<TaskMsg> future = syncBridge.register(correlationId);
+            CompletableFuture<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> future =
+                    syncBridge.register(correlationId);
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
@@ -213,19 +214,20 @@ public class TaskApiController {
             TaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, 1);
             String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).getMessageId();
 
-            Optional<TaskMsg> result = syncBridge.await(correlationId, future, resolvedTimeoutMs);
+            Optional<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> result =
+                    syncBridge.await(correlationId, future, resolvedTimeoutMs);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("taskId", taskId);
             data.put("messageId", messageId);
             if (result.isPresent()) {
-                TaskMsg msg = result.get();
+                com.xa.mass.engine.TaskMessageLogicallyFinalEvent msg = result.get();
                 data.put("synced", true);
                 data.put("timedOut", false);
-                data.put("status", msg.getStatus() != null ? msg.getStatus().name() : "UNKNOWN");
-                data.put("output", msg.getOutput() != null ? msg.getOutput() : Map.of());
-                data.put("errorCode", msg.getErrorCode() != null ? msg.getErrorCode() : "");
-                data.put("errorMessage", msg.getErrorMessage() != null ? msg.getErrorMessage() : "");
+                data.put("status", msg.status() != null ? msg.status().name() : "UNKNOWN");
+                data.put("output", msg.output() != null ? msg.output() : Map.of());
+                data.put("errorCode", msg.errorCode() != null ? msg.errorCode() : "");
+                data.put("errorMessage", msg.errorMessage() != null ? msg.errorMessage() : "");
             } else {
                 data.put("synced", false);
                 data.put("timedOut", true);

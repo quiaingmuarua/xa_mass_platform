@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-28 (engine WorkRuntime owns hot-path ready/claim/lease/expiry state; TaskMsg remains the compatibility read projection, and TaskMsgAttempt remains the auditable execution history)
+Last updated: 2026-05-07 (engine WorkRuntime owns hot-path ready/claim/lease/expiry state; TaskMsg remains the compatibility read projection, and TaskMsgAttempt remains the auditable execution history)
 
 Status: current global lifecycle baseline.
 
@@ -112,9 +112,9 @@ Current entry points:
 - runtime claim + dispatch bind: `INIT -> ASSIGNED`
 - callback write-back: `RUNNING -> SUCCESS/FAILED`
 - expiry: `ASSIGNED/RUNNING -> EXPIRED`
-- manual task terminate cleanup:
-  - `INIT -> FAILED`
-  - `ASSIGNED/RUNNING -> EXPIRED`
+- terminal task compatibility overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
+  - bounded reads project `INIT -> FAILED`
+  - bounded reads project `ASSIGNED/RUNNING -> EXPIRED`
 - retry reset: `FAILED/EXPIRED -> INIT` via `TaskMsg.resetForRetry()` when retry budget remains; stale latest-attempt projection fields (`latestAttemptWorkerId`, `latestAttemptWorkerContextId`, `latestAttemptBatchId`, `assignedTime`) are cleared on reset
 
 Must hold:
@@ -128,6 +128,7 @@ Must hold:
 - worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but `TaskMsgAttempt` or `TaskMsg` latest-attempt projection is missing, engine repairs that compatibility state from runtime before continuing
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - during the current WorkRuntime slice, result handling applies against the runtime active lease and runtime retry budget before mutating the compatibility projection
+- task cancellation and policy-driven task stop must not synchronously rewrite every queued `TaskMsg` projection row; bounded compatibility reads may project the final message view from task shell truth instead
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 

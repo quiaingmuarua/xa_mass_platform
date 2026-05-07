@@ -464,12 +464,12 @@ class TaskConcurrencyAcceptanceTest {
                                 AtomicInteger attemptClosedCount,
                                 AtomicInteger logicallyFinalCount,
                                 AtomicInteger terminalCount) {
-        taskManager.events().addTaskMessageAttemptClosedListener((task, taskMsg, attempt) -> {
+        taskManager.events().addTaskMessageAttemptClosedListener((task, attempt) -> {
             if (taskId.equals(task.getTid())) {
                 attemptClosedCount.incrementAndGet();
             }
         });
-        taskManager.events().addTaskMessageLogicallyFinalListener((task, taskMsg) -> {
+        taskManager.events().addTaskMessageLogicallyFinalListener((task, event) -> {
             if (taskId.equals(task.getTid())) {
                 logicallyFinalCount.incrementAndGet();
             }

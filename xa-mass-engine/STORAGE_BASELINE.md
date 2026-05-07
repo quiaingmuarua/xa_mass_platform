@@ -52,7 +52,6 @@ Current runtime-essential helpers:
 - `addTaskMessage(...)`
 - `updateTaskMessage(...)`
 - `getTaskMessage(...)`
-- `getNonFinalTaskMessages(...)`
 - `addTaskMessageAttempt(...)`
 - `updateTaskMessageAttempt(...)`
 - `getLatestTaskMessageAttempt(...)`
@@ -82,6 +81,9 @@ Rules:
 - `getTaskMessage(...)` may still be used to repair or recreate a bounded
   compatibility `TaskMsg` view, but dispatch payload construction must not
   require reading projection input from this seam
+- `getNonFinalTaskMessages(...)` is no longer allowed in engine task-terminal
+  mainline cleanup; keep it only for explicit compatibility audit/testing until
+  the remaining residue is removed
 
 ## Wiring Reality
 
