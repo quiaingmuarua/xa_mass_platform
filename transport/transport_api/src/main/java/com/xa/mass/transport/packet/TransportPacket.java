@@ -10,6 +10,19 @@ public final class TransportPacket {
 
     public static final int CURRENT_VERSION = 1;
     public static final String JSON_CONTENT_TYPE = "application/json";
+    public static final String PAYLOAD_TASK_NAME = "taskName";
+    public static final String PAYLOAD_PROJECT = "project";
+    public static final String PAYLOAD_USER_ID = "userId";
+    public static final String PAYLOAD_RETRY_COUNT = "retryCount";
+    public static final String PAYLOAD_WORKER_ID = "workerId";
+    public static final String PAYLOAD_WORKER_CONTEXT_ID = "workerContextId";
+    public static final String PAYLOAD_BATCH_ID = "batchId";
+    public static final String PAYLOAD_INPUT = "input";
+    public static final String PAYLOAD_SHARED_CONFIG = "sharedConfig";
+    public static final String PAYLOAD_SUCCESS = "success";
+    public static final String PAYLOAD_DETAIL = "detail";
+    public static final String PAYLOAD_ERROR_CODE = "errorCode";
+    public static final String PAYLOAD_OUTPUT = "output";
 
     private final int version;
     private final String packetId;

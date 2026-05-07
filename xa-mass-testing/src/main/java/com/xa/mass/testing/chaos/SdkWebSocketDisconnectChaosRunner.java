@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
@@ -585,11 +584,11 @@ public final class SdkWebSocketDisconnectChaosRunner {
                                String terminalReason,
                                List<MessageOutcome> messages) {
         private boolean allMessagesSuccessful() {
-            return !messages.isEmpty() && messages.stream().allMatch(message -> TaskMsgStatus.SUCCESS.name().equals(message.status()));
+            return !messages.isEmpty() && messages.stream().allMatch(message -> "SUCCESS".equals(message.status()));
         }
 
         private long successCount() {
-            return messages.stream().filter(message -> TaskMsgStatus.SUCCESS.name().equals(message.status())).count();
+            return messages.stream().filter(message -> "SUCCESS".equals(message.status())).count();
         }
 
         private Map<String, Object> toMap() {

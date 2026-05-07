@@ -22,7 +22,6 @@ Start with these classes before changing behavior:
 
 - `src/main/java/com/xa/mass/engine/TaskManager.java`
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
-- `src/main/java/com/xa/mass/engine/TaskRuntimeBridge.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
 - `src/main/java/com/xa/mass/engine/WorkerManager.java`
@@ -54,14 +53,15 @@ Keep these facts fixed unless the owning global baselines change:
 - worker matching is task-level orchestration; do not fall back to per-`TaskMsg`
   matching on the hot path
 - `TaskManager` is the engine orchestration entry, not the place to keep raw
-  lock bookkeeping or direct runtime-bridge mechanics
+  lock bookkeeping or compatibility CRUD owner behavior
 - `TaskManager` remains the engine-internal orchestration facade and
   composition root; cross-module callers should not treat it as the default
   engine API
 - `TaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
   reconciliation
-- `TaskRuntimeBridge` owns engine-side bridging into `TaskWorkRuntime`,
-  including enqueue, claim, lease, and discard/apply helpers
+- `TaskManager` now reaches `TaskWorkRuntime` directly for enqueue, claim,
+  lease, retry, and result application; do not reintroduce a pass-through
+  bridge unless a real protocol boundary appears
 - `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
   shell-facing command/query services; keep those services off raw
   `TaskManager` growth even when compatibility constructors remain

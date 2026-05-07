@@ -7,7 +7,6 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
@@ -380,11 +379,11 @@ public final class SdkTransportLoadRunner {
                 List<SdkTaskMessageView> messages = messageSnapshot.messages();
                 total += messages.size();
                 for (SdkTaskMessageView message : messages) {
-                    if (TaskMsgStatus.SUCCESS.name().equals(message.status())) {
+                    if ("SUCCESS".equals(message.status())) {
                         success++;
-                    } else if (TaskMsgStatus.FAILED.name().equals(message.status())) {
+                    } else if ("FAILED".equals(message.status())) {
                         failed++;
-                    } else if (TaskMsgStatus.EXPIRED.name().equals(message.status())) {
+                    } else if ("EXPIRED".equals(message.status())) {
                         expired++;
                     }
                 }

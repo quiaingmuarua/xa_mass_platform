@@ -2,8 +2,6 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -331,10 +329,20 @@ class TaskWorkerAssignListenerTest {
     }
 
     private TaskDispatchBinding binding(String messageId, String workerId) {
-        TaskMsg taskMsg = new TaskMsg(messageId, "task-1", java.util.Map.of("target", "target"));
-        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + messageId, "task-1", messageId, 1);
-        attempt.setWorkerId(workerId);
-        return new TaskDispatchBinding(taskMsg, attempt);
+        return new TaskDispatchBinding(
+                "task-1",
+                messageId,
+                "demo-event",
+                java.util.Map.of("target", "target"),
+                null,
+                0,
+                "attempt-" + messageId,
+                1,
+                "lease-" + messageId,
+                workerId,
+                null,
+                "batch-" + messageId
+        );
     }
 
     private MatchedWorkerContext matched(Worker worker, String workerContextId) {

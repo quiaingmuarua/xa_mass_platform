@@ -1,7 +1,6 @@
 package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
@@ -107,8 +106,8 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 String messageId = String.valueOf(terminal.messages().get(0).get("messageId"));
                 List<SdkTaskMessageAttemptView> attemptsBeforeReplay = app.getTaskMessageAttemptViews(taskId, messageId);
                 assertEquals(2, attemptsBeforeReplay.size(), "redis runtime should produce one expired attempt and one success attempt");
-                assertEquals(TaskMsgAttemptStatus.EXPIRED.name(), attemptsBeforeReplay.get(0).status());
-                assertEquals(TaskMsgAttemptStatus.SUCCEEDED.name(), attemptsBeforeReplay.get(1).status());
+                assertEquals("EXPIRED", attemptsBeforeReplay.get(0).status());
+                assertEquals("SUCCEEDED", attemptsBeforeReplay.get(1).status());
 
                 ReplayWebSocketClient replayClient = connectClientWithRetries(
                         () -> new ReplayWebSocketClient(wsUri, CHAOS_WORKER_ID),
@@ -136,8 +135,8 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
 
                 List<SdkTaskMessageAttemptView> attemptsAfterReplay = app.getTaskMessageAttemptViews(taskId, messageId);
                 assertEquals(2, attemptsAfterReplay.size(), "stale replay must not create a new attempt");
-                assertEquals(TaskMsgAttemptStatus.EXPIRED.name(), attemptsAfterReplay.get(0).status());
-                assertEquals(TaskMsgAttemptStatus.SUCCEEDED.name(), attemptsAfterReplay.get(1).status());
+                assertEquals("EXPIRED", attemptsAfterReplay.get(0).status());
+                assertEquals("SUCCEEDED", attemptsAfterReplay.get(1).status());
             } finally {
                 steadyClient.disconnect();
             }

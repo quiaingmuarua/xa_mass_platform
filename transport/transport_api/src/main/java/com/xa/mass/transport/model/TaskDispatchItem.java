@@ -24,16 +24,6 @@ import java.util.Objects;
  */
 public final class TaskDispatchItem {
 
-    private static final String TASK_NAME = "taskName";
-    private static final String PROJECT = "project";
-    private static final String USER_ID = "userId";
-    private static final String RETRY_COUNT = "retryCount";
-    private static final String WORKER_ID = "workerId";
-    private static final String WORKER_CONTEXT_ID = "workerContextId";
-    private static final String BATCH_ID = "batchId";
-    private static final String INPUT = "input";
-    private static final String SHARED_CONFIG = "sharedConfig";
-
     private final String taskId;
     private final String messageId;
     private final String eventCode;
@@ -108,8 +98,12 @@ public final class TaskDispatchItem {
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
-        this.input = trustedImmutablePayload ? trustedMap(input) : normalizeObject(input, INPUT);
-        this.sharedConfig = trustedImmutablePayload ? trustedMap(sharedConfig) : normalizeObject(sharedConfig, SHARED_CONFIG);
+        this.input = trustedImmutablePayload
+                ? trustedMap(input)
+                : normalizeObject(input, TransportPacket.PAYLOAD_INPUT);
+        this.sharedConfig = trustedImmutablePayload
+                ? trustedMap(sharedConfig)
+                : normalizeObject(sharedConfig, TransportPacket.PAYLOAD_SHARED_CONFIG);
         this.transportPayload = transportPayload != null
                 ? trustedMap(transportPayload)
                 : buildTransportPayload(taskName, project, userId, retryCount, workerId, workerContextId, batchId,
@@ -187,16 +181,16 @@ public final class TaskDispatchItem {
                 packet.taskId(),
                 packet.messageId(),
                 packet.eventCode(),
-                packet.payloadString(TASK_NAME),
-                packet.payloadString(PROJECT),
-                packet.payloadString(USER_ID),
-                packet.payloadInt(RETRY_COUNT),
+                packet.payloadString(TransportPacket.PAYLOAD_TASK_NAME),
+                packet.payloadString(TransportPacket.PAYLOAD_PROJECT),
+                packet.payloadString(TransportPacket.PAYLOAD_USER_ID),
+                packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT),
                 packet.attemptId(),
-                packet.payloadString(WORKER_ID),
-                packet.payloadString(WORKER_CONTEXT_ID),
-                packet.payloadString(BATCH_ID),
-                packet.payloadObject(INPUT),
-                packet.payloadObject(SHARED_CONFIG),
+                packet.payloadString(TransportPacket.PAYLOAD_WORKER_ID),
+                packet.payloadString(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID),
+                packet.payloadString(TransportPacket.PAYLOAD_BATCH_ID),
+                packet.payloadObject(TransportPacket.PAYLOAD_INPUT),
+                packet.payloadObject(TransportPacket.PAYLOAD_SHARED_CONFIG),
                 true,
                 payload
         );
@@ -256,15 +250,15 @@ public final class TaskDispatchItem {
                                                              Map<String, Object> input,
                                                              Map<String, Object> sharedConfig) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        put(payload, TASK_NAME, taskName);
-        put(payload, PROJECT, project);
-        put(payload, USER_ID, userId);
-        payload.put(RETRY_COUNT, retryCount);
-        put(payload, WORKER_ID, workerId);
-        put(payload, WORKER_CONTEXT_ID, workerContextId);
-        put(payload, BATCH_ID, batchId);
-        payload.put(INPUT, input);
-        payload.put(SHARED_CONFIG, sharedConfig);
+        put(payload, TransportPacket.PAYLOAD_TASK_NAME, taskName);
+        put(payload, TransportPacket.PAYLOAD_PROJECT, project);
+        put(payload, TransportPacket.PAYLOAD_USER_ID, userId);
+        payload.put(TransportPacket.PAYLOAD_RETRY_COUNT, retryCount);
+        put(payload, TransportPacket.PAYLOAD_WORKER_ID, workerId);
+        put(payload, TransportPacket.PAYLOAD_WORKER_CONTEXT_ID, workerContextId);
+        put(payload, TransportPacket.PAYLOAD_BATCH_ID, batchId);
+        payload.put(TransportPacket.PAYLOAD_INPUT, input);
+        payload.put(TransportPacket.PAYLOAD_SHARED_CONFIG, sharedConfig);
         return Map.copyOf(payload);
     }
 

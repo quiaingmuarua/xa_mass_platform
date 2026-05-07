@@ -98,4 +98,20 @@ class TaskResultReportTest {
         assertEquals(report.getOutput(), decoded.getOutput());
         assertSame(packet.payload(), decoded.toTransportPayload());
     }
+
+    @Test
+    void decodedTransportPayloadKeepsTrustedOutputOwnership() {
+        Map<String, Object> output = Map.of("status", "SUCCESS");
+
+        TaskResultReport report = TaskResultReport.fromDecodedTransportPayload(
+                "task-1",
+                "msg-1",
+                true,
+                "ok",
+                null,
+                output
+        );
+
+        assertSame(output, report.getOutput());
+    }
 }

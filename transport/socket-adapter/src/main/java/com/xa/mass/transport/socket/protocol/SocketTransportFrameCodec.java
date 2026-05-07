@@ -45,7 +45,7 @@ public final class SocketTransportFrameCodec {
 
     public boolean isHelloFrame(JsonObject frame) {
         return "hello".equalsIgnoreCase(readString(frame, "type"))
-                && readString(frame, "workerId") != null;
+                && readString(frame, TransportPacket.PAYLOAD_WORKER_ID) != null;
     }
 
     public boolean isHeartbeatFrame(JsonObject frame) {
@@ -53,7 +53,7 @@ public final class SocketTransportFrameCodec {
     }
 
     public String extractWorkerId(JsonObject frame) {
-        return readString(frame, "workerId");
+        return readString(frame, TransportPacket.PAYLOAD_WORKER_ID);
     }
 
     public String extractRouteKey(JsonObject frame) {
@@ -69,25 +69,25 @@ public final class SocketTransportFrameCodec {
                 && readString(frame, "eventCode") == null
                 && readString(frame, "taskId") != null
                 && readString(frame, "messageId") != null
-                && hasBoolean(frame, "success");
+                && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
     public String encodeCanonicalTaskDispatch(TransportPacket packet) {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", packet.messageId());
-        put(frame, "workerId", packet.payloadString("workerId"));
-        put(frame, "project", packet.payloadString("project"));
+        put(frame, TransportPacket.PAYLOAD_WORKER_ID, packet.payloadString(TransportPacket.PAYLOAD_WORKER_ID));
+        put(frame, TransportPacket.PAYLOAD_PROJECT, packet.payloadString(TransportPacket.PAYLOAD_PROJECT));
         if (packet.eventCode() != null) {
             frame.addProperty("eventCode", packet.eventCode());
         }
         frame.addProperty("taskId", packet.taskId());
-        put(frame, "taskName", packet.payloadString("taskName"));
-        put(frame, "userId", packet.payloadString("userId"));
-        frame.addProperty("retryCount", packet.payloadInt("retryCount"));
-        put(frame, "workerContextId", packet.payloadString("workerContextId"));
-        put(frame, "batchId", packet.payloadString("batchId"));
-        frame.add("input", gson.toJsonTree(packet.payloadObject("input")));
-        frame.add("sharedConfig", gson.toJsonTree(packet.payloadObject("sharedConfig")));
+        put(frame, TransportPacket.PAYLOAD_TASK_NAME, packet.payloadString(TransportPacket.PAYLOAD_TASK_NAME));
+        put(frame, TransportPacket.PAYLOAD_USER_ID, packet.payloadString(TransportPacket.PAYLOAD_USER_ID));
+        frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT));
+        put(frame, TransportPacket.PAYLOAD_WORKER_CONTEXT_ID, packet.payloadString(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID));
+        put(frame, TransportPacket.PAYLOAD_BATCH_ID, packet.payloadString(TransportPacket.PAYLOAD_BATCH_ID));
+        frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(packet.payloadObject(TransportPacket.PAYLOAD_INPUT)));
+        frame.add(TransportPacket.PAYLOAD_SHARED_CONFIG, gson.toJsonTree(packet.payloadObject(TransportPacket.PAYLOAD_SHARED_CONFIG)));
         return gson.toJson(frame);
     }
 
@@ -97,21 +97,22 @@ public final class SocketTransportFrameCodec {
         if (taskId == null || messageId == null) {
             throw new IllegalArgumentException("taskId/messageId are required");
         }
-        Boolean success = readBoolean(frame, "success");
+        Boolean success = readBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
         if (success == null) {
-            throw new IllegalArgumentException("success is required");
+            throw new IllegalArgumentException(TransportPacket.PAYLOAD_SUCCESS + " is required");
         }
         String detail = firstNonBlank(
-                readString(frame, "detail"),
+                readString(frame, TransportPacket.PAYLOAD_DETAIL),
                 readString(frame, "message")
         );
-        return new TaskResultReport(
+        Map<String, Object> output = gson.fromJson(readJsonObject(frame, TransportPacket.PAYLOAD_OUTPUT), MAP_TYPE);
+        return TaskResultReport.fromDecodedTransportPayload(
                 taskId,
                 messageId,
                 success,
                 detail,
-                readString(frame, "errorCode"),
-                gson.fromJson(readJsonObject(frame, "output"), MAP_TYPE)
+                readString(frame, TransportPacket.PAYLOAD_ERROR_CODE),
+                output
         );
     }
 

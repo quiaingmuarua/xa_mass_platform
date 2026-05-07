@@ -5,10 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.SdkTaskMessageAttemptView;
@@ -172,20 +168,20 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
                 require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the chaos worker");
-                require(TaskMsgAttemptStatus.EXPIRED.name().equals(expiredAttempt.status()),
+                require("EXPIRED".equals(expiredAttempt.status()),
                         "first attempt should close as EXPIRED");
-                require(TaskMsgAttemptFinalReason.LEASE_EXPIRED.name().equals(expiredAttempt.finalReason()),
+                require("LEASE_EXPIRED".equals(expiredAttempt.finalReason()),
                         "first attempt final reason should be LEASE_EXPIRED");
 
                 require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
                         "second attempt should belong to the steady worker");
-                require(TaskMsgAttemptStatus.SUCCEEDED.name().equals(successAttempt.status()),
+                require("SUCCEEDED".equals(successAttempt.status()),
                         "second attempt should close as SUCCEEDED");
 
                 require(finalMessage != null, "final task message should exist");
-                require(TaskMsgStatus.SUCCESS.name().equals(finalMessage.status()),
+                require("SUCCESS".equals(finalMessage.status()),
                         "logical message should converge to SUCCESS after redispatch");
-                require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(finalMessage.finalReason()),
+                require("BUSINESS_SUCCESS".equals(finalMessage.finalReason()),
                         "logical message final reason should be BUSINESS_SUCCESS");
                 require(finalMessage.retryCount() == 1,
                         "logical message retryCount should record one expiry-driven retry");

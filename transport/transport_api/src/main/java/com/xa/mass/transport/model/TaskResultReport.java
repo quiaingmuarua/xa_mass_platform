@@ -16,11 +16,6 @@ import java.util.Map;
  */
 public final class TaskResultReport {
 
-    private static final String SUCCESS = "success";
-    private static final String DETAIL = "detail";
-    private static final String ERROR_CODE = "errorCode";
-    private static final String OUTPUT = "output";
-
     private final String taskId;
     private final String messageId;
     private final boolean success;
@@ -91,11 +86,29 @@ public final class TaskResultReport {
         return new TaskResultReport(
                 packet.taskId(),
                 packet.messageId(),
-                packet.payloadBoolean(SUCCESS),
-                packet.payloadString(DETAIL),
-                packet.payloadString(ERROR_CODE),
-                packet.payloadObject(OUTPUT),
+                packet.payloadBoolean(TransportPacket.PAYLOAD_SUCCESS),
+                packet.payloadString(TransportPacket.PAYLOAD_DETAIL),
+                packet.payloadString(TransportPacket.PAYLOAD_ERROR_CODE),
+                packet.payloadObject(TransportPacket.PAYLOAD_OUTPUT),
                 payload,
+                true
+        );
+    }
+
+    public static TaskResultReport fromDecodedTransportPayload(String taskId,
+                                                               String messageId,
+                                                               boolean success,
+                                                               String detail,
+                                                               String errorCode,
+                                                               Map<String, Object> output) {
+        return new TaskResultReport(
+                taskId,
+                messageId,
+                success,
+                detail,
+                errorCode,
+                output,
+                null,
                 true
         );
     }
@@ -105,15 +118,15 @@ public final class TaskResultReport {
                                                              String errorCode,
                                                              Map<String, Object> output) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(SUCCESS, success);
-        put(payload, DETAIL, detail);
-        put(payload, ERROR_CODE, errorCode);
-        payload.put(OUTPUT, output);
+        payload.put(TransportPacket.PAYLOAD_SUCCESS, success);
+        put(payload, TransportPacket.PAYLOAD_DETAIL, detail);
+        put(payload, TransportPacket.PAYLOAD_ERROR_CODE, errorCode);
+        payload.put(TransportPacket.PAYLOAD_OUTPUT, output);
         return Map.copyOf(payload);
     }
 
     private static Map<String, Object> immutableCopy(Map<String, Object> values) {
-        return TransportJsonValueNormalizer.normalizeObject(values, "output");
+        return TransportJsonValueNormalizer.normalizeObject(values, TransportPacket.PAYLOAD_OUTPUT);
     }
 
     private static Map<String, Object> trustedMap(Map<String, Object> values) {

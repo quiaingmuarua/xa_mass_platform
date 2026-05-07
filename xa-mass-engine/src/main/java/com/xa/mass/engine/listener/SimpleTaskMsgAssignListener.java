@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -297,24 +296,14 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 work.workerContextId(),
                 work.batchId()
         );
-        TaskMsgAttempt attempt = TaskMessageAttemptSupport.buildDispatchedProjection(
-                attemptId,
+        traceEventLogger.taskMsgAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
+                attemptId,
                 attemptNo,
                 work.workerId(),
                 work.workerContextId(),
                 work.batchId(),
-                work.leaseExpireAt()
-        );
-        traceEventLogger.taskMsgAttemptStatusTransition(
-                task.getTid(),
-                work.messageId(),
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
                 null,
                 TaskMsgAttemptStatus.CREATED,
                 TaskMsgAttemptStatus.LEASED,
@@ -325,11 +314,11 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         traceEventLogger.taskMsgAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
+                attemptId,
+                attemptNo,
+                work.workerId(),
+                work.workerContextId(),
+                work.batchId(),
                 null,
                 TaskMsgAttemptStatus.LEASED,
                 TaskMsgAttemptStatus.DISPATCHED,
@@ -344,8 +333,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 work.payload(),
                 work.payloadRef(),
                 work.retryCount(),
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
+                attemptId,
+                attemptNo,
                 work.leaseToken(),
                 work.workerId(),
                 work.workerContextId(),

@@ -18,6 +18,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
+import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
@@ -27,6 +28,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -70,7 +72,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
-    private final TaskRuntimeBridge taskRuntimeBridge;
+    private final TaskWorkRuntime taskWorkRuntime;
+    private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
@@ -121,11 +124,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 taskDetailStore,
                 traceEventLogger
         );
-        this.taskRuntimeBridge = new TaskRuntimeBridge(
-                taskStorage,
-                requiredTaskWorkRuntime,
-                new com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver()
-        );
+        this.taskWorkRuntime = requiredTaskWorkRuntime;
+        this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
         this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
@@ -265,7 +265,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     @Override
     public List<Task> getRuntimeDispatchableTasks(int limit) {
-        return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
+        if (limit <= 0) {
+            return List.of();
+        }
+        return taskWorkRuntime.readyTaskIds(limit).stream()
+                .map(taskId -> taskStorage.getTask(taskId).orElse(null))
+                .filter(task -> task != null)
+                .toList();
     }
 
     /**
@@ -387,7 +393,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 "messageId", messageId);
 
         WorkEnqueueOutcome outcome = enqueueTaskWork(ingressItem);
-        if (!taskRuntimeBridge.isTaskWorkEnqueueAccepted(outcome)) {
+        if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
@@ -427,22 +433,23 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     @Override
     public int countPendingDispatchableMessages(String taskId) {
-        return taskRuntimeBridge.countPendingDispatchableMessages(taskId);
+        long readyCount = taskWorkRuntime.stats(taskId).readyCount();
+        return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
     @Override
     public boolean hasPendingDispatchableMessages(String taskId) {
-        return taskRuntimeBridge.hasPendingDispatchableMessages(taskId);
+        return countPendingDispatchableMessages(taskId) > 0;
     }
 
     @Override
     public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        return taskRuntimeBridge.hasProcessingMessagesForWorker(taskId, workerId);
+        return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
     }
 
     @Override
     public TaskWorkStats getTaskWorkStats(String taskId) {
-        return taskRuntimeBridge.getTaskWorkStats(taskId);
+        return taskWorkRuntime.stats(taskId);
     }
 
     @Override
@@ -526,7 +533,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         dispatchRequestService.shutdown();
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
-        taskRuntimeBridge.shutdown();
+        taskWorkRuntime.shutdown();
     }
 
     boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
@@ -632,7 +639,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     TaskWorkRuntime getTaskWorkRuntime() {
-        return taskRuntimeBridge.runtime();
+        return taskWorkRuntime;
     }
 
     com.xa.mass.engine.util.TraceEventLogger traceEvents() {
@@ -658,29 +665,29 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     public List<ClaimedTaskWork> claimReady(String taskId,
                                             List<WorkerClaimTarget> claimTargets,
                                             TaskWorkClaimOptions claimOptions) {
-        return taskRuntimeBridge.claimReady(taskId, claimTargets, claimOptions);
+        return taskWorkRuntime.claimReady(taskId, claimTargets, claimOptions);
     }
 
     java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
-        return taskRuntimeBridge.getActiveLease(taskId, messageId);
+        return taskWorkRuntime.getActiveLease(taskId, messageId);
     }
 
     @Override
     public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
-        return taskRuntimeBridge.getActiveLeases(taskId);
+        return taskWorkRuntime.activeLeases(taskId);
     }
 
     @Override
     public List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
-        return taskRuntimeBridge.pollExpiredLeases(limit, now);
+        return taskWorkRuntime.pollExpiredLeases(limit, now);
     }
 
     void discardTaskRuntime(String taskId) {
-        taskRuntimeBridge.discardTaskRuntime(taskId);
+        taskWorkRuntime.discardTask(taskId);
     }
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
-        return taskRuntimeBridge.applyTaskWorkResult(result);
+        return taskWorkRuntime.applyResult(result);
     }
 
     @Override
@@ -725,7 +732,23 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     private WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {
-        return taskRuntimeBridge.enqueueTaskWork(ingressItem);
+        if (ingressItem == null || ingressItem.messageId() == null || ingressItem.messageId().isBlank()) {
+            return null;
+        }
+        Task task = taskStorage.getTask(ingressItem.taskId()).orElse(null);
+        TaskWorkEnvelope item = new TaskWorkEnvelope(
+                ingressItem.taskId(),
+                ingressItem.messageId(),
+                task != null ? TaskSharedConfig.sdkEventCode(task) : null,
+                ingressItem.inlinePayload(),
+                ingressItem.payloadRef(),
+                ingressItem.retryCount(),
+                ingressItem.maxRetryCount(),
+                null,
+                null,
+                java.time.Instant.now()
+        );
+        return taskWorkRuntime.enqueue(item, enqueueOptionsResolver.resolve(task));
     }
 }
 

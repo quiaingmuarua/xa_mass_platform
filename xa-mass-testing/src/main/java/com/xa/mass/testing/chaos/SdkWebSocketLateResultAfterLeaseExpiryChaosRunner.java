@@ -2,10 +2,6 @@ package com.xa.mass.testing.chaos;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.sdk.SdkTaskMessageView;
@@ -169,17 +165,17 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the chaos worker");
-                ChaosSupport.require(TaskMsgAttemptStatus.EXPIRED.name().equals(expiredAttempt.status()),
+                ChaosSupport.require("EXPIRED".equals(expiredAttempt.status()),
                         "first attempt should close as EXPIRED");
-                ChaosSupport.require(TaskMsgAttemptFinalReason.LEASE_EXPIRED.name().equals(expiredAttempt.finalReason()),
+                ChaosSupport.require("LEASE_EXPIRED".equals(expiredAttempt.finalReason()),
                         "first attempt final reason should be LEASE_EXPIRED");
                 ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
                         "second attempt should belong to the steady worker");
-                ChaosSupport.require(TaskMsgAttemptStatus.SUCCEEDED.name().equals(successAttempt.status()),
+                ChaosSupport.require("SUCCEEDED".equals(successAttempt.status()),
                         "second attempt should close as SUCCEEDED");
-                ChaosSupport.require(TaskMsgStatus.SUCCESS.name().equals(terminalMessage.status()),
+                ChaosSupport.require("SUCCESS".equals(terminalMessage.status()),
                         "logical message should converge to SUCCESS before late replay");
-                ChaosSupport.require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(terminalMessage.finalReason()),
+                ChaosSupport.require("BUSINESS_SUCCESS".equals(terminalMessage.finalReason()),
                         "logical message final reason should be BUSINESS_SUCCESS before late replay");
                 ChaosSupport.require(terminalMessage.retryCount() == 1,
                         "logical message retryCount should record one expiry-driven retry before late replay");
@@ -198,9 +194,9 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");
-                ChaosSupport.require(TaskMsgStatus.SUCCESS.name().equals(finalMessage.status()),
+                ChaosSupport.require("SUCCESS".equals(finalMessage.status()),
                         "late stale result must not change logical message success");
-                ChaosSupport.require(TaskMsgFinalReason.BUSINESS_SUCCESS.name().equals(finalMessage.finalReason()),
+                ChaosSupport.require("BUSINESS_SUCCESS".equals(finalMessage.finalReason()),
                         "late stale result must not change logical final reason");
                 ChaosSupport.require(finalMessage.retryCount() == 1,
                         "late stale result must not change retryCount");
