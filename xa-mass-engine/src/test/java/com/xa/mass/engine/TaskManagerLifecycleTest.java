@@ -883,6 +883,35 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void callbackWithRuntimeLeaseDoesNotReadLatestAttemptAuditOnHotPath() {
+        TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = taskManager.createTask(buildRequest("task-result-runtime-attempt-no-audit-read", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-no-read", "worker-context-no-read", "batch-no-read", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMessageId(), true, "done"));
+
+        assertEquals(0, trackingStorage.latestAttemptReadCount.get(),
+                "result hot path should derive attempt correlation from runtime lease without reading latest attempt audit rows");
+        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttemptAuditView(task.getTid(), message.getMessageId());
+        assertNotNull(latestAttempt);
+        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, latestAttempt.getStatus());
+    }
+
+    @Test
     void retryableFailurePublishesAttemptClosedBeforeDispatchRequested() {
         Task task = taskManager.createTask(buildRequest("task-result-retry-order", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -2092,6 +2121,16 @@ class TaskManagerLifecycleTest {
             fullSnapshotReadCount.set(0);
             attemptSnapshotReadCount.set(0);
             attemptStatsReadCount.set(0);
+        }
+    }
+
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+        private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
+
+        @Override
+        public java.util.Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+            latestAttemptReadCount.incrementAndGet();
+            return super.getLatestTaskMessageAttempt(taskId, messageId);
         }
     }
 

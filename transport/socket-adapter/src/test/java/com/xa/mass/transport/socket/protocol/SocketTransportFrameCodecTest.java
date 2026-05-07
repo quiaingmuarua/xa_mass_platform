@@ -1,6 +1,7 @@
 package com.xa.mass.transport.socket.protocol;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +15,7 @@ class SocketTransportFrameCodecTest {
     void helloFrameCanCarryIndependentRouteKey() {
         JsonObject frame = new JsonObject();
         frame.addProperty("type", "hello");
-        frame.addProperty("workerId", "worker-1");
+        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty("routeKey", "socket-route-5");
 
         assertTrue(codec.isHelloFrame(frame));

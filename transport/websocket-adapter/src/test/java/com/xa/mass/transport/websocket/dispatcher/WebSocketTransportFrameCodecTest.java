@@ -60,10 +60,11 @@ class WebSocketTransportFrameCodecTest {
         assertNotNull(frame);
         assertTrue(codec.isCanonicalTaskDispatch(frame));
         assertEquals("msg-1", frame.get("messageId").getAsString());
-        assertEquals("worker-1", frame.get("workerId").getAsString());
+        assertEquals("worker-1", frame.get(TransportPacket.PAYLOAD_WORKER_ID).getAsString());
         assertEquals("task-1", frame.get("taskId").getAsString());
         assertEquals("crawler.fetch-page", frame.get("eventCode").getAsString());
-        assertEquals("https://example.test", frame.getAsJsonObject("input").get("target").getAsString());
+        assertEquals("https://example.test",
+                frame.getAsJsonObject(TransportPacket.PAYLOAD_INPUT).get("target").getAsString());
     }
 
     @Test
