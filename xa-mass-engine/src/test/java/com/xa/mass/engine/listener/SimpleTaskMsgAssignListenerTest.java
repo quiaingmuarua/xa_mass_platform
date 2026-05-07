@@ -8,6 +8,8 @@ import com.xa.mass.base.model.*;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskMessageAttemptView;
+import com.xa.mass.engine.TaskMessageView;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -94,35 +96,35 @@ class SimpleTaskMsgAssignListenerTest {
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         List<TaskMsg> stored = storedMessages(task.getTid());
-        List<TaskMsg> projected = projectedMessages(task.getTid());
+        List<TaskMessageView> projected = projectedMessages(task.getTid());
         assertEquals(4, projected.size());
         assertTrue(stored.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
         assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerId() == null));
         assertEquals(List.of(TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED),
-                projected.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                projected.stream().map(msg -> TaskMsgStatus.valueOf(msg.status())).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
-                projected.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
-        List<String> batchIds = projected.stream().map(TaskMsg::getLatestAttemptBatchId).collect(Collectors.toList());
+                projected.stream().map(TaskMessageView::latestAttemptWorkerId).collect(Collectors.toList()));
+        List<String> batchIds = projected.stream().map(TaskMessageView::latestAttemptBatchId).collect(Collectors.toList());
         assertTrue(batchIds.stream().allMatch(id -> id != null && !id.isBlank()));
         assertEquals(batchIds.get(0), batchIds.get(2));
         assertEquals(batchIds.get(1), batchIds.get(3));
         assertNotEquals(batchIds.get(0), batchIds.get(1));
-        assertTrue(projected.stream().allMatch(msg -> msg.getAssignedTime() != null));
+        assertTrue(projected.stream().allMatch(msg -> msg.assignedTime() != null));
         assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
         assertEquals(task.getTid(), wc1.getLastBindTaskId());
         assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
         assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
-        List<TaskMsgAttempt> attempts = stored.stream()
-                .map(msg -> taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId()))
+        List<TaskMessageAttemptView> attempts = stored.stream()
+                .map(msg -> taskQueries.getLatestActiveTaskMessageAttemptView(task.getTid(), msg.getMessageId()))
                 .collect(Collectors.toList());
         assertEquals(4, attempts.size());
         assertTrue(stored.stream().allMatch(msg -> taskStorage.getTaskMessageAttempts(task.getTid(), msg.getMessageId()).isEmpty()));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getAttemptNo() == 1));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.DISPATCHED));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getDispatchTime() != null));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getBatchId() != null && !attempt.getBatchId().isBlank()));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.attemptNo() == 1));
+        assertTrue(attempts.stream().allMatch(attempt -> TaskMsgAttemptStatus.valueOf(attempt.status()) == TaskMsgAttemptStatus.DISPATCHED));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.workerId() != null));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.dispatchTime() != null));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.batchId() != null && !attempt.batchId().isBlank()));
 
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
@@ -144,12 +146,12 @@ class SimpleTaskMsgAssignListenerTest {
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId());
+        TaskMessageAttemptView attempt = taskQueries.getLatestActiveTaskMessageAttemptView(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
-        assertNotNull(attempt.getLeaseExpireTime());
-        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
-        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertNotNull(attempt.leaseExpireTime());
+        long lowerBound = Duration.between(beforeAssign, attempt.leaseExpireTime()).getSeconds();
+        long upperBound = Duration.between(afterAssign, attempt.leaseExpireTime()).getSeconds();
         assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
         assertTrue(upperBound <= 2, "lease should stay close to configured 2-second window");
     }
@@ -193,12 +195,12 @@ class SimpleTaskMsgAssignListenerTest {
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId());
+        TaskMessageAttemptView attempt = taskQueries.getLatestActiveTaskMessageAttemptView(task.getTid(), message.getMessageId());
 
         assertNotNull(attempt);
-        assertNotNull(attempt.getLeaseExpireTime());
-        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
-        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertNotNull(attempt.leaseExpireTime());
+        long lowerBound = Duration.between(beforeAssign, attempt.leaseExpireTime()).getSeconds();
+        long upperBound = Duration.between(afterAssign, attempt.leaseExpireTime()).getSeconds();
         assertTrue(lowerBound >= 29, "interactive short lease should stay close to 30 seconds");
         assertTrue(upperBound <= 30, "interactive short lease should be capped by the short lease profile");
     }

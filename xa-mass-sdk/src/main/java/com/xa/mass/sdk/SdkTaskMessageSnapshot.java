@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.model.TaskMessageSnapshot;
+import com.xa.mass.engine.TaskMessageSnapshotView;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ public record SdkTaskMessageSnapshot(
         return messages.size();
     }
 
-    public static SdkTaskMessageSnapshot from(TaskMessageSnapshot snapshot) {
+    public static SdkTaskMessageSnapshot from(TaskMessageSnapshotView snapshot) {
         if (snapshot == null) {
             return new SdkTaskMessageSnapshot(List.of(), 0, false);
         }

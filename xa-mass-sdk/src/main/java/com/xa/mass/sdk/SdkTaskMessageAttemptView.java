@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.TaskMessageAttemptView;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -35,30 +35,30 @@ public record SdkTaskMessageAttemptView(
         output = immutableCopy(output);
     }
 
-    public static SdkTaskMessageAttemptView from(TaskMsgAttempt attempt) {
+    public static SdkTaskMessageAttemptView from(TaskMessageAttemptView attempt) {
         if (attempt == null) {
             return null;
         }
         return new SdkTaskMessageAttemptView(
-                attempt.getAttemptId(),
-                attempt.getTaskId(),
-                attempt.getMessageId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                attempt.getStatus() != null ? attempt.getStatus().name() : null,
-                attempt.getLeaseExpireTime(),
-                attempt.getDispatchTime(),
-                attempt.getAckTime(),
-                attempt.getStartTime(),
-                attempt.getFinishTime(),
-                attempt.getFinalReason() != null ? attempt.getFinalReason().name() : null,
-                attempt.getErrorMessage(),
-                attempt.getErrorCode(),
-                attempt.getOutput(),
-                attempt.getCreateTime(),
-                attempt.getUpdateTime()
+                attempt.attemptId(),
+                attempt.taskId(),
+                attempt.messageId(),
+                attempt.attemptNo(),
+                attempt.workerId(),
+                attempt.workerContextId(),
+                attempt.batchId(),
+                attempt.status(),
+                attempt.leaseExpireTime(),
+                attempt.dispatchTime(),
+                attempt.ackTime(),
+                attempt.startTime(),
+                attempt.finishTime(),
+                attempt.finalReason(),
+                attempt.errorMessage(),
+                attempt.errorCode(),
+                attempt.output(),
+                attempt.createTime(),
+                attempt.updateTime()
         );
     }
 

@@ -1,13 +1,12 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskMessageView;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -91,9 +90,9 @@ class MassEngineStartRecoveryTest {
             assertEquals("worker-1", dispatchBindings.get(0).workerId());
             assertEquals(Map.of("payload", "hello"), dispatchBindings.get(0).payload());
 
-            TaskMsg message = taskQueries.getTaskMessageSnapshot(task.getTid(), 1).messages().get(0);
-            assertEquals(TaskMsgStatus.ASSIGNED, message.getStatus());
-            assertNotNull(taskQueries.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
+            TaskMessageView message = taskQueries.getTaskMessageSnapshotView(task.getTid(), 1).messages().get(0);
+            assertEquals("ASSIGNED", message.status());
+            assertNotNull(taskQueries.getLatestActiveTaskMessageAttemptView(task.getTid(), message.messageId()));
         } finally {
             engine.stop();
         }

@@ -226,17 +226,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        return SdkTaskMessageSnapshot.from(requireStartedTaskQueries().getTaskMessageSnapshot(taskId, limit));
+        return SdkTaskMessageSnapshot.from(requireStartedTaskQueries().getTaskMessageSnapshotView(taskId, limit));
     }
 
     @Override
     public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
-        return SdkTaskMessageView.from(requireStartedTaskQueries().getTaskMessageProjection(taskId, messageId));
+        return SdkTaskMessageView.from(requireStartedTaskQueries().getTaskMessageView(taskId, messageId));
     }
 
     @Override
     public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
-        return requireStartedTaskQueries().getTaskMessageAttemptAuditTrail(taskId, messageId).stream()
+        return requireStartedTaskQueries().getTaskMessageAttemptAuditViews(taskId, messageId).stream()
                 .map(SdkTaskMessageAttemptView::from)
                 .toList();
     }
@@ -244,7 +244,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
         return SdkTaskMessageAttemptView.from(
-                requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId)
+                requireStartedTaskQueries().getLatestActiveTaskMessageAttemptView(taskId, messageId)
         );
     }
 

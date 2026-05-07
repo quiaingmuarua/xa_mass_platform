@@ -86,7 +86,7 @@ class BufferedTaskResultIngestChannelTest {
             assertTrue(channel.ingest(report("task", "msg-" + i)));
         }
 
-        // Unblock the slow delegate and immediately call shutdown â€?must drain all.
+        // Unblock the slow delegate and immediately call shutdown; it must drain all.
         startLatch.countDown();
         channel.shutdown();
 

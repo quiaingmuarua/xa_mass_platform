@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.engine.TaskMessageView;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * SDK-owned bounded read model for one logical task message view.
  *
- * <p>This is intentionally separate from engine/base {@code TaskMsg} so SDK
+ * <p>This is intentionally separate from engine compatibility residue so SDK
  * callers do not depend on compatibility projection internals as a public
  * platform model.</p>
  */
@@ -41,31 +41,31 @@ public record SdkTaskMessageView(
         output = immutableCopy(output);
     }
 
-    public static SdkTaskMessageView from(TaskMsg taskMsg) {
+    public static SdkTaskMessageView from(TaskMessageView taskMsg) {
         if (taskMsg == null) {
             return null;
         }
         return new SdkTaskMessageView(
-                taskMsg.getMessageId(),
-                taskMsg.getTaskId(),
-                taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null,
+                taskMsg.messageId(),
+                taskMsg.taskId(),
+                taskMsg.status(),
                 taskMsg.latestAttemptId(),
-                taskMsg.getLatestAttemptWorkerId(),
-                taskMsg.getLatestAttemptWorkerContextId(),
-                taskMsg.getLatestAttemptBatchId(),
-                taskMsg.getRetryCount(),
-                taskMsg.getMaxRetryCount(),
-                taskMsg.getErrorMessage(),
-                taskMsg.getErrorCode(),
-                taskMsg.getFinalReason() != null ? taskMsg.getFinalReason().name() : null,
-                taskMsg.getPayloadRef(),
-                taskMsg.getInput(),
-                taskMsg.getOutput(),
-                taskMsg.getAssignedTime(),
-                taskMsg.getCreateTime(),
-                taskMsg.getUpdateTime(),
-                taskMsg.getStartTime(),
-                taskMsg.getCompleteTime()
+                taskMsg.latestAttemptWorkerId(),
+                taskMsg.latestAttemptWorkerContextId(),
+                taskMsg.latestAttemptBatchId(),
+                taskMsg.retryCount(),
+                taskMsg.maxRetryCount(),
+                taskMsg.errorMessage(),
+                taskMsg.errorCode(),
+                taskMsg.finalReason(),
+                taskMsg.payloadRef(),
+                taskMsg.input(),
+                taskMsg.output(),
+                taskMsg.assignedTime(),
+                taskMsg.createTime(),
+                taskMsg.updateTime(),
+                taskMsg.startTime(),
+                taskMsg.completeTime()
         );
     }
 

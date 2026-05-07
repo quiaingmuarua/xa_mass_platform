@@ -7,8 +7,6 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -22,6 +20,8 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskMessageAttemptView;
+import com.xa.mass.engine.TaskMessageView;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -1236,23 +1236,23 @@ class MassSdkTest {
         MassEngine engine = mock(MassEngine.class);
         TaskQueryService taskQueries = mock(TaskQueryService.class);
         EngineConfig config = mock(EngineConfig.class);
-        TaskMsg message = compatibilityMessage("task-1", "msg-1");
-        TaskMsgAttempt activeAttempt = compatibilityAttempt("task-1", "msg-1", "attempt-1");
-        List<TaskMsgAttempt> attempts = List.of(activeAttempt);
+        TaskMessageView message = compatibilityMessageView("task-1", "msg-1");
+        TaskMessageAttemptView activeAttempt = compatibilityAttemptView("task-1", "msg-1", "attempt-1");
+        List<TaskMessageAttemptView> attempts = List.of(activeAttempt);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskQueryService()).thenReturn(taskQueries);
-        when(taskQueries.getTaskMessageProjection("task-1", "msg-1")).thenReturn(message);
-        when(taskQueries.getTaskMessageAttemptAuditTrail("task-1", "msg-1")).thenReturn(attempts);
-        when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
+        when(taskQueries.getTaskMessageView("task-1", "msg-1")).thenReturn(message);
+        when(taskQueries.getTaskMessageAttemptAuditViews("task-1", "msg-1")).thenReturn(attempts);
+        when(taskQueries.getLatestActiveTaskMessageAttemptView("task-1", "msg-1")).thenReturn(activeAttempt);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertEquals("task-1", app.getTaskMessageView("task-1", "msg-1").taskId());
         assertEquals(attempts.size(), app.getTaskMessageAttemptViews("task-1", "msg-1").size());
-        assertEquals(activeAttempt.getAttemptId(),
+        assertEquals(activeAttempt.attemptId(),
                 app.getLatestActiveTaskMessageAttemptView("task-1", "msg-1").attemptId());
     }
 
@@ -2935,19 +2935,53 @@ class MassSdkTest {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
     }
 
-    private static TaskMsg compatibilityMessage(String taskId, String messageId) {
-        TaskMsg message = new TaskMsg();
-        message.setTaskId(taskId);
-        message.setMessageId(messageId);
-        return message;
+    private static TaskMessageView compatibilityMessageView(String taskId, String messageId) {
+        return new TaskMessageView(
+                messageId,
+                taskId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
-    private static TaskMsgAttempt compatibilityAttempt(String taskId, String messageId, String attemptId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt();
-        attempt.setTaskId(taskId);
-        attempt.setMessageId(messageId);
-        attempt.setAttemptId(attemptId);
-        return attempt;
+    private static TaskMessageAttemptView compatibilityAttemptView(String taskId, String messageId, String attemptId) {
+        return new TaskMessageAttemptView(
+                attemptId,
+                taskId,
+                messageId,
+                1,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {

@@ -458,7 +458,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private TaskMsgAttempt latestAttemptAuditView(RunningTaskFixture fixture) {
-        return taskQueries.getLatestTaskMessageAttemptAuditView(fixture.taskId(), fixture.messageId());
+        return taskStorage.getLatestTaskMessageAttempt(fixture.taskId(), fixture.messageId()).orElse(null);
     }
 
     private void updateMaxRetryCount(RunningTaskFixture fixture, int maxRetryCount) {
@@ -472,11 +472,11 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private TaskMsg firstMessage(String taskId) {
-        return taskQueries.getTaskMessageSnapshot(taskId, 1).messages().get(0);
+        return taskStorage.getTaskMessages(taskId).get(0);
     }
 
     private TaskMsg compatibilityMessageSnapshotViewById(String taskId, String messageId) {
-        return taskQueries.getTaskMessageSnapshot(taskId, 16).messages().stream()
+        return taskStorage.getTaskMessages(taskId).stream()
                 .filter(message -> messageId.equals(message.getMessageId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
