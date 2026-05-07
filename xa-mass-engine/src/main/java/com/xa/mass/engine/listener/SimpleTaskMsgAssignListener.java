@@ -2,10 +2,8 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -161,7 +159,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 continue;
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
-            synchronizeDispatchProjectionBestEffort(task, work, dispatchBinding);
             dispatchBindings.add(dispatchBinding);
             slot.incrementAssigned();
 
@@ -357,36 +354,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         } catch (RuntimeException e) {
             log.warn("Failed to persist compatibility attempt projection for taskId={}, messageId={}, attemptId={}; dispatch will continue on runtime truth",
                     taskId, messageId, attempt.getAttemptId(), e);
-        }
-    }
-
-    private void synchronizeDispatchProjectionBestEffort(Task task,
-                                                         ClaimedTaskWork work,
-                                                         TaskDispatchBinding dispatchBinding) {
-        try {
-            TaskMsg taskMsg = assignmentRuntime.synchronizeAssignedTaskMessageProjection(
-                    task.getTid(),
-                    work.messageId(),
-                    work.retryCount(),
-                    dispatchBinding.attemptId(),
-                    work.workerId(),
-                    work.workerContextId(),
-                    work.batchId()
-            );
-            if (taskMsg != null) {
-                traceEventLogger.taskMsgStatusTransition(
-                        taskMsg,
-                        null,
-                        TaskMsgStatus.INIT,
-                        taskMsg.getStatus(),
-                        "BIND_TASK_MESSAGE",
-                        "SimpleTaskMsgAssignListener",
-                        "task message assigned to worker"
-                );
-            }
-        } catch (RuntimeException e) {
-            log.warn("Failed to synchronize compatibility task message projection for taskId={}, messageId={}; dispatch will continue on runtime truth",
-                    task.getTid(), work.messageId(), e);
         }
     }
 

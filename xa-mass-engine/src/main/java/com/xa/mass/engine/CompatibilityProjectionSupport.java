@@ -5,8 +5,12 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,6 +59,79 @@ final class CompatibilityProjectionSupport {
         List<TaskMsg> projected = new ArrayList<>(storedProjections.size());
         for (TaskMsg storedProjection : storedProjections) {
             projected.add(overlayTerminalTaskView(task, storedProjection));
+        }
+        return List.copyOf(projected);
+    }
+
+    static TaskMsg overlayActiveLeaseView(TaskMsg storedProjection,
+                                          ActiveLeaseRecord activeLease,
+                                          String taskId,
+                                          String messageId) {
+        if (activeLease == null) {
+            return storedProjection;
+        }
+        TaskMsg base = storedProjection != null ? storedProjection : new TaskMsg(messageId, taskId, Map.of());
+        if (base.isCompleted()) {
+            return base;
+        }
+        boolean attemptProjectionDiffers = !java.util.Objects.equals(base.getLatestAttemptWorkerId(), activeLease.workerId())
+                || !java.util.Objects.equals(base.getLatestAttemptWorkerContextId(), activeLease.workerContextId())
+                || !java.util.Objects.equals(base.getLatestAttemptBatchId(), activeLease.batchId());
+        boolean needsAssignedStatus = base.getStatus() == null || base.getStatus() == TaskMsgStatus.INIT;
+        boolean needsRetryProjection = base.getRetryCount() != Math.max(0, activeLease.retryCount());
+        boolean needsAssignedTime = base.getAssignedTime() == null && activeLease.leasedAt() != null;
+        if (!attemptProjectionDiffers && !needsAssignedStatus && !needsRetryProjection && !needsAssignedTime) {
+            return base;
+        }
+        TaskMsg projected = copyOf(base);
+        projected.setRetryCount(Math.max(0, activeLease.retryCount()));
+        projected.applyLatestAttemptProjection(
+                projected.latestAttemptId(),
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId()
+        );
+        if (projected.getAssignedTime() == null && activeLease.leasedAt() != null) {
+            projected.setAssignedTime(LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault()));
+        }
+        if (projected.getStatus() == null || projected.getStatus() == TaskMsgStatus.INIT) {
+            projected.markAsAssigned();
+        }
+        return projected;
+    }
+
+    static List<TaskMsg> overlayActiveLeaseView(List<TaskMsg> storedProjections,
+                                                List<ActiveLeaseRecord> activeLeases,
+                                                String taskId) {
+        if ((storedProjections == null || storedProjections.isEmpty())
+                && (activeLeases == null || activeLeases.isEmpty())) {
+            return List.of();
+        }
+        Map<String, ActiveLeaseRecord> leaseByMessageId = new LinkedHashMap<>();
+        if (activeLeases != null) {
+            for (ActiveLeaseRecord activeLease : activeLeases) {
+                if (activeLease == null || activeLease.messageId() == null || activeLease.messageId().isBlank()) {
+                    continue;
+                }
+                leaseByMessageId.put(activeLease.messageId(), activeLease);
+            }
+        }
+        if ((storedProjections == null || storedProjections.isEmpty()) && leaseByMessageId.isEmpty()) {
+            return List.of();
+        }
+        List<TaskMsg> projected = new ArrayList<>(storedProjections != null ? storedProjections.size() : 0);
+        if (storedProjections != null) {
+            for (TaskMsg storedProjection : storedProjections) {
+                if (storedProjection == null) {
+                    continue;
+                }
+                projected.add(overlayActiveLeaseView(
+                        storedProjection,
+                        leaseByMessageId.get(storedProjection.getMessageId()),
+                        taskId,
+                        storedProjection.getMessageId()
+                ));
+            }
         }
         return List.copyOf(projected);
     }

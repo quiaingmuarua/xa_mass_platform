@@ -417,18 +417,28 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         List<TaskMsg> fetched = taskDetailStore.getTaskMessages(taskId, Math.addExact(boundedLimit, 1));
         boolean truncated = fetched.size() > boundedLimit;
         List<TaskMsg> snapshot = truncated ? fetched.subList(0, boundedLimit) : fetched;
+        List<TaskMsg> runtimeAwareSnapshot = task != null && (task.getStatus() == null || !task.getStatus().isFinal())
+                ? CompatibilityProjectionSupport.overlayActiveLeaseView(snapshot, getActiveLeases(taskId), taskId)
+                : snapshot;
         return new TaskMessageSnapshot(
-                CompatibilityProjectionSupport.overlayTerminalTaskView(task, snapshot),
+                CompatibilityProjectionSupport.overlayTerminalTaskView(task, runtimeAwareSnapshot),
                 boundedLimit,
                 truncated
         );
     }
 
     public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
-        return CompatibilityProjectionSupport.overlayTerminalTaskView(
-                getTask(taskId),
-                getStoredTaskMessageProjection(taskId, messageId)
-        );
+        Task task = getTask(taskId);
+        TaskMsg projection = getStoredTaskMessageProjection(taskId, messageId);
+        if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
+            projection = CompatibilityProjectionSupport.overlayActiveLeaseView(
+                    projection,
+                    getActiveLease(taskId, messageId).orElse(null),
+                    taskId,
+                    messageId
+            );
+        }
+        return CompatibilityProjectionSupport.overlayTerminalTaskView(task, projection);
     }
 
     TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
@@ -441,25 +451,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
-    }
-
-    @Override
-    public TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
-                                                            String messageId,
-                                                            int retryCount,
-                                                            String attemptId,
-                                                            String workerId,
-                                                            String workerContextId,
-                                                            String batchId) {
-        return taskDetailStore.synchronizeAssignedTaskMessageProjection(
-                taskId,
-                messageId,
-                retryCount,
-                attemptId,
-                workerId,
-                workerContextId,
-                batchId
-        );
     }
 
     @Override

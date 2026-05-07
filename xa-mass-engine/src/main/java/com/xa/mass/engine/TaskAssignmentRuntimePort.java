@@ -1,7 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
@@ -22,14 +21,6 @@ public interface TaskAssignmentRuntimePort {
     int countPendingDispatchableMessages(String taskId);
 
     long getTaskMessageLeaseSeconds();
-
-    TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
-                                                     String messageId,
-                                                     int retryCount,
-                                                     String attemptId,
-                                                     String workerId,
-                                                     String workerContextId,
-                                                     String batchId);
 
     void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt);
 

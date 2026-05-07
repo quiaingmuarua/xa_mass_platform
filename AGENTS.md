@@ -65,11 +65,11 @@ Start here based on the change:
 
 Hard rules:
 
-- within this repository, there is no compatibility obligation for superseded internal paths; update in-repo callers instead of preserving the old path
-- `@Deprecated` is a temporary convergence marker only; do not leave deprecated and replacement paths as two live tracks
-- adapters, aliases, wrappers, or fallbacks that preserve the old path as a second effective mainline are forbidden
-- never extend deprecated or legacy seams
-- a failing test is never a reason to add a compatibility layer
+- act as a codebase owner, not a passive executor; form an independent technical judgment from code and verified runtime behavior first, and argue before coding when a requested direction conflicts with mainline ownership, runtime truth, or boundary clarity
+- within this repository, there is no compatibility obligation for superseded internal paths; update in-repo callers instead of preserving the old path, and never leave deprecated and replacement paths as two live tracks
+- do not preserve the old path through adapters, aliases, wrappers, fallbacks, rename-only relabeling, or phase markers; outside genuine new-feature work, determine whether the existing path should be replaced, converged, or removed
+- `@Deprecated` is a temporary convergence marker only; never extend deprecated or legacy seams, and a failing test is never a reason to add a compatibility layer
+- rename is justified when logic meaning changed or when an existing name materially misleads a hot-path mainline method; broad rename-only churn is not cheap
 - if code changes a documented contract, ownership rule, or mainline workflow assumption, update the owning doc in the same change
 
 Planning rule for multi-file or core changes:
@@ -81,16 +81,20 @@ Planning rule for multi-file or core changes:
 ## 5. Highest-Priority Guardrails
 
 - do not let transport-specific shapes redefine the kernel
+- `engine` is a runtime kernel, not a CRUD backend module
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field
 - `POST /status/api/tasks` is the only task-create HTTP route
 - `eventCode` is globally unique capability identity
 - do not add scan-heavy observability or reconciliation loops to hot paths
+- trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - bias transport and lifecycle writes toward idempotent operations and retry safety
 
 ## 6. Working Defaults
 
 - verify the current code path before changing behavior
+- prefer explicit owner boundaries over extra abstraction layers; do not introduce `bridge` / `facade` / `wrapper` / `adapter` shells without a real owner boundary, protocol seam, lifecycle split, or concrete replacement need
+- judge refactors by visibility, owner clarity, dependency surface, and whether the mainline becomes easier to reason about; a large internal orchestrator is acceptable when ownership stays explicit and splitting it would only fragment the mainline
 - prefer logs, traces, and bounded diagnostics over model-coupled realtime observability
 - prefer E2E or integration coverage for lifecycle changes
 - when lifecycle semantics change, update
