@@ -339,7 +339,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "attempt dispatched"
         );
-        assignmentRuntime.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
+        tryAddAttemptProjection(taskMsg, attempt);
 
         TaskMsgStatus beforeAssigned = taskMsg.getStatus();
         if (!taskMsg.markAsAssigned()) {
@@ -368,6 +368,15 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 work.workerContextId(),
                 work.batchId()
         );
+    }
+
+    private void tryAddAttemptProjection(TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        try {
+            assignmentRuntime.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
+        } catch (RuntimeException e) {
+            log.warn("Failed to persist compatibility attempt projection for taskId={}, messageId={}, attemptId={}; dispatch will continue on runtime truth",
+                    taskMsg.getTaskId(), taskMsg.getMessageId(), attempt.getAttemptId(), e);
+        }
     }
 
     private TaskMsg resolveOrRecoverTaskMessageProjection(Task task, ClaimedTaskWork work) {

@@ -254,6 +254,28 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void dispatchContinuesWhenCompatibilityAttemptProjectionWriteFails() {
+        FailingAddAttemptStorage failingStorage = new FailingAddAttemptStorage();
+        taskStorage = failingStorage;
+        taskManager = new TaskManager(new NoopTaskScheduler(), failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
+        taskCommands = new TaskCommandService(taskManager);
+        listener = newAssignmentListener(taskManager);
+
+        Task task = createTask(1);
+        task.setBatchSize(1);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+        assertEquals(1, dispatched.size());
+        TaskMsg updated = storedMessages(task.getTid()).get(0);
+        assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
+        assertEquals(dispatched.get(0).attemptId(), updated.latestAttemptId());
+        assertTrue(failingStorage.getTaskMessageAttempts(task.getTid(), updated.getMessageId()).isEmpty());
+    }
+
+    @Test
     void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerContextForRetry() {
         Task task = createTask(2);
         task.setBatchSize(2);
@@ -585,6 +607,13 @@ class SimpleTaskMsgAssignListenerTest {
             Optional<TaskMsg> message = super.getTaskMessage(taskId, messageId);
             message.ifPresent(taskMsg -> taskMsg.setInput(java.util.Map.of()));
             return message;
+        }
+    }
+
+    private static final class FailingAddAttemptStorage extends InMemoryTaskStorage {
+        @Override
+        public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+            throw new IllegalStateException("compatibility attempt projection unavailable");
         }
     }
 }

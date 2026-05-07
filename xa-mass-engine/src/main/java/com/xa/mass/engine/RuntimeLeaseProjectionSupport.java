@@ -55,8 +55,12 @@ final class RuntimeLeaseProjectionSupport {
             return activeAttempt;
         }
         int nextAttemptNo = activeLease.retryCount() + 1;
+        String recoveredAttemptId = taskMsg.latestAttemptId();
+        if (recoveredAttemptId == null || recoveredAttemptId.isBlank()) {
+            recoveredAttemptId = "recovered-attempt-" + taskMsg.getMessageId() + "-" + nextAttemptNo + "-" + UUID.randomUUID();
+        }
         TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
-                "recovered-attempt-" + taskMsg.getMessageId() + "-" + nextAttemptNo + "-" + UUID.randomUUID(),
+                recoveredAttemptId,
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
                 nextAttemptNo
@@ -70,7 +74,7 @@ final class RuntimeLeaseProjectionSupport {
         if (!recoveredAttempt.markDispatched()) {
             return null;
         }
-        projectionPort.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
+        tryAddTaskMessageAttempt(projectionPort, taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt);
         return recoveredAttempt;
     }
 
@@ -118,6 +122,20 @@ final class RuntimeLeaseProjectionSupport {
             return true;
         }
         return projectionPort.updateTaskMessage(taskId, taskMsg);
+    }
+
+    private static void tryAddTaskMessageAttempt(TaskLeaseProjectionPort projectionPort,
+                                                 String taskId,
+                                                 String messageId,
+                                                 TaskMsgAttempt attempt) {
+        if (projectionPort == null || attempt == null) {
+            return;
+        }
+        try {
+            projectionPort.addTaskMessageAttempt(taskId, messageId, attempt);
+        } catch (RuntimeException ignored) {
+            // Compatibility attempt persistence is best-effort during runtime recovery.
+        }
     }
 
     static final class ProjectionLeaseSyncResult {

@@ -31,6 +31,9 @@ Already true in current code:
 - result ingest can recover a bounded compatibility `TaskMsg` projection from
   runtime lease truth when the projection is missing, rather than treating the
   missing projection as callback truth
+- compatibility `TaskMsgAttempt` writes are no longer allowed to gate dispatch
+  or callback convergence; at very high message volume they are trace residue,
+  not queue truth
 
 Still too heavy on the hot path:
 

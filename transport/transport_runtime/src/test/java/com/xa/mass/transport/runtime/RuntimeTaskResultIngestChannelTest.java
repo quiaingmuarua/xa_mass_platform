@@ -11,8 +11,8 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
+import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -204,6 +204,30 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
+    void resultConvergesWhenAttemptProjectionUpdateFailsAfterRuntimeAcceptance() {
+        scheduler = new RecordingTaskScheduler();
+        taskStorage = new FailingUpdateAttemptStorage();
+        taskWorkRuntime = new InMemoryTaskWorkRuntime();
+        traceSink = new RecordingExecutionEventSink();
+        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
+        assignmentRuntimePort = new TaskManagerAssignmentRuntimePort(taskManager);
+        channel = new RuntimeTaskResultIngestChannel(new TaskManagerResultIngestFacade(taskManager));
+
+        Task task = createRunningTask("task-attempt-update-fails");
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+
+        boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok-update-fails", null));
+
+        assertTrue(handled);
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-update-fails", updated.getOutput().get("mockData"));
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(task.getTid()).getStatus());
+    }
+
+    @Test
     void envelopeTraceIdFlowsIntoEngineCanonicalTraceEvents() {
         Task task = createRunningTask("task-envelope-trace");
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
@@ -352,6 +376,13 @@ class RuntimeTaskResultIngestChannelTest {
         @Override
         public void emit(ExecutionEvent event) {
             events.add(event);
+        }
+    }
+
+    private static final class FailingUpdateAttemptStorage extends InMemoryTaskStorage {
+        @Override
+        public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+            return false;
         }
     }
 }

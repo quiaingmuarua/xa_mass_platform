@@ -75,6 +75,9 @@ Rules:
 - `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
   for runtime-to-projection convergence, but transport result ingest no longer
   requires an active compatibility attempt row for envelope identity validation
+- `addTaskMessageAttempt(...)` and `updateTaskMessageAttempt(...)` are bounded
+  compatibility writes only; dispatch, result convergence, and retry scheduling
+  must continue from runtime truth even when these writes are missing or fail
 - `getTaskMessage(...)` may still be used to repair or recreate a bounded
   compatibility `TaskMsg` view, but dispatch payload construction must not
   require reading projection input from this seam

@@ -263,10 +263,8 @@ class TaskResultService {
                     activeAttempt.getAttemptId(), messageId, activeAttempt.getStatus());
             return TaskMessageMutationOutcome.rejected();
         }
-        if (!resultRuntime.updateTaskMessageAttempt(taskId, messageId, activeAttempt)) {
-            logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), messageId);
-            return TaskMessageMutationOutcome.rejected();
-        }
+        persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
+                "advance attempt for callback");
 
         ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
                 success, detail, errorCode, output, !success, false);
@@ -310,9 +308,9 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        TaskMsgAttempt activeAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
+        TaskMsgAttempt activeAttempt = resolveOrRecoverDispatchAttemptProjection(taskMsg, activeLease, dispatchBinding);
         if (activeAttempt == null) {
-            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no latest attempt",
+            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt projection",
                     messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
@@ -370,6 +368,36 @@ class TaskResultService {
         return resultRuntime.getTaskMessage(taskId, messageId);
     }
 
+    private TaskMsgAttempt resolveOrRecoverDispatchAttemptProjection(TaskMsg taskMsg,
+                                                                     ActiveLeaseRecord activeLease,
+                                                                     TaskDispatchBinding dispatchBinding) {
+        TaskMsgAttempt activeAttempt = resultRuntime.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        if (activeAttempt != null) {
+            return activeAttempt;
+        }
+        if (activeLease == null || dispatchBinding == null) {
+            return null;
+        }
+        TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
+                dispatchBinding.attemptId(),
+                taskMsg.getTaskId(),
+                taskMsg.getMessageId(),
+                dispatchBinding.attemptNo()
+        );
+        recoveredAttempt.setWorkerId(dispatchBinding.workerId());
+        recoveredAttempt.setWorkerContextId(dispatchBinding.workerContextId());
+        recoveredAttempt.setBatchId(dispatchBinding.batchId());
+        if (!recoveredAttempt.markLeased(java.time.LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault()))) {
+            return null;
+        }
+        if (!recoveredAttempt.markDispatched()) {
+            return null;
+        }
+        persistAttemptProjectionAddBestEffort(taskMsg.getTaskId(), taskMsg.getMessageId(), recoveredAttempt,
+                "recover dispatch compensation attempt projection");
+        return recoveredAttempt;
+    }
+
     private TaskMessageMutationOutcome handleSuccess(String taskId,
                                                      TaskMsg taskMsg,
                                                      TaskMsgAttempt activeAttempt,
@@ -412,7 +440,8 @@ class TaskResultService {
                 "TaskManager",
                 "task message marked success"
         );
-        resultRuntime.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
+        persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
+                "mark attempt success");
         if (!resultRuntime.updateTaskMessage(taskId, taskMsg)) {
             logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
@@ -482,7 +511,8 @@ class TaskResultService {
                 "TaskManager",
                 resetReason
         );
-        resultRuntime.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
+        persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
+                "revoke attempt for retry");
 
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.BUSINESS_FAILED)) {
@@ -531,7 +561,8 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
         activeAttempt.setOutput(output);
-        resultRuntime.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
+        persistAttemptProjectionBestEffort(taskId, messageId, activeAttempt,
+                "mark attempt failure");
 
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.RETRY_EXHAUSTED)) {
@@ -562,6 +593,39 @@ class TaskResultService {
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable failure");
         }
         return TaskMessageMutationOutcome.acceptedDirty();
+    }
+
+    private void persistAttemptProjectionBestEffort(String taskId,
+                                                    String messageId,
+                                                    TaskMsgAttempt attempt,
+                                                    String action) {
+        if (attempt == null) {
+            return;
+        }
+        try {
+            if (!resultRuntime.updateTaskMessageAttempt(taskId, messageId, attempt)) {
+                logger.warn("Failed to update compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}",
+                        taskId, messageId, attempt.getAttemptId(), action);
+            }
+        } catch (RuntimeException e) {
+            logger.warn("Failed to update compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
+                    taskId, messageId, attempt.getAttemptId(), action, e);
+        }
+    }
+
+    private void persistAttemptProjectionAddBestEffort(String taskId,
+                                                       String messageId,
+                                                       TaskMsgAttempt attempt,
+                                                       String action) {
+        if (attempt == null) {
+            return;
+        }
+        try {
+            resultRuntime.addTaskMessageAttempt(taskId, messageId, attempt);
+        } catch (RuntimeException e) {
+            logger.warn("Failed to add compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
+                    taskId, messageId, attempt.getAttemptId(), action, e);
+        }
     }
 
     private boolean isCallbackAcceptableMessageState(TaskMsg taskMsg) {
