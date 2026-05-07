@@ -52,7 +52,7 @@ import java.util.function.Supplier;
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager implements TaskAssignmentRuntimePort {
+public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -258,7 +258,8 @@ public class TaskManager implements TaskAssignmentRuntimePort {
         return taskStorage.listTasksPaged(offset, limit);
     }
 
-    List<Task> getRuntimeDispatchableTasks(int limit) {
+    @Override
+    public List<Task> getRuntimeDispatchableTasks(int limit) {
         return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
     }
 
@@ -286,7 +287,8 @@ public class TaskManager implements TaskAssignmentRuntimePort {
         return tasks;
     }
 
-    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    @Override
+    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
@@ -324,7 +326,8 @@ public class TaskManager implements TaskAssignmentRuntimePort {
     /**
      * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
      */
-    boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    @Override
+    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
         return withTaskLock(taskId, () -> lifecycleService.terminateTask(taskId, reason));
     }
 
@@ -432,7 +435,8 @@ public class TaskManager implements TaskAssignmentRuntimePort {
     /**
      * Expires a single in-flight task message and recalculates task convergence.
      */
-    boolean expireTaskMessage(String taskId, String messageId) {
+    @Override
+    public boolean expireTaskMessage(String taskId, String messageId) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.expireTaskMessage(taskId, messageId));
         if (outcome.progressDirty()) {
@@ -457,11 +461,13 @@ public class TaskManager implements TaskAssignmentRuntimePort {
         return taskRuntimeBridge.countPendingDispatchableMessages(taskId);
     }
 
-    boolean hasPendingDispatchableMessages(String taskId) {
+    @Override
+    public boolean hasPendingDispatchableMessages(String taskId) {
         return taskRuntimeBridge.hasPendingDispatchableMessages(taskId);
     }
 
-    boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
+    @Override
+    public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
         return taskRuntimeBridge.hasProcessingMessagesForWorker(taskId, workerId);
     }
 
@@ -667,7 +673,8 @@ public class TaskManager implements TaskAssignmentRuntimePort {
      * <p>This is a runtime orchestration method, not a public business API
      * contract.
      */
-    void requestTaskDispatch(Task task) {
+    @Override
+    public void requestTaskDispatch(Task task) {
         dispatchRequestService.requestImmediate(task);
     }
 
@@ -686,11 +693,13 @@ public class TaskManager implements TaskAssignmentRuntimePort {
         return taskRuntimeBridge.getActiveLease(taskId, messageId);
     }
 
-    List<ActiveLeaseRecord> getActiveLeases(String taskId) {
+    @Override
+    public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
         return taskRuntimeBridge.getActiveLeases(taskId);
     }
 
-    List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
+    @Override
+    public List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
         return taskRuntimeBridge.pollExpiredLeases(limit, now);
     }
 

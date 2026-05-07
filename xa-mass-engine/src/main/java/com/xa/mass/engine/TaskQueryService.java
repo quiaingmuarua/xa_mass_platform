@@ -21,58 +21,67 @@ import java.util.Objects;
  */
 public class TaskQueryService {
 
+    private final TaskManager taskManager;
     private final TaskQueryPort taskQueries;
 
     public TaskQueryService(TaskManager taskManager) {
-        this(new TaskManagerQueryPort(taskManager));
+        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
+        this.taskQueries = null;
     }
 
     public TaskQueryService(TaskQueryPort taskQueries) {
+        this.taskManager = null;
         this.taskQueries = Objects.requireNonNull(taskQueries, "taskQueries");
     }
 
     public Task getTask(String taskId) {
-        return taskQueries.getTask(taskId);
+        return taskManager != null ? taskManager.getTask(taskId) : taskQueries.getTask(taskId);
     }
 
     public List<Task> listTasksPaged(int offset, int limit) {
-        return taskQueries.listTasksPaged(offset, limit);
+        return taskManager != null ? taskManager.listTasksPaged(offset, limit) : taskQueries.listTasksPaged(offset, limit);
     }
 
     public List<Task> getTasksByStatus(TaskStatus status) {
-        return taskQueries.getTasksByStatus(status);
+        return taskManager != null ? taskManager.getTasksByStatus(status) : taskQueries.getTasksByStatus(status);
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskQueries.getTaskMessages(taskId, limit);
+        return taskManager != null ? taskManager.getTaskMessages(taskId, limit) : taskQueries.getTaskMessages(taskId, limit);
     }
 
     public long countTaskMessages(String taskId) {
-        return taskQueries.countTaskMessages(taskId);
+        return taskManager != null ? taskManager.countTaskMessages(taskId) : taskQueries.countTaskMessages(taskId);
     }
 
     public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskQueries.getTaskMessage(taskId, messageId);
+        return taskManager != null ? taskManager.getTaskMessage(taskId, messageId) : taskQueries.getTaskMessage(taskId, messageId);
     }
 
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskQueries.getTaskMessageAttempts(taskId, messageId);
+        return taskManager != null
+                ? taskManager.getTaskMessageAttempts(taskId, messageId)
+                : taskQueries.getTaskMessageAttempts(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskQueries.getLatestTaskMessageAttempt(taskId, messageId);
+        return taskManager != null
+                ? taskManager.getLatestTaskMessageAttempt(taskId, messageId)
+                : taskQueries.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskQueries.getLatestActiveTaskMessageAttempt(taskId, messageId);
+        return taskManager != null
+                ? taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId)
+                : taskQueries.getLatestActiveTaskMessageAttempt(taskId, messageId);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return taskQueries.resolveTaskState(taskId);
+        return taskManager != null ? taskManager.resolveTaskState(taskId) : taskQueries.resolveTaskState(taskId);
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return taskQueries.validateTaskState(taskId);
+        return taskManager != null ? taskManager.validateTaskState(taskId) : taskQueries.validateTaskState(taskId);
     }
 
 }

@@ -7,8 +7,6 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
-import com.xa.mass.engine.TaskManagerRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
@@ -183,14 +181,14 @@ public class EngineConfig {
 
     public TaskRuntimeMaintenancePort getTaskRuntimeMaintenancePort() {
         if (taskRuntimeMaintenancePort == null) {
-            taskRuntimeMaintenancePort = new TaskManagerRuntimeMaintenancePort(ensureTaskManager());
+            taskRuntimeMaintenancePort = ensureTaskManager();
         }
         return taskRuntimeMaintenancePort;
     }
 
     public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {
         if (taskRuntimeRecoveryPort == null) {
-            taskRuntimeRecoveryPort = new TaskManagerRuntimeRecoveryPort(ensureTaskManager());
+            taskRuntimeRecoveryPort = ensureTaskManager();
         }
         return taskRuntimeRecoveryPort;
     }

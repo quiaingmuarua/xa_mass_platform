@@ -39,7 +39,6 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -569,21 +568,26 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
-                config.getBundledWebSocketAdapterConfig().getAdapterId(),
-                endpointRegistry,
-                null,
-                runtimeComposition.resolveSystemEventChannel()
-        );
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        IllegalStateException error = assertThrows(
-                IllegalStateException.class,
-                () -> WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                        config.getBundledWebSocketAdapterConfig(),
-                        dispatcherContext,
-                        endpointRegistry
-                )
-        );
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, config.getBundledWebSocketAdapterConfig().getAdapterId()).create(
+                            new TransportAdapterBootstrapContext<>(
+                                    endpointRegistry,
+                                    null,
+                                    runtimeComposition.resolveSystemEventChannel(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
 
         assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
     }
@@ -2695,6 +2699,8 @@ class MassSdkTest {
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.TransportRuntimeRegistry"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.MassWebSocketAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.config.WebSocketConfig"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.config.WebSocketRuntimeComposition"));
@@ -2758,14 +2764,6 @@ class MassSdkTest {
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportServerPort");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
         assertMissingMethod(TransportRuntimeComposition.class, "getMaxConnections");
-        assertMissingMethod(
-                WebSocketEmbeddedRuntimeSupport.class,
-                "createDispatcherContext",
-                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
-                WorkerEndpointRegistry.class,
-                TaskResultIngestChannel.class,
-                WorkerSystemEventChannel.class
-        );
         Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredConstructor(
                 WorkerEndpointRegistry.class,

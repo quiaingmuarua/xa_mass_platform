@@ -11,14 +11,17 @@ import java.util.Map;
  */
 public final class TaskManagerResultIngestFacade implements TaskResultIngestFacade {
 
+    private final TaskManager taskManager;
     private final TaskResultIngestPort resultIngestPort;
 
     public TaskManagerResultIngestFacade(TaskManager taskManager) {
-        this(new TaskManagerResultIngestPort(taskManager));
+        this.taskManager = java.util.Objects.requireNonNull(taskManager, "taskManager");
+        this.resultIngestPort = null;
     }
 
     public TaskManagerResultIngestFacade(TaskResultIngestPort resultIngestPort) {
-        this.resultIngestPort = resultIngestPort;
+        this.taskManager = null;
+        this.resultIngestPort = java.util.Objects.requireNonNull(resultIngestPort, "resultIngestPort");
     }
 
     @Override
@@ -28,11 +31,21 @@ public final class TaskManagerResultIngestFacade implements TaskResultIngestFaca
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        return resultIngestPort.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
+        return taskManager != null
+                ? taskManager.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output)
+                : resultIngestPort.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
     }
 
     @Override
     public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        if (taskManager != null) {
+            return TaskResultCorrelationSupport.fromRuntimeState(
+                    taskId,
+                    messageId,
+                    taskManager.getTaskMessage(taskId, messageId),
+                    taskManager.getActiveLease(taskId, messageId).orElse(null)
+            );
+        }
         return resultIngestPort.getResultCorrelation(taskId, messageId);
     }
 }

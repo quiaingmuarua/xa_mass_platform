@@ -5,11 +5,19 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.model.TransportOutboundMessage;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
+import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
+import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
@@ -32,11 +40,11 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     @Override
     public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-        com.xa.mass.transport.websocket.session.ServerSessionManager endpointRegistry =
-                resolveEndpointRegistry(context);
-        WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
+        ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
+        WebSocketDispatchRuntimeContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
                 endpointRegistry,
+                new WebSocketTransportFrameCodec(),
                 context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel()
         );
@@ -44,7 +52,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
-                    WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(
+                    new WebSocketRealtimeWorkerAdapter(
                             config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
@@ -57,11 +65,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 
-        TransportServer transportServer = WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                config,
-                dispatcherContext,
-                endpointRegistry
-        );
+        TransportServer transportServer = createTransportServer(dispatcherContext, endpointRegistry);
         if (transportServer != null) {
             contribution.transportServer(transportServer);
         }
@@ -69,9 +73,9 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         return contribution.build();
     }
 
-    private com.xa.mass.transport.websocket.session.ServerSessionManager resolveEndpointRegistry(
+    private ServerSessionManager resolveEndpointRegistry(
             TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-        if (context.getEndpointRegistry() instanceof com.xa.mass.transport.websocket.session.ServerSessionManager sessionManager) {
+        if (context.getEndpointRegistry() instanceof ServerSessionManager sessionManager) {
             if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
                 throw new IllegalStateException("WebSocket transport requires endpoint registry adapterId '"
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
@@ -80,15 +84,40 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
-            com.xa.mass.transport.websocket.session.ServerSessionManager sessionManager =
+            ServerSessionManager sessionManager =
                     composite.getOrRegister(
                             config.getAdapterId(),
-                            () -> new com.xa.mass.transport.websocket.session.ServerSessionManager(config.getAdapterId())
+                            () -> new ServerSessionManager(config.getAdapterId())
                     );
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
             return sessionManager;
         }
         throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
+    }
+
+    private TransportServer createTransportServer(WebSocketDispatchRuntimeContext dispatcherContext,
+                                                  ServerSessionManager sessionManager) {
+        if (!config.isServerEnabled()) {
+            return null;
+        }
+        TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
+                config.getTransportServerFactory();
+        if (transportServerFactory != null) {
+            return transportServerFactory.create(new TransportServerFactoryContext(
+                    sessionManager,
+                    new WebSocketInputProcessor(dispatcherContext)::process,
+                    config.getServerPort(),
+                    config.getEndpointPath()
+            ));
+        }
+        return new WebSocketServerImpl(
+                config.getServerPort(),
+                config.getMaxConnections(),
+                config.getEndpointPath(),
+                dispatcherContext.getFrameCodec(),
+                new WebSocketInputProcessor(dispatcherContext)::process,
+                sessionManager
+        );
     }
 
     private static final class WebSocketRawWorkerMessageChannel

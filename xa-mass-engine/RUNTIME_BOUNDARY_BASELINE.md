@@ -74,6 +74,12 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - when assignment wiring already depends on `TaskAssignmentRuntimePort`, prefer
   the engine owner implementing that seam directly over a second adapter class
   that only forwards to `TaskManager`
+- shell/query/result facades may keep their external seam types, but
+  package-local pass-through `TaskManager*Port` wrappers should not exist when
+  same-module services can call the engine owner directly
+- the same rule applies to maintenance/recovery seams: keep the seam when
+  watchdog or startup wiring needs it, but let the engine owner implement it
+  directly instead of preserving a forwarding adapter class
 
 It must not redefine:
 

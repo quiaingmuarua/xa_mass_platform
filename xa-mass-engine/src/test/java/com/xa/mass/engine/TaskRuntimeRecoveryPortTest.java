@@ -40,7 +40,7 @@ class TaskRuntimeRecoveryPortTest {
         manager.approveTask(second.getTid());
         runtime.setReadyTaskIds(List.of(second.getTid()));
 
-        TaskRuntimeRecoveryPort recoveryPort = new TaskManagerRuntimeRecoveryPort(manager);
+        TaskRuntimeRecoveryPort recoveryPort = manager;
         List<Task> recovered = recoveryPort.getRuntimeDispatchableTasks(10);
 
         assertEquals(List.of(second.getTid()), recovered.stream().map(Task::getTid).toList());
@@ -57,7 +57,7 @@ class TaskRuntimeRecoveryPortTest {
         manager.approveTask(task.getTid());
         runtime.setReadyTaskIds(List.of(task.getTid(), "missing-task-shell"));
 
-        TaskRuntimeRecoveryPort recoveryPort = new TaskManagerRuntimeRecoveryPort(manager);
+        TaskRuntimeRecoveryPort recoveryPort = manager;
         List<Task> recovered = recoveryPort.getRuntimeDispatchableTasks(10);
 
         assertEquals(List.of(task.getTid()), recovered.stream().map(Task::getTid).toList());

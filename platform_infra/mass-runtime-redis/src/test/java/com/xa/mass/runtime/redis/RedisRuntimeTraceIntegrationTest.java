@@ -8,7 +8,6 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -79,7 +78,7 @@ class RedisRuntimeTraceIntegrationTest {
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         resultFacade = new TaskManagerResultIngestFacade(taskManager);
-        maintenancePort = new TaskManagerRuntimeMaintenancePort(taskManager);
+        maintenancePort = taskManager;
     }
 
     @AfterEach
