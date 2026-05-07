@@ -10,13 +10,17 @@ import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.RuntimeEventBusEngineBridge;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
+import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
@@ -66,6 +70,7 @@ public class MassApplicationBuilder {
     public MassApplication build() {
         TransportConfig transportSnapshot = new TransportConfig(transportConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
+        autoWireRuntimeEventBusBridge(transportSnapshot, engineSnapshot);
         logger.info("Building MassApplication with configuration: adapters={}, transport={}, engine={}",
                 describeAdapterSummary(transportSnapshot),
                 transportSnapshot.isEnabled(),
@@ -84,6 +89,21 @@ public class MassApplicationBuilder {
                 transportSnapshot,
                 engineSnapshot
         );
+    }
+
+    private static void autoWireRuntimeEventBusBridge(TransportConfig transportSnapshot, EngineConfig engineSnapshot) {
+        if (!engineSnapshot.isEnabled()) {
+            return;
+        }
+        if (engineSnapshot.getRuntimeBridge() != EngineRuntimeBridge.noop()) {
+            return;
+        }
+
+        TransportRuntimeComposition transportRuntimeComposition = transportSnapshot.snapshotRuntimeComposition();
+        WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
+        if (systemEventChannel instanceof RuntimeEventBusWorkerSystemEventChannel) {
+            engineSnapshot.setRuntimeBridge(RuntimeEventBusEngineBridge.runtimeBus());
+        }
     }
 
     private static String describeAdapterSummary(TransportConfig transportConfig) {

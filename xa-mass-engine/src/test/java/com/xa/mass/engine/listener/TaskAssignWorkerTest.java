@@ -254,10 +254,9 @@ class TaskAssignWorkerTest {
                     "rejected".equals(mdc.get("taskId"))
                             && "SUBMIT_RETRY_SCHEDULED".equals(mdc.get("queueAction"))
                             && "DEFERRED".equals(mdc.get("result")));
-            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
-                    "rejected".equals(mdc.get("taskId"))
-                            && "RETRY_ENQUEUED".equals(mdc.get("queueAction"))
-                            && "SUCCESS".equals(mdc.get("result")));
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "rejected", "RETRY_ENQUEUED",
+                            mdc -> "SUCCESS".equals(mdc.get("result")))),
+                    "retry-enqueued queue snapshot should be captured before assertions run");
         } finally {
             releaseFirstAttempt.countDown();
         }

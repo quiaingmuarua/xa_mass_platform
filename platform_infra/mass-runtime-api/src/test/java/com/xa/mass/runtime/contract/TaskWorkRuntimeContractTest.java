@@ -54,7 +54,9 @@ public abstract class TaskWorkRuntimeContractTest {
 
     @AfterEach
     void tearDown() {
-        destroyRuntime(runtime);
+        if (runtime != null) {
+            destroyRuntime(runtime);
+        }
     }
 
     // ── enqueue ───────────────────────────────────────────────────────────────
