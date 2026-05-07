@@ -433,6 +433,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                     capacity.target.workerId(),
                     capacity.target.workerContextId(),
                     capacity.target.batchId(),
+                    item.payloadRef(),
                     item.retryCount(),
                     leaseExpireAt,
                     leasedAt
@@ -741,6 +742,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         fields.put(RedisTaskWorkKeyspace.FIELD_WORKER_ID, nullToEmpty(lease.workerId()));
         fields.put(RedisTaskWorkKeyspace.FIELD_WORKER_CONTEXT_ID, nullToEmpty(lease.workerContextId()));
         fields.put(RedisTaskWorkKeyspace.FIELD_BATCH_ID, nullToEmpty(lease.batchId()));
+        fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_PAYLOAD_REF, nullToEmpty(lease.payloadRef()));
         fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_RETRY_COUNT, Integer.toString(lease.retryCount()));
         fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_EXPIRE_AT_MILLIS, instantToString(lease.leaseExpireAt()));
         fields.put(RedisTaskWorkKeyspace.FIELD_LEASED_AT_MILLIS, instantToString(lease.leasedAt()));
@@ -759,6 +761,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_WORKER_ID)),
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_WORKER_CONTEXT_ID)),
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_BATCH_ID)),
+                emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_PAYLOAD_REF)),
                 parseInt(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_RETRY_COUNT)),
                 parseInstant(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_EXPIRE_AT_MILLIS)),
                 parseInstant(fields.get(RedisTaskWorkKeyspace.FIELD_LEASED_AT_MILLIS))

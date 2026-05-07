@@ -43,6 +43,9 @@ Transport should stay centered on these concepts only:
   delivery
 - `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
+- `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
+  empty queue, invalid request, temporary unavailability, and shutdown must not
+  be flattened into one fake "no work" result on the transport mainline
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -241,7 +244,9 @@ diagnostics are assembled above the store boundary by
 `TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
 distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
-queue. Thread interruption is not a store result contract; store
+queue. `TaskPullChannel.pollTaskMessagesResult(...)` is the transport mainline
+for that statusful view; list-only pull helpers are convenience wrappers above
+it. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
 store boundary. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new

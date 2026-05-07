@@ -146,6 +146,16 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
+    void pollDispatchResultPreservesEmptyAndInvalidRequestStatuses() {
+        TransportDeliveryService service = service();
+
+        assertEquals(TransportDeliveryPollStatus.EMPTY,
+                service.pollEnvelopeResult("polling", "worker-1", 10, 0).getStatus());
+        assertEquals(TransportDeliveryPollStatus.INVALID_REQUEST,
+                service.pollEnvelopeResult("polling", " ", 10, 0).getStatus());
+    }
+
+    @Test
     void toDispatchItemsCachesProjectedItemsPerEnvelopeIndex() {
         TaskDispatchItem item = item("msg-1", "worker-1");
         List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchItems(List.of(envelope(item)));

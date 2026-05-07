@@ -88,6 +88,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -3021,8 +3022,8 @@ class MassSdkTest {
         }
 
         @Override
-        public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
-            return List.of();
+        public TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
+            return TaskPullResult.empty();
         }
     }
 

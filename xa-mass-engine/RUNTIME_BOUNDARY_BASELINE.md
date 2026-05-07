@@ -58,6 +58,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
   rebuild a bounded in-memory `TaskMsg` compatibility view, but it must not
   require persisting intermediate `ASSIGNED` or transient failure states before
   runtime result convergence can finish
+- active lease truth must carry the minimal message reference needed for bounded
+  compatibility recovery, especially `payloadRef`; runtime repair must not fall
+  back to persisted `TaskMsg.input` just to rediscover the queued work identity
 - when `TaskMsg.latestAttemptId` is missing during runtime result convergence,
   engine may reuse the latest bounded compatibility attempt id only as a local
   fallback to close the right audit row; runtime acceptance still comes from the

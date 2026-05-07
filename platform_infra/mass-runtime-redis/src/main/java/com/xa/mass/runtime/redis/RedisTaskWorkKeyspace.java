@@ -28,6 +28,7 @@ public final class RedisTaskWorkKeyspace {
     public static final String FIELD_WORKER_ID = "workerId";
     public static final String FIELD_WORKER_CONTEXT_ID = "workerContextId";
     public static final String FIELD_BATCH_ID = "batchId";
+    public static final String FIELD_LEASE_PAYLOAD_REF = "payloadRef";
     public static final String FIELD_LEASE_RETRY_COUNT = "retryCount";
     public static final String FIELD_LEASE_EXPIRE_AT_MILLIS = "leaseExpireAtMillis";
     public static final String FIELD_LEASED_AT_MILLIS = "leasedAtMillis";

@@ -43,6 +43,7 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
@@ -399,11 +400,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+    public TaskPullResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis) {
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
-        return externalPullWorkerSession(workerId).poll(maxMessages, timeoutMillis);
+        return externalPullWorkerSession(workerId).pollResult(maxMessages, timeoutMillis);
+    }
+
+    @Override
+    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
     @Override

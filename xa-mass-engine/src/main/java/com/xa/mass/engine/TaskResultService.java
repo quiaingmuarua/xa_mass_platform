@@ -451,7 +451,7 @@ class TaskResultService {
         }
         RuntimeMessageView baseView = storedProjection != null
                 ? RuntimeMessageView.from(storedProjection)
-                : RuntimeMessageView.synthetic(taskId, messageId);
+                : RuntimeMessageView.synthetic(taskId, messageId, activeLease != null ? activeLease.payloadRef() : null);
         if (baseView != null && activeLease != null && baseView.isCompleted()) {
             baseView = baseView.reopenForActiveLease(activeLease);
         }
@@ -1187,7 +1187,7 @@ class TaskResultService {
                                       String payloadRef,
                                       Map<String, Object> output) {
 
-        private static RuntimeMessageView synthetic(String taskId, String messageId) {
+        private static RuntimeMessageView synthetic(String taskId, String messageId, String payloadRef) {
             LocalDateTime now = LocalDateTime.now();
             return new RuntimeMessageView(
                     messageId,
@@ -1207,7 +1207,7 @@ class TaskResultService {
                     null,
                     null,
                     null,
-                    null,
+                    payloadRef,
                     null
             );
         }

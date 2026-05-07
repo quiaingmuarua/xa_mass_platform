@@ -8,6 +8,7 @@ public record ActiveLeaseRecord(String taskId,
                                 String workerId,
                                 String workerContextId,
                                 String batchId,
+                                String payloadRef,
                                 int retryCount,
                                 Instant leaseExpireAt,
                                 Instant leasedAt) {

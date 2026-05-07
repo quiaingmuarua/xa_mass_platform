@@ -2,6 +2,7 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
@@ -30,11 +31,19 @@ public interface ExternalWorkerOperations {
 
     void workerOffline(String workerId, String reason);
 
+    default TaskPullResult pollTasksResult(String workerId, int maxMessages) {
+        return pollTasksResult(workerId, maxMessages, 0L);
+    }
+
+    TaskPullResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis);
+
     default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
         return pollTasks(workerId, maxMessages, 0L);
     }
 
-    List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis);
+    default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
+    }
 
     boolean submitResult(String workerId, TaskResultReport report);
 }

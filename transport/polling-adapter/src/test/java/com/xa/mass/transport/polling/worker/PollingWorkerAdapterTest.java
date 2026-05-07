@@ -1,6 +1,7 @@
 package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -29,7 +30,9 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(List.of("msg-1"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
+        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
+        adapter.dispatchEnvelopes(List.of(envelope(item("msg-2", "worker-1"))));
+        assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
     }
@@ -43,6 +46,7 @@ class PollingWorkerAdapterTest {
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
         assertTrue(adapter.pollTaskMessages("worker-1", 10, 0).isEmpty());
+        assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
     }
 
     @Test
@@ -61,6 +65,16 @@ class PollingWorkerAdapterTest {
         assertTrue(outcomes.get(outcomes.size() - 1).isRetryable());
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE,
                 adapter.pollTaskMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
+    }
+
+    @Test
+    void pollResultPreservesDeliveredAndInvalidRequestStatuses() {
+        PollingWorkerAdapter adapter = adapter();
+        adapter.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
+
+        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
+        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult(" ", 10, 0).getStatus());
+        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult("worker-1", 0, 0).getStatus());
     }
 
     private PollingWorkerAdapter adapter() {

@@ -1,6 +1,7 @@
 package com.xa.mass.sdk.worker;
 
 import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -82,7 +83,15 @@ public class PullWorkerSession {
     }
 
     public List<TaskDispatchItem> poll(int maxMessages, long timeoutMillis) {
-        return taskPullChannel.pollTaskMessages(workerId, maxMessages, timeoutMillis);
+        return pollResult(maxMessages, timeoutMillis).getItems();
+    }
+
+    public TaskPullResult pollResult(int maxMessages) {
+        return pollResult(maxMessages, 0L);
+    }
+
+    public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
+        return taskPullChannel.pollTaskMessagesResult(workerId, maxMessages, timeoutMillis);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {

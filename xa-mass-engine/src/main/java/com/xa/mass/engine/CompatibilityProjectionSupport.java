@@ -70,7 +70,7 @@ final class CompatibilityProjectionSupport {
         if (activeLease == null) {
             return storedProjection;
         }
-        TaskMsg base = storedProjection != null ? storedProjection : new TaskMsg(messageId, taskId, Map.of());
+        TaskMsg base = storedProjection != null ? storedProjection : new TaskMsg(messageId, taskId, activeLease.payloadRef());
         if (base.isCompleted()) {
             return base;
         }
@@ -80,11 +80,21 @@ final class CompatibilityProjectionSupport {
         boolean needsAssignedStatus = base.getStatus() == null || base.getStatus() == TaskMsgStatus.INIT;
         boolean needsRetryProjection = base.getRetryCount() != Math.max(0, activeLease.retryCount());
         boolean needsAssignedTime = base.getAssignedTime() == null && activeLease.leasedAt() != null;
-        if (!attemptProjectionDiffers && !needsAssignedStatus && !needsRetryProjection && !needsAssignedTime) {
+        boolean needsPayloadRefProjection = base.getPayloadRef() == null
+                && activeLease.payloadRef() != null
+                && !activeLease.payloadRef().isBlank();
+        if (!attemptProjectionDiffers
+                && !needsAssignedStatus
+                && !needsRetryProjection
+                && !needsAssignedTime
+                && !needsPayloadRefProjection) {
             return base;
         }
         TaskMsg projected = copyOf(base);
         projected.setRetryCount(Math.max(0, activeLease.retryCount()));
+        if (needsPayloadRefProjection) {
+            projected.setPayloadRef(activeLease.payloadRef());
+        }
         projected.applyLatestAttemptProjection(
                 projected.latestAttemptId(),
                 activeLease.workerId(),
@@ -120,11 +130,13 @@ final class CompatibilityProjectionSupport {
             return List.of();
         }
         List<TaskMsg> projected = new ArrayList<>(storedProjections != null ? storedProjections.size() : 0);
+        java.util.Set<String> projectedMessageIds = new java.util.LinkedHashSet<>();
         if (storedProjections != null) {
             for (TaskMsg storedProjection : storedProjections) {
                 if (storedProjection == null) {
                     continue;
                 }
+                projectedMessageIds.add(storedProjection.getMessageId());
                 projected.add(overlayActiveLeaseView(
                         storedProjection,
                         leaseByMessageId.get(storedProjection.getMessageId()),
@@ -132,6 +144,20 @@ final class CompatibilityProjectionSupport {
                         storedProjection.getMessageId()
                 ));
             }
+        }
+        for (ActiveLeaseRecord activeLease : leaseByMessageId.values()) {
+            if (activeLease == null
+                    || activeLease.messageId() == null
+                    || activeLease.messageId().isBlank()
+                    || projectedMessageIds.contains(activeLease.messageId())) {
+                continue;
+            }
+            projected.add(overlayActiveLeaseView(
+                    null,
+                    activeLease,
+                    taskId,
+                    activeLease.messageId()
+            ));
         }
         return List.copyOf(projected);
     }

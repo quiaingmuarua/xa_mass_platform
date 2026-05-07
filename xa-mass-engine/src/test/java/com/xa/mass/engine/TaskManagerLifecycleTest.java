@@ -339,6 +339,112 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void runtimeExpiryStillConvergesWhenInitialTaskMsgProjectionWriteFails() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("payload-ref-best-effort-expiry");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+
+        Task task = manager.createTask(dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        String messageId = java.util.UUID.randomUUID().toString();
+        String payloadRef = "s3://bucket/payloads/demo-best-effort-expiry.json";
+        failingStorage.failNextTaskMessageAdd();
+
+        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 0);
+
+        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+
+        ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-expiry-best-effort", "worker-context-expiry-best-effort", "batch-expiry-best-effort", 1)),
+                1,
+                manager.getTaskMessageLeaseSeconds()
+        ).get(0);
+        assertEquals(messageId, claimed.messageId());
+        assertEquals(payloadRef, claimed.payloadRef());
+
+        assertTrue(manager.expireTaskMessage(task.getTid(), messageId));
+
+        TaskMsg projection = manager.getTaskMessageProjection(task.getTid(), messageId);
+        TaskMsgAttempt latestAttempt = manager.getLatestTaskMessageAttemptAuditView(task.getTid(), messageId);
+        assertNotNull(projection);
+        assertEquals(TaskMsgStatus.EXPIRED, projection.getStatus());
+        assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, projection.getFinalReason());
+        assertTrue(projection.getInput().isEmpty());
+        assertEquals(payloadRef, projection.getPayloadRef());
+        assertNotNull(latestAttempt);
+        assertEquals(TaskMsgAttemptStatus.EXPIRED, latestAttempt.getStatus());
+    }
+
+    @Test
+    void runtimeLeaseOverlayExposesPayloadRefWhenTaskMsgProjectionIsMissing() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("payload-ref-best-effort-overlay");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+
+        Task task = manager.createTask(dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        String messageId = java.util.UUID.randomUUID().toString();
+        String payloadRef = "s3://bucket/payloads/demo-best-effort-overlay.json";
+        failingStorage.failNextTaskMessageAdd();
+
+        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 1);
+
+        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+
+        ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-overlay-best-effort", "worker-context-overlay-best-effort", "batch-overlay-best-effort", 1)),
+                1,
+                manager.getTaskMessageLeaseSeconds()
+        ).get(0);
+        assertEquals(payloadRef, claimed.payloadRef());
+
+        TaskMsg leasedView = manager.getTaskMessageProjection(task.getTid(), messageId);
+        TaskMessageSnapshot snapshot = manager.getTaskMessageSnapshot(task.getTid(), 10);
+
+        assertNotNull(leasedView);
+        assertEquals(TaskMsgStatus.ASSIGNED, leasedView.getStatus());
+        assertEquals(payloadRef, leasedView.getPayloadRef());
+        assertEquals("worker-overlay-best-effort", leasedView.getLatestAttemptWorkerId());
+        assertEquals(1, snapshot.messages().size());
+        assertEquals(messageId, snapshot.messages().get(0).getMessageId());
+        assertEquals(TaskMsgStatus.ASSIGNED, snapshot.messages().get(0).getStatus());
+        assertEquals(payloadRef, snapshot.messages().get(0).getPayloadRef());
+    }
+
+    @Test
     void createBatchTaskRejectsOversizedInlineInputs() {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("oversized-inline");

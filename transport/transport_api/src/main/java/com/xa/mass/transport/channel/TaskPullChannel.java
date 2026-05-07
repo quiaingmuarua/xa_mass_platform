@@ -21,8 +21,5 @@ public interface TaskPullChannel {
         return pollTaskMessagesResult(workerId, maxMessages, 0L);
     }
 
-    default TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
-        List<TaskDispatchItem> items = pollTaskMessages(workerId, maxMessages, timeoutMillis);
-        return items == null || items.isEmpty() ? TaskPullResult.empty() : TaskPullResult.delivered(items);
-    }
+    TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis);
 }

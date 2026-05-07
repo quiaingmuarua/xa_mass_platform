@@ -209,6 +209,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                     capacity.target.workerId(),
                     capacity.target.workerContextId(),
                     capacity.target.batchId(),
+                    item.payloadRef(),
                     item.retryCount(),
                     leaseExpireAt,
                     leasedAt

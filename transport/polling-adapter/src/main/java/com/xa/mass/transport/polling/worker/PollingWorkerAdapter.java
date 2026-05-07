@@ -1,11 +1,14 @@
 package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.TaskPullResult;
+import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import org.slf4j.Logger;
@@ -58,11 +61,15 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
+    public TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
-            return List.of();
+            return TaskPullResult.invalidRequest();
         }
-        return deliveryService.pollDispatchItems(PROTOCOL, workerId, maxMessages, timeoutMillis);
+        TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(PROTOCOL, workerId, maxMessages, timeoutMillis);
+        return new TaskPullResult(
+                mapStatus(result.getStatus()),
+                TransportDeliveryService.toDispatchItems(result.getEnvelopes())
+        );
     }
 
     public void announceWorkerOnline(String workerId, String reason) {
@@ -75,6 +82,19 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
 
     public void publishWorkerHeartbeat(String workerId, String reason) {
         systemEventChannel.publishWorkerHeartbeat(workerId, reason, workerId);
+    }
+
+    private static TaskPullStatus mapStatus(TransportDeliveryPollStatus status) {
+        if (status == null) {
+            return TaskPullStatus.UNAVAILABLE;
+        }
+        return switch (status) {
+            case DELIVERED -> TaskPullStatus.DELIVERED;
+            case EMPTY -> TaskPullStatus.EMPTY;
+            case INVALID_REQUEST -> TaskPullStatus.INVALID_REQUEST;
+            case UNAVAILABLE -> TaskPullStatus.UNAVAILABLE;
+            case SHUTDOWN -> TaskPullStatus.SHUTDOWN;
+        };
     }
 
 }
