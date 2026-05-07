@@ -2,7 +2,6 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -57,7 +56,7 @@ class TransportConfigTest {
     }
 
     private record StubBootstrap(String adapterId, String transportHint)
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         @Override
         public TransportAdapterDescriptor descriptor() {
@@ -65,8 +64,7 @@ class TransportConfigTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.builder().build();
+        public void contribute(TransportAdapterBootstrapContext context) {
         }
     }
 }

@@ -139,12 +139,12 @@ public class MassApplicationBuilder {
                     + ")");
         }
 
-        TransportAdapterBootstrap<TransportOutboundMessage> primaryBootstrap =
+        TransportAdapterBootstrap primaryBootstrap =
                 transportConfig.getPrimaryTransportAdapterBootstrap();
         if (primaryBootstrap != null) {
             summaries.add(describeBootstrap("primaryBootstrap", primaryBootstrap));
         }
-        List<TransportAdapterBootstrap<TransportOutboundMessage>> additionalBootstraps =
+        List<TransportAdapterBootstrap> additionalBootstraps =
                 transportConfig.getSupplementalTransportAdapterBootstraps();
         for (int i = 0; i < additionalBootstraps.size(); i++) {
             summaries.add(describeBootstrap("supplemental[" + i + "]", additionalBootstraps.get(i)));
@@ -154,7 +154,7 @@ public class MassApplicationBuilder {
     }
 
     private static String describeBootstrap(String source,
-                                            TransportAdapterBootstrap<TransportOutboundMessage> bootstrap) {
+                                            TransportAdapterBootstrap bootstrap) {
         TransportAdapterDescriptor descriptor = bootstrap.descriptor();
         if (descriptor == null) {
             return source + "(descriptor=<none>)";
@@ -267,7 +267,7 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
+                TransportAdapterBootstrap transportAdapterBootstrap) {
             config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }

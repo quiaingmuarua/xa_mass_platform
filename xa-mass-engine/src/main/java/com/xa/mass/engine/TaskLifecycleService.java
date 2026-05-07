@@ -268,8 +268,7 @@ class TaskLifecycleService {
         int added = 0;
         for (java.util.Map<String, Object> input : inputs) {
             String messageId = java.util.UUID.randomUUID().toString();
-            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
-            taskManager.addTaskMessage(taskId, taskMsg);
+            taskManager.addTaskInput(taskId, messageId, input, 3);
             added++;
         }
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);

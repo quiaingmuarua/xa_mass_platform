@@ -3,13 +3,11 @@ package com.xa.mass.transport.websocket.runtime;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
@@ -22,7 +20,7 @@ import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
  */
-public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap<TransportOutboundMessage> {
+public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap {
 
     private final WebSocketAdapterConfig config;
 
@@ -39,7 +37,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     @Override
-    public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
+    public void contribute(TransportAdapterBootstrapContext context) {
         ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
         WebSocketDispatchRuntimeContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
@@ -49,9 +47,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 context.getSystemEventChannel()
         );
 
-        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            contribution.transportBinding(TransportBinding.builder(
+            context.registerTransportBinding(TransportBinding.builder(
                     new WebSocketRealtimeWorkerAdapter(
                             config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
@@ -62,19 +59,17 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 }
                 return dispatchBinding != null ? dispatchBinding.workerId() : null;
             }).build());
-            contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
+            context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 
         TransportServer transportServer = createTransportServer(dispatcherContext, endpointRegistry);
         if (transportServer != null) {
-            contribution.transportServer(transportServer);
+            context.registerTransportServer(transportServer);
         }
-
-        return contribution.build();
     }
 
     private ServerSessionManager resolveEndpointRegistry(
-            TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
+            TransportAdapterBootstrapContext context) {
         if (context.getEndpointRegistry() instanceof ServerSessionManager sessionManager) {
             if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
                 throw new IllegalStateException("WebSocket transport requires endpoint registry adapterId '"

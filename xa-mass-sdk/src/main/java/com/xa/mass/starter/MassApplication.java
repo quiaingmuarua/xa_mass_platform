@@ -24,7 +24,6 @@ import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
@@ -241,18 +240,17 @@ public class MassApplication {
                 logger.info("Task result ingest channel initialized (buffered async)");
             }
 
-            for (TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap
+            for (TransportAdapterBootstrap transportAdapterBootstrap
                     : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
-                TransportAdapterContribution contribution = transportAdapterBootstrap.create(
-                        new TransportAdapterBootstrapContext<>(
-                                endpointRegistry,
-                                taskResultIngestChannel,
-                                systemEventChannel,
-                                deliveryService,
-                                transportRuntimeTaskExecutor
-                        )
+                TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
+                        endpointRegistry,
+                        taskResultIngestChannel,
+                        systemEventChannel,
+                        deliveryService,
+                        transportRuntimeTaskExecutor
                 );
-                registerTransportContribution(contribution, adapterBindings);
+                transportAdapterBootstrap.contribute(bootstrapContext);
+                registerTransportBootstrapContext(bootstrapContext, adapterBindings);
             }
 
             if (engineConfig.isEnabled()) {
@@ -454,17 +452,14 @@ public class MassApplication {
         }
     }
 
-    private void registerTransportContribution(TransportAdapterContribution contribution,
-                                               List<TransportBinding> adapterBindings) {
-        if (contribution == null) {
-            return;
+    private void registerTransportBootstrapContext(TransportAdapterBootstrapContext bootstrapContext,
+                                                   List<TransportBinding> adapterBindings) {
+        if (bootstrapContext.getTransportBinding() != null) {
+            adapterBindings.add(bootstrapContext.getTransportBinding());
         }
-        if (contribution.getTransportBinding() != null) {
-            adapterBindings.add(contribution.getTransportBinding());
-        }
-        registerManagedTransportAdapter(contribution.getManagedTransportAdapter());
-        registerRawWorkerMessageChannel(contribution.getRawWorkerMessageChannel());
-        registerTransportServer(contribution.getTransportServer());
+        registerManagedTransportAdapter(bootstrapContext.getManagedTransportAdapter());
+        registerRawWorkerMessageChannel(bootstrapContext.getRawWorkerMessageChannel());
+        registerTransportServer(bootstrapContext.getTransportServer());
     }
 
     public boolean isRunning() {

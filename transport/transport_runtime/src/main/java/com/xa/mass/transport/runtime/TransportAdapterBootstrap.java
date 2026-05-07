@@ -5,9 +5,9 @@ package com.xa.mass.transport.runtime;
  * contribution without leaking adapter implementation details into SDK
  * composition.
  */
-public interface TransportAdapterBootstrap<T> {
+public interface TransportAdapterBootstrap {
 
-    TransportAdapterContribution create(TransportAdapterBootstrapContext<T> context);
+    void contribute(TransportAdapterBootstrapContext context);
 
     /**
      * Optional registration metadata for pre-start adapter-id resolution.

@@ -73,7 +73,6 @@ import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -418,25 +417,24 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            null,
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    null,
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNull(contribution.getTransportBinding());
-        assertNull(contribution.getManagedTransportAdapter());
-        assertNull(contribution.getTransportServer());
-        assertNull(contribution.getRawWorkerMessageChannel());
+        assertNull(bootstrapContext.getTransportBinding());
+        assertNull(bootstrapContext.getManagedTransportAdapter());
+        assertNull(bootstrapContext.getTransportServer());
+        assertNull(bootstrapContext.getRawWorkerMessageChannel());
     }
 
     @Test
@@ -448,24 +446,23 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "socket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNotNull(contribution.getTransportBinding());
-        assertNotNull(contribution.getTransportServer());
-        assertNotNull(contribution.getRawWorkerMessageChannel());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertNotNull(bootstrapContext.getTransportServer());
+        assertNotNull(bootstrapContext.getRawWorkerMessageChannel());
     }
 
     @Test
@@ -477,25 +474,24 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNotNull(contribution.getTransportBinding());
-        assertNull(contribution.getManagedTransportAdapter());
-        assertNotNull(contribution.getTransportServer());
-        assertNotNull(contribution.getRawWorkerMessageChannel());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertNull(bootstrapContext.getManagedTransportAdapter());
+        assertNotNull(bootstrapContext.getTransportServer());
+        assertNotNull(bootstrapContext.getRawWorkerMessageChannel());
     }
 
     @Test
@@ -508,25 +504,24 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "ws-public").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
         assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
-        assertNotNull(contribution.getTransportBinding());
-        assertEquals("ws-public", contribution.getTransportBinding().getWorkerAdapter().protocol());
-        assertEquals("ws-public", contribution.getRawWorkerMessageChannel().adapterId());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertEquals("ws-public", bootstrapContext.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("ws-public", bootstrapContext.getRawWorkerMessageChannel().adapterId());
         assertEquals("ws-public",
                 runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
     }
@@ -541,24 +536,23 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "socket-edge").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNotNull(contribution.getTransportBinding());
-        assertEquals("socket-edge", contribution.getTransportBinding().getWorkerAdapter().protocol());
-        assertEquals("socket-edge", contribution.getRawWorkerMessageChannel().adapterId());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertEquals("socket-edge", bootstrapContext.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("socket-edge", bootstrapContext.getRawWorkerMessageChannel().adapterId());
         assertEquals("socket-edge",
                 runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
     }
@@ -575,8 +569,8 @@ class MassSdkTest {
         try {
             error = assertThrows(
                     IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, config.getBundledWebSocketAdapterConfig().getAdapterId()).create(
-                            new TransportAdapterBootstrapContext<>(
+                    () -> adapterBootstrap(runtimeComposition, config.getBundledWebSocketAdapterConfig().getAdapterId()).contribute(
+                            new TransportAdapterBootstrapContext(
                                     endpointRegistry,
                                     null,
                                     runtimeComposition.resolveSystemEventChannel(),
@@ -604,8 +598,8 @@ class MassSdkTest {
         try {
             error = assertThrows(
                     IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, "ws-public").create(
-                            new TransportAdapterBootstrapContext<>(
+                    () -> adapterBootstrap(runtimeComposition, "ws-public").contribute(
+                            new TransportAdapterBootstrapContext(
                                     new ServerSessionManager("websocket"),
                                     mock(TaskResultIngestChannel.class),
                                     new RuntimeEventBusWorkerSystemEventChannel(),
@@ -634,8 +628,8 @@ class MassSdkTest {
         try {
             error = assertThrows(
                     IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, "socket-edge").create(
-                            new TransportAdapterBootstrapContext<>(
+                    () -> adapterBootstrap(runtimeComposition, "socket-edge").contribute(
+                            new TransportAdapterBootstrapContext(
                                     new com.xa.mass.transport.socket.session.SocketSessionManager("socket", null),
                                     mock(TaskResultIngestChannel.class),
                                     new RuntimeEventBusWorkerSystemEventChannel(),
@@ -697,7 +691,8 @@ class MassSdkTest {
     @Test
     void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
         TransportConfig config = new TransportConfig();
-        config.addSupplementalTransportAdapterBootstrap(context -> TransportAdapterContribution.empty());
+        config.addSupplementalTransportAdapterBootstrap(context -> {
+        });
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
@@ -2885,8 +2880,8 @@ class MassSdkTest {
         return readField(app, "delegate", MassApplication.class);
     }
 
-    private static TransportAdapterBootstrap<TransportOutboundMessage> adapterBootstrap(TransportRuntimeComposition runtimeComposition,
-                                                                                      String adapterId) {
+    private static TransportAdapterBootstrap adapterBootstrap(TransportRuntimeComposition runtimeComposition,
+                                                              String adapterId) {
         return runtimeComposition.resolveTransportAdapterBootstraps().stream()
                 .filter(bootstrap -> bootstrap.descriptor() != null
                         && adapterId.equals(bootstrap.descriptor().getAdapterId()))
@@ -3040,7 +3035,7 @@ class MassSdkTest {
     }
 
     private static final class StaticDedicatedServerBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final TransportServer transportServer;
 
@@ -3049,10 +3044,8 @@ class MassSdkTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.builder()
-                    .transportServer(transportServer)
-                    .build();
+        public void contribute(TransportAdapterBootstrapContext context) {
+            context.registerTransportServer(transportServer);
         }
     }
 
@@ -3082,7 +3075,7 @@ class MassSdkTest {
     }
 
     private static final class DescriptorOnlyBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final TransportAdapterDescriptor descriptor;
 
@@ -3096,8 +3089,7 @@ class MassSdkTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.empty();
+        public void contribute(TransportAdapterBootstrapContext context) {
         }
     }
 

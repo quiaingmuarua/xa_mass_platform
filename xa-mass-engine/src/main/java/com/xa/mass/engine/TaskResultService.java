@@ -47,20 +47,20 @@ class TaskResultService {
         LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId, "messageId", messageId);
 
-        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
-        if (taskMsg == null) {
-            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message not found", 0);
-            return TaskMessageMutationOutcome.rejected();
-        }
         Task task = taskManager.getTask(taskId);
-        if (taskMsg.isCompleted()) {
-            logger.info("Task message {} of task {} is already in final status {}, skip expiry",
-                    messageId, taskId, taskMsg.getStatus());
-            return TaskMessageMutationOutcome.rejected();
-        }
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
         if (activeLease == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        TaskMsg taskMsg = resolveOrRecoverTaskMessageProjection(taskId, messageId, activeLease);
+        if (taskMsg == null) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message projection could not be recovered", 0);
+            return TaskMessageMutationOutcome.rejected();
+        }
+        if (taskMsg.isCompleted()) {
+            logger.info("Task message {} of task {} is already in final status {}, skip expiry",
+                    messageId, taskId, taskMsg.getStatus());
             return TaskMessageMutationOutcome.rejected();
         }
         RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
@@ -357,7 +357,7 @@ class TaskResultService {
                 activeLease.batchId());
         recovered.markAsAssigned();
         taskManager.addTaskMessageProjection(taskId, recovered);
-        return taskManager.getTaskMessage(taskId, messageId);
+        return recovered;
     }
 
     private TaskMsgAttempt resolveOrRecoverDispatchAttemptProjection(TaskMsg taskMsg,

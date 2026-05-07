@@ -4,10 +4,8 @@ import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
@@ -17,7 +15,7 @@ import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 /**
  * Adapter-owned bootstrap for embedded raw-socket runtime contribution.
  */
-public final class SocketTransportAdapterBootstrap implements TransportAdapterBootstrap<TransportOutboundMessage> {
+public final class SocketTransportAdapterBootstrap implements TransportAdapterBootstrap {
 
     private final SocketAdapterConfig config;
 
@@ -34,13 +32,12 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     }
 
     @Override
-    public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
+    public void contribute(TransportAdapterBootstrapContext context) {
         SocketSessionManager sessionManager = resolveSessionManager(context);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
 
-        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            contribution.transportBinding(TransportBinding.builder(
+            context.registerTransportBinding(TransportBinding.builder(
                     new SocketRealtimeWorkerAdapter(config.getAdapterId(), new SocketTaskDispatchChannel(
                             config.getAdapterId(),
                             sessionManager,
@@ -53,10 +50,10 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                 }
                 return dispatchBinding != null ? dispatchBinding.workerId() : null;
             }).build());
-            contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
+            context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {
-            contribution.transportServer(new SocketTransportServer(
+            context.registerTransportServer(new SocketTransportServer(
                     config.getAdapterId(),
                     config.getBindHost(),
                     config.getServerPort(),
@@ -68,10 +65,9 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     context.getRuntimeTaskExecutor()
             ));
         }
-        return contribution.build();
     }
 
-    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
+    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context) {
         if (context.getEndpointRegistry() instanceof SocketSessionManager sessionManager) {
             if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
                 throw new IllegalStateException("Socket transport requires endpoint registry adapterId '"

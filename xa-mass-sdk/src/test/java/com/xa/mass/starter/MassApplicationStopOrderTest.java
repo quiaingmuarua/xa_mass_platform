@@ -8,7 +8,6 @@ import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
@@ -323,7 +322,7 @@ class MassApplicationStopOrderTest {
     }
 
     private static final class StaticManagedAdapterBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final ManagedTransportAdapter managedTransportAdapter;
 
@@ -332,15 +331,13 @@ class MassApplicationStopOrderTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.builder()
-                    .managedTransportAdapter(managedTransportAdapter)
-                    .build();
+        public void contribute(TransportAdapterBootstrapContext context) {
+            context.registerManagedTransportAdapter(managedTransportAdapter);
         }
     }
 
     private static final class StaticTransportServerBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final TransportServer transportServer;
 
@@ -349,10 +346,8 @@ class MassApplicationStopOrderTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.builder()
-                    .transportServer(transportServer)
-                    .build();
+        public void contribute(TransportAdapterBootstrapContext context) {
+            context.registerTransportServer(transportServer);
         }
     }
 

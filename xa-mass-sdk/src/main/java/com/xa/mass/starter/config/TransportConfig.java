@@ -46,8 +46,8 @@ public class TransportConfig {
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<TransportDeliveryStore> deliveryStoreFactory;
-    private TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
-    private List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps = List.of();
+    private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
+    private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
     private int maxDeliveryItemsPerRoute = DEFAULT_MAX_DELIVERY_ITEMS_PER_ROUTE;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
@@ -230,32 +230,32 @@ public class TransportConfig {
         this.deliveryStoreFactory = deliveryStoreFactory;
     }
 
-    public TransportAdapterBootstrap<TransportOutboundMessage> getPrimaryTransportAdapterBootstrap() {
+    public TransportAdapterBootstrap getPrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap;
     }
 
     public void setPrimaryTransportAdapterBootstrap(
-            TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap) {
+            TransportAdapterBootstrap primaryTransportAdapterBootstrap) {
         this.primaryTransportAdapterBootstrap = primaryTransportAdapterBootstrap;
     }
 
-    public List<TransportAdapterBootstrap<TransportOutboundMessage>> getSupplementalTransportAdapterBootstraps() {
+    public List<TransportAdapterBootstrap> getSupplementalTransportAdapterBootstraps() {
         return supplementalTransportAdapterBootstraps;
     }
 
     public void setSupplementalTransportAdapterBootstraps(
-            List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps) {
+            List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps) {
         this.supplementalTransportAdapterBootstraps = supplementalTransportAdapterBootstraps == null
                 ? List.of()
                 : List.copyOf(supplementalTransportAdapterBootstraps);
     }
 
     public void addSupplementalTransportAdapterBootstrap(
-            TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
+            TransportAdapterBootstrap transportAdapterBootstrap) {
         if (transportAdapterBootstrap == null) {
             return;
         }
-        List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps =
+        List<TransportAdapterBootstrap> bootstraps =
                 new ArrayList<>(supplementalTransportAdapterBootstraps);
         bootstraps.add(transportAdapterBootstrap);
         supplementalTransportAdapterBootstraps = List.copyOf(bootstraps);

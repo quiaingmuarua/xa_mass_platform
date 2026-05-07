@@ -1,7 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -22,8 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Engine-internal bridge over {@link TaskWorkRuntime} plus the bounded
- * compatibility projection work needed to enqueue logical task messages.
+ * Engine-internal bridge over {@link TaskWorkRuntime}.
  */
 final class TaskRuntimeBridge {
 
@@ -95,19 +93,23 @@ final class TaskRuntimeBridge {
         return taskWorkRuntime.applyResult(result);
     }
 
-    WorkEnqueueOutcome enqueueTaskWork(String taskId, TaskMsg taskMsg) {
-        if (taskMsg == null || taskMsg.getStatus() != com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT) {
+    WorkEnqueueOutcome enqueueTaskWork(String taskId,
+                                       String messageId,
+                                       java.util.Map<String, Object> input,
+                                       int retryCount,
+                                       int maxRetryCount) {
+        if (messageId == null || messageId.isBlank()) {
             return null;
         }
         Task task = taskStorage.getTask(taskId).orElse(null);
         TaskWorkEnvelope item = new TaskWorkEnvelope(
                 taskId,
-                taskMsg.getMessageId(),
+                messageId,
                 task != null ? TaskSharedConfig.sdkEventCode(task) : null,
-                taskMsg.getInput(),
+                input,
                 null,
-                taskMsg.getRetryCount(),
-                taskMsg.getMaxRetryCount(),
+                retryCount,
+                maxRetryCount,
                 null,
                 null,
                 Instant.now()

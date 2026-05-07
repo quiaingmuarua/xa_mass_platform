@@ -346,19 +346,28 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Persists a task message under the owning task.
+     * Runtime-first ingest for one logical work item.
+     *
+     * <p>Runtime admission happens before compatibility projection write so
+     * {@link TaskMsg} is not the canonical ingest product for execution
+     * correctness.</p>
      */
-    void addTaskMessage(String taskId, TaskMsg taskMsg) {
+    void addTaskInput(String taskId,
+                      String messageId,
+                      java.util.Map<String, Object> input,
+                      int maxRetryCount) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId,
-                "messageId", taskMsg.getMessageId());
+                "messageId", messageId);
 
-        WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, taskMsg);
+        WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, messageId, input, 0, maxRetryCount);
         if (!taskRuntimeBridge.isTaskWorkEnqueueAccepted(outcome)) {
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
+        TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
+        taskMsg.setMaxRetryCount(maxRetryCount);
         addTaskMessageProjection(taskId, taskMsg);
 
         LogUtils.logOperationSuccess("task message added", 0);
@@ -748,14 +757,16 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
         for (Map<String, Object> input : inputs) {
             String messageId = java.util.UUID.randomUUID().toString();
-            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
-            taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
-            addTaskMessage(taskId, taskMsg);
+            addTaskInput(taskId, messageId, input, dto.getDefaultMsgMaxRetryCount());
         }
     }
 
-    private WorkEnqueueOutcome enqueueTaskWork(String taskId, TaskMsg taskMsg) {
-        return taskRuntimeBridge.enqueueTaskWork(taskId, taskMsg);
+    private WorkEnqueueOutcome enqueueTaskWork(String taskId,
+                                               String messageId,
+                                               java.util.Map<String, Object> input,
+                                               int retryCount,
+                                               int maxRetryCount) {
+        return taskRuntimeBridge.enqueueTaskWork(taskId, messageId, input, retryCount, maxRetryCount);
     }
 }
 

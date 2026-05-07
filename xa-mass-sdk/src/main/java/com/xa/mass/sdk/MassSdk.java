@@ -181,7 +181,7 @@ public final class MassSdk {
         }
 
         public TransportOptions addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
+                TransportAdapterBootstrap transportAdapterBootstrap) {
             delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }

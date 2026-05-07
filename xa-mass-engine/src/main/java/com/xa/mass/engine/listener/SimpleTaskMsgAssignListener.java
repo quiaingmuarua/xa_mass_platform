@@ -390,10 +390,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         if (taskMsg != null) {
             return taskMsg;
         }
-        TaskMsg recovered = new TaskMsg(work.messageId(), task.getTid(), work.payload());
+        TaskMsg recovered = new TaskMsg(work.messageId(), task.getTid(), java.util.Map.of());
         recovered.setRetryCount(work.retryCount());
         assignmentRuntime.addTaskMessageProjection(task.getTid(), recovered);
-        return assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
+        return recovered;
     }
 
     private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {
