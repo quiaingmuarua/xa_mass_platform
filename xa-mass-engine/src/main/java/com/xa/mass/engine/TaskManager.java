@@ -394,19 +394,35 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskDetailStore.countTaskMessages(taskId);
     }
 
-    @Override
     public TaskMsg getTaskMessage(String taskId, String messageId) {
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
-    @Override
     public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         taskDetailStore.addTaskMessage(taskId, taskMsg);
     }
 
-    @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
+    }
+
+    @Override
+    public TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
+                                                            String messageId,
+                                                            int retryCount,
+                                                            String attemptId,
+                                                            String workerId,
+                                                            String workerContextId,
+                                                            String batchId) {
+        return taskDetailStore.synchronizeAssignedTaskMessageProjection(
+                taskId,
+                messageId,
+                retryCount,
+                attemptId,
+                workerId,
+                workerContextId,
+                batchId
+        );
     }
 
     @Override

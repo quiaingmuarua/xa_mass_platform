@@ -23,11 +23,13 @@ public interface TaskAssignmentRuntimePort {
 
     long getTaskMessageLeaseSeconds();
 
-    TaskMsg getTaskMessage(String taskId, String messageId);
-
-    void addTaskMessageProjection(String taskId, TaskMsg taskMsg);
-
-    boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
+    TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
+                                                     String messageId,
+                                                     int retryCount,
+                                                     String attemptId,
+                                                     String workerId,
+                                                     String workerContextId,
+                                                     String batchId);
 
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 

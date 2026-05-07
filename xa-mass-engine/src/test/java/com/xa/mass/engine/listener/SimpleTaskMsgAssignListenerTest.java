@@ -253,6 +253,25 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void dispatchDoesNotReadTaskMessageProjectionOnHotPath() {
+        TrackingTaskMessageReadStorage trackingStorage = new TrackingTaskMessageReadStorage();
+        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskCommands = new TaskCommandService(taskManager);
+        listener = newAssignmentListener(taskManager);
+
+        Task task = createTask(3);
+        task.setBatchSize(3);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+        assertEquals(3, dispatched.size());
+        assertEquals(0, trackingStorage.taskMessageReadCount.get(),
+                "dispatch should synchronize compatibility status without reading TaskMsg projection first");
+    }
+
+    @Test
     void dispatchContinuesWhenCompatibilityAttemptProjectionWriteFails() {
         FailingAddAttemptStorage failingStorage = new FailingAddAttemptStorage();
         taskStorage = failingStorage;
@@ -606,6 +625,16 @@ class SimpleTaskMsgAssignListenerTest {
             Optional<TaskMsg> message = super.getTaskMessage(taskId, messageId);
             message.ifPresent(taskMsg -> taskMsg.setInput(java.util.Map.of()));
             return message;
+        }
+    }
+
+    private static final class TrackingTaskMessageReadStorage extends InMemoryTaskStorage {
+        private final AtomicInteger taskMessageReadCount = new AtomicInteger();
+
+        @Override
+        public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+            taskMessageReadCount.incrementAndGet();
+            return super.getTaskMessage(taskId, messageId);
         }
     }
 

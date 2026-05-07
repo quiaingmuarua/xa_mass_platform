@@ -47,6 +47,10 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - engine -> transport handoff now carries runtime-native dispatch bindings built
   from claimed runtime work plus active attempt ownership; transport must not
   need persisted `TaskMsg.input` to reconstruct the worker payload
+- assignment-side compatibility `TaskMsg` sync must happen after runtime claim
+  and must not require `TaskDetailStore.getTaskMessage(...)` as a dispatch gate;
+  preserving or repairing the projection is residue, not the condition that
+  makes a claimed work item dispatchable
 - compatibility `TaskMsgAttempt` writes are best-effort residue only; runtime
   dispatch ownership, retry truth, and callback acceptance must remain correct
   when those writes lag or are absent

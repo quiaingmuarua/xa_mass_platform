@@ -2,10 +2,8 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -160,23 +158,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 log.warn("[MsgAssign] Skip claimed work {} because dispatch slot was not found", work.messageId());
                 continue;
             }
-            TaskMsg msg = resolveOrRecoverTaskMessageProjection(task, work);
-            if (msg == null) {
-                log.warn("[MsgAssign] Skip claimed work {} because task message projection could not be resolved", work.messageId());
-                continue;
-            }
-            TaskDispatchBinding dispatchBinding = bindTaskMessage(task, msg, work);
-            if (dispatchBinding == null) {
-                log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
-                        msg.getMessageId(), msg.getStatus());
-                continue;
-            }
-            assignmentRuntime.updateTaskMessage(task.getTid(), msg);
+            TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
+            synchronizeDispatchProjectionBestEffort(task, work, dispatchBinding);
             dispatchBindings.add(dispatchBinding);
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
-                    task, slot.worker(), slot.workerContext(), msg.getMessageId(), slot.batchId(),
+                    task, slot.worker(), slot.workerContext(), work.messageId(), slot.batchId(),
                     AssignmentResult.SUCCESS, "message assigned",
                     workerManager.isLocked(slot.worker().getWorkerId())
             );
@@ -301,23 +289,22 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         return null;
     }
 
-    private TaskDispatchBinding bindTaskMessage(Task task, TaskMsg taskMsg, ClaimedTaskWork work) {
-        int attemptNo = Math.max(work.retryCount(), taskMsg.getRetryCount()) + 1;
+    private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work) {
+        int attemptNo = Math.max(0, work.retryCount()) + 1;
         String attemptId = java.util.UUID.randomUUID().toString();
         TaskMsgAttempt attempt = TaskMessageAttemptSupport.buildDispatchedProjection(
                 attemptId,
-                taskMsg.getTaskId(),
-                taskMsg.getMessageId(),
+                task.getTid(),
+                work.messageId(),
                 attemptNo,
                 work.workerId(),
                 work.workerContextId(),
                 work.batchId(),
                 work.leaseExpireAt()
         );
-        taskMsg.applyLatestAttemptProjection(attempt.getAttemptId(), work.workerId(), work.workerContextId(), work.batchId());
         traceEventLogger.taskMsgAttemptStatusTransition(
-                taskMsg.getTaskId(),
-                taskMsg.getMessageId(),
+                task.getTid(),
+                work.messageId(),
                 attempt.getAttemptId(),
                 attempt.getAttemptNo(),
                 attempt.getWorkerId(),
@@ -331,8 +318,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "attempt leased for dispatch"
         );
         traceEventLogger.taskMsgAttemptStatusTransition(
-                taskMsg.getTaskId(),
-                taskMsg.getMessageId(),
+                task.getTid(),
+                work.messageId(),
                 attempt.getAttemptId(),
                 attempt.getAttemptNo(),
                 attempt.getWorkerId(),
@@ -345,21 +332,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "attempt dispatched"
         );
-        tryAddAttemptProjection(taskMsg, attempt);
-
-        TaskMsgStatus beforeAssigned = taskMsg.getStatus();
-        if (!taskMsg.markAsAssigned()) {
-            return null;
-        }
-        traceEventLogger.taskMsgStatusTransition(
-                taskMsg,
-                attempt,
-                beforeAssigned,
-                taskMsg.getStatus(),
-                "BIND_TASK_MESSAGE",
-                "SimpleTaskMsgAssignListener",
-                "task message assigned to worker"
-        );
+        tryAddAttemptProjection(task.getTid(), work.messageId(), attempt);
         return new TaskDispatchBinding(
                 task.getTid(),
                 work.messageId(),
@@ -376,24 +349,32 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         );
     }
 
-    private void tryAddAttemptProjection(TaskMsg taskMsg, TaskMsgAttempt attempt) {
+    private void tryAddAttemptProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         try {
-            assignmentRuntime.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
+            assignmentRuntime.addTaskMessageAttempt(taskId, messageId, attempt);
         } catch (RuntimeException e) {
             log.warn("Failed to persist compatibility attempt projection for taskId={}, messageId={}, attemptId={}; dispatch will continue on runtime truth",
-                    taskMsg.getTaskId(), taskMsg.getMessageId(), attempt.getAttemptId(), e);
+                    taskId, messageId, attempt.getAttemptId(), e);
         }
     }
 
-    private TaskMsg resolveOrRecoverTaskMessageProjection(Task task, ClaimedTaskWork work) {
-        TaskMsg taskMsg = assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
-        if (taskMsg != null) {
-            return taskMsg;
+    private void synchronizeDispatchProjectionBestEffort(Task task,
+                                                         ClaimedTaskWork work,
+                                                         TaskDispatchBinding dispatchBinding) {
+        try {
+            assignmentRuntime.synchronizeAssignedTaskMessageProjection(
+                    task.getTid(),
+                    work.messageId(),
+                    work.retryCount(),
+                    dispatchBinding.attemptId(),
+                    work.workerId(),
+                    work.workerContextId(),
+                    work.batchId()
+            );
+        } catch (RuntimeException e) {
+            log.warn("Failed to synchronize compatibility task message projection for taskId={}, messageId={}; dispatch will continue on runtime truth",
+                    task.getTid(), work.messageId(), e);
         }
-        TaskMsg recovered = new TaskMsg(work.messageId(), task.getTid(), java.util.Map.of());
-        recovered.setRetryCount(work.retryCount());
-        assignmentRuntime.addTaskMessageProjection(task.getTid(), recovered);
-        return recovered;
     }
 
     private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {

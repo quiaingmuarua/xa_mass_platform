@@ -36,6 +36,19 @@ public interface TaskDetailStore {
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
+    /**
+     * Runtime-first compatibility sync used after a work item is already
+     * claimed for dispatch. Implementations must preserve any existing bounded
+     * projection fields that are not part of active assignment ownership.
+     */
+    TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
+                                                     String messageId,
+                                                     int retryCount,
+                                                     String attemptId,
+                                                     String workerId,
+                                                     String workerContextId,
+                                                     String batchId);
+
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);

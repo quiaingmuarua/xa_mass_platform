@@ -387,7 +387,11 @@ class MassSdkTest {
         config.setWorkerEndpointRegistry(overriddenRegistry);
         WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
         config.setCustomSystemEventChannel(customSystemEventChannel);
-        WorkerTransportRuntimeFactory customFactory = context -> mock(TransportRuntimeRegistry.class);
+        WorkerTransportRuntimeFactory customFactory = (workerLookupStore,
+                                                     taskResultIngestChannel,
+                                                     systemEventChannel,
+                                                     deliveryService,
+                                                     adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
 
         TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
@@ -2265,10 +2269,14 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -2300,10 +2308,14 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(
                         workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2338,10 +2350,14 @@ class MassSdkTest {
     void registerWorkerUsesExplicitRealtimeAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(
                         workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2375,10 +2391,14 @@ class MassSdkTest {
     void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(
                         workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2440,10 +2460,14 @@ class MassSdkTest {
     void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -2478,10 +2502,14 @@ class MassSdkTest {
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(workerIdRouteBinding(
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
@@ -2519,10 +2547,14 @@ class MassSdkTest {
                 "polling-http-v2",
                 WorkerTransportHints.POLLING
         );
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerLookupStore(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
                 List.of(workerIdRouteBinding(pollingAdapter, pollingAdapter))
         );
 
@@ -2767,20 +2799,8 @@ class MassSdkTest {
                 int.class,
                 String.class
         ));
-        Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
-        Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("isWebSocketEnabled"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
-                com.xa.mass.engine.TaskManager.class,
-                com.xa.mass.engine.WorkerManager.class,
-                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
-                WorkerEndpointRegistry.class,
-                com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec.class,
-                com.xa.mass.transport.channel.TaskResultIngestChannel.class,
-                com.xa.mass.transport.channel.WorkerSystemEventChannel.class,
-                boolean.class
-        ));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext"));
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {

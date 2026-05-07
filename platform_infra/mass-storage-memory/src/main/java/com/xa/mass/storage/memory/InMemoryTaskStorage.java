@@ -199,6 +199,32 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
+    public TaskMsg synchronizeAssignedTaskMessageProjection(String taskId,
+                                                            String messageId,
+                                                            int retryCount,
+                                                            String attemptId,
+                                                            String workerId,
+                                                            String workerContextId,
+                                                            String batchId) {
+        MessageBucket bucket = taskMessages.get(taskId);
+        if (bucket == null || messageId == null) {
+            return null;
+        }
+        TaskMsg taskMsg = bucket.synchronizeAssignedProjection(
+                taskId,
+                messageId,
+                retryCount,
+                attemptId,
+                workerId,
+                workerContextId,
+                batchId
+        );
+        taskMessageAttempts.computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
+                .putIfAbsent(messageId, new AttemptBucket());
+        return taskMsg;
+    }
+
+    @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskMessageAttempts
                 .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
@@ -438,6 +464,31 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             messagesById.put(taskMsg.getMessageId(), taskMsg);
             reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
             return true;
+        }
+
+        private synchronized TaskMsg synchronizeAssignedProjection(String taskId,
+                                                                   String messageId,
+                                                                   int retryCount,
+                                                                   String attemptId,
+                                                                   String workerId,
+                                                                   String workerContextId,
+                                                                   String batchId) {
+            TaskMsg taskMsg = messagesById.get(messageId);
+            if (taskMsg == null) {
+                taskMsg = new TaskMsg(messageId, taskId, Map.of());
+                orderedMsgIds.addLast(messageId);
+            }
+            taskMsg.setRetryCount(Math.max(0, retryCount));
+            taskMsg.applyLatestAttemptProjection(attemptId, workerId, workerContextId, batchId);
+            if (taskMsg.getStatus() != TaskMsgStatus.ASSIGNED) {
+                taskMsg.setStatus(TaskMsgStatus.ASSIGNED);
+            }
+            if (taskMsg.getAssignedTime() == null) {
+                taskMsg.setAssignedTime(LocalDateTime.now());
+            }
+            messagesById.put(messageId, taskMsg);
+            reconcileMessageState(messageId, taskMsg.getStatus());
+            return taskMsg;
         }
 
         private synchronized List<TaskMsg> snapshot() {

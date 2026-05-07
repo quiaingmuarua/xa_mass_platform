@@ -29,7 +29,6 @@ import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.dispatch.TaskDispatchHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -255,13 +254,11 @@ public class MassApplication {
 
             if (engineConfig.isEnabled()) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
-                        new WorkerTransportRuntimeFactoryContext(
-                                engineConfig.getWorkerStorage(),
-                                taskResultIngestChannel,
-                                systemEventChannel,
-                                deliveryService,
-                                adapterBindings
-                        )
+                        engineConfig.getWorkerStorage(),
+                        taskResultIngestChannel,
+                        systemEventChannel,
+                        deliveryService,
+                        adapterBindings
                 );
                 taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
