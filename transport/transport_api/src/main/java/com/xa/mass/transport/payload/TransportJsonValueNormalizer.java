@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Transport payload boundary normalizer for JSON-safe values.
@@ -29,6 +30,17 @@ public final class TransportJsonValueNormalizer {
             normalized.put(key, normalizeValue(entry.getValue(), fieldName + "." + key));
         }
         return Collections.unmodifiableMap(normalized);
+    }
+
+    public static Map<String, Object> freezeDecodedObject(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> frozen = new LinkedHashMap<>(payload.size());
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            frozen.put(Objects.requireNonNull(entry.getKey(), "decoded JSON object key"), freezeDecodedValue(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(frozen);
     }
 
     public static Object normalizeValue(Object value, String fieldPath) {
@@ -97,6 +109,37 @@ public final class TransportJsonValueNormalizer {
             normalized.add(normalizeValue(Array.get(array, index), fieldPath + "[" + index + "]"));
         }
         return Collections.unmodifiableList(normalized);
+    }
+
+    private static Object freezeDecodedValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof Map<?, ?> map) {
+            if (map.isEmpty()) {
+                return Map.of();
+            }
+            LinkedHashMap<String, Object> frozen = new LinkedHashMap<>(map.size());
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object rawKey = entry.getKey();
+                if (!(rawKey instanceof String key)) {
+                    throw new IllegalArgumentException("decoded JSON contains non-string object key");
+                }
+                frozen.put(key, freezeDecodedValue(entry.getValue()));
+            }
+            return Collections.unmodifiableMap(frozen);
+        }
+        if (value instanceof List<?> list) {
+            if (list.isEmpty()) {
+                return List.of();
+            }
+            ArrayList<Object> frozen = new ArrayList<>(list.size());
+            for (Object item : list) {
+                frozen.add(freezeDecodedValue(item));
+            }
+            return Collections.unmodifiableList(frozen);
+        }
+        throw new IllegalArgumentException("decoded JSON contains unsupported value type: " + value.getClass().getName());
     }
 
     private static String requireObjectKey(String key, String fieldName) {

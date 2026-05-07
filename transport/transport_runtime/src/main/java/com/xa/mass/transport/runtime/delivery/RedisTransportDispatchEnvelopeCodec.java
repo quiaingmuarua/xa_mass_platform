@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.JsonTransportPacketCodec;
+import com.xa.mass.transport.packet.TransportPacket;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -15,6 +17,7 @@ final class RedisTransportDispatchEnvelopeCodec {
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
 
     private final Gson gson;
+    private final JsonTransportPacketCodec packetCodec;
 
     RedisTransportDispatchEnvelopeCodec() {
         this(new GsonBuilder().create());
@@ -22,6 +25,7 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     RedisTransportDispatchEnvelopeCodec(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
+        this.packetCodec = new JsonTransportPacketCodec(gson);
     }
 
     String encodeKeyPart(DeliveryQueueKey key) {
@@ -57,19 +61,20 @@ final class RedisTransportDispatchEnvelopeCodec {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("bytes must not be empty");
         }
-        RedisTransportDispatchEnvelopeRecord record = gson.fromJson(
+        DecodedRedisTransportDispatchEnvelopeRecord record = gson.fromJson(
                 new String(bytes, StandardCharsets.UTF_8),
-                RedisTransportDispatchEnvelopeRecord.class
+                DecodedRedisTransportDispatchEnvelopeRecord.class
         );
-        if (record == null || record.deliveryId() == null || record.packet() == null) {
+        if (record == null || record.deliveryId == null || record.packet == null) {
             throw new IllegalArgumentException("encoded dispatch envelope record is incomplete");
         }
+        TransportPacket packet = packetCodec.decode(gson.toJson(record.packet).getBytes(StandardCharsets.UTF_8));
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
-                record.deliveryId(),
-                record.packet(),
-                record.createdAtEpochMillis()
+                record.deliveryId,
+                packet,
+                record.createdAtEpochMillis
         );
-        return new KeyedQueueEntry<>(envelope, record.createdAtEpochMillis());
+        return new KeyedQueueEntry<>(envelope, record.createdAtEpochMillis);
     }
 
     private static String encodeKeyToken(String value) {
@@ -84,5 +89,11 @@ final class RedisTransportDispatchEnvelopeCodec {
             throw new IllegalArgumentException("encoded key token must not be blank");
         }
         return new String(KEY_DECODER.decode(token), StandardCharsets.UTF_8);
+    }
+
+    private static final class DecodedRedisTransportDispatchEnvelopeRecord {
+        private String deliveryId;
+        private long createdAtEpochMillis;
+        private Object packet;
     }
 }

@@ -242,7 +242,7 @@ class TaskConcurrencyAcceptanceTest {
         RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(2);
         InMemoryTaskStorage concurrentTaskStorage = new InMemoryTaskStorage();
-        ProjectionAwareTaskManager concurrenttaskManager = new ProjectionAwareTaskManager(
+        ProjectionAwareTaskManager concurrentTaskManager = new ProjectionAwareTaskManager(
                 localScheduler,
                 concurrentTaskStorage,
                 concurrentTaskStorage,
@@ -339,7 +339,7 @@ class TaskConcurrencyAcceptanceTest {
     @Test
     void resultIngestRecoversCompatibilityProjectionFromRuntimeLeaseWhenMissing() {
         FirstLookupMissingTaskStorage taskStorage = new FirstLookupMissingTaskStorage();
-        ProjectionAwareTaskManager recoveringtaskManager = new ProjectionAwareTaskManager(
+        ProjectionAwareTaskManager recoveringTaskManager = new ProjectionAwareTaskManager(
                 new RecordingTaskScheduler(),
                 taskStorage,
                 taskStorage,

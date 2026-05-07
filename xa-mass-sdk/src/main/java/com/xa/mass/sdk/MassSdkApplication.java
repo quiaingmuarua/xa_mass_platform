@@ -7,6 +7,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -20,6 +22,7 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
@@ -231,6 +234,43 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public TaskStateValidationResult validateTaskState(String taskId) {
         return requireStartedTaskQueries().validateTaskState(taskId);
+    }
+
+    @Override
+    public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        String normalizedTaskId = requireTaskId(taskId);
+        int boundedLimit = Math.max(0, limit);
+        TaskDetailStore taskDetailStore = requireStartedTaskDetailStore();
+        List<SdkTaskMessageView> messages = taskDetailStore.getTaskMessages(normalizedTaskId, boundedLimit).stream()
+                .map(this::toSdkTaskMessageView)
+                .toList();
+        boolean truncated = boundedLimit > 0 && taskDetailStore.countTaskMessages(normalizedTaskId) > messages.size();
+        return new SdkTaskMessageSnapshot(messages, boundedLimit, truncated);
+    }
+
+    @Override
+    public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
+        return requireStartedTaskDetailStore()
+                .getTaskMessage(requireTaskId(taskId), requireMessageId(messageId))
+                .map(this::toSdkTaskMessageView)
+                .orElse(null);
+    }
+
+    @Override
+    public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
+        return requireStartedTaskDetailStore()
+                .getTaskMessageAttempts(requireTaskId(taskId), requireMessageId(messageId))
+                .stream()
+                .map(this::toSdkTaskMessageAttemptView)
+                .toList();
+    }
+
+    @Override
+    public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
+        return requireStartedTaskDetailStore()
+                .getLatestActiveTaskMessageAttempt(requireTaskId(taskId), requireMessageId(messageId))
+                .map(this::toSdkTaskMessageAttemptView)
+                .orElse(null);
     }
 
     @Override
@@ -1150,6 +1190,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskId.trim();
     }
 
+    private String requireMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalArgumentException("messageId must not be blank");
+        }
+        return messageId.trim();
+    }
+
     private PullWorkerSession externalPullWorkerSession(String workerId) {
         return pullWorker(requireWorkerId(workerId));
     }
@@ -1562,6 +1609,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskEvents;
     }
 
+    private TaskDetailStore requireStartedTaskDetailStore() {
+        TaskDetailStore taskDetailStore = requireStartedEngine().getConfig().getTaskDetailStore();
+        if (taskDetailStore == null) {
+            throw new IllegalStateException("Task detail store is unavailable for this SDK application");
+        }
+        return taskDetailStore;
+    }
+
     private WorkerStorage requireStartedWorkerStorage() {
         WorkerStorage workerStorage = requireStartedEngine().getConfig().getWorkerStorage();
         if (workerStorage == null) {
@@ -1585,6 +1640,69 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private WorkerEndpointInspector resolveEndpointInspector() {
         WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
         return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
+    }
+
+    private SdkTaskMessageView toSdkTaskMessageView(TaskMsg taskMsg) {
+        return new SdkTaskMessageView(
+                taskMsg.getMessageId(),
+                taskMsg.getTaskId(),
+                enumName(taskMsg.getStatus()),
+                taskMsg.latestAttemptId(),
+                taskMsg.getLatestAttemptWorkerId(),
+                taskMsg.getLatestAttemptWorkerContextId(),
+                taskMsg.getLatestAttemptBatchId(),
+                taskMsg.getRetryCount(),
+                taskMsg.getMaxRetryCount(),
+                taskMsg.getErrorMessage(),
+                taskMsg.getErrorCode(),
+                enumName(taskMsg.getFinalReason()),
+                taskMsg.getPayloadRef(),
+                copyMap(taskMsg.getInput()),
+                copyMap(taskMsg.getOutput()),
+                taskMsg.getAssignedTime(),
+                taskMsg.getCreateTime(),
+                taskMsg.getUpdateTime(),
+                taskMsg.getStartTime(),
+                taskMsg.getCompleteTime()
+        );
+    }
+
+    private SdkTaskMessageAttemptView toSdkTaskMessageAttemptView(TaskMsgAttempt attempt) {
+        return new SdkTaskMessageAttemptView(
+                attempt.getAttemptId(),
+                attempt.getTaskId(),
+                attempt.getMessageId(),
+                attempt.getAttemptNo(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
+                enumName(attempt.getStatus()),
+                attempt.getLeaseExpireTime(),
+                attempt.getDispatchTime(),
+                attempt.getAckTime(),
+                attempt.getStartTime(),
+                attempt.getFinishTime(),
+                enumName(attempt.getFinalReason()),
+                attempt.getErrorMessage(),
+                attempt.getErrorCode(),
+                copyMap(attempt.getOutput()),
+                attempt.getCreateTime(),
+                attempt.getUpdateTime()
+        );
+    }
+
+    private Map<String, Object> copyMap(Map<String, Object> source) {
+        if (source == null) {
+            return null;
+        }
+        if (source.isEmpty()) {
+            return Map.of();
+        }
+        return Map.copyOf(new LinkedHashMap<>(source));
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private Map<String, Object> toRuleItem(RuleDefinition rule) {

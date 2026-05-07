@@ -6,37 +6,146 @@ import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 import java.util.Map;
 import java.util.Objects;
 
-public record TransportPacket(int version,
-                              String packetId,
-                              String traceId,
-                              PacketType type,
-                              String adapterId,
-                              String routeKey,
-                              String taskId,
-                              String messageId,
-                              String attemptId,
-                              String eventCode,
-                              String contentType,
-                              Map<String, Object> payload) {
+public final class TransportPacket {
 
     public static final int CURRENT_VERSION = 1;
     public static final String JSON_CONTENT_TYPE = "application/json";
 
-    public TransportPacket {
+    private final int version;
+    private final String packetId;
+    private final String traceId;
+    private final PacketType type;
+    private final String adapterId;
+    private final String routeKey;
+    private final String taskId;
+    private final String messageId;
+    private final String attemptId;
+    private final String eventCode;
+    private final String contentType;
+    private final Map<String, Object> payload;
+
+    public TransportPacket(int version,
+                           String packetId,
+                           String traceId,
+                           PacketType type,
+                           String adapterId,
+                           String routeKey,
+                           String taskId,
+                           String messageId,
+                           String attemptId,
+                           String eventCode,
+                           String contentType,
+                           Map<String, Object> payload) {
+        this(version, packetId, traceId, type, adapterId, routeKey, taskId, messageId, attemptId, eventCode, contentType, payload, false);
+    }
+
+    static TransportPacket fromDecodedJson(int version,
+                                           String packetId,
+                                           String traceId,
+                                           PacketType type,
+                                           String adapterId,
+                                           String routeKey,
+                                           String taskId,
+                                           String messageId,
+                                           String attemptId,
+                                           String eventCode,
+                                           String contentType,
+                                           Map<String, Object> payload) {
+        return new TransportPacket(
+                version,
+                packetId,
+                traceId,
+                type,
+                adapterId,
+                routeKey,
+                taskId,
+                messageId,
+                attemptId,
+                eventCode,
+                contentType,
+                payload,
+                true
+        );
+    }
+
+    private TransportPacket(int version,
+                            String packetId,
+                            String traceId,
+                            PacketType type,
+                            String adapterId,
+                            String routeKey,
+                            String taskId,
+                            String messageId,
+                            String attemptId,
+                            String eventCode,
+                            String contentType,
+                            Map<String, Object> payload,
+                            boolean trustedDecodedPayload) {
         if (version <= 0) {
             throw new IllegalArgumentException("version must be positive");
         }
-        packetId = requireText(packetId, "packetId");
-        type = Objects.requireNonNull(type, "type");
-        traceId = normalize(traceId);
-        adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
-        routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
-        taskId = normalize(taskId);
-        messageId = normalize(messageId);
-        attemptId = normalize(attemptId);
-        eventCode = normalize(eventCode);
-        contentType = requireText(contentType, "contentType");
-        payload = immutablePayload(payload);
+        this.version = version;
+        this.packetId = requireText(packetId, "packetId");
+        this.type = Objects.requireNonNull(type, "type");
+        this.traceId = normalize(traceId);
+        this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
+        this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
+        this.taskId = normalize(taskId);
+        this.messageId = normalize(messageId);
+        this.attemptId = normalize(attemptId);
+        this.eventCode = normalize(eventCode);
+        this.contentType = requireText(contentType, "contentType");
+        this.payload = trustedDecodedPayload
+                ? TransportJsonValueNormalizer.freezeDecodedObject(payload)
+                : TransportJsonValueNormalizer.normalizeObject(payload, "payload");
+    }
+
+    public int version() {
+        return version;
+    }
+
+    public String packetId() {
+        return packetId;
+    }
+
+    public String traceId() {
+        return traceId;
+    }
+
+    public PacketType type() {
+        return type;
+    }
+
+    public String adapterId() {
+        return adapterId;
+    }
+
+    public String routeKey() {
+        return routeKey;
+    }
+
+    public String taskId() {
+        return taskId;
+    }
+
+    public String messageId() {
+        return messageId;
+    }
+
+    public String attemptId() {
+        return attemptId;
+    }
+
+    public String eventCode() {
+        return eventCode;
+    }
+
+    public String contentType() {
+        return contentType;
+    }
+
+    public Map<String, Object> payload() {
+        return payload;
     }
 
     public TransportPacket withTransportAddress(String adapterId, String routeKey) {
@@ -52,7 +161,8 @@ public record TransportPacket(int version,
                 attemptId,
                 eventCode,
                 contentType,
-                payload
+                payload,
+                true
         );
     }
 
@@ -71,7 +181,61 @@ public record TransportPacket(int version,
         return value.trim();
     }
 
-    private static Map<String, Object> immutablePayload(Map<String, Object> payload) {
-        return TransportJsonValueNormalizer.normalizeObject(payload, "payload");
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof TransportPacket that)) {
+            return false;
+        }
+        return version == that.version
+                && Objects.equals(packetId, that.packetId)
+                && Objects.equals(traceId, that.traceId)
+                && type == that.type
+                && Objects.equals(adapterId, that.adapterId)
+                && Objects.equals(routeKey, that.routeKey)
+                && Objects.equals(taskId, that.taskId)
+                && Objects.equals(messageId, that.messageId)
+                && Objects.equals(attemptId, that.attemptId)
+                && Objects.equals(eventCode, that.eventCode)
+                && Objects.equals(contentType, that.contentType)
+                && Objects.equals(payload, that.payload);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                version,
+                packetId,
+                traceId,
+                type,
+                adapterId,
+                routeKey,
+                taskId,
+                messageId,
+                attemptId,
+                eventCode,
+                contentType,
+                payload
+        );
+    }
+
+    @Override
+    public String toString() {
+        return "TransportPacket{"
+                + "version=" + version
+                + ", packetId='" + packetId + '\''
+                + ", traceId='" + traceId + '\''
+                + ", type=" + type
+                + ", adapterId='" + adapterId + '\''
+                + ", routeKey='" + routeKey + '\''
+                + ", taskId='" + taskId + '\''
+                + ", messageId='" + messageId + '\''
+                + ", attemptId='" + attemptId + '\''
+                + ", eventCode='" + eventCode + '\''
+                + ", contentType='" + contentType + '\''
+                + ", payload=" + payload
+                + '}';
     }
 }

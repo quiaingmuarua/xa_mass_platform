@@ -7,6 +7,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,27 +21,30 @@ class TaskStateValidatorBoundaryTest {
 
     @Test
     void runtimeValidationDoesNotTouchProjectionAuditReadSurface() {
-        CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY, List.of());
-        TaskStateValidator validator = new TaskStateValidator(runtime, new com.xa.mass.engine.util.TraceEventLogger(null));
+        CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY);
+        TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
+        TaskStateValidator validator = new TaskStateValidator(runtime, detailStore, new com.xa.mass.engine.util.TraceEventLogger(null));
 
         TaskStateValidationResult result = validator.validateTaskState("task-1");
 
         assertTrue(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.RUNTIME, result.getScope());
-        assertEquals(0, runtime.projectionAuditReads.get());
+        assertEquals(0, detailStore.projectionAuditReads.get());
     }
 
     @Test
     void explicitProjectionAuditUsesProjectionReadSurface() {
         TaskMsg msg = new TaskMsg("msg-1", "task-1", Map.of("target", "alpha"));
-        CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY, List.of(msg));
-        TaskStateValidator validator = new TaskStateValidator(runtime, new com.xa.mass.engine.util.TraceEventLogger(null));
+        CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY);
+        TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
+        detailStore.addTaskMessage("task-1", msg);
+        TaskStateValidator validator = new TaskStateValidator(runtime, detailStore, new com.xa.mass.engine.util.TraceEventLogger(null));
 
         TaskStateValidationResult result = validator.auditTaskProjectionState("task-1");
 
         assertTrue(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
-        assertEquals(1, runtime.projectionAuditReads.get());
+        assertEquals(1, detailStore.projectionAuditReads.get());
     }
 
     private static Task sampleTask() {
@@ -55,15 +59,11 @@ class TaskStateValidatorBoundaryTest {
 
         private final Task task;
         private final TaskWorkStats stats;
-        private final List<TaskMsg> projectionAuditMessages;
-        private final AtomicInteger projectionAuditReads = new AtomicInteger();
 
         private CountingStateRuntimePort(Task task,
-                                         TaskWorkStats stats,
-                                         List<TaskMsg> projectionAuditMessages) {
+                                         TaskWorkStats stats) {
             this.task = task;
             this.stats = stats;
-            this.projectionAuditMessages = projectionAuditMessages;
         }
 
         @Override
@@ -83,13 +83,22 @@ class TaskStateValidatorBoundaryTest {
 
         @Override
         public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-            projectionAuditReads.incrementAndGet();
-            return projectionAuditMessages;
+            return List.of();
         }
 
         @Override
         public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
             return new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
+        }
+    }
+
+    private static final class TrackingTaskDetailStore extends InMemoryTaskStorage {
+        private final AtomicInteger projectionAuditReads = new AtomicInteger();
+
+        @Override
+        public List<TaskMsg> getTaskMessages(String taskId) {
+            projectionAuditReads.incrementAndGet();
+            return super.getTaskMessages(taskId);
         }
     }
 }

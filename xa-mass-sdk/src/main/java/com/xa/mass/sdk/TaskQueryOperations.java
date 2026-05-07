@@ -17,4 +17,12 @@ public interface TaskQueryOperations {
     Object validateTaskState(String taskId);
 
     Object resolveTaskState(String taskId);
+
+    SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
+
+    SdkTaskMessageView getTaskMessageView(String taskId, String messageId);
+
+    List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId);
+
+    SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
 }

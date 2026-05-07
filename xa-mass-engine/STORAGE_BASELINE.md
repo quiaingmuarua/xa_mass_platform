@@ -120,9 +120,9 @@ Current implementation facts that matter architecturally:
 
 - SDK/server embed the storage implementations explicitly
 - engine depends on contracts only
-- engine still reaches `TaskDetailStore` through `TaskManager`-owned internal
-  helpers; there is no separate bridge layer that pretends bounded projection
-  access has a distinct runtime lifecycle
+- engine mainline now reaches `TaskDetailStore` directly from the owning
+  engine services that still need bounded projection residue, instead of
+  routing those reads and writes back through `TaskManager`
 - the JDBC path is a control-plane adapter, not a `TaskMsg` analytics backend
 - in-memory helper indexes are allowed when they protect hot paths from full
   scans, but they remain helper indexes rather than second lifecycle truth
