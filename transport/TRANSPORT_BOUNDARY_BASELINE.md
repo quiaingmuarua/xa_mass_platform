@@ -246,7 +246,8 @@ distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
 queue. `TaskPullChannel.pollTaskMessagesResult(...)` is the transport mainline
 for that statusful view; list-only pull helpers are convenience wrappers above
-it. Thread interruption is not a store result contract; store
+it. `DELIVERED` status must always carry one or more dispatch items/envelopes;
+empty payload sets are `EMPTY`, not a second encoding of delivery. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
 store boundary. Store shutdown is
 also part of the runtime contract: after shutdown the store rejects new

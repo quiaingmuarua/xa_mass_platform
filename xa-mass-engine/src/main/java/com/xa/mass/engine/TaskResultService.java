@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
@@ -756,6 +757,7 @@ class TaskResultService {
         return persistTaskMessageProjection(taskId, taskMsg.toCompatibilityProjection(), action);
     }
 
+    @CompatibilityProjectionOnly
     private boolean persistTaskMessageProjection(String taskId,
                                                  TaskMsg taskMsg,
                                                  String action) {
@@ -775,6 +777,7 @@ class TaskResultService {
         }
     }
 
+    @CompatibilityProjectionOnly
     private void persistAttemptProjectionUpsertBestEffort(String taskId,
                                                           String messageId,
                                                           AttemptProjectionView attempt,
@@ -844,14 +847,17 @@ class TaskResultService {
         return retryPolicy.workRetryDelayMillis();
     }
 
+    @CompatibilityProjectionOnly
     private TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
         return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
     }
 
+    @CompatibilityProjectionOnly
     private boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
         return taskDetailStore.updateTaskMessage(taskId, taskMsg);
     }
 
+    @CompatibilityProjectionOnly
     private boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
         return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
@@ -1212,6 +1218,7 @@ class TaskResultService {
             );
         }
 
+        @CompatibilityProjectionOnly
         private static RuntimeMessageView from(TaskMsg projection) {
             if (projection == null) {
                 return null;

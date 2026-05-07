@@ -119,7 +119,17 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
+                "task-1",
+                "msg-1",
+                closedAttempt.getAttemptId(),
+                closedAttempt.getAttemptNo(),
+                closedAttempt.getWorkerId(),
+                closedAttempt.getWorkerContextId(),
+                closedAttempt.getBatchId(),
+                closedAttempt.getStatus(),
+                closedAttempt.getFinalReason()
+        ));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -143,7 +153,17 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
+                "task-1",
+                "msg-1",
+                closedAttempt.getAttemptId(),
+                closedAttempt.getAttemptNo(),
+                closedAttempt.getWorkerId(),
+                closedAttempt.getWorkerContextId(),
+                closedAttempt.getBatchId(),
+                closedAttempt.getStatus(),
+                closedAttempt.getFinalReason()
+        ));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -160,7 +180,17 @@ class TaskResourceReleaseListenerTest {
 
         when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from("task-1", "msg-1", closedAttempt));
+        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
+                "task-1",
+                "msg-1",
+                closedAttempt.getAttemptId(),
+                closedAttempt.getAttemptNo(),
+                closedAttempt.getWorkerId(),
+                closedAttempt.getWorkerContextId(),
+                closedAttempt.getBatchId(),
+                closedAttempt.getStatus(),
+                closedAttempt.getFinalReason()
+        ));
 
         verify(workerManager, never()).unlockWorker("worker-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());

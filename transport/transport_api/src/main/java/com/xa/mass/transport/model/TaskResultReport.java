@@ -6,6 +6,7 @@ import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Transport-neutral task execution result reported by a worker.
@@ -41,8 +42,8 @@ public final class TaskResultReport {
                              Map<String, Object> output,
                              Map<String, Object> transportPayload,
                              boolean trustedImmutableOutput) {
-        this.taskId = taskId;
-        this.messageId = messageId;
+        this.taskId = requireText(taskId, "taskId");
+        this.messageId = requireText(messageId, "messageId");
         this.success = success;
         this.detail = detail;
         this.errorCode = errorCode;
@@ -149,6 +150,14 @@ public final class TaskResultReport {
         if (value != null && !value.isBlank()) {
             payload.put(key, value);
         }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
 }

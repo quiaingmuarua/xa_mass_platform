@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.model.TaskMsg;
 
 import java.util.LinkedHashMap;
@@ -41,6 +42,7 @@ record RuntimeTaskIngressItem(String taskId,
         );
     }
 
+    @CompatibilityProjectionOnly
     TaskMsg toCompatibilityProjection() {
         TaskMsg taskMsg = new TaskMsg(
                 messageId,

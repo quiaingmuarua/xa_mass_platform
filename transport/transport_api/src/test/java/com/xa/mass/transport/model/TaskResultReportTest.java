@@ -60,6 +60,29 @@ class TaskResultReportTest {
     }
 
     @Test
+    void rejectsBlankTaskIdentityFields() {
+        IllegalArgumentException taskIdError = assertThrows(IllegalArgumentException.class, () -> new TaskResultReport(
+                " ",
+                "msg-1",
+                true,
+                "ok",
+                null,
+                Map.of()
+        ));
+        assertEquals("taskId must not be blank", taskIdError.getMessage());
+
+        IllegalArgumentException messageIdError = assertThrows(IllegalArgumentException.class, () -> new TaskResultReport(
+                "task-1",
+                " ",
+                true,
+                "ok",
+                null,
+                Map.of()
+        ));
+        assertEquals("messageId must not be blank", messageIdError.getMessage());
+    }
+
+    @Test
     void transportPayloadRoundTripStaysOwnedByTaskResultReport() {
         TaskResultReport report = new TaskResultReport(
                 "task-1",

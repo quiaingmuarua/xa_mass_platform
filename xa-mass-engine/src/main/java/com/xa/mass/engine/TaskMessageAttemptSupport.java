@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -42,6 +43,7 @@ public final class TaskMessageAttemptSupport {
                 + "-" + normalizeAttemptIdToken(batchId);
     }
 
+    @CompatibilityProjectionOnly
     static boolean isTaskMsgFinalReasonCompatible(TaskMsg taskMsg) {
         if (taskMsg == null || !taskMsg.isCompleted() || taskMsg.getFinalReason() == null) {
             return false;

@@ -10,6 +10,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TaskDispatchItemTest {
 
@@ -188,6 +189,49 @@ class TaskDispatchItemTest {
 
         assertEquals("worker-a", ((Map<?, ?>) item.getInput().get("payload")).get("target"));
         assertEquals("fast", ((Map<?, ?>) item.getSharedConfig().get("sdk")).get("mode"));
+    }
+
+    @Test
+    void rejectsBlankTaskIdentityFields() {
+        IllegalArgumentException taskIdError = assertThrows(
+                IllegalArgumentException.class,
+                () -> new TaskDispatchItem(
+                        " ",
+                        "msg-1",
+                        "crawler.fetch-page",
+                        "task-name",
+                        "demoApp",
+                        "agent",
+                        0,
+                        "attempt-1",
+                        "worker-1",
+                        "ctx-1",
+                        "batch-1",
+                        Map.of(),
+                        Map.of()
+                )
+        );
+        assertEquals("taskId must not be blank", taskIdError.getMessage());
+
+        IllegalArgumentException messageIdError = assertThrows(
+                IllegalArgumentException.class,
+                () -> new TaskDispatchItem(
+                        "task-1",
+                        " ",
+                        "crawler.fetch-page",
+                        "task-name",
+                        "demoApp",
+                        "agent",
+                        0,
+                        "attempt-1",
+                        "worker-1",
+                        "ctx-1",
+                        "batch-1",
+                        Map.of(),
+                        Map.of()
+                )
+        );
+        assertEquals("messageId must not be blank", messageIdError.getMessage());
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {

@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
@@ -242,6 +243,7 @@ class TaskStateValidator {
         return stateRuntime.evaluateTerminalPolicy(task, stats);
     }
 
+    @CompatibilityProjectionOnly
     private List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
         return taskDetailStore.getTaskMessages(taskId);
     }

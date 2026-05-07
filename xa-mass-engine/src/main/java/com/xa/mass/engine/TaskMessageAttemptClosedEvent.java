@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.model.TaskMsgAttempt;
 
 /**
  * Engine event payload for a closed execution attempt.
@@ -41,20 +40,4 @@ public record TaskMessageAttemptClosedEvent(
         );
     }
 
-    public static TaskMessageAttemptClosedEvent from(String taskId, String messageId, TaskMsgAttempt attempt) {
-        if (attempt == null) {
-            return null;
-        }
-        return from(
-                taskId,
-                messageId,
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                attempt.getStatus(),
-                attempt.getFinalReason()
-        );
-    }
 }

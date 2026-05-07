@@ -87,8 +87,8 @@ public final class TaskDispatchItem {
                              Map<String, Object> sharedConfig,
                              boolean trustedImmutablePayload,
                              Map<String, Object> transportPayload) {
-        this.taskId = taskId;
-        this.messageId = messageId;
+        this.taskId = requireText(taskId, "taskId");
+        this.messageId = requireText(messageId, "messageId");
         this.eventCode = eventCode;
         this.taskName = taskName;
         this.project = project;
@@ -335,5 +335,13 @@ public final class TaskDispatchItem {
             return fallback;
         }
         return null;
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

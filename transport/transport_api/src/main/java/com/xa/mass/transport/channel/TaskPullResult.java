@@ -10,12 +10,26 @@ public final class TaskPullResult {
     private final TaskPullStatus status;
     private final List<TaskDispatchItem> items;
 
-    public TaskPullResult(TaskPullStatus status, List<TaskDispatchItem> items) {
+    private TaskPullResult(TaskPullStatus status, List<TaskDispatchItem> items) {
         this.status = Objects.requireNonNull(status, "status");
         this.items = items == null || items.isEmpty() ? List.of() : List.copyOf(items);
     }
 
+    public static TaskPullResult of(TaskPullStatus status, List<TaskDispatchItem> items) {
+        Objects.requireNonNull(status, "status");
+        return switch (status) {
+            case DELIVERED -> delivered(items);
+            case EMPTY -> empty();
+            case INVALID_REQUEST -> invalidRequest();
+            case UNAVAILABLE -> unavailable();
+            case SHUTDOWN -> shutdown();
+        };
+    }
+
     public static TaskPullResult delivered(List<TaskDispatchItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("delivered pull result must include at least one item");
+        }
         return new TaskPullResult(TaskPullStatus.DELIVERED, items);
     }
 

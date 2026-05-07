@@ -1,5 +1,6 @@
 package com.xa.mass.engine.util;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
@@ -9,7 +10,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
@@ -85,53 +85,13 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMsgStatusTransition(TaskMsg taskMsg,
-                                        TaskMsgStatus fromStatus,
-                                        TaskMsgStatus toStatus,
-                                        String trigger,
-                                        String source,
-                                        String reason) {
-        taskMsgStatusTransition(TaskMessageTraceView.from(taskMsg), null, fromStatus, toStatus, trigger, source, reason);
-    }
-
-    public void taskMsgStatusTransition(TaskMsg taskMsg,
-                                        TaskMsgAttempt attempt,
-                                        TaskMsgStatus fromStatus,
-                                        TaskMsgStatus toStatus,
-                                        String trigger,
-                                        String source,
-                                        String reason) {
-        taskMsgStatusTransition(TaskMessageTraceView.from(taskMsg), attempt, fromStatus, toStatus, trigger, source, reason);
-    }
-
     public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
                                         TaskMsgStatus fromStatus,
                                         TaskMsgStatus toStatus,
                                         String trigger,
                                         String source,
                                         String reason) {
-        taskMsgStatusTransition(taskMsg, null, fromStatus, toStatus, trigger, source, reason);
-    }
-
-    public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
-                                        TaskMsgAttempt attempt,
-                                        TaskMsgStatus fromStatus,
-                                        TaskMsgStatus toStatus,
-                                        String trigger,
-                                        String source,
-                                        String reason) {
-        taskMsgStatusTransition(
-                taskMsg,
-                attempt != null ? attempt.getAttemptId() : null,
-                attempt != null ? attempt.getWorkerId() : null,
-                attempt != null ? attempt.getWorkerContextId() : null,
-                attempt != null ? attempt.getBatchId() : null,
-                fromStatus,
-                toStatus,
-                trigger,
-                source,
-                reason
-        );
+        taskMsgStatusTransition(taskMsg, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
     }
 
     public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
@@ -165,32 +125,6 @@ public final class TraceEventLogger {
                         "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
                 ))
                 .build());
-    }
-
-    public void taskMsgAttemptStatusTransition(TaskMsgAttempt attempt,
-                                               TaskMsgAttemptStatus fromStatus,
-                                               TaskMsgAttemptStatus toStatus,
-                                               String trigger,
-                                               String source,
-                                               String reason) {
-        if (attempt == null) {
-            return;
-        }
-        taskMsgAttemptStatusTransition(
-                attempt.getTaskId(),
-                attempt.getMessageId(),
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                attempt.getFinalReason(),
-                fromStatus,
-                toStatus,
-                trigger,
-                source,
-                reason
-        );
     }
 
     public void taskMsgAttemptStatusTransition(String taskId,
@@ -229,36 +163,12 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMsgRetryReset(TaskMsg taskMsg, String trigger, String source, String reason) {
-        taskMsgRetryReset(TaskMessageTraceView.from(taskMsg), null, null, trigger, source, reason);
-    }
-
-    public void taskMsgRetryReset(TaskMsg taskMsg,
-                                  TaskMsgAttempt attempt,
-                                  Long workRetryDelayMillis,
-                                  String trigger,
-                                  String source,
-                                  String reason) {
-        taskMsgRetryReset(TaskMessageTraceView.from(taskMsg), attempt, workRetryDelayMillis, trigger, source, reason);
-    }
-
     public void taskMsgRetryReset(TaskMessageTraceView taskMsg,
-                                  TaskMsgAttempt attempt,
                                   Long workRetryDelayMillis,
                                   String trigger,
                                   String source,
                                   String reason) {
-        taskMsgRetryReset(
-                taskMsg,
-                attempt != null ? attempt.getAttemptId() : null,
-                attempt != null ? attempt.getWorkerId() : null,
-                attempt != null ? attempt.getWorkerContextId() : null,
-                attempt != null ? attempt.getBatchId() : null,
-                workRetryDelayMillis,
-                trigger,
-                source,
-                reason
-        );
+        taskMsgRetryReset(taskMsg, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
     }
 
     public void taskMsgRetryReset(TaskMessageTraceView taskMsg,
@@ -465,61 +375,25 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void callbackAccepted(TaskMsg taskMsg, String reason) {
-        callbackAccepted(TaskMessageTraceView.from(taskMsg), null, reason);
-    }
-
-    public void callbackAccepted(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        callbackAccepted(TaskMessageTraceView.from(taskMsg), attempt, reason);
-    }
-
     public void callbackAccepted(TaskMessageTraceView taskMsg, String reason) {
-        callbackAccepted(taskMsg, null, reason);
-    }
-
-    public void callbackAccepted(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, taskMsg, attempt, reason, "SUCCESS", true));
-    }
-
-    public void callbackIgnoredDuplicate(TaskMsg taskMsg, String reason) {
-        callbackIgnoredDuplicate(TaskMessageTraceView.from(taskMsg), null, reason);
-    }
-
-    public void callbackIgnoredDuplicate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        callbackIgnoredDuplicate(TaskMessageTraceView.from(taskMsg), attempt, reason);
+        emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, taskMsg, reason, "SUCCESS", true));
     }
 
     public void callbackIgnoredDuplicate(TaskMessageTraceView taskMsg, String reason) {
-        callbackIgnoredDuplicate(taskMsg, null, reason);
-    }
-
-    public void callbackIgnoredDuplicate(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, taskMsg, attempt, reason, "IGNORED", true));
-    }
-
-    public void callbackIgnoredLate(TaskMsg taskMsg, String reason) {
-        callbackIgnoredLate(TaskMessageTraceView.from(taskMsg), null, reason);
-    }
-
-    public void callbackIgnoredLate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        callbackIgnoredLate(TaskMessageTraceView.from(taskMsg), attempt, reason);
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, taskMsg, reason, "IGNORED", true));
     }
 
     public void callbackIgnoredLate(TaskMessageTraceView taskMsg, String reason) {
-        callbackIgnoredLate(taskMsg, null, reason);
-    }
-
-    public void callbackIgnoredLate(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_LATE, taskMsg, attempt, reason, "IGNORED", true));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_LATE, taskMsg, reason, "IGNORED", true));
     }
 
     public void callbackRejectedNoActiveAttempt(String taskId,
@@ -538,76 +412,18 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void callbackRejectedNoActiveLease(TaskMsg taskMsg, String reason) {
-        callbackRejectedNoActiveLease(TaskMessageTraceView.from(taskMsg), null, reason);
-    }
-
-    public void callbackRejectedNoActiveLease(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        callbackRejectedNoActiveLease(TaskMessageTraceView.from(taskMsg), attempt, reason);
-    }
-
     public void callbackRejectedNoActiveLease(TaskMessageTraceView taskMsg, String reason) {
-        callbackRejectedNoActiveLease(taskMsg, null, reason);
-    }
-
-    public void callbackRejectedNoActiveLease(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, taskMsg, attempt, reason, "REJECTED", false));
-    }
-
-    public void callbackRejectedInvalidState(TaskMsg taskMsg, String reason) {
-        callbackRejectedInvalidState(TaskMessageTraceView.from(taskMsg), null, reason);
-    }
-
-    public void callbackRejectedInvalidState(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        callbackRejectedInvalidState(TaskMessageTraceView.from(taskMsg), attempt, reason);
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, taskMsg, reason, "REJECTED", false));
     }
 
     public void callbackRejectedInvalidState(TaskMessageTraceView taskMsg, String reason) {
-        callbackRejectedInvalidState(taskMsg, null, reason);
-    }
-
-    public void callbackRejectedInvalidState(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt, String reason) {
         if (taskMsg == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, taskMsg, attempt, reason, "REJECTED", false));
-    }
-
-    public void taskMessageAttemptClosed(Task task,
-                                         TaskMsg taskMsg,
-                                         TaskMsgAttempt attempt,
-                                         String trigger,
-                                         String source,
-                                         String reason) {
-        taskMessageAttemptClosed(task, TaskMessageTraceView.from(taskMsg), attempt, trigger, source, reason);
-    }
-
-    public void taskMessageAttemptClosed(Task task,
-                                         TaskMessageTraceView taskMsg,
-                                         TaskMsgAttempt attempt,
-                                         String trigger,
-                                         String source,
-                                         String reason) {
-        if (attempt == null) {
-            return;
-        }
-        taskMessageAttemptClosed(
-                task,
-                taskMsg,
-                attempt.getAttemptId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                attempt.getStatus(),
-                attempt.getFinalReason(),
-                trigger,
-                source,
-                reason
-        );
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, taskMsg, reason, "REJECTED", false));
     }
 
     public void taskMessageAttemptClosed(Task task,
@@ -646,42 +462,6 @@ public final class TraceEventLogger {
                         "batchId", batchId
                 ))
                 .build());
-    }
-
-    public void taskMessageLogicallyFinal(Task task,
-                                          TaskMsg taskMsg,
-                                          String trigger,
-                                          String source,
-                                          String reason) {
-        taskMessageLogicallyFinal(task, TaskMessageTraceView.from(taskMsg), null, trigger, source, reason);
-    }
-
-    public void taskMessageLogicallyFinal(Task task,
-                                          TaskMsg taskMsg,
-                                          TaskMsgAttempt attempt,
-                                          String trigger,
-                                          String source,
-                                          String reason) {
-        taskMessageLogicallyFinal(task, TaskMessageTraceView.from(taskMsg), attempt, trigger, source, reason);
-    }
-
-    public void taskMessageLogicallyFinal(Task task,
-                                          TaskMessageTraceView taskMsg,
-                                          TaskMsgAttempt attempt,
-                                          String trigger,
-                                          String source,
-                                          String reason) {
-        taskMessageLogicallyFinal(
-                task,
-                taskMsg,
-                attempt != null ? attempt.getAttemptId() : null,
-                attempt != null ? attempt.getWorkerId() : null,
-                attempt != null ? attempt.getWorkerContextId() : null,
-                attempt != null ? attempt.getBatchId() : null,
-                trigger,
-                source,
-                reason
-        );
     }
 
     public void taskMessageLogicallyFinal(Task task,
@@ -745,31 +525,6 @@ public final class TraceEventLogger {
                         "result", "FAILED"
                 ))
                 .build());
-    }
-
-    public void leaseExpired(TaskMsg taskMsg,
-                             TaskMsgAttempt attempt,
-                             String trigger,
-                             String source,
-                             String reason) {
-        leaseExpired(TaskMessageTraceView.from(taskMsg), attempt, trigger, source, reason);
-    }
-
-    public void leaseExpired(TaskMessageTraceView taskMsg,
-                             TaskMsgAttempt attempt,
-                             String trigger,
-                             String source,
-                             String reason) {
-        leaseExpired(
-                taskMsg,
-                attempt != null ? attempt.getAttemptId() : null,
-                attempt != null ? attempt.getWorkerId() : null,
-                attempt != null ? attempt.getWorkerContextId() : null,
-                attempt != null ? attempt.getBatchId() : null,
-                trigger,
-                source,
-                reason
-        );
     }
 
     public void leaseExpired(TaskMessageTraceView taskMsg,
@@ -1002,7 +757,6 @@ public final class TraceEventLogger {
 
     private ExecutionEvent callbackEvent(ExecutionEventType eventType,
                                          TaskMessageTraceView taskMsg,
-                                         TaskMsgAttempt attempt,
                                          String reason,
                                          String result,
                                          boolean success) {
@@ -1010,16 +764,16 @@ public final class TraceEventLogger {
                 .identity(identity -> identity
                         .taskId(taskMsg.taskId())
                         .messageId(taskMsg.messageId())
-                        .attemptId(attempt != null ? attempt.getAttemptId() : taskMsg.latestAttemptId())
-                        .workerId(latestAttemptWorkerId(taskMsg, attempt))
-                        .workerContextId(latestAttemptWorkerContextId(taskMsg, attempt)))
+                        .attemptId(taskMsg.latestAttemptId())
+                        .workerId(taskMsg.latestAttemptWorkerId())
+                        .workerContextId(taskMsg.latestAttemptWorkerContextId()))
                 .outcome(success, taskMsg.errorCode(), reason)
                 .attrs(attrs(
                         "source", "TaskManager",
                         "reason", reason,
                         "result", result,
                         "taskMsgStatus", enumName(taskMsg.status()),
-                        "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt)
+                        "latestAttemptBatchId", taskMsg.latestAttemptBatchId()
                 ))
                 .build();
     }
@@ -1069,30 +823,6 @@ public final class TraceEventLogger {
 
     private static String formatDouble(double value) {
         return String.format(java.util.Locale.ROOT, "%.1f", value);
-    }
-
-    private static String latestAttemptWorkerId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerId() : taskMsg.getLatestAttemptWorkerId();
-    }
-
-    private static String latestAttemptWorkerId(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerId() : taskMsg.latestAttemptWorkerId();
-    }
-
-    private static String latestAttemptWorkerContextId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerContextId() : taskMsg.getLatestAttemptWorkerContextId();
-    }
-
-    private static String latestAttemptWorkerContextId(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerContextId() : taskMsg.latestAttemptWorkerContextId();
-    }
-
-    private static String latestAttemptBatchId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getBatchId() : taskMsg.getLatestAttemptBatchId();
-    }
-
-    private static String latestAttemptBatchId(TaskMessageTraceView taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getBatchId() : taskMsg.latestAttemptBatchId();
     }
 
     private static void putTaskRuntimeProfile(Map<String, Object> attrs, Task task) {
@@ -1157,6 +887,7 @@ public final class TraceEventLogger {
             String errorCode
     ) {
 
+        @CompatibilityProjectionOnly
         public static TaskMessageTraceView from(TaskMsg taskMsg) {
             if (taskMsg == null) {
                 return null;

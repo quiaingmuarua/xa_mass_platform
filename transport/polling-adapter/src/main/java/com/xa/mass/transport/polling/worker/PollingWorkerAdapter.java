@@ -66,10 +66,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
             return TaskPullResult.invalidRequest();
         }
         TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(PROTOCOL, workerId, maxMessages, timeoutMillis);
-        return new TaskPullResult(
-                mapStatus(result.getStatus()),
-                TransportDeliveryService.toDispatchItems(result.getEnvelopes())
-        );
+        return TaskPullResult.of(mapStatus(result.getStatus()), TransportDeliveryService.toDispatchItems(result.getEnvelopes()));
     }
 
     public void announceWorkerOnline(String workerId, String reason) {

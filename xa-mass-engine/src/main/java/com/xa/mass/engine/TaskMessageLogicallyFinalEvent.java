@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.model.TaskMsg;
 
 import java.util.Map;
 
@@ -20,23 +19,6 @@ public record TaskMessageLogicallyFinalEvent(
         String payloadRef,
         Map<String, Object> output
 ) {
-
-    static TaskMessageLogicallyFinalEvent from(TaskMsg taskMsg) {
-        if (taskMsg == null) {
-            return null;
-        }
-        return from(
-                taskMsg.getTaskId(),
-                taskMsg.getMessageId(),
-                taskMsg.getStatus(),
-                taskMsg.getFinalReason(),
-                taskMsg.getRetryCount(),
-                taskMsg.getErrorCode(),
-                taskMsg.getErrorMessage(),
-                taskMsg.getPayloadRef(),
-                taskMsg.getOutput()
-        );
-    }
 
     static TaskMessageLogicallyFinalEvent from(String taskId,
                                                String messageId,

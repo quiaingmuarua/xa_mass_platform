@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
@@ -21,6 +22,7 @@ import java.util.Map;
  * bounded TaskMsg view for callers that still read compatibility storage after
  * task-level runtime convergence has already happened.</p>
  */
+@CompatibilityProjectionOnly
 final class CompatibilityProjectionSupport {
 
     private CompatibilityProjectionSupport() {

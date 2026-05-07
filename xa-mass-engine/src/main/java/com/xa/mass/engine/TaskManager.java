@@ -513,6 +513,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * aggregates. This is diagnostic-only and may require a full task-message
      * snapshot.
      */
+    @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
     }
