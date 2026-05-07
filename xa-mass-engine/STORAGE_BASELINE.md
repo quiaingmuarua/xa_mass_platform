@@ -34,6 +34,10 @@ What the engine assumes today:
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility projections used
   by result repair, attempt identity validation, focused tests, and explicit
   projection audit
+- dispatch handoff no longer requires `TaskMsg.input` or a persisted
+  `TaskMsgAttempt` object graph as the transport payload; runtime-native
+  dispatch binding now carries message payload, retry summary, and
+  attempt/lease ownership directly
 - engine assembly wires `TaskStorage` and `TaskDetailStore` explicitly; there
   is no implicit "task storage also means detail store" fallback in the mainline
 
@@ -71,6 +75,9 @@ Rules:
 - `getLatestActiveTaskMessageAttempt(...)` remains mainline only because
   transport result ingest still validates envelope attempt identity against the
   active compatibility attempt
+- `getTaskMessage(...)` may still be used to repair or recreate a bounded
+  compatibility `TaskMsg` view, but dispatch payload construction must not
+  require reading projection input from this seam
 
 ## Wiring Reality
 

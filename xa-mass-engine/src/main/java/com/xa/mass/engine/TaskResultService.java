@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Owns task-message callback handling, retry sequencing, and result-side event ordering.
@@ -178,9 +179,11 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        TaskMsg taskMsg = resultRuntime.getTaskMessage(taskId, messageId);
+        ActiveLeaseRecord activeLease = resultRuntime.getActiveLease(taskId, messageId).orElse(null);
+        TaskMsg taskMsg = resolveOrRecoverTaskMessageProjection(taskId, messageId, activeLease);
         if (taskMsg == null) {
-            logger.warn("Cannot handle task message result because msg {} was not found in task {}", messageId, taskId);
+            logger.warn("Cannot handle task message result because msg {} was not found in task {} and no runtime projection could be recovered",
+                    messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
 
@@ -204,7 +207,6 @@ class TaskResultService {
             return TaskMessageMutationOutcome.acceptedNoop();
         }
 
-        ActiveLeaseRecord activeLease = resultRuntime.getActiveLease(taskId, messageId).orElse(null);
         if (activeLease == null) {
             TaskMsgAttempt latestAttempt = resultRuntime.getLatestTaskMessageAttempt(taskId, messageId);
             traceEventLogger.callbackRejectedNoActiveLease(
@@ -292,8 +294,9 @@ class TaskResultService {
         }
 
         String taskId = task.getTid();
-        String messageId = dispatchBinding.taskMsg().getMessageId();
-        TaskMsg taskMsg = resultRuntime.getTaskMessage(taskId, messageId);
+        String messageId = dispatchBinding.messageId();
+        TaskMsg taskMsg = resolveOrRecoverTaskMessageProjection(taskId, messageId,
+                resultRuntime.getActiveLease(taskId, messageId).orElse(null));
         if (taskMsg == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} was not found in task {}",
                     messageId, taskId);
@@ -313,9 +316,9 @@ class TaskResultService {
                     messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
-        if (!dispatchBinding.attempt().getAttemptId().equals(activeAttempt.getAttemptId())) {
+        if (!Objects.equals(dispatchBinding.attemptId(), activeAttempt.getAttemptId())) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} advanced to attempt {} instead of {}",
-                    messageId, taskId, activeAttempt.getAttemptId(), dispatchBinding.attempt().getAttemptId());
+                    messageId, taskId, activeAttempt.getAttemptId(), dispatchBinding.attemptId());
             return TaskMessageMutationOutcome.rejected();
         }
 
@@ -347,6 +350,24 @@ class TaskResultService {
             requestRetryDispatch(updatedTask, workRetryDelayMillis);
         }
         return retryOutcome;
+    }
+
+    private TaskMsg resolveOrRecoverTaskMessageProjection(String taskId,
+                                                          String messageId,
+                                                          ActiveLeaseRecord activeLease) {
+        TaskMsg taskMsg = resultRuntime.getTaskMessage(taskId, messageId);
+        if (taskMsg != null || activeLease == null) {
+            return taskMsg;
+        }
+        TaskMsg recovered = new TaskMsg(messageId, taskId, Map.of());
+        recovered.setRetryCount(Math.max(0, activeLease.retryCount()));
+        recovered.applyLatestAttemptProjection(null,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId());
+        recovered.markAsAssigned();
+        resultRuntime.addTaskMessageProjection(taskId, recovered);
+        return resultRuntime.getTaskMessage(taskId, messageId);
     }
 
     private TaskMessageMutationOutcome handleSuccess(String taskId,

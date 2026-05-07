@@ -2,7 +2,6 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -157,8 +156,7 @@ public class TaskWorkerAssignListener {
 
         List<TaskDispatchBinding> dispatchedBindings = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedBindings.stream()
-                .map(TaskDispatchBinding::attempt)
-                .map(TaskMsgAttempt::getWorkerId)
+                .map(TaskDispatchBinding::workerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();

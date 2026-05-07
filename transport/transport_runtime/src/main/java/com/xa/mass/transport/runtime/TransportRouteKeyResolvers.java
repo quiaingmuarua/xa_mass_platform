@@ -11,9 +11,7 @@ public final class TransportRouteKeyResolvers {
         if (routeContext != null && routeContext.workerId() != null && !routeContext.workerId().isBlank()) {
             return routeContext.workerId();
         }
-        return dispatchBinding != null && dispatchBinding.attempt() != null
-                ? dispatchBinding.attempt().getWorkerId()
-                : null;
+        return dispatchBinding != null ? dispatchBinding.workerId() : null;
     };
 
     private TransportRouteKeyResolvers() {

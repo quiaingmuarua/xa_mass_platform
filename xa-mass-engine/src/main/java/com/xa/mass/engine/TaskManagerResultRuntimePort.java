@@ -35,6 +35,11 @@ final class TaskManagerResultRuntimePort implements TaskResultRuntimePort {
     }
 
     @Override
+    public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        taskProjectionBridge.addTaskMessage(taskId, taskMsg);
+    }
+
+    @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         return taskProjectionBridge.updateTaskMessageAttempt(taskId, messageId, attempt);
     }

@@ -192,13 +192,16 @@ public final class SocketTransportServer implements TransportServer {
                         continue;
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
-                    taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+                    boolean accepted = taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
                             adapterId,
                             boundWorkerId,
                             endpointId,
                             frameCodec.extractTraceId(frame),
                             report
                     ));
+                    if (!accepted) {
+                        throw new IllegalStateException("task result ingest channel rejected inbound socket task result");
+                    }
                     continue;
                 }
                 logger.warn("Ignoring unsupported socket frame: endpointId={}, routeKey={}, workerId={}",

@@ -5,7 +5,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -95,29 +94,35 @@ class BufferedTaskResultIngestChannelTest {
     }
 
     @Test
-    void fullQueueReturnsFalseInsteadOfBlocking() {
-        TaskResultIngestChannel blockingDelegate = report -> {
-            try {
-                Thread.sleep(60_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+    void fullQueueFallsBackToSynchronousDelegateInsteadOfDropping() throws InterruptedException {
+        CountDownLatch blocker = new CountDownLatch(1);
+        CountDownLatch synchronousFallback = new CountDownLatch(1);
+        List<String> received = new CopyOnWriteArrayList<>();
+        TaskResultIngestChannel delegate = report -> {
+            received.add(report.getMessageId());
+            if ("msg-0".equals(report.getMessageId())) {
+                try {
+                    blocker.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if ("msg-overflow".equals(report.getMessageId())) {
+                synchronousFallback.countDown();
             }
             return true;
         };
 
-        int capacity = 4;
-        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(blockingDelegate, capacity);
+        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 1);
+        assertTrue(channel.ingest(report("task", "msg-0")));
+        assertTrue(channel.ingest(report("task", "msg-1")));
+        assertTrue(channel.ingest(report("task", "msg-overflow")));
 
-        // First item is consumed by the drainer immediately; fill the remaining slots.
-        List<Boolean> results = new ArrayList<>();
-        for (int i = 0; i < capacity + 4; i++) {
-            results.add(channel.ingest(report("t", "m-" + i)));
-        }
+        assertTrue(synchronousFallback.await(1, TimeUnit.SECONDS), "overflow item must be ingested synchronously");
 
-        // At least the last few should be false (queue full).
-        assertTrue(results.contains(false), "ingest must return false when queue is full");
-
+        blocker.countDown();
         channel.shutdown();
+        assertTrue(received.contains("msg-overflow"));
     }
 
     @Test

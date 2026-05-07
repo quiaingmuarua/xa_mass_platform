@@ -2,6 +2,7 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 
 import java.util.Collections;
@@ -93,25 +94,28 @@ public final class TaskDispatchItem {
         return eventCode;
     }
 
-    public static TaskDispatchItem from(TaskDispatchContext task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+    public static TaskDispatchItem from(TaskDispatchContext task, TaskDispatchBinding dispatchBinding) {
         Objects.requireNonNull(task, "task");
-        Objects.requireNonNull(taskMsg, "taskMsg");
-        Objects.requireNonNull(attempt, "attempt");
+        Objects.requireNonNull(dispatchBinding, "dispatchBinding");
         return new TaskDispatchItem(
                 task.taskId(),
-                taskMsg.getMessageId(),
+                dispatchBinding.messageId(),
                 task.eventCode(),
                 task.taskName(),
                 task.project(),
                 task.userId(),
-                taskMsg.getRetryCount(),
-                attempt.getAttemptId(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                normalizeInput(task, taskMsg),
+                dispatchBinding.retryCount(),
+                dispatchBinding.attemptId(),
+                dispatchBinding.workerId(),
+                dispatchBinding.workerContextId(),
+                dispatchBinding.batchId(),
+                normalizeInput(task, dispatchBinding.payload()),
                 task.sharedConfig()
         );
+    }
+
+    public static TaskDispatchItem from(TaskDispatchContext task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        return from(task, new TaskDispatchBinding(taskMsg, attempt));
     }
 
     public String getTaskName() {
@@ -203,8 +207,7 @@ public final class TaskDispatchItem {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeInput(TaskDispatchContext task, TaskMsg taskMsg) {
-        Map<String, Object> rawInput = taskMsg == null ? null : taskMsg.getInput();
+    private static Map<String, Object> normalizeInput(TaskDispatchContext task, Map<String, Object> rawInput) {
         if (rawInput == null || rawInput.isEmpty()) {
             return Collections.emptyMap();
         }

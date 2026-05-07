@@ -4,6 +4,8 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.concurrent.Future;
@@ -14,6 +16,7 @@ import java.util.concurrent.Future;
  */
 public final class TaskDispatchHandoffPump {
 
+    private static final Logger logger = LoggerFactory.getLogger(TaskDispatchHandoffPump.class);
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
     private final TaskDispatchHandoff handoff;
@@ -59,6 +62,8 @@ public final class TaskDispatchHandoffPump {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
+            } catch (RuntimeException e) {
+                logger.error("Task dispatch handoff batch failed; continuing drain loop", e);
             }
         }
     }

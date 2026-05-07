@@ -21,6 +21,8 @@ public interface TaskAssignmentRuntimePort {
 
     TaskMsg getTaskMessage(String taskId, String messageId);
 
+    void addTaskMessageProjection(String taskId, TaskMsg taskMsg);
+
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
     TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId);

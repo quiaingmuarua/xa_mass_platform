@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -156,6 +157,26 @@ class WebSocketInputProcessorTest {
         assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+    }
+
+    @Test
+    void canonicalTaskResultReturnsFalseWhenIngestChannelRejectsEnvelope() {
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                return false;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                return false;
+            }
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
+
+        assertFalse(result);
     }
 
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {

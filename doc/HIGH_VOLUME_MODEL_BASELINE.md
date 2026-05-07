@@ -25,6 +25,12 @@ Already true in current code:
 - task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
 - task terminal cleanup can now read only non-final `TaskMsg` projections instead of materializing the full task-message snapshot
 - bounded `validateTaskState(...)` no longer needs full `TaskMsg` scans; deep projection checks are now an explicit audit path instead of the default validation meaning
+- engine -> transport dispatch now carries a runtime-native binding built from
+  claimed runtime work instead of transporting persisted `TaskMsg.input` as the
+  mainline dispatch carrier
+- result ingest can recover a bounded compatibility `TaskMsg` projection from
+  runtime lease truth when the projection is missing, rather than treating the
+  missing projection as callback truth
 
 Still too heavy on the hot path:
 

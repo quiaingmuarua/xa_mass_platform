@@ -15,9 +15,10 @@ import java.util.concurrent.LinkedBlockingQueue;
  * dedicated virtual-thread drainer forwards each item to the wrapped synchronous
  * channel.
  *
- * <p>Backpressure: when the queue is full {@code ingest} returns {@code false}
- * (non-blocking offer) so the transport adapter surfaces overload explicitly
- * rather than blocking its receive thread.
+ * <p>Backpressure: the fast path is still a non-blocking queue offer. When the
+ * queue is full, the current caller synchronously forwards the result to the
+ * delegate instead of dropping an already-received worker result. This keeps
+ * correctness ahead of adapter-thread isolation under sustained overload.
  *
  * <p>Shutdown: call {@link #shutdown()} before stopping the engine. The drainer
  * will process all remaining queued items before returning.
@@ -60,8 +61,9 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
         }
         boolean offered = queue.offer(new PendingReport(report));
         if (!offered) {
-            logger.warn("Result ingest buffer full ({} capacity); dropping report taskId={}, messageId={}",
+            logger.warn("Result ingest buffer full ({} capacity); falling back to synchronous report ingest taskId={}, messageId={}",
                     queue.size(), report.getTaskId(), report.getMessageId());
+            return delegate.ingest(report);
         }
         return offered;
     }
@@ -74,11 +76,12 @@ public final class BufferedTaskResultIngestChannel implements TaskResultIngestCh
         boolean offered = queue.offer(new PendingEnvelope(envelope));
         if (!offered) {
             TaskResultReport r = envelope.getReport();
-            logger.warn("Result ingest buffer full ({} capacity); dropping envelope taskId={}, messageId={}, adapterId={}",
+            logger.warn("Result ingest buffer full ({} capacity); falling back to synchronous envelope ingest taskId={}, messageId={}, adapterId={}",
                     queue.size(),
                     r != null ? r.getTaskId() : null,
                     r != null ? r.getMessageId() : null,
                     envelope.getAdapterId());
+            return delegate.ingest(envelope);
         }
         return offered;
     }

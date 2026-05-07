@@ -226,6 +226,34 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void dispatchPayloadUsesRuntimeClaimInsteadOfProjectionInput() {
+        ProjectionPayloadScrubbingStorage scrubbingStorage = new ProjectionPayloadScrubbingStorage();
+        taskManager = new TaskManager(new NoopTaskScheduler(), scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
+        taskCommands = new TaskCommandService(taskManager);
+        listener = newAssignmentListener(taskManager);
+
+        Task task = createTask(1);
+        task.setBatchSize(1);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
+        listener = new SimpleTaskMsgAssignListener(
+                new TaskManagerAssignmentRuntimePort(taskManager),
+                workerManager,
+                recordService,
+                (t, bindings) -> dispatched.set(bindings)
+        );
+
+        listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+        List<TaskDispatchBinding> bindings = dispatched.get();
+        assertNotNull(bindings);
+        assertEquals(1, bindings.size());
+        assertEquals("target-0", bindings.get(0).payload().get("target"));
+    }
+
+    @Test
     void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerContextForRetry() {
         Task task = createTask(2);
         task.setBatchSize(2);
@@ -548,6 +576,15 @@ class SimpleTaskMsgAssignListenerTest {
         public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
             latestAttemptReadCount.incrementAndGet();
             return super.getLatestTaskMessageAttempt(taskId, messageId);
+        }
+    }
+
+    private static final class ProjectionPayloadScrubbingStorage extends InMemoryTaskStorage {
+        @Override
+        public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+            Optional<TaskMsg> message = super.getTaskMessage(taskId, messageId);
+            message.ifPresent(taskMsg -> taskMsg.setInput(java.util.Map.of()));
+            return message;
         }
     }
 }

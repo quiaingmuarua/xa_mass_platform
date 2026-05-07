@@ -23,12 +23,12 @@ public record TransportDispatchRouteContext(String taskId,
         Objects.requireNonNull(dispatchBinding, "dispatchBinding");
         return new TransportDispatchRouteContext(
                 task.taskId(),
-                dispatchBinding.taskMsg() != null ? dispatchBinding.taskMsg().getMessageId() : null,
+                dispatchBinding.messageId(),
                 task.eventCode(),
-                dispatchBinding.attempt() != null ? dispatchBinding.attempt().getAttemptId() : null,
-                dispatchBinding.attempt() != null ? dispatchBinding.attempt().getWorkerId() : null,
-                dispatchBinding.attempt() != null ? dispatchBinding.attempt().getWorkerContextId() : null,
-                dispatchBinding.attempt() != null ? dispatchBinding.attempt().getBatchId() : null
+                dispatchBinding.attemptId(),
+                dispatchBinding.workerId(),
+                dispatchBinding.workerContextId(),
+                dispatchBinding.batchId()
         );
     }
 }

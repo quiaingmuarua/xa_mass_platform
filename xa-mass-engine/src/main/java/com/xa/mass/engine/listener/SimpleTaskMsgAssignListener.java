@@ -4,7 +4,11 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.*;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -157,12 +161,12 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 log.warn("[MsgAssign] Skip claimed work {} because dispatch slot was not found", work.messageId());
                 continue;
             }
-            TaskMsg msg = assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
+            TaskMsg msg = resolveOrRecoverTaskMessageProjection(task, work);
             if (msg == null) {
-                log.warn("[MsgAssign] Skip claimed work {} because task message was not found", work.messageId());
+                log.warn("[MsgAssign] Skip claimed work {} because task message projection could not be resolved", work.messageId());
                 continue;
             }
-            TaskDispatchBinding dispatchBinding = bindTaskMessage(msg, work);
+            TaskDispatchBinding dispatchBinding = bindTaskMessage(task, msg, work);
             if (dispatchBinding == null) {
                 log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
                         msg.getMessageId(), msg.getStatus());
@@ -188,14 +192,12 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         int uniqueWorkerCount = (int) dispatchBindings.stream()
-                .map(TaskDispatchBinding::attempt)
-                .map(TaskMsgAttempt::getWorkerId)
+                .map(TaskDispatchBinding::workerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
         int uniqueWorkerContextCount = (int) dispatchBindings.stream()
-                .map(TaskDispatchBinding::attempt)
-                .map(TaskMsgAttempt::getWorkerContextId)
+                .map(TaskDispatchBinding::workerContextId)
                 .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
                 .distinct()
                 .count();
@@ -300,7 +302,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         return null;
     }
 
-    private TaskDispatchBinding bindTaskMessage(TaskMsg taskMsg, ClaimedTaskWork work) {
+    private TaskDispatchBinding bindTaskMessage(Task task, TaskMsg taskMsg, ClaimedTaskWork work) {
         TaskMsgAttempt latestAttempt = assignmentRuntime.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
@@ -352,7 +354,31 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "task message assigned to worker"
         );
-        return new TaskDispatchBinding(taskMsg, attempt);
+        return new TaskDispatchBinding(
+                task.getTid(),
+                work.messageId(),
+                work.eventCode(),
+                work.payload(),
+                work.payloadRef(),
+                work.retryCount(),
+                attempt.getAttemptId(),
+                attempt.getAttemptNo(),
+                work.leaseToken(),
+                work.workerId(),
+                work.workerContextId(),
+                work.batchId()
+        );
+    }
+
+    private TaskMsg resolveOrRecoverTaskMessageProjection(Task task, ClaimedTaskWork work) {
+        TaskMsg taskMsg = assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
+        if (taskMsg != null) {
+            return taskMsg;
+        }
+        TaskMsg recovered = new TaskMsg(work.messageId(), task.getTid(), work.payload());
+        recovered.setRetryCount(work.retryCount());
+        assignmentRuntime.addTaskMessageProjection(task.getTid(), recovered);
+        return assignmentRuntime.getTaskMessage(task.getTid(), work.messageId());
     }
 
     private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {

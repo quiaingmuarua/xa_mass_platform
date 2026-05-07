@@ -58,7 +58,7 @@ public final class WebSocketInputProcessor {
         }
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
-            context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
+            boolean accepted = context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
                     context.getAdapterId(),
                     WebSocketStringValues.firstNonBlank(
                             context.getFrameCodec().extractWorkerId(frame),
@@ -68,6 +68,9 @@ public final class WebSocketInputProcessor {
                     context.getFrameCodec().extractTraceId(frame),
                     report
             ));
+            if (!accepted) {
+                throw new IllegalStateException("task result ingest channel rejected inbound canonical task result");
+            }
         } catch (IllegalArgumentException ex) {
             logger.warn("Canonical task result rejected: {}", ex.getMessage());
         }

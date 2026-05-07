@@ -48,6 +48,11 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
     }
 
     @Override
+    public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        taskProjectionBridge.addTaskMessage(taskId, taskMsg);
+    }
+
+    @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return taskProjectionBridge.updateTaskMessage(taskId, taskMsg);
     }

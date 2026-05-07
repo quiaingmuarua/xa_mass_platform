@@ -74,6 +74,42 @@ class TaskDispatchHandoffPumpTest {
         }
     }
 
+    @Test
+    void runtimeExceptionFromListenerDoesNotStopDrainLoop() throws Exception {
+        InMemoryTaskDispatchHandoff handoff = new InMemoryTaskDispatchHandoff(4);
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("dispatch-handoff-test-", 2);
+        CountDownLatch deliveredAfterFailure = new CountDownLatch(1);
+        AtomicReference<String> deliveredMessageId = new AtomicReference<>();
+
+        TaskDispatchBatchListener listener = new TaskDispatchBatchListener() {
+            private boolean first = true;
+
+            @Override
+            public void onTaskDispatchBatch(TaskDispatchContext task, List<TaskDispatchBinding> dispatchBindings) {
+                if (first) {
+                    first = false;
+                    throw new IllegalStateException("boom");
+                }
+                deliveredMessageId.set(dispatchBindings.getFirst().messageId());
+                deliveredAfterFailure.countDown();
+            }
+        };
+
+        TaskDispatchHandoffPump pump = new TaskDispatchHandoffPump(handoff, listener, executor);
+        try {
+            pump.start();
+            handoff.submit(batch("task-1", "msg-1"));
+            handoff.submit(batch("task-1", "msg-2"));
+
+            assertTrue(deliveredAfterFailure.await(1, TimeUnit.SECONDS));
+            assertEquals("msg-2", deliveredMessageId.get());
+        } finally {
+            pump.stop();
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS));
+        }
+    }
+
     private static TaskDispatchBatch batch(String taskId, String messageId) {
         TaskMsg taskMsg = new TaskMsg();
         taskMsg.setTaskId(taskId);

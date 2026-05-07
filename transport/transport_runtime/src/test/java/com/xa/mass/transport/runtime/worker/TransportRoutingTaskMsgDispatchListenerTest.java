@@ -10,6 +10,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -197,6 +199,43 @@ class TransportRoutingTaskMsgDispatchListenerTest {
     }
 
     @Test
+    void retryableDispatchOutcomesTriggerCompensationForMatchedBindings() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+
+        Worker worker = new Worker();
+        worker.setWorkerId("poll-worker");
+        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
+        workerManager.addWorker(worker);
+
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
+        pollingAdapter.overrideStatus = DispatchOutcomeStatus.ENDPOINT_OFFLINE;
+        List<List<TaskDispatchBinding>> compensated = new CopyOnWriteArrayList<>();
+        TransportDispatchFailureHandler failureHandler = (task, dispatchBindings, detail) -> {
+            compensated.add(List.copyOf(dispatchBindings));
+            return true;
+        };
+        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                workerManager,
+                runtimeRegistry(workerManager, pollingAdapter),
+                failureHandler
+        );
+
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskMsg taskMsg = new TaskMsg();
+        taskMsg.setTaskId("task-1");
+        taskMsg.setMessageId("msg-offline");
+        TaskMsgAttempt attempt = attempt("task-1", "msg-offline", "attempt-offline", "poll-worker", null, "batch-1");
+
+        listener.onTaskDispatchBatch(taskContext(task), List.of(new TaskDispatchBinding(taskMsg, attempt)));
+
+        assertEquals(1, compensated.size());
+        assertEquals(List.of("msg-offline"),
+                compensated.getFirst().stream().map(TaskDispatchBinding::messageId).toList());
+    }
+
+    @Test
     void runtimeOwnsEnvelopeIdentityAndCreatedTime() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
 
@@ -210,6 +249,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, pollingAdapter),
+                null,
                 new TransportDispatchEnvelopeFactory(() -> "delivery-1", now::get)
         );
 

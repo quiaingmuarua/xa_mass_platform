@@ -7,6 +7,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.base.model.Task;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
@@ -25,6 +26,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -263,7 +265,9 @@ public class MassApplication {
                         )
                 );
                 taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
-                TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener();
+                TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
+                        createTransportDispatchFailureHandler()
+                );
                 taskDispatchHandoffPump = new TaskDispatchHandoffPump(
                         taskDispatchHandoff,
                         batchListener,
@@ -286,6 +290,21 @@ public class MassApplication {
             logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
+    }
+
+    private TransportDispatchFailureHandler createTransportDispatchFailureHandler() {
+        return (task, dispatchBindings, detail) -> {
+            if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
+                return true;
+            }
+            Task storedTask = engineConfig.getTaskStorage().getTask(task.taskId()).orElse(null);
+            if (storedTask == null) {
+                logger.error("Cannot compensate transport dispatch failure because task {} is missing", task.taskId());
+                return false;
+            }
+            return engineConfig.getTaskAssignmentRuntimePort()
+                    .compensateDispatchSubmitFailure(storedTask, dispatchBindings, detail);
+        };
     }
 
     private void startManagedTransportAdapters() {

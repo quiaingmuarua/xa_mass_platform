@@ -44,6 +44,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - `applyResult(...)` is the only runtime result convergence path
 - `pollExpiredLeases(...)` reports runtime expiry truth
 - `discardTask(...)` removes runtime residue without redefining storage truth
+- engine -> transport handoff now carries runtime-native dispatch bindings built
+  from claimed runtime work plus active attempt ownership; transport must not
+  need persisted `TaskMsg.input` to reconstruct the worker payload
 
 ## Storage And Projection Non-Truth
 
@@ -116,6 +119,8 @@ Current bounded residue that remains acceptable:
 - `TaskMsg` and `TaskMsgAttempt` compatibility projection
 - active-attempt projection repair when runtime lease exists but projection is
   missing
+- bounded compatibility `TaskMsg` recovery from runtime lease truth when result
+  ingest arrives after projection loss
 - bounded debug reads exposed by shell-facing query services
 
 These are current compatibility facts, not target runtime truth.

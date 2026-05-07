@@ -53,7 +53,11 @@ public final class TransportRuntimeRegistry {
     }
 
     public TaskDispatchBatchListener createDispatchBatchListener() {
-        return new TransportRoutingTaskMsgDispatchListener(workerLookupStore, this);
+        return createDispatchBatchListener(null);
+    }
+
+    public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchFailureHandler failureHandler) {
+        return new TransportRoutingTaskMsgDispatchListener(workerLookupStore, this, failureHandler);
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {

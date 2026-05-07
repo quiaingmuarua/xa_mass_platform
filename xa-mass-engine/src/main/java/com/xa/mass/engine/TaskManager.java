@@ -705,10 +705,10 @@ public class TaskManager {
         }
         boolean progressDirty = false;
         for (TaskDispatchBinding dispatchBinding : dispatchBindings) {
-            if (dispatchBinding == null || dispatchBinding.taskMsg() == null) {
+            if (dispatchBinding == null || dispatchBinding.messageId() == null) {
                 continue;
             }
-            String messageId = dispatchBinding.taskMsg().getMessageId();
+            String messageId = dispatchBinding.messageId();
             TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(task.getTid(), messageId,
                     () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
             if (!outcome.accepted()) {

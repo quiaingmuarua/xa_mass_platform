@@ -336,6 +336,37 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     @Test
+    void resultIngestRecoversCompatibilityProjectionFromRuntimeLeaseWhenMissing() {
+        FirstLookupMissingTaskStorage taskStorage = new FirstLookupMissingTaskStorage();
+        TaskManager recoveringTaskManager = new TaskManager(
+                new RecordingTaskScheduler(),
+                taskStorage,
+                taskStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        Task task = createRunningTask(recoveringTaskManager, "recover-projection-from-runtime", 1, 3);
+        TaskMsg message = recoveringTaskManager.getTaskMessages(task.getTid()).get(0);
+        assignMessage(recoveringTaskManager, task, message);
+        taskStorage.suppressNextTaskMessageLookup(task.getTid(), message.getMessageId());
+
+        assertTrue(recoveringTaskManager.handleTaskMessageResult(
+                task.getTid(),
+                message.getMessageId(),
+                true,
+                "done",
+                null,
+                Map.of("outcome", "success")
+        ));
+
+        TaskMsg finalMessage = recoveringTaskManager.getTaskMessage(task.getTid(), message.getMessageId());
+        assertNotNull(finalMessage);
+        assertEquals(TaskMsgStatus.SUCCESS, finalMessage.getStatus());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.getFinalReason());
+        assertEquals(Map.of("outcome", "success"), finalMessage.getOutput());
+    }
+
+    @Test
     void concurrentSuccessBurstCoalescesTaskProgressRecompute() throws Exception {
         int messageCount = 8;
         RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
@@ -757,6 +788,23 @@ class TaskConcurrencyAcceptanceTest {
 
         private int progressResolveCount() {
             return progressResolveCount.get();
+        }
+    }
+
+    private static final class FirstLookupMissingTaskStorage extends InMemoryTaskStorage {
+        private final ConcurrentHashMap<String, AtomicInteger> suppressedReads = new ConcurrentHashMap<>();
+
+        @Override
+        public java.util.Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+            AtomicInteger remaining = suppressedReads.get(taskId + "|" + messageId);
+            if (remaining != null && remaining.getAndDecrement() > 0) {
+                return java.util.Optional.empty();
+            }
+            return super.getTaskMessage(taskId, messageId);
+        }
+
+        private void suppressNextTaskMessageLookup(String taskId, String messageId) {
+            suppressedReads.put(taskId + "|" + messageId, new AtomicInteger(1));
         }
     }
 }

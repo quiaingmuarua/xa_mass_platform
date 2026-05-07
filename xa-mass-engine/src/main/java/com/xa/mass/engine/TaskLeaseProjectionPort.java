@@ -14,5 +14,7 @@ public interface TaskLeaseProjectionPort {
 
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
+    void addTaskMessageProjection(String taskId, TaskMsg taskMsg);
+
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 }

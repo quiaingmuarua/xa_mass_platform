@@ -39,6 +39,7 @@ more implemented than another.
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
 | task-message detail (`TaskMsg`) at scale | trace / audit stream | high-volume item history and reconstruction | bounded compatibility projection | JDBC durable event history |
 | task-message-attempt timelines (`TaskMsgAttempt`) at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
+| engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded compatibility synthesis for tests only | JDBC/message projection truth |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
