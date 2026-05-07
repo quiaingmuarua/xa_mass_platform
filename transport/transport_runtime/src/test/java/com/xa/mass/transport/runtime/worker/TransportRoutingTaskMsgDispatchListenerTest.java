@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.WorkerManager;
@@ -22,7 +23,10 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -297,7 +301,84 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         assertEquals(List.of("msg-1", "msg-2"), pollingAdapter.dispatchedMessageIds);
     }
 
-    private static final class RecordingAdapter implements WorkerAdapter {
+    @Test
+    void dispatchesAdapterGroupsConcurrentlyWhenRuntimeExecutorIsAvailable() throws Exception {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
+        workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
+
+        AtomicInteger activeDispatches = new AtomicInteger();
+        AtomicInteger maxConcurrentDispatches = new AtomicInteger();
+        CountDownLatch started = new CountDownLatch(2);
+        BlockingRecordingAdapter realtimeAdapter = new BlockingRecordingAdapter(
+                "websocket",
+                WorkerTransportHints.REALTIME,
+                started,
+                activeDispatches,
+                maxConcurrentDispatches
+        );
+        BlockingRecordingAdapter pollingAdapter = new BlockingRecordingAdapter(
+                WorkerTransportHints.POLLING,
+                WorkerTransportHints.POLLING,
+                started,
+                activeDispatches,
+                maxConcurrentDispatches
+        );
+
+        try (VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("dispatch-fanout-test-", 8)) {
+            TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                    workerManager,
+                    runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
+                    null,
+                    executor
+            );
+
+            Task task = new Task();
+            task.setTid("task-1");
+
+            listener.onTaskDispatchBatch(taskContext(task), List.of(
+                    binding("task-1", "msg-ws", "attempt-ws", "ws-worker", null, "batch-ws"),
+                    binding("task-1", "msg-poll", "attempt-poll", "poll-worker", null, "batch-poll")
+            ));
+        }
+
+        assertEquals(2, maxConcurrentDispatches.get(), "adapter groups should fan out concurrently");
+    }
+
+    @Test
+    void adapterDispatchFailureBecomesRetryableOutcomeWithoutBlockingOtherGroups() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
+        workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
+
+        ThrowingAdapter realtimeAdapter = new ThrowingAdapter("websocket", WorkerTransportHints.REALTIME);
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
+        List<List<TaskDispatchBinding>> compensated = new CopyOnWriteArrayList<>();
+        TransportDispatchFailureHandler failureHandler = (task, dispatchBindings, detail) -> {
+            compensated.add(List.copyOf(dispatchBindings));
+            return true;
+        };
+        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+                workerManager,
+                runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
+                failureHandler
+        );
+
+        Task task = new Task();
+        task.setTid("task-1");
+
+        listener.onTaskDispatchBatch(taskContext(task), List.of(
+                binding("task-1", "msg-ws", "attempt-ws", "ws-worker", null, "batch-ws"),
+                binding("task-1", "msg-poll", "attempt-poll", "poll-worker", null, "batch-poll")
+        ));
+
+        assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
+        assertEquals(1, compensated.size());
+        assertEquals(List.of("msg-ws"),
+                compensated.getFirst().stream().map(TaskDispatchBinding::messageId).toList());
+    }
+
+    private static class RecordingAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
         private final List<String> dispatchedMessageIds = new ArrayList<>();
@@ -351,6 +432,50 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         private List<DispatchOutcomeStatus> outcomeStatuses() {
             return outcomes.stream().map(DispatchOutcome::getStatus).toList();
+        }
+    }
+
+    private static final class BlockingRecordingAdapter extends RecordingAdapter {
+        private final CountDownLatch started;
+        private final AtomicInteger activeDispatches;
+        private final AtomicInteger maxConcurrentDispatches;
+
+        private BlockingRecordingAdapter(String protocol,
+                                         String transportHint,
+                                         CountDownLatch started,
+                                         AtomicInteger activeDispatches,
+                                         AtomicInteger maxConcurrentDispatches) {
+            super(protocol, transportHint);
+            this.started = started;
+            this.activeDispatches = activeDispatches;
+            this.maxConcurrentDispatches = maxConcurrentDispatches;
+        }
+
+        @Override
+        public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+            int concurrent = activeDispatches.incrementAndGet();
+            maxConcurrentDispatches.accumulateAndGet(concurrent, Math::max);
+            started.countDown();
+            try {
+                assertTrue(started.await(1, TimeUnit.SECONDS), "both adapter groups should start before dispatch completes");
+                return super.dispatchEnvelopes(envelopes);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("dispatch interrupted", e);
+            } finally {
+                activeDispatches.decrementAndGet();
+            }
+        }
+    }
+
+    private static final class ThrowingAdapter extends RecordingAdapter {
+        private ThrowingAdapter(String protocol, String transportHint) {
+            super(protocol, transportHint);
+        }
+
+        @Override
+        public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+            throw new IllegalStateException("adapter dispatch failed");
         }
     }
 

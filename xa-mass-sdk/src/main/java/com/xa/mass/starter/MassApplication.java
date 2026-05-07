@@ -262,7 +262,8 @@ public class MassApplication {
                 );
                 taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
-                        createTransportDispatchFailureHandler()
+                        createTransportDispatchFailureHandler(),
+                        transportRuntimeTaskExecutor
                 );
                 taskDispatchHandoffPump = new TaskDispatchHandoffPump(
                         taskDispatchHandoff,

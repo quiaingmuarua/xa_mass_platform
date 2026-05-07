@@ -7,6 +7,7 @@ import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
+import java.util.AbstractList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -81,11 +82,7 @@ public final class TransportDeliveryService {
         if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        List<TaskDispatchItem> items = new ArrayList<>(envelopes.size());
-        for (TransportDispatchEnvelope envelope : envelopes) {
-            items.add(toDispatchItem(envelope));
-        }
-        return Collections.unmodifiableList(items);
+        return Collections.unmodifiableList(new DispatchItemListView(envelopes));
     }
 
     public TransportDeliveryServiceStats stats() {
@@ -178,6 +175,32 @@ public final class TransportDeliveryService {
                     invalidItems.get(),
                     unavailableItems.get()
             );
+        }
+    }
+
+    private static final class DispatchItemListView extends AbstractList<TaskDispatchItem> {
+        private final List<TransportDispatchEnvelope> envelopes;
+        private final TaskDispatchItem[] cache;
+
+        private DispatchItemListView(List<TransportDispatchEnvelope> envelopes) {
+            this.envelopes = Objects.requireNonNull(envelopes, "envelopes");
+            this.cache = new TaskDispatchItem[envelopes.size()];
+        }
+
+        @Override
+        public TaskDispatchItem get(int index) {
+            TaskDispatchItem cached = cache[index];
+            if (cached != null) {
+                return cached;
+            }
+            TaskDispatchItem resolved = toDispatchItem(envelopes.get(index));
+            cache[index] = resolved;
+            return resolved;
+        }
+
+        @Override
+        public int size() {
+            return envelopes.size();
         }
     }
 }

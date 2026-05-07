@@ -39,13 +39,13 @@ class TaskManagerLifecycleTest {
 
     private RecordingTaskScheduler scheduler;
     private InMemoryTaskStorage taskStorage;
-    private TaskManager taskManager;
+    private ProjectionAwareTaskManager taskManager;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -282,7 +282,7 @@ class TaskManagerLifecycleTest {
     @Test
     void runtimeIngressStillConvergesWhenInitialTaskMsgProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
-        TaskManager manager = new TaskManager(
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
@@ -414,7 +414,7 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
 
             InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
-            TaskManager manager = new TaskManager(
+            ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                     new RecordingTaskScheduler(),
                     managerStorage,
                     managerStorage,
@@ -672,7 +672,7 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
         InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
-        TaskManager manager = new TaskManager(
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 new RecordingTaskScheduler(),
                 managerStorage,
                 managerStorage,
@@ -717,7 +717,7 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
         InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
-        TaskManager manager = new TaskManager(
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 new RecordingTaskScheduler(),
                 managerStorage,
                 managerStorage,
@@ -1428,7 +1428,7 @@ class TaskManagerLifecycleTest {
     @Test
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
+        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1451,7 +1451,7 @@ class TaskManagerLifecycleTest {
     @Test
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        TaskManager pagingTaskManager = new TaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
+        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = pagingTaskManager.createTask(buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -1522,7 +1522,7 @@ class TaskManagerLifecycleTest {
     @Test
     void customTerminalPolicyCanKeepTaskRunningEvenWhenMessagesAreFinal() {
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
-        TaskManager policyAwareManager = new TaskManager(
+        ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 scheduler,
                 policyStorage,
                 policyStorage,
@@ -1554,7 +1554,7 @@ class TaskManagerLifecycleTest {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
-        TaskManager policyAwareManager = new TaskManager(
+        ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 scheduler,
                 policyStorage,
                 policyStorage,
@@ -1583,7 +1583,7 @@ class TaskManagerLifecycleTest {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
-        TaskManager policyAwareManager = new TaskManager(
+        ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 scheduler,
                 policyStorage,
                 policyStorage,
@@ -1956,7 +1956,7 @@ class TaskManagerLifecycleTest {
         return assignMessage(taskManager, task, message, workerId, workerContextId, batchId);
     }
 
-    private TaskMsg assignMessage(TaskManager manager, Task task, TaskMsg message) {
+    private TaskMsg assignMessage(ProjectionAwareTaskManager manager, Task task, TaskMsg message) {
         String suffix = message.getMessageId() != null ? message.getMessageId() : "msg";
         return assignMessage(manager, task, message,
                 "worker-" + suffix,
@@ -1964,7 +1964,7 @@ class TaskManagerLifecycleTest {
                 "batch-" + message.getRetryCount());
     }
 
-    private TaskMsg assignMessage(TaskManager manager,
+    private TaskMsg assignMessage(ProjectionAwareTaskManager manager,
                                   Task task,
                                   TaskMsg message,
                                   String workerId,
@@ -2110,6 +2110,7 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+
 
 
 

@@ -20,19 +20,15 @@ import java.util.List;
  */
 class TaskStateValidator {
 
-    private final TaskManager taskManager;
     private final TaskStateRuntimePort stateRuntime;
+    private final TaskDetailStore taskDetailStore;
     private final TraceEventLogger traceEventLogger;
 
-    TaskStateValidator(TaskManager taskManager, TraceEventLogger traceEventLogger) {
-        this.taskManager = taskManager;
-        this.stateRuntime = null;
-        this.traceEventLogger = traceEventLogger;
-    }
-
-    TaskStateValidator(TaskStateRuntimePort stateRuntime, TraceEventLogger traceEventLogger) {
-        this.taskManager = null;
+    TaskStateValidator(TaskStateRuntimePort stateRuntime,
+                       TaskDetailStore taskDetailStore,
+                       TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
+        this.taskDetailStore = taskDetailStore;
         this.traceEventLogger = traceEventLogger;
     }
 
@@ -235,25 +231,23 @@ class TaskStateValidator {
     }
 
     private Task getTask(String taskId) {
-        return taskManager != null ? taskManager.getTask(taskId) : stateRuntime.getTask(taskId);
+        return stateRuntime.getTask(taskId);
     }
 
     private TaskWorkStats getTaskWorkStats(String taskId) {
-        return taskManager != null ? taskManager.getTaskWorkStats(taskId) : stateRuntime.getTaskWorkStats(taskId);
+        return stateRuntime.getTaskWorkStats(taskId);
     }
 
     private TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
-        return taskManager != null ? taskManager.evaluateTerminalPolicy(task, stats) : stateRuntime.evaluateTerminalPolicy(task, stats);
+        return stateRuntime.evaluateTerminalPolicy(task, stats);
     }
 
     private List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-        return taskManager != null ? taskManager.getTaskMessages(taskId) : stateRuntime.getTaskMessagesForProjectionAudit(taskId);
+        return taskDetailStore.getTaskMessages(taskId);
     }
 
     private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskManager != null
-                ? taskManager.getTaskMessageAttemptStats(taskId, messageId)
-                : stateRuntime.getTaskMessageAttemptStats(taskId, messageId);
+        return stateRuntime.getTaskMessageAttemptStats(taskId, messageId);
     }
 
 }

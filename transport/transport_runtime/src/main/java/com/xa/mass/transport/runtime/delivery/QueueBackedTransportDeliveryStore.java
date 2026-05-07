@@ -12,6 +12,7 @@ import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
 
 import java.util.Collections;
+import java.util.AbstractList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,11 +86,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         if (drained.isEmpty()) {
             return List.of();
         }
-        List<TransportDispatchEnvelope> envelopes = new java.util.ArrayList<>(drained.size());
-        for (KeyedQueueEntry<TransportDispatchEnvelope> entry : drained) {
-            envelopes.add(entry.value());
-        }
-        return Collections.unmodifiableList(envelopes);
+        return envelopeView(drained);
     }
 
     @Override
@@ -106,7 +103,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         KeyedQueuePollResult<TransportDispatchEnvelope> result =
                 queueStore.poll(new DeliveryQueueKey(normalizedAdapterId, normalizedRouteKey), maxItems, timeout, unit);
         return switch (result.status()) {
-            case DELIVERED -> TransportDeliveryPollResult.delivered(extractEnvelopes(result.items()));
+            case DELIVERED -> TransportDeliveryPollResult.deliveredView(envelopeView(result.items()));
             case EMPTY -> TransportDeliveryPollResult.empty();
             case INVALID_REQUEST -> TransportDeliveryPollResult.invalidRequest();
             case UNAVAILABLE -> TransportDeliveryPollResult.unavailable();
@@ -198,15 +195,11 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         );
     }
 
-    private static List<TransportDispatchEnvelope> extractEnvelopes(List<KeyedQueueEntry<TransportDispatchEnvelope>> items) {
+    private static List<TransportDispatchEnvelope> envelopeView(List<KeyedQueueEntry<TransportDispatchEnvelope>> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<TransportDispatchEnvelope> envelopes = new java.util.ArrayList<>(items.size());
-        for (KeyedQueueEntry<TransportDispatchEnvelope> entry : items) {
-            envelopes.add(entry.value());
-        }
-        return envelopes;
+        return Collections.unmodifiableList(new KeyedQueueEnvelopeList(items));
     }
 
     private static final class MutableAdapterQueueStats {
@@ -215,5 +208,23 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         private int waitingPollers;
         private long oldestQueuedAgeMillis;
         private long backpressureRejectedItems;
+    }
+
+    private static final class KeyedQueueEnvelopeList extends AbstractList<TransportDispatchEnvelope> {
+        private final List<KeyedQueueEntry<TransportDispatchEnvelope>> entries;
+
+        private KeyedQueueEnvelopeList(List<KeyedQueueEntry<TransportDispatchEnvelope>> entries) {
+            this.entries = Objects.requireNonNull(entries, "entries");
+        }
+
+        @Override
+        public TransportDispatchEnvelope get(int index) {
+            return entries.get(index).value();
+        }
+
+        @Override
+        public int size() {
+            return entries.size();
+        }
     }
 }

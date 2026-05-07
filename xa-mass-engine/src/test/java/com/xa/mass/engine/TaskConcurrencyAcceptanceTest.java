@@ -51,13 +51,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskConcurrencyAcceptanceTest {
 
     private RecordingTaskScheduler scheduler;
-    private TaskManager taskManager;
+    private ProjectionAwareTaskManager taskManager;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -242,7 +242,7 @@ class TaskConcurrencyAcceptanceTest {
         RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(2);
         InMemoryTaskStorage concurrentTaskStorage = new InMemoryTaskStorage();
-        TaskManager concurrentTaskManager = new TaskManager(
+        ProjectionAwareTaskManager concurrenttaskManager = new ProjectionAwareTaskManager(
                 localScheduler,
                 concurrentTaskStorage,
                 concurrentTaskStorage,
@@ -339,7 +339,7 @@ class TaskConcurrencyAcceptanceTest {
     @Test
     void resultIngestRecoversCompatibilityProjectionFromRuntimeLeaseWhenMissing() {
         FirstLookupMissingTaskStorage taskStorage = new FirstLookupMissingTaskStorage();
-        TaskManager recoveringTaskManager = new TaskManager(
+        ProjectionAwareTaskManager recoveringtaskManager = new ProjectionAwareTaskManager(
                 new RecordingTaskScheduler(),
                 taskStorage,
                 taskStorage,
@@ -442,7 +442,7 @@ class TaskConcurrencyAcceptanceTest {
         return createRunningTask(taskManager, taskName, 1, defaultMsgMaxRetryCount);
     }
 
-    private Task createRunningTask(TaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
+    private Task createRunningTask(ProjectionAwareTaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
         Task task = manager.createTask(buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount));
         assertTrue(manager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
@@ -503,7 +503,7 @@ class TaskConcurrencyAcceptanceTest {
         return assignMessage(taskManager, task, message);
     }
 
-    private TaskMsg assignMessage(TaskManager manager, Task task, TaskMsg message) {
+    private TaskMsg assignMessage(ProjectionAwareTaskManager manager, Task task, TaskMsg message) {
         String suffix = message.getMessageId();
         if (manager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.getMessageId()).isEmpty()) {
             manager.getTaskWorkRuntime().claimReady(
@@ -717,7 +717,7 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 
-    private static final class CountingTaskManager extends TaskManager {
+    private static final class CountingTaskManager extends ProjectionAwareTaskManager {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
         private CountingTaskManager(TaskScheduler taskScheduler, InMemoryTaskStorage taskStorage) {
@@ -736,7 +736,7 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 
-    private static final class CoalescingCountingTaskManager extends TaskManager {
+    private static final class CoalescingCountingTaskManager extends ProjectionAwareTaskManager {
         private final AtomicInteger progressRequestCount = new AtomicInteger();
         private final AtomicInteger progressResolveCount = new AtomicInteger();
         private final CountDownLatch firstProgressResolveEntered = new CountDownLatch(1);
@@ -811,5 +811,6 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 }
+
 
 

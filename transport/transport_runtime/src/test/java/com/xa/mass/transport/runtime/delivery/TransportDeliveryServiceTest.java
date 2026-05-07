@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportDeliveryServiceTest {
@@ -142,6 +143,15 @@ class TransportDeliveryServiceTest {
                 .map(TransportDeliveryService::toDispatchItem)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
+    }
+
+    @Test
+    void toDispatchItemsCachesProjectedItemsPerEnvelopeIndex() {
+        TaskDispatchItem item = item("msg-1", "worker-1");
+        List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchItems(List.of(envelope(item)));
+
+        assertSame(projected.get(0), projected.get(0));
+        assertEquals("msg-1", projected.get(0).getMessageId());
     }
 
     @Test

@@ -11,12 +11,26 @@ public final class TransportDeliveryPollResult {
     private final List<TransportDispatchEnvelope> envelopes;
 
     public TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<TransportDispatchEnvelope> envelopes) {
+        this(status, envelopes, false);
+    }
+
+    TransportDeliveryPollResult(TransportDeliveryPollStatus status,
+                                List<TransportDispatchEnvelope> envelopes,
+                                boolean trustedView) {
         this.status = Objects.requireNonNull(status, "status");
-        this.envelopes = envelopes == null || envelopes.isEmpty() ? List.of() : List.copyOf(envelopes);
+        if (envelopes == null || envelopes.isEmpty()) {
+            this.envelopes = List.of();
+            return;
+        }
+        this.envelopes = trustedView ? envelopes : List.copyOf(envelopes);
     }
 
     public static TransportDeliveryPollResult delivered(List<TransportDispatchEnvelope> envelopes) {
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes);
+    }
+
+    static TransportDeliveryPollResult deliveredView(List<TransportDispatchEnvelope> envelopes) {
+        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes, true);
     }
 
     public static TransportDeliveryPollResult empty() {

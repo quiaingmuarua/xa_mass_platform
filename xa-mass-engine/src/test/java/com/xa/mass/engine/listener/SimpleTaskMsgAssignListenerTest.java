@@ -7,7 +7,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.ProjectionAwareTaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
@@ -39,7 +39,7 @@ class SimpleTaskMsgAssignListenerTest {
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
     private InMemoryTaskStorage taskStorage;
-    private TaskManager taskManager;
+    private ProjectionAwareTaskManager taskManager;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private SimpleTaskMsgAssignListener listener;
@@ -49,7 +49,7 @@ class SimpleTaskMsgAssignListenerTest {
         workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -206,7 +206,7 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void assignmentDoesNotReadLatestAttemptToAllocateDispatchAttemptNo() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -227,7 +227,7 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void dispatchPayloadUsesRuntimeClaimInsteadOfProjectionInput() {
         ProjectionPayloadScrubbingStorage scrubbingStorage = new ProjectionPayloadScrubbingStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -256,7 +256,7 @@ class SimpleTaskMsgAssignListenerTest {
     @Test
     void dispatchDoesNotReadTaskMessageProjectionOnHotPath() {
         TrackingTaskMessageReadStorage trackingStorage = new TrackingTaskMessageReadStorage();
-        taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -277,7 +277,7 @@ class SimpleTaskMsgAssignListenerTest {
     void dispatchContinuesWhenCompatibilityAttemptProjectionWriteFails() {
         FailingAddAttemptStorage failingStorage = new FailingAddAttemptStorage();
         taskStorage = failingStorage;
-        taskManager = new TaskManager(new NoopTaskScheduler(), failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -554,11 +554,11 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     private TaskMsg taskMessageProjection(String taskId, String messageId) {
-        return invokeTaskManager("getTaskMessageProjection", new Class<?>[]{String.class, String.class}, taskId, messageId);
+        return taskManager.getTaskMessageProjection(taskId, messageId);
     }
 
     private TaskMsgAttempt latestActiveAttemptProjection(String taskId, String messageId) {
-        return invokeTaskManager("getLatestActiveAttemptProjection", new Class<?>[]{String.class, String.class}, taskId, messageId);
+        return taskManager.getLatestActiveAttemptProjection(taskId, messageId);
     }
 
     private Worker worker(String id) {
@@ -582,23 +582,12 @@ class SimpleTaskMsgAssignListenerTest {
         return new MatchedWorkerContext(worker, workerContext);
     }
 
-    private SimpleTaskMsgAssignListener newAssignmentListener(TaskManager manager) {
+    private SimpleTaskMsgAssignListener newAssignmentListener(ProjectionAwareTaskManager manager) {
         return new SimpleTaskMsgAssignListener(
                 manager,
                 workerManager,
                 recordService
         );
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T invokeTaskManager(String methodName, Class<?>[] parameterTypes, Object... args) {
-        try {
-            java.lang.reflect.Method method = TaskManager.class.getDeclaredMethod(methodName, parameterTypes);
-            method.setAccessible(true);
-            return (T) method.invoke(taskManager, args);
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private static class NoopTaskScheduler implements TaskScheduler {
@@ -669,5 +658,6 @@ class SimpleTaskMsgAssignListenerTest {
         }
     }
 }
+
 
 

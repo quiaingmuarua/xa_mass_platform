@@ -17,6 +17,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.storage.api.TaskDetailStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,13 +33,16 @@ class TaskResultService {
     static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
 
     private final TaskManager taskManager;
+    private final TaskDetailStore taskDetailStore;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
 
     TaskResultService(TaskManager taskManager,
+                      TaskDetailStore taskDetailStore,
                       TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
                       TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
+        this.taskDetailStore = taskDetailStore;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
     }
@@ -58,7 +62,7 @@ class TaskResultService {
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                taskManager.getStoredTaskMessageProjection(taskId, messageId),
+                getStoredTaskMessageProjection(taskId, messageId),
                 activeLease,
                 "EXPIRE_TASK_MESSAGE",
                 "runtime active lease synchronized compatibility projection"
@@ -178,7 +182,7 @@ class TaskResultService {
         }
 
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
-        TaskMsg storedProjection = taskManager.getStoredTaskMessageProjection(taskId, messageId);
+        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
 
         if (storedProjection != null && storedProjection.isCompleted()) {
             traceEventLogger.callbackIgnoredDuplicate(TaskMessageTraceView.from(storedProjection),
@@ -277,7 +281,7 @@ class TaskResultService {
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                taskManager.getStoredTaskMessageProjection(taskId, messageId),
+                getStoredTaskMessageProjection(taskId, messageId),
                 activeLease,
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
                 "runtime active lease synchronized compatibility projection"
@@ -404,7 +408,7 @@ class TaskResultService {
             attemptId = taskMsg.latestAttemptId();
         }
         if (attemptId == null || attemptId.isBlank()) {
-            TaskMsgAttempt latestAuditView = taskManager.getLatestTaskMessageAttemptAuditProjection(
+            TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditProjection(
                     taskMsg.taskId(),
                     taskMsg.messageId()
             );
@@ -744,11 +748,11 @@ class TaskResultService {
         if (taskMsg == null) {
             return false;
         }
-        if (taskManager.updateTaskMessageProjection(taskId, taskMsg)) {
+        if (updateTaskMessageProjection(taskId, taskMsg)) {
             return true;
         }
         try {
-            taskManager.addTaskMessageProjection(taskId, taskMsg);
+            taskDetailStore.addTaskMessage(taskId, taskMsg);
             return true;
         } catch (RuntimeException e) {
             logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during {}",
@@ -765,7 +769,7 @@ class TaskResultService {
             return;
         }
         try {
-            if (taskManager.updateTaskMessageAttemptAuditProjection(taskId, messageId, attempt)) {
+            if (updateTaskMessageAttemptAuditProjection(taskId, messageId, attempt)) {
                 return;
             }
         } catch (RuntimeException e) {
@@ -773,7 +777,7 @@ class TaskResultService {
                     taskId, messageId, attempt.getAttemptId(), action, e);
         }
         try {
-            taskManager.addTaskMessageAttemptAuditProjection(taskId, messageId, attempt);
+            taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
         } catch (RuntimeException e) {
             logger.warn("Failed to add compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
                     taskId, messageId, attempt.getAttemptId(), action, e);
@@ -823,6 +827,22 @@ class TaskResultService {
         }
         TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, 1L);
         return retryPolicy.workRetryDelayMillis();
+    }
+
+    private TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
+        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
+    }
+
+    private TaskMsgAttempt getLatestTaskMessageAttemptAuditProjection(String taskId, String messageId) {
+        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+    }
+
+    private boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
+    }
+
+    private boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
+        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     private String normalizeDispatchSubmitFailureDetail(String detail) {

@@ -54,7 +54,7 @@ import java.util.function.Supplier;
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort {
+public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -118,6 +118,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.stateValidator = new TaskStateValidator(
                 this,
+                taskDetailStore,
                 traceEventLogger
         );
         this.taskRuntimeBridge = new TaskRuntimeBridge(
@@ -142,6 +143,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.resultService = new TaskResultService(
                 this,
+                taskDetailStore,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -215,7 +217,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     /**
      * Returns a task by id or {@code null} if it does not exist.
      */
-    Task getTask(String taskId) {
+    @Override
+    public Task getTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("GET_TASK", "TaskManager", "taskId", taskId);
 
@@ -263,6 +266,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     @Override
     public List<Task> getRuntimeDispatchableTasks(int limit) {
         return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
+    }
+
+    @Override
+    public List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
+        return taskDetailStore.getTaskMessages(taskId);
     }
 
     /**
@@ -389,103 +397,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                     + outcome.status() + ", reason=" + outcome.reason());
         }
         try {
-            addTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
+            taskDetailStore.addTaskMessage(taskId, ingressItem.toCompatibilityProjection());
         } catch (RuntimeException e) {
             logger.warn("Runtime ingress accepted for taskId={}, messageId={} but compatibility TaskMsg projection write failed",
                     taskId, messageId, e);
         }
 
         LogUtils.logOperationSuccess("task message added", 0);
-    }
-
-    /**
-     * Package-local compatibility read surface for demo/tests and explicit
-     * projection audit. Do not treat full task-message reads as a future
-     * business-detail path.
-     */
-    List<TaskMsg> getTaskMessages(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
-    }
-
-    /**
-     * Bounded compatibility read for UI/debug snapshots. Not a pagination or
-     * analysis contract.
-     */
-    List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskDetailStore.getTaskMessages(taskId, limit);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMsg getTaskMessageProjection(String taskId, String messageId) {
-        Task task = getTask(taskId);
-        TaskMsg projection = getStoredTaskMessageProjection(taskId, messageId);
-        if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
-            projection = CompatibilityProjectionSupport.overlayActiveLeaseView(
-                    projection,
-                    getActiveLease(taskId, messageId).orElse(null),
-                    taskId,
-                    messageId
-            );
-        }
-        return CompatibilityProjectionSupport.overlayTerminalTaskView(task, projection);
-    }
-
-    TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
-        taskDetailStore.addTaskMessage(taskId, taskMsg);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
-        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMsgAttempt getLatestTaskMessageAttemptAuditProjection(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
-    }
-
-    @Deprecated
-    @CompatibilityProjectionOnly
-    TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
-        Task task = getTask(taskId);
-        if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
-            return null;
-        }
-        ActiveLeaseRecord activeLease = getActiveLease(taskId, messageId).orElse(null);
-        if (activeLease == null) {
-            return null;
-        }
-        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
-        TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.getStatus() : TaskMsgStatus.ASSIGNED;
-        String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
-        return TaskMessageAttemptSupport.runtimeActiveProjection(
-                taskId,
-                messageId,
-                messageStatus,
-                preferredAttemptId,
-                activeLease,
-                latestAuditView
-        );
-    }
-
-    boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     public long getTaskMessageLeaseSeconds() {
@@ -534,11 +452,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskRuntimeBridge.hasProcessingMessagesForWorker(taskId, workerId);
     }
 
-    TaskWorkStats getTaskWorkStats(String taskId) {
+    @Override
+    public TaskWorkStats getTaskWorkStats(String taskId) {
         return taskRuntimeBridge.getTaskWorkStats(taskId);
     }
 
-    TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
+    @Override
+    public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
         return taskTerminalPolicy.evaluate(task, stats);
     }
 
@@ -554,7 +474,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         eventPublisher.publishTaskDispatchRequested(task);
     }
 
-    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    @Override
+    public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
     }
 
