@@ -89,7 +89,7 @@ public final class TaskDispatchItem {
                              Map<String, Object> transportPayload) {
         this.taskId = requireText(taskId, "taskId");
         this.messageId = requireText(messageId, "messageId");
-        this.eventCode = eventCode;
+        this.eventCode = requireText(eventCode, "eventCode");
         this.taskName = taskName;
         this.project = project;
         this.userId = userId;

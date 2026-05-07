@@ -113,4 +113,106 @@ class JsonTransportPacketCodecTest {
                 error.getMessage()
         );
     }
+
+    @Test
+    void taskDispatchRequiresStableIdentityFields() {
+        IllegalArgumentException taskIdError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-4",
+                null,
+                PacketType.TASK_DISPATCH,
+                "polling",
+                "route-1",
+                " ",
+                "msg-1",
+                null,
+                "crawler.fetch-page",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of()
+        ));
+        assertEquals("taskId must not be blank", taskIdError.getMessage());
+
+        IllegalArgumentException messageIdError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-5",
+                null,
+                PacketType.TASK_DISPATCH,
+                "polling",
+                "route-1",
+                "task-1",
+                " ",
+                null,
+                "crawler.fetch-page",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of()
+        ));
+        assertEquals("messageId must not be blank", messageIdError.getMessage());
+
+        IllegalArgumentException eventCodeError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-6",
+                null,
+                PacketType.TASK_DISPATCH,
+                "polling",
+                "route-1",
+                "task-1",
+                "msg-1",
+                null,
+                " ",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of()
+        ));
+        assertEquals("eventCode must not be blank", eventCodeError.getMessage());
+    }
+
+    @Test
+    void taskResultAndWorkerSystemEventRequireTheirCanonicalIdentityFields() {
+        IllegalArgumentException resultTaskIdError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-7",
+                null,
+                PacketType.TASK_RESULT,
+                "polling",
+                "route-1",
+                null,
+                "msg-1",
+                null,
+                null,
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of(TransportPacket.PAYLOAD_SUCCESS, true)
+        ));
+        assertEquals("taskId must not be blank", resultTaskIdError.getMessage());
+
+        IllegalArgumentException resultMessageIdError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-8",
+                null,
+                PacketType.TASK_RESULT,
+                "polling",
+                "route-1",
+                "task-1",
+                " ",
+                null,
+                null,
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of(TransportPacket.PAYLOAD_SUCCESS, true)
+        ));
+        assertEquals("messageId must not be blank", resultMessageIdError.getMessage());
+
+        IllegalArgumentException eventCodeError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                "packet-9",
+                null,
+                PacketType.WORKER_SYSTEM_EVENT,
+                "polling",
+                "worker-1",
+                null,
+                null,
+                null,
+                " ",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of()
+        ));
+        assertEquals("eventCode must not be blank", eventCodeError.getMessage());
+    }
 }

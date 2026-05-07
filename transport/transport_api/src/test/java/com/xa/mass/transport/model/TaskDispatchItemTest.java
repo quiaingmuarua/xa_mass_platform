@@ -232,6 +232,26 @@ class TaskDispatchItemTest {
                 )
         );
         assertEquals("messageId must not be blank", messageIdError.getMessage());
+
+        IllegalArgumentException eventCodeError = assertThrows(
+                IllegalArgumentException.class,
+                () -> new TaskDispatchItem(
+                        "task-1",
+                        "msg-1",
+                        " ",
+                        "task-name",
+                        "demoApp",
+                        "agent",
+                        0,
+                        "attempt-1",
+                        "worker-1",
+                        "ctx-1",
+                        "batch-1",
+                        Map.of(),
+                        Map.of()
+                )
+        );
+        assertEquals("eventCode must not be blank", eventCodeError.getMessage());
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {

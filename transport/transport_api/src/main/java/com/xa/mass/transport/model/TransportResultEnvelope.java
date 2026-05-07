@@ -26,31 +26,12 @@ public final class TransportResultEnvelope {
     private final String traceId;
     private final TaskResultReport report;
 
-    public TransportResultEnvelope(String adapterId,
-                                   String routeKey,
-                                   String workerId,
-                                   String endpointId,
-                                   TaskResultReport report) {
-        this(adapterId, routeKey, workerId, endpointId, null, null, null, report);
-    }
-
-    public TransportResultEnvelope(String adapterId,
-                                   String routeKey,
-                                   String workerId,
-                                   String endpointId,
-                                   String attemptId,
-                                   TaskResultReport report) {
-        this(adapterId, routeKey, workerId, endpointId, attemptId, null, null, report);
-    }
-
-    public TransportResultEnvelope(String adapterId,
-                                   String routeKey,
-                                   String workerId,
-                                   String endpointId,
-                                   String attemptId,
-                                   String leaseToken,
-                                   TaskResultReport report) {
-        this(adapterId, routeKey, workerId, endpointId, attemptId, leaseToken, null, report);
+    public static TransportResultEnvelope addressed(String adapterId,
+                                                    String routeKey,
+                                                    String workerId,
+                                                    String endpointId,
+                                                    TaskResultReport report) {
+        return new TransportResultEnvelope(adapterId, routeKey, workerId, endpointId, null, null, null, report);
     }
 
     public TransportResultEnvelope(String adapterId,
@@ -61,8 +42,8 @@ public final class TransportResultEnvelope {
                                    String leaseToken,
                                    String traceId,
                                    TaskResultReport report) {
-        this.adapterId = normalize(adapterId);
-        this.routeKey = normalizeBlank(routeKey);
+        this.adapterId = requireAdapterId(adapterId);
+        this.routeKey = requireText(routeKey, "routeKey");
         this.workerId = normalizeBlank(workerId);
         this.endpointId = normalizeBlank(endpointId);
         this.attemptId = normalizeBlank(attemptId);
@@ -114,6 +95,22 @@ public final class TransportResultEnvelope {
     private static String normalize(String value) {
         String normalized = normalizeBlank(value);
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private static String requireAdapterId(String value) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        return normalized;
+    }
+
+    private static String requireText(String value, String fieldName) {
+        String normalized = normalizeBlank(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return normalized;
     }
 
     private static String normalizeBlank(String value) {

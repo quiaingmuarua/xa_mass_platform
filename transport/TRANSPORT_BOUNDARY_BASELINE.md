@@ -132,6 +132,9 @@ routing and frame assembly, but external worker wire behavior remains the
 current JSON contract. `TransportPacket.payload` is a JSON object boundary,
 not an arbitrary JVM object slot. Durable queue codecs must be able to
 round-trip packet payloads without relying on Java-local runtime types.
+Packet identity rules are type-specific and part of the transport contract:
+`TASK_DISPATCH` requires `taskId`, `messageId`, and `eventCode`; `TASK_RESULT`
+requires `taskId` and `messageId`; `WORKER_SYSTEM_EVENT` requires `eventCode`.
 Allowed payload values are JSON-safe primitives plus nested JSON-safe object
 or array shapes only: `String`, `Number`, `Boolean`, `null`,
 `Map<String, Object>`, and lists/arrays composed from the same value set.
@@ -148,7 +151,9 @@ maps repeatedly across hot paths.
 fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by runtime
 validation, but old workers that only submit `TaskResultReport` remain valid
 until the security model explicitly changes. `routeKey` is the transport
-address truth; `workerId` or adapter-local endpoint ids are diagnostics only.
+address truth; enveloped result ingress must therefore carry non-blank
+`adapterId + routeKey`. `workerId` or adapter-local endpoint ids are
+diagnostics only.
 
 `leaseToken` is reserved. Do not enforce it until there is an approved design
 for token generation, storage, expiry, retry interaction, old-worker behavior,

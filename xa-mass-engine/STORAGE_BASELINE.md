@@ -51,15 +51,20 @@ helpers.
 
 Current runtime-essential helpers:
 
-- `addTaskMessage(...)`
-- `updateTaskMessage(...)`
+- `upsertTaskMessageProjection(...)`
 - `getTaskMessage(...)`
-- `addTaskMessageAttempt(...)`
-- `updateTaskMessageAttempt(...)`
+- `upsertTaskMessageAttemptProjection(...)`
 - `getLatestTaskMessageAttempt(...)`
 - `getLatestActiveTaskMessageAttempt(...)`
 - `getTaskMessageStats(...)`
 - `getTaskMessageAttemptStats(...)`
+
+Low-level compatibility primitives that should stay behind those upsert helpers:
+
+- `addTaskMessage(...)`
+- `updateTaskMessage(...)`
+- `addTaskMessageAttempt(...)`
+- `updateTaskMessageAttempt(...)`
 
 Current shell/debug compatibility reads:
 
@@ -77,6 +82,9 @@ Rules:
   not be treated as the default external read API going forward
 - runtime mainline must not depend on full-message scans
 - full `TaskMsg` scans are allowed only in explicit projection-audit paths
+- engine mainline should treat `TaskDetailStore` as a bounded projection sink;
+  it should call projection upsert helpers rather than open-coding add/update
+  CRUD flow in engine services
 - `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
   for runtime-to-projection convergence, but transport result ingest no longer
   requires an active compatibility attempt row for envelope identity validation

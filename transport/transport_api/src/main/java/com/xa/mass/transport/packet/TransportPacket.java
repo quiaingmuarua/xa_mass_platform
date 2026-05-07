@@ -111,6 +111,7 @@ public final class TransportPacket {
         this.payload = trustedDecodedPayload
                 ? TransportJsonValueNormalizer.freezeDecodedObject(payload)
                 : TransportJsonValueNormalizer.normalizeObject(payload, "payload");
+        validateTypeSpecificIdentity();
     }
 
     public int version() {
@@ -230,6 +231,27 @@ public final class TransportPacket {
             return null;
         }
         return text.trim();
+    }
+
+    private void validateTypeSpecificIdentity() {
+        switch (type) {
+            case TASK_DISPATCH -> {
+                requireNormalized(taskId, "taskId");
+                requireNormalized(messageId, "messageId");
+                requireNormalized(eventCode, "eventCode");
+            }
+            case TASK_RESULT -> {
+                requireNormalized(taskId, "taskId");
+                requireNormalized(messageId, "messageId");
+            }
+            case WORKER_SYSTEM_EVENT -> requireNormalized(eventCode, "eventCode");
+        }
+    }
+
+    private static void requireNormalized(String value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
     }
 
     @Override

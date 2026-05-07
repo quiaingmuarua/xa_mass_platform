@@ -229,7 +229,7 @@ class WebSocketInputProcessorTest {
         context = createContext(new TaskResultIngestChannel() {
             @Override
             public boolean ingest(TaskResultReport report) {
-                capturedEnvelope.set(new TransportResultEnvelope("websocket", "route-1", "worker-1", "endpoint-1", report));
+        capturedEnvelope.set(TransportResultEnvelope.addressed("websocket", "route-1", "worker-1", "endpoint-1", report));
                 return true;
             }
 

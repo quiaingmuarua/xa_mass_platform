@@ -15,7 +15,7 @@ class TransportResultEnvelopeTest {
     void fromReportCapturesTransportMetadataAndReportIdentity() {
         TaskResultReport report = report();
 
-        TransportResultEnvelope envelope = new TransportResultEnvelope(
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
                 " WebSocket ",
                 " route-1 ",
                 " worker-1 ",
@@ -36,17 +36,17 @@ class TransportResultEnvelopeTest {
     }
 
     @Test
-    void metadataFieldsTolerateNullAndBlankValues() {
-        TransportResultEnvelope envelope = new TransportResultEnvelope(
+    void diagnosticFieldsTolerateNullAndBlankValues() {
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
+                "polling",
+                "route-1",
                 " ",
-                " ",
-                null,
                 "\t",
                 report()
         );
 
-        assertNull(envelope.getAdapterId());
-        assertNull(envelope.getRouteKey());
+        assertEquals("polling", envelope.getAdapterId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertNull(envelope.getWorkerId());
         assertNull(envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
@@ -64,6 +64,8 @@ class TransportResultEnvelopeTest {
                 " worker-1 ",
                 " endpoint-1 ",
                 " attempt-1 ",
+                null,
+                null,
                 report
         );
 
@@ -115,7 +117,22 @@ class TransportResultEnvelopeTest {
     @Test
     void reportIsRequired() {
         assertThrows(NullPointerException.class,
-                () -> new TransportResultEnvelope("polling", "route-1", "worker-1", "endpoint-1", null));
+                () -> TransportResultEnvelope.addressed("polling", "route-1", "worker-1", "endpoint-1", null));
+    }
+
+    @Test
+    void canonicalTransportAddressIsRequired() {
+        IllegalArgumentException adapterIdError = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportResultEnvelope.addressed(" ", "route-1", "worker-1", "endpoint-1", report())
+        );
+        assertEquals("adapterId must not be blank", adapterIdError.getMessage());
+
+        IllegalArgumentException routeKeyError = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportResultEnvelope.addressed("polling", " ", "worker-1", "endpoint-1", report())
+        );
+        assertEquals("routeKey must not be blank", routeKeyError.getMessage());
     }
 
     private TaskResultReport report() {

@@ -127,6 +127,8 @@ public class PullWorkerSession {
                 dispatchItem.getWorkerId(),
                 workerId,
                 dispatchItem.attemptId(),
+                null,
+                null,
                 report
         ));
     }
@@ -145,7 +147,7 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(new TransportResultEnvelope(
+        return taskResultIngestChannel.ingest(TransportResultEnvelope.addressed(
                 adapterId,
                 workerId,
                 workerId,

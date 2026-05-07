@@ -27,6 +27,43 @@ import java.util.Optional;
  */
 public interface TaskDetailStore {
 
+    /**
+     * Engine-facing bounded projection upsert.
+     *
+     * <p>Mainline engine code should prefer this helper over open-coding
+     * add/update CRUD flow so the residue seam stays a projection sink rather
+     * than a message-CRUD owner.</p>
+     */
+    @CompatibilityProjectionOnly
+    default boolean upsertTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        if (taskMsg == null) {
+            return false;
+        }
+        if (updateTaskMessage(taskId, taskMsg)) {
+            return true;
+        }
+        addTaskMessage(taskId, taskMsg);
+        return true;
+    }
+
+    /**
+     * Engine-facing bounded latest-attempt projection upsert.
+     *
+     * <p>This helper exists so dispatch/result/expiry convergence can treat
+     * attempt residue as one bounded write step instead of a CRUD lifecycle.</p>
+     */
+    @CompatibilityProjectionOnly
+    default boolean upsertTaskMessageAttemptProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
+        if (attempt == null) {
+            return false;
+        }
+        if (updateTaskMessageAttempt(taskId, messageId, attempt)) {
+            return true;
+        }
+        addTaskMessageAttempt(taskId, messageId, attempt);
+        return true;
+    }
+
     /** Compatibility projection writes used by bounded residue repair paths. */
     @CompatibilityProjectionOnly
     void addTaskMessage(String taskId, TaskMsg taskMsg);

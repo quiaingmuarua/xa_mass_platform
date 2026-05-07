@@ -59,6 +59,7 @@ message/lease state first, then repair bounded projection residue if needed.
 | JDBC-local worker/context/lock residue | process-local runtime residue | not durable worker-runtime truth |
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
+| `TaskDetailStore` engine usage | bounded compatibility projection upsert plus audit reads | not message CRUD ownership and not runtime truth |
 | engine assembly | wires `TaskStorage` and `TaskDetailStore` separately | prevents storage-shell truth from silently redefining detail/projection ownership |
 | `doc/TRACE_CONTRACT.md` | required trace semantics | contract exists before full sink/module convergence |
 

@@ -169,6 +169,9 @@ class RuntimeTaskResultIngestChannelTest {
                 "worker-1",
                 "worker-1",
                 "worker-1",
+                null,
+                null,
+                null,
                 report(fixture, "SUCCESS", "ok-envelope", null)
         ));
 
@@ -190,6 +193,7 @@ class RuntimeTaskResultIngestChannelTest {
                 "worker-1",
                 "wrong-attempt",
                 null,
+                null,
                 report(fixture, "SUCCESS", "ok-mismatch", null)
         ));
 
@@ -209,6 +213,7 @@ class RuntimeTaskResultIngestChannelTest {
                 "worker-1",
                 "worker-1",
                 fixture.attemptId(),
+                null,
                 null,
                 report(fixture, "SUCCESS", "ok-no-attempt-row", null)
         ));

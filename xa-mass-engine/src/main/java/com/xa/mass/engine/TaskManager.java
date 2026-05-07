@@ -398,7 +398,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                     + outcome.status() + ", reason=" + outcome.reason());
         }
         try {
-            taskDetailStore.addTaskMessage(taskId, ingressItem.toCompatibilityProjection());
+            taskDetailStore.upsertTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
         } catch (RuntimeException e) {
             logger.warn("Runtime ingress accepted for taskId={}, messageId={} but compatibility TaskMsg projection write failed",
                     taskId, messageId, e);
