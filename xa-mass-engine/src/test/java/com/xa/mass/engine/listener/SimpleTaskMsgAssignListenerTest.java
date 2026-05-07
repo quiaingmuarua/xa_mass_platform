@@ -206,7 +206,7 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
-    void assignmentReadsLatestAttemptOncePerDispatchedMessage() {
+    void assignmentDoesNotReadLatestAttemptToAllocateDispatchAttemptNo() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
@@ -221,8 +221,8 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
-        assertEquals(3, trackingStorage.latestAttemptReadCount.get(),
-                "dispatch should read latest attempt only to allocate the next attempt number");
+        assertEquals(0, trackingStorage.latestAttemptReadCount.get(),
+                "dispatch should allocate attempt numbers from runtime retry truth without reading latest attempt rows");
     }
 
     @Test

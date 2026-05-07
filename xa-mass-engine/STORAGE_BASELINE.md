@@ -72,9 +72,9 @@ Rules:
   detail-query model
 - runtime mainline must not depend on full-message scans
 - full `TaskMsg` scans are allowed only in explicit projection-audit paths
-- `getLatestActiveTaskMessageAttempt(...)` remains mainline only because
-  transport result ingest still validates envelope attempt identity against the
-  active compatibility attempt
+- `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
+  for runtime-to-projection convergence, but transport result ingest no longer
+  requires an active compatibility attempt row for envelope identity validation
 - `getTaskMessage(...)` may still be used to repair or recreate a bounded
   compatibility `TaskMsg` view, but dispatch payload construction must not
   require reading projection input from this seam

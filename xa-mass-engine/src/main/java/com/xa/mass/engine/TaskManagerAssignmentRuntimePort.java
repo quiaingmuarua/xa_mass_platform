@@ -58,11 +58,6 @@ public final class TaskManagerAssignmentRuntimePort implements TaskAssignmentRun
     }
 
     @Override
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskProjectionBridge.getLatestTaskMessageAttempt(taskId, messageId);
-    }
-
-    @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskProjectionBridge.addTaskMessageAttempt(taskId, messageId, attempt);
     }

@@ -85,6 +85,11 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
     }
 
     @Override
+    public void addTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        taskProjectionBridge.addTaskMessage(taskId, taskMsg);
+    }
+
+    @Override
     public void requestTaskDispatch(Task task) {
         taskManager.requestTaskDispatch(task);
     }
@@ -122,11 +127,6 @@ final class TaskManagerLifecycleRuntimePort implements TaskLifecycleRuntimePort 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskProjectionBridge.addTaskMessageAttempt(taskId, messageId, attempt);
-    }
-
-    @Override
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskProjectionBridge.getLatestTaskMessageAttempt(taskId, messageId);
     }
 
     @Override

@@ -303,12 +303,12 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private TaskDispatchBinding bindTaskMessage(Task task, TaskMsg taskMsg, ClaimedTaskWork work) {
-        TaskMsgAttempt latestAttempt = assignmentRuntime.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
+        int attemptNo = Math.max(work.retryCount(), taskMsg.getRetryCount()) + 1;
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
                 taskMsg.getTaskId(),
                 taskMsg.getMessageId(),
-                latestAttempt != null ? latestAttempt.getAttemptNo() + 1 : 1
+                attemptNo
         );
         attempt.setWorkerId(work.workerId());
         attempt.setWorkerContextId(work.workerContextId());

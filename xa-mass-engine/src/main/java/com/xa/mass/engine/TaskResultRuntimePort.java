@@ -20,6 +20,8 @@ public interface TaskResultRuntimePort extends TaskLeaseProjectionPort {
 
     void addTaskMessageProjection(String taskId, TaskMsg taskMsg);
 
+    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId);
+
     boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId);

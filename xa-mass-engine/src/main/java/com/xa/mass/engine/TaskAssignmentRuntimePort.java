@@ -25,8 +25,6 @@ public interface TaskAssignmentRuntimePort {
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId);
-
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     boolean updateTask(Task task);

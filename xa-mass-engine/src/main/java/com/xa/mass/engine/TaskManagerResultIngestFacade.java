@@ -1,6 +1,6 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 
 import java.util.Map;
@@ -32,7 +32,7 @@ public final class TaskManagerResultIngestFacade implements TaskResultIngestFaca
     }
 
     @Override
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return resultIngestPort.getLatestActiveTaskMessageAttempt(taskId, messageId);
+    public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        return resultIngestPort.getResultCorrelation(taskId, messageId);
     }
 }

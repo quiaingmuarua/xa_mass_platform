@@ -10,8 +10,6 @@ public interface TaskLeaseProjectionPort {
 
     TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
 
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId);
-
     void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     void addTaskMessageProjection(String taskId, TaskMsg taskMsg);

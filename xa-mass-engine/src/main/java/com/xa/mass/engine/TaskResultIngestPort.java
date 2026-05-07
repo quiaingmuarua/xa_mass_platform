@@ -1,6 +1,6 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 
 import java.util.Map;
 
@@ -16,5 +16,5 @@ public interface TaskResultIngestPort {
                                     String errorCode,
                                     Map<String, Object> output);
 
-    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
+    TaskResultCorrelation getResultCorrelation(String taskId, String messageId);
 }

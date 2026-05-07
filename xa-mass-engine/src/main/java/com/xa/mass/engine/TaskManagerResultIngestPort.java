@@ -1,6 +1,8 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
 import java.util.Map;
 import java.util.Objects;
@@ -28,7 +30,9 @@ final class TaskManagerResultIngestPort implements TaskResultIngestPort {
     }
 
     @Override
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+    public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
+        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        return TaskResultCorrelationSupport.fromRuntimeState(taskId, messageId, taskMsg, activeLease);
     }
 }

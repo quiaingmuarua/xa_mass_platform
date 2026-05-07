@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
@@ -70,18 +70,35 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
 
     private void validateAttemptIdentity(TransportResultEnvelope envelope, TaskResultReport report) {
         String attemptId = envelope.getAttemptId();
+        String leaseToken = envelope.getLeaseToken();
+        if (attemptId == null && leaseToken == null) {
+            return;
+        }
+        TaskResultCorrelation correlation = taskResultIngestFacade.getResultCorrelation(report.getTaskId(), report.getMessageId());
+        if (correlation == null || !correlation.activeLeasePresent()) {
+            logger.warn("Result envelope identity could not be validated because no active runtime lease exists: taskId={}, messageId={}, envelopeAttemptId={}, envelopeLeaseToken={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), attemptId, leaseToken, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
+            return;
+        }
+        if (leaseToken != null && !leaseToken.equals(correlation.leaseToken())) {
+            logger.warn("Result envelope lease identity mismatch: taskId={}, messageId={}, envelopeLeaseToken={}, activeLeaseToken={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), leaseToken, correlation.leaseToken(),
+                    envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
+        } else if (leaseToken != null) {
+            logger.debug("Result envelope lease identity validated: taskId={}, messageId={}, leaseToken={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), leaseToken, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
+        }
         if (attemptId == null) {
             return;
         }
-        TaskMsgAttempt activeAttempt = taskResultIngestFacade.getLatestActiveTaskMessageAttempt(report.getTaskId(), report.getMessageId());
-        if (activeAttempt == null) {
-            logger.warn("Result envelope attempt identity could not be validated because no active attempt exists: taskId={}, messageId={}, envelopeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
+        if (correlation.projectedAttemptId() == null) {
+            logger.warn("Result envelope attempt identity could not be validated because no projected attempt id exists: taskId={}, messageId={}, envelopeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
                     report.getTaskId(), report.getMessageId(), attemptId, envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
             return;
         }
-        if (!attemptId.equals(activeAttempt.getAttemptId())) {
-            logger.warn("Result envelope attempt identity mismatch: taskId={}, messageId={}, envelopeAttemptId={}, activeAttemptId={}, adapterId={}, workerId={}, endpointId={}",
-                    report.getTaskId(), report.getMessageId(), attemptId, activeAttempt.getAttemptId(),
+        if (!attemptId.equals(correlation.projectedAttemptId())) {
+            logger.warn("Result envelope attempt identity mismatch: taskId={}, messageId={}, envelopeAttemptId={}, projectedAttemptId={}, adapterId={}, workerId={}, endpointId={}",
+                    report.getTaskId(), report.getMessageId(), attemptId, correlation.projectedAttemptId(),
                     envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId());
             return;
         }

@@ -54,8 +54,7 @@ final class RuntimeLeaseProjectionSupport {
         if (activeAttempt != null) {
             return activeAttempt;
         }
-        TaskMsgAttempt latestAttempt = projectionPort.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
-        int nextAttemptNo = Math.max(activeLease.retryCount() + 1, latestAttempt != null ? latestAttempt.getAttemptNo() + 1 : 1);
+        int nextAttemptNo = activeLease.retryCount() + 1;
         TaskMsgAttempt recoveredAttempt = new TaskMsgAttempt(
                 "recovered-attempt-" + taskMsg.getMessageId() + "-" + nextAttemptNo + "-" + UUID.randomUUID(),
                 taskMsg.getTaskId(),

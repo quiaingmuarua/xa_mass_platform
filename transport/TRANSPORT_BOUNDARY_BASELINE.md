@@ -189,12 +189,13 @@ behavior.
 
 ## Hot-Path Rule
 
-Result ingest is a hot path. Validation may read active attempt metadata, but it
-must not load full task history or scan all attempts. Storage implementations
-should provide an indexed lookup for:
+Result ingest is a hot path. Validation may read runtime lease metadata plus a
+bounded latest-attempt projection, but it must not load full task history or
+scan all attempts. Storage implementations should provide bounded lookups for:
 
 ```text
-(taskId, messageId) -> latest active attempt
+(taskId, messageId) -> active runtime lease
+(taskId, messageId) -> latest-attempt compatibility projection
 ```
 
 Dispatch is also a hot path. Delivery queues currently store

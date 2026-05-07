@@ -181,6 +181,29 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
+    void envelopeAttemptValidationDoesNotRequirePersistedAttemptProjectionRow() {
+        Task task = createRunningTask("task-envelope-no-attempt-row", false);
+        TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "worker-1",
+                taskMsg.latestAttemptId(),
+                null,
+                report(task, taskMsg, "SUCCESS", "ok-no-attempt-row", null)
+        ));
+
+        assertTrue(handled);
+        TaskMsg updated = taskQueries.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-no-attempt-row", updated.getOutput().get("mockData"));
+        TaskMsgAttempt recoveredAttempt = taskQueries.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
+        assertNotNull(recoveredAttempt);
+        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
+    }
+
+    @Test
     void envelopeTraceIdFlowsIntoEngineCanonicalTraceEvents() {
         Task task = createRunningTask("task-envelope-trace");
         TaskMsg taskMsg = taskQueries.getTaskMessages(task.getTid(), 1).get(0);
@@ -228,6 +251,10 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private Task createRunningTask(String taskName) {
+        return createRunningTask(taskName, true);
+    }
+
+    private Task createRunningTask(String taskName, boolean persistAttemptProjection) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
@@ -250,11 +277,16 @@ class RuntimeTaskResultIngestChannelTest {
                 1,
                 assignmentRuntimePort.getTaskMessageLeaseSeconds()
         );
-        taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
+        String attemptId = "attempt-" + taskMsg.getMessageId() + "-1";
+        taskMsg.applyLatestAttemptProjection(attemptId, "worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
         taskStorage.updateTaskMessage(task.getTid(), taskMsg);
 
-        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + taskMsg.getMessageId() + "-1",
+        if (!persistAttemptProjection) {
+            return task;
+        }
+
+        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId,
                 task.getTid(), taskMsg.getMessageId(), 1);
         attempt.setWorkerId("worker-1");
         attempt.setWorkerContextId("worker-context-1");

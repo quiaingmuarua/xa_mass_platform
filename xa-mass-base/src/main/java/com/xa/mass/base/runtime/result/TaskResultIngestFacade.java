@@ -1,12 +1,10 @@
 package com.xa.mass.base.runtime.result;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
-
 import java.util.Map;
 
 /**
- * Narrow runtime-facing surface for task result ingestion and active-attempt
- * identity validation.
+ * Narrow runtime-facing surface for task result ingestion and runtime-first
+ * envelope correlation.
  */
 public interface TaskResultIngestFacade {
 
@@ -17,5 +15,5 @@ public interface TaskResultIngestFacade {
                                     String errorCode,
                                     Map<String, Object> output);
 
-    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId);
+    TaskResultCorrelation getResultCorrelation(String taskId, String messageId);
 }

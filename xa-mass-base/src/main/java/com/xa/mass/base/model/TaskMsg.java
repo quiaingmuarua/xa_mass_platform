@@ -17,7 +17,7 @@ public class TaskMsg {
     private String messageId;
     private String taskId;
     // Compatibility projection of the latest attempt binding for UI/API callers.
-    // Runtime execution truth lives in TaskMsgAttempt history.
+    // Runtime execution truth lives in TaskWorkRuntime lease/work state.
     private String latestAttemptId;
     private String latestAttemptWorkerId;
     private String latestAttemptWorkerContextId;
@@ -81,7 +81,7 @@ public class TaskMsg {
     /**
      * Compatibility setter for the latest-attempt projection.
      *
-     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     * <p>Authoritative execution truth lives in runtime lease/work state.
      */
     public void setLatestAttemptWorkerId(String latestAttemptWorkerId) {
         this.latestAttemptWorkerId = latestAttemptWorkerId;
@@ -94,7 +94,7 @@ public class TaskMsg {
     /**
      * Compatibility setter for the latest-attempt projection.
      *
-     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     * <p>Authoritative execution truth lives in runtime lease/work state.
      */
     public void setLatestAttemptWorkerContextId(String latestAttemptWorkerContextId) {
         this.latestAttemptWorkerContextId = latestAttemptWorkerContextId;
@@ -130,7 +130,7 @@ public class TaskMsg {
     /**
      * Optional compatibility setter for the latest-attempt projection.
      *
-     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     * <p>Authoritative execution truth lives in runtime lease/work state.
      */
     public void setLatestAttemptBatchId(String latestAttemptBatchId) {
         this.latestAttemptBatchId = latestAttemptBatchId;
