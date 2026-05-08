@@ -18,6 +18,7 @@ import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.engine.model.*;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
@@ -2247,9 +2248,9 @@ class TaskManagerLifecycleTest {
         private final AtomicInteger attemptStatsReadCount = new AtomicInteger();
 
         @Override
-        public List<TaskMsg> getTaskMessages(String taskId) {
+        public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
             fullSnapshotReadCount.incrementAndGet();
-            return super.getTaskMessages(taskId);
+            return super.getTaskMessageProjections(taskId);
         }
 
         @Override
@@ -2285,12 +2286,12 @@ class TaskManagerLifecycleTest {
         private volatile boolean failNextTaskMessageAdd;
 
         @Override
-        public void addTaskMessage(String taskId, TaskMsg taskMsg) {
+        public boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
             if (failNextTaskMessageAdd) {
                 failNextTaskMessageAdd = false;
                 throw new IllegalStateException("simulated projection add failure");
             }
-            super.addTaskMessage(taskId, taskMsg);
+            return super.upsertTaskMessageProjection(taskId, projection);
         }
 
         private void failNextTaskMessageAdd() {

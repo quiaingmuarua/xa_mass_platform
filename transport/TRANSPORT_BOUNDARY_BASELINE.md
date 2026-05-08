@@ -152,8 +152,9 @@ fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by runtime
 validation, but old workers that only submit `TaskResultReport` remain valid
 until the security model explicitly changes. `routeKey` is the transport
 address truth; enveloped result ingress must therefore carry non-blank
-`adapterId + routeKey`. `workerId` or adapter-local endpoint ids are
-diagnostics only.
+`adapterId + routeKey`. Adapter-local worker/session/connection identities are
+local diagnostics only and do not belong on the shared result-envelope
+mainline.
 
 `leaseToken` is reserved. Do not enforce it until there is an approved design
 for token generation, storage, expiry, retry interaction, old-worker behavior,

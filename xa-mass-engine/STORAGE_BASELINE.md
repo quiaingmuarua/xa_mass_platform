@@ -51,9 +51,9 @@ helpers.
 
 Current runtime-essential helpers:
 
-- `upsertTaskMessageProjection(...)`
-- `getTaskMessage(...)`
-- `upsertTaskMessageAttemptProjection(...)`
+- `upsertTaskMessageProjection(TaskMessageProjection)`
+- `getTaskMessageProjection(...)`
+- `upsertTaskMessageAttemptProjection(TaskMessageAttemptProjection)`
 - `getLatestTaskMessageAttempt(...)`
 - `getLatestActiveTaskMessageAttempt(...)`
 - `getTaskMessageStats(...)`
@@ -77,6 +77,9 @@ Rules:
 
 - do not expand shell/debug reads into pagination, analytics, or a product
   detail-query model
+- engine hot-path code should prefer `TaskDetailStore.TaskMessageProjection`
+  and `TaskDetailStore.TaskMessageAttemptProjection` over direct `TaskMsg` /
+  `TaskMsgAttempt` store interaction
 - engine query seams that still return `TaskMsg`, `TaskMsgAttempt`, or
   `TaskMessageSnapshot` should be explicitly marked compatibility-only and must
   not be treated as the default external read API going forward
@@ -85,6 +88,10 @@ Rules:
 - engine mainline should treat `TaskDetailStore` as a bounded projection sink;
   it should call projection upsert helpers rather than open-coding add/update
   CRUD flow in engine services
+- in-memory and JDBC compatibility stores should keep neutral
+  `TaskMessageProjection` / `TaskMessageAttemptProjection` as their internal
+  residue unit where possible; `TaskMsg` / `TaskMsgAttempt` materialization
+  belongs at compatibility boundaries, not as the store's internal owner shape
 - `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
   for runtime-to-projection convergence, but transport result ingest no longer
   requires an active compatibility attempt row for envelope identity validation
@@ -98,6 +105,10 @@ Rules:
 - result/expiry/retry paths should upsert only the bounded final/latest attempt
   audit view rather than persisting intermediate recovered `DISPATCHED` or
   transient `RUNNING` rows just to keep the engine mainline moving
+- engine-facing attempt projection writes should stay at latest-attempt summary
+  level: attempt identity, worker binding, logical status/final reason, and
+  bounded error/output summary; dispatch/ack/start/finish timelines belong to
+  trace or explicit audit paths, not runtime result convergence
 - callback/expiry/retry compensation may repair a bounded `TaskMsg` view in
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
@@ -109,9 +120,9 @@ Rules:
 - result/expiry trace emission must consume runtime-native message snapshots;
   `TaskMsg` remains a bounded compatibility write/read shape, not the
   mandatory event input model for hot-path convergence
-- `getTaskMessage(...)` may still be used to repair or recreate a bounded
-  compatibility `TaskMsg` view, but dispatch payload construction must not
-  require reading projection input from this seam
+- `getTaskMessageProjection(...)` is the engine-facing bounded read seam;
+  direct `getTaskMessage(...)` reads should stay in compatibility audit or
+  shell/debug code
 - `getNonFinalTaskMessages(...)` is no longer allowed in engine task-terminal
   mainline cleanup; keep it only for explicit compatibility audit/testing until
   the remaining residue is removed

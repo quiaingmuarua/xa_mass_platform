@@ -19,8 +19,6 @@ public final class TransportResultEnvelope {
 
     private final String adapterId;
     private final String routeKey;
-    private final String workerId;
-    private final String endpointId;
     private final String attemptId;
     private final String leaseToken;
     private final String traceId;
@@ -28,24 +26,18 @@ public final class TransportResultEnvelope {
 
     public static TransportResultEnvelope addressed(String adapterId,
                                                     String routeKey,
-                                                    String workerId,
-                                                    String endpointId,
                                                     TaskResultReport report) {
-        return new TransportResultEnvelope(adapterId, routeKey, workerId, endpointId, null, null, null, report);
+        return new TransportResultEnvelope(adapterId, routeKey, null, null, null, report);
     }
 
     public TransportResultEnvelope(String adapterId,
                                    String routeKey,
-                                   String workerId,
-                                   String endpointId,
                                    String attemptId,
                                    String leaseToken,
                                    String traceId,
                                    TaskResultReport report) {
         this.adapterId = requireAdapterId(adapterId);
         this.routeKey = requireText(routeKey, "routeKey");
-        this.workerId = normalizeBlank(workerId);
-        this.endpointId = normalizeBlank(endpointId);
         this.attemptId = normalizeBlank(attemptId);
         this.leaseToken = normalizeBlank(leaseToken);
         this.traceId = normalizeBlank(traceId);
@@ -56,16 +48,8 @@ public final class TransportResultEnvelope {
         return adapterId;
     }
 
-    public String getWorkerId() {
-        return workerId;
-    }
-
     public String getRouteKey() {
         return routeKey;
-    }
-
-    public String getEndpointId() {
-        return endpointId;
     }
 
     public String getAttemptId() {

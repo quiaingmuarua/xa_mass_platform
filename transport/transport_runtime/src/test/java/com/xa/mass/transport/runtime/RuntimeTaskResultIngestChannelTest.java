@@ -167,8 +167,6 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
-                "worker-1",
-                "worker-1",
                 null,
                 null,
                 null,
@@ -189,8 +187,6 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
-                "worker-1",
-                "worker-1",
                 "wrong-attempt",
                 null,
                 null,
@@ -209,8 +205,6 @@ class RuntimeTaskResultIngestChannelTest {
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
-                "worker-1",
-                "worker-1",
                 "worker-1",
                 fixture.attemptId(),
                 null,
@@ -361,8 +355,6 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(new TransportResultEnvelope(
                 "polling",
                 "worker-1",
-                "worker-1",
-                "worker-1",
                 null,
                 null,
                 "trace-envelope-1",
@@ -384,8 +376,6 @@ class RuntimeTaskResultIngestChannelTest {
         try {
             boolean handled = channel.ingest(new TransportResultEnvelope(
                     "polling",
-                    "worker-1",
-                    "worker-1",
                     "worker-1",
                     null,
                     null,

@@ -5,8 +5,8 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.storage.api.TaskDetailStore;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -19,8 +19,8 @@ import java.util.Map;
  * Read-time compatibility projection helpers.
  *
  * <p>These helpers intentionally sit off the runtime hot path. They project a
- * bounded TaskMsg view for callers that still read compatibility storage after
- * task-level runtime convergence has already happened.</p>
+ * bounded compatibility message view for callers that still read projection
+ * storage after task-level runtime convergence has already happened.</p>
  */
 @CompatibilityProjectionOnly
 final class CompatibilityProjectionSupport {
@@ -28,8 +28,9 @@ final class CompatibilityProjectionSupport {
     private CompatibilityProjectionSupport() {
     }
 
-    static TaskMsg overlayTerminalTaskView(Task task, TaskMsg storedProjection) {
-        if (task == null || storedProjection == null || storedProjection.isCompleted()) {
+    static TaskDetailStore.TaskMessageProjection overlayTerminalTaskProjection(Task task,
+                                                                               TaskDetailStore.TaskMessageProjection storedProjection) {
+        if (task == null || storedProjection == null || isCompleted(storedProjection)) {
             return storedProjection;
         }
         if (task.getStatus() == null || !task.getStatus().isFinal()) {
@@ -42,47 +43,89 @@ final class CompatibilityProjectionSupport {
         if (terminalReason != TaskTerminalReason.MANUAL_CANCELLED && !terminalReason.isPolicyDrivenStop()) {
             return storedProjection;
         }
-
-        TaskMsg projected = copyOf(storedProjection);
-        TaskMsgStatus finalStatus = storedProjection.getStatus() != null && storedProjection.getStatus().isProcessing()
+        TaskMsgStatus finalStatus = storedProjection.status() != null && storedProjection.status().isProcessing()
                 ? TaskMsgStatus.EXPIRED
                 : TaskMsgStatus.FAILED;
-        projected.forceFinalize(finalStatus, toMessageFinalReason(terminalReason), terminalDetail(terminalReason));
-        return projected;
+        return new TaskDetailStore.TaskMessageProjection(
+                storedProjection.messageId(),
+                storedProjection.taskId(),
+                storedProjection.input(),
+                storedProjection.payloadRef(),
+                finalStatus,
+                storedProjection.assignedTime(),
+                storedProjection.createTime(),
+                LocalDateTime.now(),
+                storedProjection.startTime(),
+                LocalDateTime.now(),
+                storedProjection.retryCount(),
+                storedProjection.maxRetryCount(),
+                terminalDetail(terminalReason),
+                storedProjection.errorCode(),
+                toMessageFinalReason(terminalReason),
+                null,
+                storedProjection.latestAttemptId(),
+                storedProjection.latestAttemptWorkerId(),
+                storedProjection.latestAttemptWorkerContextId(),
+                storedProjection.latestAttemptBatchId()
+        );
     }
 
-    static List<TaskMsg> overlayTerminalTaskView(Task task, List<TaskMsg> storedProjections) {
+    static List<TaskDetailStore.TaskMessageProjection> overlayTerminalTaskProjection(Task task,
+                                                                                     List<TaskDetailStore.TaskMessageProjection> storedProjections) {
         if (storedProjections == null || storedProjections.isEmpty()) {
             return List.of();
         }
         if (task == null || task.getStatus() == null || !task.getStatus().isFinal()) {
             return List.copyOf(storedProjections);
         }
-        List<TaskMsg> projected = new ArrayList<>(storedProjections.size());
-        for (TaskMsg storedProjection : storedProjections) {
-            projected.add(overlayTerminalTaskView(task, storedProjection));
+        List<TaskDetailStore.TaskMessageProjection> projected = new ArrayList<>(storedProjections.size());
+        for (TaskDetailStore.TaskMessageProjection storedProjection : storedProjections) {
+            projected.add(overlayTerminalTaskProjection(task, storedProjection));
         }
         return List.copyOf(projected);
     }
 
-    static TaskMsg overlayActiveLeaseView(TaskMsg storedProjection,
-                                          ActiveLeaseRecord activeLease,
-                                          String taskId,
-                                          String messageId) {
+    static TaskDetailStore.TaskMessageProjection overlayActiveLeaseProjection(TaskDetailStore.TaskMessageProjection storedProjection,
+                                                                              ActiveLeaseRecord activeLease,
+                                                                              String taskId,
+                                                                              String messageId) {
         if (activeLease == null) {
             return storedProjection;
         }
-        TaskMsg base = storedProjection != null ? storedProjection : new TaskMsg(messageId, taskId, activeLease.payloadRef());
-        if (base.isCompleted()) {
+        TaskDetailStore.TaskMessageProjection base = storedProjection != null
+                ? storedProjection
+                : new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                taskId,
+                Map.of(),
+                activeLease.payloadRef(),
+                TaskMsgStatus.INIT,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        if (isCompleted(base)) {
             return base;
         }
-        boolean attemptProjectionDiffers = !java.util.Objects.equals(base.getLatestAttemptWorkerId(), activeLease.workerId())
-                || !java.util.Objects.equals(base.getLatestAttemptWorkerContextId(), activeLease.workerContextId())
-                || !java.util.Objects.equals(base.getLatestAttemptBatchId(), activeLease.batchId());
-        boolean needsAssignedStatus = base.getStatus() == null || base.getStatus() == TaskMsgStatus.INIT;
-        boolean needsRetryProjection = base.getRetryCount() != Math.max(0, activeLease.retryCount());
-        boolean needsAssignedTime = base.getAssignedTime() == null && activeLease.leasedAt() != null;
-        boolean needsPayloadRefProjection = base.getPayloadRef() == null
+        boolean attemptProjectionDiffers = !java.util.Objects.equals(base.latestAttemptWorkerId(), activeLease.workerId())
+                || !java.util.Objects.equals(base.latestAttemptWorkerContextId(), activeLease.workerContextId())
+                || !java.util.Objects.equals(base.latestAttemptBatchId(), activeLease.batchId());
+        boolean needsAssignedStatus = base.status() == null || base.status() == TaskMsgStatus.INIT;
+        boolean needsRetryProjection = base.retryCount() != Math.max(0, activeLease.retryCount());
+        boolean needsAssignedTime = base.assignedTime() == null && activeLease.leasedAt() != null;
+        boolean needsPayloadRefProjection = (base.payloadRef() == null || base.payloadRef().isBlank())
                 && activeLease.payloadRef() != null
                 && !activeLease.payloadRef().isBlank();
         if (!attemptProjectionDiffers
@@ -92,29 +135,37 @@ final class CompatibilityProjectionSupport {
                 && !needsPayloadRefProjection) {
             return base;
         }
-        TaskMsg projected = copyOf(base);
-        projected.setRetryCount(Math.max(0, activeLease.retryCount()));
-        if (needsPayloadRefProjection) {
-            projected.setPayloadRef(activeLease.payloadRef());
+        LocalDateTime assignedTime = base.assignedTime();
+        if (assignedTime == null && activeLease.leasedAt() != null) {
+            assignedTime = LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault());
         }
-        projected.applyLatestAttemptProjection(
-                projected.latestAttemptId(),
+        return new TaskDetailStore.TaskMessageProjection(
+                base.messageId(),
+                base.taskId(),
+                base.input(),
+                needsPayloadRefProjection ? activeLease.payloadRef() : base.payloadRef(),
+                needsAssignedStatus ? TaskMsgStatus.ASSIGNED : base.status(),
+                assignedTime,
+                base.createTime(),
+                needsAssignedStatus ? LocalDateTime.now() : base.updateTime(),
+                base.startTime(),
+                base.completeTime(),
+                Math.max(0, activeLease.retryCount()),
+                base.maxRetryCount(),
+                base.errorMessage(),
+                base.errorCode(),
+                base.finalReason(),
+                base.output(),
+                base.latestAttemptId(),
                 activeLease.workerId(),
                 activeLease.workerContextId(),
                 activeLease.batchId()
         );
-        if (projected.getAssignedTime() == null && activeLease.leasedAt() != null) {
-            projected.setAssignedTime(LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault()));
-        }
-        if (projected.getStatus() == null || projected.getStatus() == TaskMsgStatus.INIT) {
-            projected.markAsAssigned();
-        }
-        return projected;
     }
 
-    static List<TaskMsg> overlayActiveLeaseView(List<TaskMsg> storedProjections,
-                                                List<ActiveLeaseRecord> activeLeases,
-                                                String taskId) {
+    static List<TaskDetailStore.TaskMessageProjection> overlayActiveLeaseProjection(List<TaskDetailStore.TaskMessageProjection> storedProjections,
+                                                                                    List<ActiveLeaseRecord> activeLeases,
+                                                                                    String taskId) {
         if ((storedProjections == null || storedProjections.isEmpty())
                 && (activeLeases == null || activeLeases.isEmpty())) {
             return List.of();
@@ -131,19 +182,20 @@ final class CompatibilityProjectionSupport {
         if ((storedProjections == null || storedProjections.isEmpty()) && leaseByMessageId.isEmpty()) {
             return List.of();
         }
-        List<TaskMsg> projected = new ArrayList<>(storedProjections != null ? storedProjections.size() : 0);
+        List<TaskDetailStore.TaskMessageProjection> projected =
+                new ArrayList<>(storedProjections != null ? storedProjections.size() : 0);
         java.util.Set<String> projectedMessageIds = new java.util.LinkedHashSet<>();
         if (storedProjections != null) {
-            for (TaskMsg storedProjection : storedProjections) {
+            for (TaskDetailStore.TaskMessageProjection storedProjection : storedProjections) {
                 if (storedProjection == null) {
                     continue;
                 }
-                projectedMessageIds.add(storedProjection.getMessageId());
-                projected.add(overlayActiveLeaseView(
+                projectedMessageIds.add(storedProjection.messageId());
+                projected.add(overlayActiveLeaseProjection(
                         storedProjection,
-                        leaseByMessageId.get(storedProjection.getMessageId()),
+                        leaseByMessageId.get(storedProjection.messageId()),
                         taskId,
-                        storedProjection.getMessageId()
+                        storedProjection.messageId()
                 ));
             }
         }
@@ -154,7 +206,7 @@ final class CompatibilityProjectionSupport {
                     || projectedMessageIds.contains(activeLease.messageId())) {
                 continue;
             }
-            projected.add(overlayActiveLeaseView(
+            projected.add(overlayActiveLeaseProjection(
                     null,
                     activeLease,
                     taskId,
@@ -164,54 +216,8 @@ final class CompatibilityProjectionSupport {
         return List.copyOf(projected);
     }
 
-    private static TaskMsg copyOf(TaskMsg source) {
-        TaskMsg copy = new TaskMsg(source.getMessageId(), source.getTaskId(), source.getInput(), source.getPayloadRef());
-        rehydrateCompatibilityStatus(copy, source);
-        copy.setAssignedTime(source.getAssignedTime());
-        copy.setCreateTime(source.getCreateTime());
-        copy.setUpdateTime(source.getUpdateTime());
-        copy.setStartTime(source.getStartTime());
-        copy.setCompleteTime(source.getCompleteTime());
-        copy.setRetryCount(source.getRetryCount());
-        copy.setMaxRetryCount(source.getMaxRetryCount());
-        copy.setErrorMessage(source.getErrorMessage());
-        copy.setErrorCode(source.getErrorCode());
-        copy.setFinalReason(source.getFinalReason());
-        copy.setOutput(copyMap(source.getOutput()));
-        copy.applyLatestAttemptProjection(
-                source.latestAttemptId(),
-                source.getLatestAttemptWorkerId(),
-                source.getLatestAttemptWorkerContextId(),
-                source.getLatestAttemptBatchId()
-        );
-        return copy;
-    }
-
-    private static void rehydrateCompatibilityStatus(TaskMsg target, TaskMsg source) {
-        TaskMsgStatus status = source.getStatus();
-        if (status == null || status == TaskMsgStatus.INIT) {
-            return;
-        }
-        switch (status) {
-            case ASSIGNED -> {
-                if (!target.markAsAssigned()) {
-                    throw new IllegalStateException("Unable to project ASSIGNED status for message " + source.getMessageId());
-                }
-            }
-            case RUNNING -> {
-                if (!target.markAsAssigned() || !target.markAsRunning()) {
-                    throw new IllegalStateException("Unable to project RUNNING status for message " + source.getMessageId());
-                }
-            }
-            case SUCCESS, FAILED, EXPIRED -> target.forceFinalize(
-                    status,
-                    source.getFinalReason(),
-                    source.getErrorMessage()
-            );
-            default -> throw new IllegalStateException(
-                    "Unsupported projected status " + status + " for message " + source.getMessageId()
-            );
-        }
+    private static boolean isCompleted(TaskDetailStore.TaskMessageProjection projection) {
+        return projection != null && projection.status() != null && projection.status().isFinal();
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {

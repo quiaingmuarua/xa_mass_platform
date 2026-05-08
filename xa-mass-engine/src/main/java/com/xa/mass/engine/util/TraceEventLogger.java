@@ -9,7 +9,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
@@ -886,24 +885,5 @@ public final class TraceEventLogger {
             int retryCount,
             String errorCode
     ) {
-
-        @CompatibilityProjectionOnly
-        public static TaskMessageTraceView from(TaskMsg taskMsg) {
-            if (taskMsg == null) {
-                return null;
-            }
-            return new TaskMessageTraceView(
-                    taskMsg.getTaskId(),
-                    taskMsg.getMessageId(),
-                    taskMsg.latestAttemptId(),
-                    taskMsg.getLatestAttemptWorkerId(),
-                    taskMsg.getLatestAttemptWorkerContextId(),
-                    taskMsg.getLatestAttemptBatchId(),
-                    taskMsg.getStatus(),
-                    taskMsg.getFinalReason(),
-                    taskMsg.getRetryCount(),
-                    taskMsg.getErrorCode()
-            );
-        }
     }
 }

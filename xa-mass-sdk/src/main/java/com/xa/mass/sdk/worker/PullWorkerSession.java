@@ -124,8 +124,6 @@ public class PullWorkerSession {
         return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
                 dispatchItem.getWorkerId(),
-                dispatchItem.getWorkerId(),
-                workerId,
                 dispatchItem.attemptId(),
                 null,
                 null,
@@ -149,8 +147,6 @@ public class PullWorkerSession {
         );
         return taskResultIngestChannel.ingest(TransportResultEnvelope.addressed(
                 adapterId,
-                workerId,
-                workerId,
                 workerId,
                 report
         ));

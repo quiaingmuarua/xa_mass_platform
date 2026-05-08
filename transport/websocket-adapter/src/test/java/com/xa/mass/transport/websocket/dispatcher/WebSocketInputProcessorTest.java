@@ -77,7 +77,6 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("websocket", capturedEnvelope.get().getAdapterId());
-        assertEquals("worker-1", capturedEnvelope.get().getWorkerId());
         assertEquals("worker-1", capturedEnvelope.get().getRouteKey());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
@@ -118,9 +117,7 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("worker-from-handshake", capturedEnvelope.get().getWorkerId());
         assertEquals("route-from-handshake", capturedEnvelope.get().getRouteKey());
-        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
     }
@@ -159,9 +156,7 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("worker-from-session", capturedEnvelope.get().getWorkerId());
         assertEquals("route-from-session", capturedEnvelope.get().getRouteKey());
-        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
     }
@@ -200,7 +195,6 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("inline-route", capturedEnvelope.get().getRouteKey());
-        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
     }
 
     @Test
@@ -229,7 +223,6 @@ class WebSocketInputProcessorTest {
         context = createContext(new TaskResultIngestChannel() {
             @Override
             public boolean ingest(TaskResultReport report) {
-        capturedEnvelope.set(TransportResultEnvelope.addressed("websocket", "route-1", "worker-1", "endpoint-1", report));
                 return true;
             }
 

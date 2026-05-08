@@ -180,7 +180,6 @@ class SocketTransportServerTest {
                         "canonical socket result should be ingested");
                 assertEquals("socket", capturedEnvelope.get().getAdapterId());
                 assertEquals("socket-route-9", capturedEnvelope.get().getRouteKey());
-                assertEquals("worker-1", capturedEnvelope.get().getWorkerId());
                 assertEquals("msg-1", capturedEnvelope.get().getTraceId());
                 assertEquals("task-1", capturedEnvelope.get().getTaskId());
                 assertEquals("msg-1", capturedEnvelope.get().getMessageId());

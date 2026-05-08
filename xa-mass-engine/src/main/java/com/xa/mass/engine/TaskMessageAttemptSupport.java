@@ -2,8 +2,8 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.storage.api.TaskDetailStore;
 
 /**
  * Narrow helper for runtime attempt correlation and compatibility validation.
@@ -44,19 +44,19 @@ public final class TaskMessageAttemptSupport {
     }
 
     @CompatibilityProjectionOnly
-    static boolean isTaskMsgFinalReasonCompatible(TaskMsg taskMsg) {
-        if (taskMsg == null || !taskMsg.isCompleted() || taskMsg.getFinalReason() == null) {
+    static boolean isTaskMessageFinalReasonCompatible(TaskDetailStore.TaskMessageProjection taskMsg) {
+        if (taskMsg == null || taskMsg.status() == null || !taskMsg.status().isFinal() || taskMsg.finalReason() == null) {
             return false;
         }
-        return switch (taskMsg.getStatus()) {
-            case SUCCESS -> taskMsg.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS;
-            case FAILED -> taskMsg.getFinalReason() == TaskMsgFinalReason.BUSINESS_FAILED
-                    || taskMsg.getFinalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
-                    || taskMsg.getFinalReason() == TaskMsgFinalReason.RETRY_EXHAUSTED;
-            case EXPIRED -> taskMsg.getFinalReason() == TaskMsgFinalReason.TIMEOUT
-                    || taskMsg.getFinalReason() == TaskMsgFinalReason.WORKER_LOST
-                    || taskMsg.getFinalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
-                    || taskMsg.getFinalReason() == TaskMsgFinalReason.LEASE_EXPIRED;
+        return switch (taskMsg.status()) {
+            case SUCCESS -> taskMsg.finalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS;
+            case FAILED -> taskMsg.finalReason() == TaskMsgFinalReason.BUSINESS_FAILED
+                    || taskMsg.finalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
+                    || taskMsg.finalReason() == TaskMsgFinalReason.RETRY_EXHAUSTED;
+            case EXPIRED -> taskMsg.finalReason() == TaskMsgFinalReason.TIMEOUT
+                    || taskMsg.finalReason() == TaskMsgFinalReason.WORKER_LOST
+                    || taskMsg.finalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
+                    || taskMsg.finalReason() == TaskMsgFinalReason.LEASE_EXPIRED;
             default -> false;
         };
     }

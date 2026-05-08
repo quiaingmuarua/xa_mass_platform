@@ -69,8 +69,6 @@ public final class WebSocketInputProcessor {
             boolean accepted = context.getTaskResultIngestChannel().ingest(new TransportResultEnvelope(
                     context.getAdapterId(),
                     routeKey,
-                    workerId,
-                    inboundMessage.getEndpointId(),
                     null,
                     null,
                     context.getFrameCodec().extractTraceId(frame),

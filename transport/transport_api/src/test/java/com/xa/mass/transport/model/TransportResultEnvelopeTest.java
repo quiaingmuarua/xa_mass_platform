@@ -18,15 +18,11 @@ class TransportResultEnvelopeTest {
         TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
                 " WebSocket ",
                 " route-1 ",
-                " worker-1 ",
-                " endpoint-1 ",
                 report
         );
 
         assertEquals("websocket", envelope.getAdapterId());
         assertEquals("route-1", envelope.getRouteKey());
-        assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals("endpoint-1", envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
         assertNull(envelope.getTraceId());
@@ -40,15 +36,11 @@ class TransportResultEnvelopeTest {
         TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
                 "polling",
                 "route-1",
-                " ",
-                "\t",
                 report()
         );
 
         assertEquals("polling", envelope.getAdapterId());
         assertEquals("route-1", envelope.getRouteKey());
-        assertNull(envelope.getWorkerId());
-        assertNull(envelope.getEndpointId());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
         assertNull(envelope.getTraceId());
@@ -61,8 +53,6 @@ class TransportResultEnvelopeTest {
         TransportResultEnvelope envelope = new TransportResultEnvelope(
                 " Polling ",
                 " route-1 ",
-                " worker-1 ",
-                " endpoint-1 ",
                 " attempt-1 ",
                 null,
                 null,
@@ -71,8 +61,6 @@ class TransportResultEnvelopeTest {
 
         assertEquals("polling", envelope.getAdapterId());
         assertEquals("route-1", envelope.getRouteKey());
-        assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals("endpoint-1", envelope.getEndpointId());
         assertEquals("attempt-1", envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
         assertNull(envelope.getTraceId());
@@ -84,8 +72,6 @@ class TransportResultEnvelopeTest {
         TransportResultEnvelope envelope = new TransportResultEnvelope(
                 "polling",
                 "route-1",
-                "worker-1",
-                "endpoint-1",
                 null,
                 null,
                 " trace-123 ",
@@ -101,8 +87,6 @@ class TransportResultEnvelopeTest {
         TransportResultEnvelope envelope = new TransportResultEnvelope(
                 "polling",
                 "route-1",
-                "worker-1",
-                "endpoint-1",
                 "attempt-1",
                 null,
                 " trace-attempt-1 ",
@@ -117,20 +101,20 @@ class TransportResultEnvelopeTest {
     @Test
     void reportIsRequired() {
         assertThrows(NullPointerException.class,
-                () -> TransportResultEnvelope.addressed("polling", "route-1", "worker-1", "endpoint-1", null));
+                () -> TransportResultEnvelope.addressed("polling", "route-1", null));
     }
 
     @Test
     void canonicalTransportAddressIsRequired() {
         IllegalArgumentException adapterIdError = assertThrows(
                 IllegalArgumentException.class,
-                () -> TransportResultEnvelope.addressed(" ", "route-1", "worker-1", "endpoint-1", report())
+                () -> TransportResultEnvelope.addressed(" ", "route-1", report())
         );
         assertEquals("adapterId must not be blank", adapterIdError.getMessage());
 
         IllegalArgumentException routeKeyError = assertThrows(
                 IllegalArgumentException.class,
-                () -> TransportResultEnvelope.addressed("polling", " ", "worker-1", "endpoint-1", report())
+                () -> TransportResultEnvelope.addressed("polling", " ", report())
         );
         assertEquals("routeKey must not be blank", routeKeyError.getMessage());
     }

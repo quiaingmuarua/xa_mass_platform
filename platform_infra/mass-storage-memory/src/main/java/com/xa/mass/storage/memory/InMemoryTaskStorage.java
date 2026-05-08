@@ -151,22 +151,44 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
 
     @Override
     public void addTaskMessage(String taskId, TaskMsg taskMsg) {
+        upsertTaskMessageProjection(taskId,
+                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null);
+    }
+
+    @Override
+    public boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
         MessageBucket bucket = taskMessages.get(taskId);
-        if (bucket != null && taskMsg != null && taskMsg.getMessageId() != null) {
-            bucket.add(taskMsg);
+        if (bucket != null && projection != null && projection.messageId() != null) {
+            bucket.add(projection);
             taskMessageAttempts.computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                    .putIfAbsent(taskMsg.getMessageId(), new AttemptBucket());
+                    .putIfAbsent(projection.messageId(), new AttemptBucket());
+            return true;
         }
+        return false;
     }
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId) {
+        return getTaskMessageProjections(taskId).stream()
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .toList();
+    }
+
+    @Override
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.snapshot() : List.of();
     }
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
+        return getTaskMessageProjections(taskId, limit).stream()
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .toList();
+    }
+
+    @Override
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
         if (limit <= 0) {
             return List.of();
         }
@@ -177,7 +199,9 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     @Override
     public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.snapshotNonFinal() : List.of();
+        return bucket != null ? bucket.snapshotNonFinal().stream()
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .toList() : List.of();
     }
 
     @Override
@@ -188,6 +212,12 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
 
     @Override
     public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+        return getTaskMessageProjection(taskId, messageId)
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection);
+    }
+
+    @Override
+    public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.get(messageId) : Optional.empty();
     }
@@ -195,25 +225,48 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null && taskMsg != null && taskMsg.getMessageId() != null && bucket.update(taskMsg);
+        TaskDetailStore.TaskMessageProjection projection =
+                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null;
+        return bucket != null && projection != null && projection.messageId() != null && bucket.update(projection);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+        upsertTaskMessageAttemptProjection(taskId, messageId,
+                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
+    }
+
+    @Override
+    public boolean upsertTaskMessageAttemptProjection(String taskId,
+                                                      String messageId,
+                                                      TaskDetailStore.TaskMessageAttemptProjection projection) {
+        if (projection == null || projection.attemptId() == null) {
+            return false;
+        }
         taskMessageAttempts
                 .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
                 .computeIfAbsent(messageId, ignored -> new AttemptBucket())
-                .add(attempt);
+                .add(projection);
+        return true;
     }
 
     @Override
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.snapshot() : List.of();
+        return bucket != null ? bucket.snapshot().stream()
+                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
+                .toList() : List.of();
     }
 
     @Override
     public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+        return getLatestTaskMessageAttemptProjection(taskId, messageId)
+                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection);
+    }
+
+    @Override
+    public Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
+                                                                                                         String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.latest() : Optional.empty();
     }
@@ -221,7 +274,8 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     @Override
     public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.latestActive() : Optional.empty();
+        return bucket != null ? bucket.latestActive().map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
+                : Optional.empty();
     }
 
     @Override
@@ -233,7 +287,10 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     @Override
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null && attempt != null && attempt.getAttemptId() != null && bucket.update(attempt);
+        return bucket != null
+                && attempt != null
+                && attempt.getAttemptId() != null
+                && bucket.update(TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt));
     }
 
     @Override
@@ -406,7 +463,7 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     private static final class MessageBucket {
-        private final Map<String, TaskMsg> messagesById = new ConcurrentHashMap<>();
+        private final Map<String, TaskDetailStore.TaskMessageProjection> messagesById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
         private final java.util.HashSet<String> nonFinalMessageIds = new java.util.HashSet<>();
         private final Map<String, TaskMsgStatus> statusByMessageId = new ConcurrentHashMap<>();
@@ -415,35 +472,35 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
         private int expiredCount;
         private int processingCount;
 
-        private synchronized void add(TaskMsg taskMsg) {
-            TaskMsg previous = messagesById.putIfAbsent(taskMsg.getMessageId(), taskMsg);
+        private synchronized void add(TaskDetailStore.TaskMessageProjection taskMsg) {
+            TaskDetailStore.TaskMessageProjection previous = messagesById.putIfAbsent(taskMsg.messageId(), taskMsg);
             if (previous == null) {
-                orderedMsgIds.addLast(taskMsg.getMessageId());
-                reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
+                orderedMsgIds.addLast(taskMsg.messageId());
+                reconcileMessageState(taskMsg.messageId(), taskMsg.status());
                 return;
             }
-            messagesById.put(taskMsg.getMessageId(), taskMsg);
-            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
+            messagesById.put(taskMsg.messageId(), taskMsg);
+            reconcileMessageState(taskMsg.messageId(), taskMsg.status());
         }
 
-        private synchronized Optional<TaskMsg> get(String messageId) {
+        private synchronized Optional<TaskDetailStore.TaskMessageProjection> get(String messageId) {
             return Optional.ofNullable(messagesById.get(messageId));
         }
 
-        private synchronized boolean update(TaskMsg taskMsg) {
-            TaskMsg previous = messagesById.get(taskMsg.getMessageId());
+        private synchronized boolean update(TaskDetailStore.TaskMessageProjection taskMsg) {
+            TaskDetailStore.TaskMessageProjection previous = messagesById.get(taskMsg.messageId());
             if (previous == null) {
                 return false;
             }
-            messagesById.put(taskMsg.getMessageId(), taskMsg);
-            reconcileMessageState(taskMsg.getMessageId(), taskMsg.getStatus());
+            messagesById.put(taskMsg.messageId(), taskMsg);
+            reconcileMessageState(taskMsg.messageId(), taskMsg.status());
             return true;
         }
 
-        private synchronized List<TaskMsg> snapshot() {
-            List<TaskMsg> snapshot = new ArrayList<>(messagesById.size());
+        private synchronized List<TaskDetailStore.TaskMessageProjection> snapshot() {
+            List<TaskDetailStore.TaskMessageProjection> snapshot = new ArrayList<>(messagesById.size());
             for (String messageId : orderedMsgIds) {
-                TaskMsg message = messagesById.get(messageId);
+                TaskDetailStore.TaskMessageProjection message = messagesById.get(messageId);
                 if (message != null) {
                     snapshot.add(message);
                 }
@@ -451,13 +508,13 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             return snapshot;
         }
 
-        private synchronized List<TaskMsg> snapshot(int limit) {
-            List<TaskMsg> snapshot = new ArrayList<>(Math.min(messagesById.size(), limit));
+        private synchronized List<TaskDetailStore.TaskMessageProjection> snapshot(int limit) {
+            List<TaskDetailStore.TaskMessageProjection> snapshot = new ArrayList<>(Math.min(messagesById.size(), limit));
             for (String messageId : orderedMsgIds) {
                 if (snapshot.size() >= limit) {
                     break;
                 }
-                TaskMsg message = messagesById.get(messageId);
+                TaskDetailStore.TaskMessageProjection message = messagesById.get(messageId);
                 if (message != null) {
                     snapshot.add(message);
                 }
@@ -465,13 +522,13 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             return snapshot;
         }
 
-        private synchronized List<TaskMsg> snapshotNonFinal() {
-            List<TaskMsg> snapshot = new ArrayList<>(nonFinalMessageIds.size());
+        private synchronized List<TaskDetailStore.TaskMessageProjection> snapshotNonFinal() {
+            List<TaskDetailStore.TaskMessageProjection> snapshot = new ArrayList<>(nonFinalMessageIds.size());
             for (String messageId : nonFinalMessageIds) {
-                TaskMsg message = messagesById.get(messageId);
+                TaskDetailStore.TaskMessageProjection message = messagesById.get(messageId);
                 if (message != null
-                        && message.getStatus() != null
-                        && !message.getStatus().isFinal()) {
+                        && message.status() != null
+                        && !message.status().isFinal()) {
                     snapshot.add(message);
                 }
             }
@@ -553,7 +610,7 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     private static final class AttemptBucket {
-        private final Map<String, TaskMsgAttempt> attemptsById = new ConcurrentHashMap<>();
+        private final Map<String, TaskDetailStore.TaskMessageAttemptProjection> attemptsById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedAttemptIds = new ConcurrentLinkedDeque<>();
         private final Map<String, TaskMsgAttemptStatus> statusByAttemptId = new ConcurrentHashMap<>();
         private String latestActiveAttemptId;
@@ -562,40 +619,40 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
         private int failedAttemptCount;
         private int expiredAttemptCount;
 
-        private synchronized void add(TaskMsgAttempt attempt) {
-            if (attempt == null || attempt.getAttemptId() == null) {
+        private synchronized void add(TaskDetailStore.TaskMessageAttemptProjection attempt) {
+            if (attempt == null || attempt.attemptId() == null) {
                 return;
             }
-            TaskMsgAttempt previous = attemptsById.putIfAbsent(attempt.getAttemptId(), attempt);
+            TaskDetailStore.TaskMessageAttemptProjection previous = attemptsById.putIfAbsent(attempt.attemptId(), attempt);
             if (previous == null) {
-                orderedAttemptIds.addLast(attempt.getAttemptId());
+                orderedAttemptIds.addLast(attempt.attemptId());
             } else {
-                attemptsById.put(attempt.getAttemptId(), attempt);
+                attemptsById.put(attempt.attemptId(), attempt);
             }
             reconcileAttemptState(
-                    attempt.getAttemptId(),
-                    statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
-                    attempt.getStatus()
+                    attempt.attemptId(),
+                    statusByAttemptId.put(attempt.attemptId(), attempt.status()),
+                    attempt.status()
             );
         }
 
-        private synchronized boolean update(TaskMsgAttempt attempt) {
-            if (attempt == null || attempt.getAttemptId() == null || !attemptsById.containsKey(attempt.getAttemptId())) {
+        private synchronized boolean update(TaskDetailStore.TaskMessageAttemptProjection attempt) {
+            if (attempt == null || attempt.attemptId() == null || !attemptsById.containsKey(attempt.attemptId())) {
                 return false;
             }
-            attemptsById.put(attempt.getAttemptId(), attempt);
+            attemptsById.put(attempt.attemptId(), attempt);
             reconcileAttemptState(
-                    attempt.getAttemptId(),
-                    statusByAttemptId.put(attempt.getAttemptId(), attempt.getStatus()),
-                    attempt.getStatus()
+                    attempt.attemptId(),
+                    statusByAttemptId.put(attempt.attemptId(), attempt.status()),
+                    attempt.status()
             );
             return true;
         }
 
-        private synchronized List<TaskMsgAttempt> snapshot() {
-            List<TaskMsgAttempt> snapshot = new ArrayList<>(attemptsById.size());
+        private synchronized List<TaskDetailStore.TaskMessageAttemptProjection> snapshot() {
+            List<TaskDetailStore.TaskMessageAttemptProjection> snapshot = new ArrayList<>(attemptsById.size());
             for (String attemptId : orderedAttemptIds) {
-                TaskMsgAttempt attempt = attemptsById.get(attemptId);
+                TaskDetailStore.TaskMessageAttemptProjection attempt = attemptsById.get(attemptId);
                 if (attempt != null) {
                     snapshot.add(attempt);
                 }
@@ -603,7 +660,7 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             return snapshot;
         }
 
-        private synchronized Optional<TaskMsgAttempt> latest() {
+        private synchronized Optional<TaskDetailStore.TaskMessageAttemptProjection> latest() {
             String latestAttemptId = orderedAttemptIds.peekLast();
             if (latestAttemptId == null) {
                 return Optional.empty();
@@ -611,7 +668,7 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
             return Optional.ofNullable(attemptsById.get(latestAttemptId));
         }
 
-        private synchronized Optional<TaskMsgAttempt> latestActive() {
+        private synchronized Optional<TaskDetailStore.TaskMessageAttemptProjection> latestActive() {
             if (latestActiveAttemptId == null) {
                 return Optional.empty();
             }

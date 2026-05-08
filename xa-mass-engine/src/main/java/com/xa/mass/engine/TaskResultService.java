@@ -6,8 +6,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
@@ -265,7 +263,7 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        if (!activeAttempt.projectCallbackAccepted(taskManager.getTaskMessageLeaseSeconds())) {
+        if (!activeAttempt.projectCallbackAccepted()) {
             logger.warn("Cannot advance attempt {} for task message {} from status {}",
                     activeAttempt.attemptId(), messageId, activeAttempt.status());
             return TaskMessageMutationOutcome.rejected();
@@ -754,21 +752,21 @@ class TaskResultService {
         if (taskMsg == null) {
             return false;
         }
-        return persistCompatibilityTaskMessageProjection(taskId, taskMsg.toCompatibilityProjection(), action);
+        return persistTaskMessageProjectionRecord(taskId, taskMsg.toProjectionRecord(), action);
     }
 
     @CompatibilityProjectionOnly
-    private boolean persistCompatibilityTaskMessageProjection(String taskId,
-                                                              TaskMsg taskMsg,
-                                                              String action) {
-        if (taskMsg == null) {
+    private boolean persistTaskMessageProjectionRecord(String taskId,
+                                                       TaskDetailStore.TaskMessageProjection projection,
+                                                       String action) {
+        if (projection == null) {
             return false;
         }
         try {
-            return taskDetailStore.upsertTaskMessageProjection(taskId, taskMsg);
+            return taskDetailStore.upsertTaskMessageProjection(taskId, projection);
         } catch (RuntimeException e) {
             logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during {}",
-                    taskId, taskMsg.getMessageId(), action, e);
+                    taskId, projection.messageId(), action, e);
             return false;
         }
     }
@@ -781,7 +779,7 @@ class TaskResultService {
         if (attempt == null) {
             return;
         }
-        TaskMsgAttempt compatibilityAttempt = attempt.toCompatibilityProjection();
+        TaskDetailStore.TaskMessageAttemptProjection compatibilityAttempt = attempt.toProjectionRecord();
         try {
             taskDetailStore.upsertTaskMessageAttemptProjection(taskId, messageId, compatibilityAttempt);
             return;
@@ -838,7 +836,7 @@ class TaskResultService {
 
     @CompatibilityProjectionOnly
     private RuntimeMessageView getStoredTaskMessageProjectionView(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessage(taskId, messageId)
+        return taskDetailStore.getTaskMessageProjection(taskId, messageId)
                 .map(RuntimeMessageView::from)
                 .orElse(null);
     }
@@ -967,11 +965,6 @@ class TaskResultService {
         private final String workerContextId;
         private final String batchId;
         private TaskMsgAttemptStatus status;
-        private LocalDateTime leaseExpireTime;
-        private LocalDateTime dispatchTime;
-        private LocalDateTime ackTime;
-        private LocalDateTime startTime;
-        private LocalDateTime finishTime;
         private TaskMsgAttemptFinalReason finalReason;
         private String errorMessage;
         private String errorCode;
@@ -1011,12 +1004,6 @@ class TaskResultService {
                     activeLease.workerContextId(),
                     activeLease.batchId()
             );
-            if (activeLease.leaseExpireAt() != null) {
-                attempt.leaseExpireTime = LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault());
-            }
-            if (activeLease.leasedAt() != null) {
-                attempt.dispatchTime = LocalDateTime.ofInstant(activeLease.leasedAt(), java.time.ZoneId.systemDefault());
-            }
             return attempt;
         }
 
@@ -1048,25 +1035,12 @@ class TaskResultService {
             return finalReason;
         }
 
-        boolean projectCallbackAccepted(long leaseSeconds) {
+        boolean projectCallbackAccepted() {
             if (status == null) {
                 return false;
             }
             if (status.isFinal()) {
                 return true;
-            }
-            LocalDateTime now = LocalDateTime.now();
-            if (leaseExpireTime == null) {
-                leaseExpireTime = now.plusSeconds(leaseSeconds);
-            }
-            if (dispatchTime == null) {
-                dispatchTime = now;
-            }
-            if (ackTime == null) {
-                ackTime = now;
-            }
-            if (startTime == null) {
-                startTime = now;
             }
             status = TaskMsgAttemptStatus.RUNNING;
             return true;
@@ -1079,7 +1053,6 @@ class TaskResultService {
             status = TaskMsgAttemptStatus.EXPIRED;
             finalReason = nextFinalReason;
             errorMessage = nextErrorMessage;
-            finishTime = finishTime != null ? finishTime : LocalDateTime.now();
             return true;
         }
 
@@ -1087,13 +1060,9 @@ class TaskResultService {
             if (status == null || status.isFinal()) {
                 return false;
             }
-            if (startTime == null) {
-                startTime = LocalDateTime.now();
-            }
             status = TaskMsgAttemptStatus.SUCCEEDED;
             finalReason = TaskMsgAttemptFinalReason.SUCCESS;
             output = copyMap(nextOutput);
-            finishTime = finishTime != null ? finishTime : LocalDateTime.now();
             return true;
         }
 
@@ -1106,7 +1075,6 @@ class TaskResultService {
             errorMessage = nextErrorMessage;
             errorCode = nextErrorCode;
             output = null;
-            finishTime = finishTime != null ? finishTime : LocalDateTime.now();
             return true;
         }
 
@@ -1117,37 +1085,30 @@ class TaskResultService {
             if (status == null || status.isFinal()) {
                 return false;
             }
-            if (startTime == null) {
-                startTime = LocalDateTime.now();
-            }
             status = TaskMsgAttemptStatus.FAILED;
             finalReason = nextFinalReason;
             errorMessage = nextErrorMessage;
             errorCode = nextErrorCode;
             output = copyMap(nextOutput);
-            finishTime = finishTime != null ? finishTime : LocalDateTime.now();
             return true;
         }
 
         @CompatibilityProjectionOnly
-        TaskMsgAttempt toCompatibilityProjection() {
-            TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
-            attempt.setWorkerId(workerId);
-            attempt.setWorkerContextId(workerContextId);
-            attempt.setBatchId(batchId);
-            if (status != null) {
-                attempt.setStatus(status);
-            }
-            attempt.setLeaseExpireTime(leaseExpireTime);
-            attempt.setDispatchTime(dispatchTime);
-            attempt.setAckTime(ackTime);
-            attempt.setStartTime(startTime);
-            attempt.setFinishTime(finishTime);
-            attempt.setFinalReason(finalReason);
-            attempt.setErrorMessage(errorMessage);
-            attempt.setErrorCode(errorCode);
-            attempt.setOutput(output);
-            return attempt;
+        TaskDetailStore.TaskMessageAttemptProjection toProjectionRecord() {
+            return new TaskDetailStore.TaskMessageAttemptProjection(
+                    attemptId,
+                    taskId,
+                    messageId,
+                    attemptNo,
+                    workerId,
+                    workerContextId,
+                    batchId,
+                    status,
+                    finalReason,
+                    errorMessage,
+                    errorCode,
+                    output
+            );
         }
 
         private Map<String, Object> copyMap(Map<String, Object> values) {
@@ -1201,30 +1162,30 @@ class TaskResultService {
         }
 
         @CompatibilityProjectionOnly
-        private static RuntimeMessageView from(TaskMsg projection) {
+        private static RuntimeMessageView from(TaskDetailStore.TaskMessageProjection projection) {
             if (projection == null) {
                 return null;
             }
             return new RuntimeMessageView(
-                    projection.getMessageId(),
-                    projection.getTaskId(),
+                    projection.messageId(),
+                    projection.taskId(),
                     projection.latestAttemptId(),
-                    projection.getLatestAttemptWorkerId(),
-                    projection.getLatestAttemptWorkerContextId(),
-                    projection.getLatestAttemptBatchId(),
-                    projection.getStatus(),
-                    projection.getAssignedTime(),
-                    projection.getCreateTime(),
-                    projection.getUpdateTime(),
-                    projection.getStartTime(),
-                    projection.getCompleteTime(),
-                    projection.getRetryCount(),
-                    projection.getMaxRetryCount(),
-                    projection.getErrorMessage(),
-                    projection.getErrorCode(),
-                    projection.getFinalReason(),
-                    projection.getPayloadRef(),
-                    projection.getOutput() == null ? null : new java.util.LinkedHashMap<>(projection.getOutput())
+                    projection.latestAttemptWorkerId(),
+                    projection.latestAttemptWorkerContextId(),
+                    projection.latestAttemptBatchId(),
+                    projection.status(),
+                    projection.assignedTime(),
+                    projection.createTime(),
+                    projection.updateTime(),
+                    projection.startTime(),
+                    projection.completeTime(),
+                    projection.retryCount(),
+                    projection.maxRetryCount(),
+                    projection.errorMessage(),
+                    projection.errorCode(),
+                    projection.finalReason(),
+                    projection.payloadRef(),
+                    projection.output() == null ? null : new java.util.LinkedHashMap<>(projection.output())
             );
         }
 
@@ -1510,27 +1471,29 @@ class TaskResultService {
         }
 
         @CompatibilityProjectionOnly
-        private TaskMsg toCompatibilityProjection() {
-            TaskMsg projection = new TaskMsg(messageId, taskId, payloadRef);
-            projection.setStatus(status);
-            projection.setAssignedTime(assignedTime);
-            projection.setCreateTime(createTime);
-            projection.setUpdateTime(updateTime);
-            projection.setStartTime(startTime);
-            projection.setCompleteTime(completeTime);
-            projection.setRetryCount(retryCount);
-            projection.setMaxRetryCount(maxRetryCount);
-            projection.setErrorMessage(errorMessage);
-            projection.setErrorCode(errorCode);
-            projection.setFinalReason(finalReason);
-            projection.setOutput(output);
-            projection.applyLatestAttemptProjection(
+        private TaskDetailStore.TaskMessageProjection toProjectionRecord() {
+            return new TaskDetailStore.TaskMessageProjection(
+                    messageId,
+                    taskId,
+                    null,
+                    payloadRef,
+                    status,
+                    assignedTime,
+                    createTime,
+                    updateTime,
+                    startTime,
+                    completeTime,
+                    retryCount,
+                    maxRetryCount,
+                    errorMessage,
+                    errorCode,
+                    finalReason,
+                    output,
                     latestAttemptId,
                     latestAttemptWorkerId,
                     latestAttemptWorkerContextId,
                     latestAttemptBatchId
             );
-            return projection;
         }
     }
 }

@@ -5,7 +5,6 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -172,30 +171,30 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskMsg taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
+        for (TaskDetailStore.TaskMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
             if (taskMsg == null) {
                 continue;
             }
-            if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
+            if (isCompleted(taskMsg) && taskMsg.finalReason() == null) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
             }
-            if (taskMsg.isCompleted() && !TaskMessageAttemptSupport.isTaskMsgFinalReasonCompatible(taskMsg)) {
+            if (isCompleted(taskMsg) && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(taskMsg)) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskDetailStore.TaskMessageAttemptStats attemptStats =
-                    getTaskMessageAttemptStats(taskId, taskMsg.getMessageId());
+                    getTaskMessageAttemptStats(taskId, taskMsg.messageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
                 violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
             }
-            if (hasActiveAttempt && taskMsg.isCompleted()) {
+            if (hasActiveAttempt && isCompleted(taskMsg)) {
                 violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
             }
             boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
-                    && !taskMsg.isCompleted()
-                    && taskMsg.getStatus() != TaskMsgStatus.INIT) {
+                    && !isCompleted(taskMsg)
+                    && taskMsg.status() != TaskMsgStatus.INIT) {
                 attemptNeedsResolution = true;
                 violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
             }
@@ -244,12 +243,16 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private List<TaskMsg> getTaskMessagesForProjectionAudit(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
+    private List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
+        return taskDetailStore.getTaskMessageProjections(taskId);
     }
 
     private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return stateRuntime.getTaskMessageAttemptStats(taskId, messageId);
+    }
+
+    private boolean isCompleted(TaskDetailStore.TaskMessageProjection taskMsg) {
+        return taskMsg != null && taskMsg.status() != null && taskMsg.status().isFinal();
     }
 
 }

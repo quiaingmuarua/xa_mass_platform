@@ -55,7 +55,7 @@ class BufferedTaskResultIngestChannelTest {
         };
 
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate);
-        TransportResultEnvelope envelope = TransportResultEnvelope.addressed("polling", "w1", "w1", "w1", report("t1", "m1"));
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed("polling", "w1", report("t1", "m1"));
         boolean accepted = channel.ingest(envelope);
 
         assertTrue(accepted);
@@ -88,7 +88,7 @@ class BufferedTaskResultIngestChannelTest {
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 8);
 
         assertTrue(channel.ingest(report("task", "msg-report")));
-        assertTrue(channel.ingest(TransportResultEnvelope.addressed("polling", "w1", "w1", "w1", report("task", "msg-envelope"))));
+        assertTrue(channel.ingest(TransportResultEnvelope.addressed("polling", "w1", report("task", "msg-envelope"))));
 
         assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive both queued items");
         assertEquals(List.of("report:msg-report", "envelope:msg-envelope"), received);

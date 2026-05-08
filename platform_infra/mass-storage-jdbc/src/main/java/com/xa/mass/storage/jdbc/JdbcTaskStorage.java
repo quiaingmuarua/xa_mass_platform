@@ -146,13 +146,28 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
+    public synchronized boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
+        return runtimeProjection.upsertTaskMessageProjection(taskId, projection);
+    }
+
+    @Override
     public List<TaskMsg> getTaskMessages(String taskId) {
         return runtimeProjection.getTaskMessages(taskId);
     }
 
     @Override
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
+        return runtimeProjection.getTaskMessageProjections(taskId);
+    }
+
+    @Override
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
         return runtimeProjection.getTaskMessages(taskId, limit);
+    }
+
+    @Override
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
+        return runtimeProjection.getTaskMessageProjections(taskId, limit);
     }
 
     @Override
@@ -171,6 +186,11 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
+    public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
+        return runtimeProjection.getTaskMessageProjection(taskId, messageId);
+    }
+
+    @Override
     public synchronized boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return runtimeProjection.updateTaskMessage(taskId, taskMsg);
     }
@@ -181,6 +201,13 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
+    public synchronized boolean upsertTaskMessageAttemptProjection(String taskId,
+                                                                   String messageId,
+                                                                   TaskDetailStore.TaskMessageAttemptProjection projection) {
+        return runtimeProjection.upsertTaskMessageAttemptProjection(taskId, messageId, projection);
+    }
+
+    @Override
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
         return runtimeProjection.getTaskMessageAttempts(taskId, messageId);
     }
@@ -188,6 +215,12 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     @Override
     public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
         return runtimeProjection.getLatestTaskMessageAttempt(taskId, messageId);
+    }
+
+    @Override
+    public Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
+                                                                                                         String messageId) {
+        return runtimeProjection.getLatestTaskMessageAttemptProjection(taskId, messageId);
     }
 
     @Override

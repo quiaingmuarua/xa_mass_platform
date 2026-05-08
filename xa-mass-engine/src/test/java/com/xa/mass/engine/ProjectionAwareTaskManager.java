@@ -14,6 +14,7 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Test-only compatibility access for bounded TaskMsg / TaskMsgAttempt residue.
@@ -44,58 +45,81 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public List<TaskMsg> getTaskMessages(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
+        return materializeCompatibilityTaskMessages(taskDetailStore.getTaskMessageProjections(taskId));
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskDetailStore.getTaskMessages(taskId, limit);
+        return materializeCompatibilityTaskMessages(taskDetailStore.getTaskMessageProjections(taskId, limit));
     }
 
     public TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
+        return taskDetailStore.getTaskMessageProjection(taskId, messageId)
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .orElse(null);
     }
 
     public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
         Task task = getTask(taskId);
-        TaskMsg projection = getStoredTaskMessageProjection(taskId, messageId);
+        TaskDetailStore.TaskMessageProjection projection =
+                taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
         if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
-            projection = CompatibilityProjectionSupport.overlayActiveLeaseView(
+            projection = CompatibilityProjectionSupport.overlayActiveLeaseProjection(
                     projection,
                     getActiveLease(taskId, messageId).orElse(null),
                     taskId,
                     messageId
             );
         }
-        return CompatibilityProjectionSupport.overlayTerminalTaskView(task, projection);
+        TaskDetailStore.TaskMessageProjection visibleProjection =
+                CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
+        return visibleProjection != null ? visibleProjection.toCompatibilityProjection() : null;
     }
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         int boundedLimit = Math.max(0, limit);
-        List<TaskMsg> stored = boundedLimit == 0 ? List.of() : taskDetailStore.getTaskMessages(taskId, boundedLimit);
-        List<TaskMsg> withActiveLeaseOverlay = CompatibilityProjectionSupport.overlayActiveLeaseView(
+        List<TaskDetailStore.TaskMessageProjection> stored = boundedLimit == 0
+                ? List.of()
+                : taskDetailStore.getTaskMessageProjections(taskId, boundedLimit);
+        List<TaskDetailStore.TaskMessageProjection> withActiveLeaseOverlay =
+                CompatibilityProjectionSupport.overlayActiveLeaseProjection(
                 stored,
                 getTaskWorkRuntime().activeLeases(taskId),
                 taskId
         );
-        List<TaskMsg> projected = CompatibilityProjectionSupport.overlayTerminalTaskView(getTask(taskId), withActiveLeaseOverlay);
-        boolean truncated = boundedLimit > 0 && taskDetailStore.countTaskMessages(taskId) > boundedLimit;
+        List<TaskMsg> projected = materializeCompatibilityTaskMessages(
+                CompatibilityProjectionSupport.overlayTerminalTaskProjection(getTask(taskId), withActiveLeaseOverlay)
+        );
+        boolean truncated = boundedLimit > 0 && taskDetailStore.getTaskMessageStats(taskId).getTotal() > boundedLimit;
         return new TaskMessageSnapshot(projected, boundedLimit, truncated);
     }
 
     public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
-        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
+        return taskDetailStore.upsertTaskMessageProjection(
+                taskId,
+                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null
+        );
     }
 
     public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
+        taskDetailStore.upsertTaskMessageAttemptProjection(
+                taskId,
+                messageId,
+                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null
+        );
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
+        return taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId)
+                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
+                .orElse(null);
     }
 
     public boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
+        return taskDetailStore.upsertTaskMessageAttemptProjection(
+                taskId,
+                messageId,
+                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null
+        );
     }
 
     public TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
@@ -160,5 +184,15 @@ public class ProjectionAwareTaskManager extends TaskManager {
             return false;
         }
         return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
+    }
+
+    private List<TaskMsg> materializeCompatibilityTaskMessages(List<TaskDetailStore.TaskMessageProjection> projections) {
+        if (projections == null || projections.isEmpty()) {
+            return List.of();
+        }
+        return projections.stream()
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 }

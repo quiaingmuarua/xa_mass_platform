@@ -6,7 +6,6 @@ import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -398,7 +397,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                     + outcome.status() + ", reason=" + outcome.reason());
         }
         try {
-            taskDetailStore.upsertTaskMessageProjection(taskId, ingressItem.toCompatibilityProjection());
+            taskDetailStore.upsertTaskMessageProjection(taskId, ingressItem.toProjectionRecord());
         } catch (RuntimeException e) {
             logger.warn("Runtime ingress accepted for taskId={}, messageId={} but compatibility TaskMsg projection write failed",
                     taskId, messageId, e);

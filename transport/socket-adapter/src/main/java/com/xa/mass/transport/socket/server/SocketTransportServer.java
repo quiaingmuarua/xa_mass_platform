@@ -197,8 +197,6 @@ public final class SocketTransportServer implements TransportServer {
                     boolean accepted = taskResultIngestChannel.ingest(new TransportResultEnvelope(
                             adapterId,
                             boundRouteKey,
-                            boundWorkerId,
-                            endpointId,
                             null,
                             null,
                             traceId,
