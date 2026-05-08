@@ -6,9 +6,8 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
@@ -40,16 +39,6 @@ public interface MassRuntimeControl {
      */
     Task createTaskShell(MassTaskShellCreateRequest request);
 
-    /**
-     * Legacy aggregate task creation contract kept for compatibility callers.
-     */
-    Task createTask(MassTaskCreateRequest request);
-
-    /**
-     * Create a task through the mode/payload-aware SDK task contract.
-     */
-    Task createTask(MassTaskRequest request);
-
     // --- Task lifecycle ---
 
     Task getTask(String taskId);
@@ -78,8 +67,16 @@ public interface MassRuntimeControl {
     boolean terminateTask(String taskId, TaskTerminalReason reason);
 
     /**
-     * Append additional work items to an open-ended task.
+     * Append additional work items to a task using the payload contract already
+     * fixed by the task shell.
      */
+    int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request);
+
+    /**
+     * Compatibility-only append surface. Prefer the batch request form in new
+     * callers.
+     */
+    @Deprecated(forRemoval = true)
     int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
 
     /**

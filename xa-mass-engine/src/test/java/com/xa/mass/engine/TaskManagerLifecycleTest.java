@@ -12,7 +12,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskMessageSnapshot;
@@ -51,7 +51,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createTaskStartsAsNewAndPreservesInputs() {
-        Task task = taskManager.createTask(buildRequest("task-create"));
+        Task task = createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
         assertEquals(TaskSourceType.BATCH, task.getSourceType());
@@ -74,12 +74,12 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createTaskPreservesExplicitInteractiveWorkloadIndependentlyFromSourceType() {
-        TaskCreateRequestDto dto = buildRequest("task-interactive");
+        TaskCreateSpec dto = buildRequest("task-interactive");
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setOpenEnded(true);
         dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
 
         assertEquals(TaskSourceType.STREAM, task.getSourceType());
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
@@ -88,7 +88,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void taskCanMoveFromNewToReadyToPausedAndBackToReady() {
-        Task task = taskManager.createTask(buildRequest("task-lifecycle"));
+        Task task = createTask(buildRequest("task-lifecycle"));
 
         assertTrue(taskManager.approveTask(task.getTid()));
         assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
@@ -104,7 +104,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void resumeTaskDetailedReportsReadyOutcome() {
-        Task task = taskManager.createTask(buildRequest("task-resume-detailed"));
+        Task task = createTask(buildRequest("task-resume-detailed"));
         assertTrue(taskManager.approveTask(task.getTid()));
         assertTrue(taskManager.pauseTask(task.getTid()));
 
@@ -118,7 +118,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void blockedTaskCanBeApprovedBackToReady() {
-        Task task = taskManager.createTask(buildRequest("task-blocked"));
+        Task task = createTask(buildRequest("task-blocked"));
 
         assertTrue(taskManager.rejectTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
@@ -131,7 +131,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void taskReadyListenersRunOnApproveAndResume() {
-        Task task = taskManager.createTask(buildRequest("task-ready-hook"));
+        Task task = createTask(buildRequest("task-ready-hook"));
         AtomicInteger notifications = new AtomicInteger();
         taskManager.events().addTaskReadyListener(t -> {
             if (task.getTid().equals(t.getTid())) {
@@ -148,7 +148,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void invalidActionsAreRejectedOutsideExpectedStates() {
-        Task task = taskManager.createTask(buildRequest("task-invalid"));
+        Task task = createTask(buildRequest("task-invalid"));
 
         assertFalse(taskManager.pauseTask(task.getTid()));
         assertFalse(taskManager.resumeTask(task.getTid()));
@@ -166,7 +166,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createTaskRejectsWhenNoInputsProvided() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("no-targets");
         dto.setProject("demoApp");
         dto.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
@@ -174,13 +174,13 @@ class TaskManagerLifecycleTest {
         dto.setInputs(null);
         dto.setBatchSize(0);
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
         assertTrue(error.getMessage().contains("inputs"));
     }
 
     @Test
     void createStreamTaskAllowsEmptyInitialInputsAndCreatesShell() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("stream-shell");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -188,7 +188,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
         assertEquals(TaskSourceType.STREAM, task.getSourceType());
@@ -200,7 +200,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createFileTaskAllowsEmptyInitialInputsAndCreatesPendingShell() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -208,7 +208,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceRef("mock/input/demo.csv");
         dto.setInputs(List.of());
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
         assertEquals(TaskSourceType.FILE, task.getSourceType());
@@ -221,21 +221,21 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createFileTaskRequiresSourceRef() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell-no-ref");
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setSourceType(TaskSourceType.FILE);
         dto.setInputs(List.of());
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
 
         assertEquals("sourceRef is required for FILE task sources", error.getMessage());
     }
 
     @Test
     void createFileTaskRejectsInitialInputsToKeepFileIngestChunked() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell-with-inline-input");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -243,7 +243,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceRef("mock/input/demo.csv");
         dto.setInputs(List.of(java.util.Map.of("target", "alpha")));
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
 
         assertEquals("FILE task sources must be created as a sourceRef shell; ingest work items in batches",
                 error.getMessage());
@@ -251,7 +251,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void payloadRefIngressEnqueuesRuntimeWorkWithoutRequiringTaskMsgInputPayload() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("payload-ref-ingress");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -259,7 +259,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
         String messageId = java.util.UUID.randomUUID().toString();
         String payloadRef = "s3://bucket/payloads/demo-1.json";
 
@@ -291,7 +291,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("payload-ref-best-effort-ingress");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -299,7 +299,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = manager.createTask(dto);
+        Task task = createTask(manager, dto);
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -342,6 +342,52 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void legacyCreateTaskCompatibilityFlowStillConvergesWhenInitialTaskMsgProjectionWriteFails() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateSpec dto = buildRequest("legacy-create-best-effort-projection", List.of("alpha"), 1);
+        failingStorage.failNextTaskMessageAdd();
+
+        Task task = createTask(manager, dto);
+        assertEquals(TaskIngestStatus.SEALED, task.getIngestStatus());
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-legacy-create", "worker-context-legacy-create", "batch-legacy-create", 1)),
+                1,
+                manager.getTaskMessageLeaseSeconds()
+        ).get(0);
+
+        assertNull(manager.getStoredTaskMessageRecord(task.getTid(), claimed.messageId()));
+        assertTrue(manager.handleTaskMessageResult(
+                task.getTid(),
+                claimed.messageId(),
+                true,
+                "done",
+                null,
+                java.util.Map.of("outcome", "success")
+        ));
+
+        TaskDetailStore.TaskMessageProjection projection =
+                manager.getVisibleTaskMessageProjection(task.getTid(), claimed.messageId());
+        assertNotNull(projection);
+        assertEquals(TaskMsgStatus.SUCCESS, projection.status());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, projection.finalReason());
+        assertEquals(java.util.Map.of("outcome", "success"), projection.output());
+    }
+
+    @Test
     void runtimeExpiryStillConvergesWhenInitialTaskMsgProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
@@ -351,7 +397,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("payload-ref-best-effort-expiry");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -359,7 +405,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = manager.createTask(dto);
+        Task task = createTask(manager, dto);
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -407,7 +453,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("payload-ref-best-effort-overlay");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -415,7 +461,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = manager.createTask(dto);
+        Task task = createTask(manager, dto);
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -460,7 +506,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("retry-budget-best-effort-overlay");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -468,7 +514,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
-        Task task = manager.createTask(dto);
+        Task task = createTask(manager, dto);
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -492,7 +538,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createBatchTaskRejectsOversizedInlineInputs() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("oversized-inline");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -500,14 +546,14 @@ class TaskManagerLifecycleTest {
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
                 .toList());
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
 
         assertTrue(error.getMessage().contains("BATCH task initial inputs exceed inline create limit"));
     }
 
     @Test
     void fileTaskCanIngestItemsBeforeApprovalWithoutDispatch() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-ingest-before-approval");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -515,7 +561,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceRef("mock/input/demo.csv");
         dto.setInputs(List.of());
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
         AtomicInteger dispatchRequests = new AtomicInteger();
         taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
 
@@ -537,14 +583,14 @@ class TaskManagerLifecycleTest {
 
     @Test
     void appendTaskItemsRejectsOversizedIngestBatch() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("stream-shell-ingest-limit");
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setOpenEnded(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
 
         List<java.util.Map<String, Object>> oversizedBatch = java.util.stream.IntStream
                 .rangeClosed(0, TaskManager.MAX_INGEST_BATCH_ITEMS)
@@ -571,7 +617,7 @@ class TaskManagerLifecycleTest {
                     managerStorage,
                     managerStorage,
                     new InMemoryTaskWorkRuntime());
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
+            TaskCreateSpec dto = new TaskCreateSpec();
             dto.setTaskName("interactive-backpressure");
             dto.setProject("demoApp");
             dto.setUserId("agent");
@@ -580,7 +626,7 @@ class TaskManagerLifecycleTest {
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "alpha")));
 
-            Task task = manager.createTask(dto);
+            Task task = createTask(manager, dto);
             assertTrue(manager.approveTask(task.getTid()));
 
             assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
@@ -604,37 +650,37 @@ class TaskManagerLifecycleTest {
 
     @Test
     void createTaskRejectsWhenProjectIsMissing() {
-        TaskCreateRequestDto dto = buildRequest("missing-project");
+        TaskCreateSpec dto = buildRequest("missing-project");
         dto.setProject(null);
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
 
         assertEquals("project is required", error.getMessage());
     }
 
     @Test
     void createTaskRejectsWhenUserIdIsMissing() {
-        TaskCreateRequestDto dto = buildRequest("missing-user");
+        TaskCreateSpec dto = buildRequest("missing-user");
         dto.setUserId("  ");
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
 
         assertEquals("userId is required", error.getMessage());
     }
 
     @Test
     void createTaskPersistsRequestedBatchSize() {
-        TaskCreateRequestDto dto = buildRequest("batch-size");
+        TaskCreateSpec dto = buildRequest("batch-size");
         dto.setBatchSize(3);
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
 
         assertEquals(3, task.getBatchSize());
     }
 
     @Test
     void deleteTaskRejectedForReadyTask() {
-        Task task = taskManager.createTask(buildRequest("del-ready"));
+        Task task = createTask(buildRequest("del-ready"));
         taskManager.approveTask(task.getTid()); // NEW -> READY
 
         assertFalse(taskManager.deleteTask(task.getTid()),
@@ -645,7 +691,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void deleteTaskAllowedForNewTask() {
-        Task task = taskManager.createTask(buildRequest("del-new"));
+        Task task = createTask(buildRequest("del-new"));
         assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
 
         assertTrue(taskManager.deleteTask(task.getTid()),
@@ -656,7 +702,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void deleteTaskAllowedForTerminalTask() {
-        Task task = taskManager.createTask(buildRequest("del-terminal"));
+        Task task = createTask(buildRequest("del-terminal"));
         taskManager.approveTask(task.getTid());
         taskManager.cancelTask(task.getTid()); // -> TERMINAL
 
@@ -667,7 +713,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void handleTaskMessageResultMarksSuccessAndFinishesRunningTask() {
-        Task task = taskManager.createTask(buildRequest("task-result-success"));
+        Task task = createTask(buildRequest("task-result-success"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -701,7 +747,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        Task task = manager.createTask(buildRequest("task-result-success-best-effort", List.of("alpha")));
+        Task task = createTask(manager, buildRequest("task-result-success-best-effort", List.of("alpha")));
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -729,7 +775,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void handleTaskMessageResultEmitsRunningSuccessAndTerminalTrace() {
-        Task task = taskManager.createTask(buildRequest("task-result-trace", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -757,7 +803,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void handleTaskMessageResultEmitsTaskProgressSnapshot() {
-        Task task = taskManager.createTask(buildRequest("task-progress-snapshot", List.of("alpha")));
+        Task task = createTask(buildRequest("task-progress-snapshot", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -781,7 +827,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void handleTaskMessageResultMarksFailureAndKeepsExecutedCountAtSuccessOnly() {
-        Task task = taskManager.createTask(buildRequest("task-result-failure", List.of("alpha", "beta"), 0));
+        Task task = createTask(buildRequest("task-result-failure", List.of("alpha", "beta"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -800,7 +846,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void retryReusesSameTaskMessageAndFinalSuccessCountDoesNotInflate() {
-        Task task = taskManager.createTask(buildRequest("task-result-retry", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-retry", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -850,7 +896,7 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        Task task = manager.createTask(buildRequest("task-result-retry-best-effort", List.of("alpha")));
+        Task task = createTask(manager, buildRequest("task-result-retry-best-effort", List.of("alpha")));
         manager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         manager.updateTask(task);
@@ -878,7 +924,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void retryEmitsRetryResetTrace() {
-        Task task = taskManager.createTask(buildRequest("task-result-retry-trace", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-retry-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -909,9 +955,9 @@ class TaskManagerLifecycleTest {
                 managerStorage,
                 managerStorage,
                 new InMemoryTaskWorkRuntime());
-            TaskCreateRequestDto dto = buildRequest("task-result-interactive-delayed-retry", List.of("alpha"));
+            TaskCreateSpec dto = buildRequest("task-result-interactive-delayed-retry", List.of("alpha"));
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            Task task = manager.createTask(dto);
+            Task task = createTask(manager, dto);
             manager.approveTask(task.getTid());
             task.setStatus(TaskStatus.RUNNING);
             manager.updateTask(task);
@@ -955,9 +1001,9 @@ class TaskManagerLifecycleTest {
                 managerStorage,
                 managerStorage,
                 new InMemoryTaskWorkRuntime());
-            TaskCreateRequestDto dto = buildRequest("task-result-interactive-coalesced-retry", List.of("alpha", "beta"), 1);
+            TaskCreateSpec dto = buildRequest("task-result-interactive-coalesced-retry", List.of("alpha", "beta"), 1);
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            Task task = manager.createTask(dto);
+            Task task = createTask(manager, dto);
             manager.approveTask(task.getTid());
             task.setStatus(TaskStatus.RUNNING);
             manager.updateTask(task);
@@ -1010,7 +1056,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void callbackWithoutActiveLeaseIsRejectedAndTraced() {
-        Task task = taskManager.createTask(buildRequest("task-result-no-active-attempt", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-no-active-attempt", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1034,7 +1080,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void callbackForInitProjectionWithoutRuntimeLeaseIsRejectedAndTraced() {
-        Task task = taskManager.createTask(buildRequest("task-result-init-callback", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-init-callback", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1069,7 +1115,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void callbackWithRuntimeLeaseRepairsInitProjectionAndSucceeds() {
-        Task task = taskManager.createTask(buildRequest("task-result-runtime-lease-repair", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-runtime-lease-repair", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1101,7 +1147,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void callbackWithRuntimeLeaseRecoversMissingAttemptProjection() {
-        Task task = taskManager.createTask(buildRequest("task-result-runtime-attempt-recovery", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-runtime-attempt-recovery", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1139,7 +1185,7 @@ class TaskManagerLifecycleTest {
         taskStorage = trackingStorage;
         taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
-        Task task = taskManager.createTask(buildRequest("task-result-runtime-attempt-no-audit-read", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-runtime-attempt-no-audit-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1164,8 +1210,102 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void callbackWithRuntimeLeaseDoesNotReadTaskMsgProjectionOnHotPath() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-result-runtime-message-projection-no-read", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-no-msg-read", "worker-context-no-msg-read", "batch-no-msg-read", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done"));
+
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "result hot path should accept runtime-owned callback without reading TaskMsg projection residue");
+        TaskDetailStore.TaskMessageProjection finalProjection =
+                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        assertNotNull(finalProjection);
+        assertEquals(TaskMsgStatus.SUCCESS, finalProjection.status());
+    }
+
+    @Test
+    void latestActiveAttemptCompatibilityViewDoesNotReadLatestAttemptAuditOnHotPath() {
+        TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-active-attempt-view-runtime-owned", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-active-view", "worker-context-active-view", "batch-active-view", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+
+        TaskDetailStore.TaskMessageAttemptProjection activeAttempt =
+                taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId());
+
+        assertEquals(0, trackingStorage.latestAttemptReadCount.get(),
+                "active attempt compatibility view should synthesize from runtime lease without reading latest attempt audit rows");
+        assertNotNull(activeAttempt);
+        assertEquals(TaskMsgAttemptStatus.DISPATCHED, activeAttempt.status());
+        assertEquals("worker-active-view", activeAttempt.workerId());
+        assertEquals("worker-context-active-view", activeAttempt.workerContextId());
+        assertEquals("batch-active-view", activeAttempt.batchId());
+    }
+
+    @Test
+    void expiryWithRuntimeLeaseDoesNotReadTaskMsgProjectionOnHotPath() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-expiry-runtime-message-projection-no-read", List.of("alpha"), 0));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-expiry-no-msg-read", "worker-context-expiry-no-msg-read", "batch-expiry-no-msg-read", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        assertTrue(taskManager.expireTaskMessage(task.getTid(), message.messageId()));
+
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "expiry hot path should converge from runtime lease without reading TaskMsg projection residue");
+        TaskDetailStore.TaskMessageProjection finalProjection =
+                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        assertNotNull(finalProjection);
+        assertEquals(TaskMsgStatus.EXPIRED, finalProjection.status());
+    }
+
+    @Test
     void callbackWithRuntimeLeaseOverridesFinalTaskMsgProjectionResidue() {
-        Task task = taskManager.createTask(buildRequest("task-result-runtime-final-projection-residue", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-runtime-final-projection-residue", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1206,7 +1346,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void retryableFailurePublishesAttemptClosedBeforeDispatchRequested() {
-        Task task = taskManager.createTask(buildRequest("task-result-retry-order", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-retry-order", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1229,7 +1369,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void terminalCompletionPublishesLogicalFinalBeforeTerminalNotification() {
-        Task task = taskManager.createTask(buildRequest("task-terminal-event-order", List.of("alpha")));
+        Task task = createTask(buildRequest("task-terminal-event-order", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1248,7 +1388,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void retryExhaustedFailureMarksAttemptAsBusinessFailure() {
-        Task task = taskManager.createTask(buildRequest("task-result-retry-exhausted-attempt", List.of("alpha"), 0));
+        Task task = createTask(buildRequest("task-result-retry-exhausted-attempt", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1267,7 +1407,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void resolveTaskStateReportsNotFinalizedWhileMessagesRemainOpen() {
-        Task task = taskManager.createTask(buildRequest("task-resolution-pending"));
+        Task task = createTask(buildRequest("task-resolution-pending"));
         taskManager.approveTask(task.getTid());
 
         TaskStateResolutionResult result = taskManager.resolveTaskState(task.getTid());
@@ -1282,7 +1422,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void pausedTaskCompletesToTerminalWhenFinalResultArrives() {
-        Task task = taskManager.createTask(buildRequest("task-paused-completion", List.of("alpha")));
+        Task task = createTask(buildRequest("task-paused-completion", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1307,7 +1447,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void resolveTaskStateFinalizesRunningTaskWhenAllMessagesAreFinal() {
-        Task task = taskManager.createTask(buildRequest("task-resolution-finalized"));
+        Task task = createTask(buildRequest("task-resolution-finalized"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1331,7 +1471,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void resolveTaskStateReportsAlreadyFinalForManuallyCancelledTask() {
-        Task task = taskManager.createTask(buildRequest("task-resolution-already-final", List.of("alpha")));
+        Task task = createTask(buildRequest("task-resolution-already-final", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1350,7 +1490,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void resumeTaskDetailedReportsTerminalOutcomeWhenPausedTaskAlreadyCompleted() {
-        Task task = taskManager.createTask(buildRequest("task-paused-resume-terminal", List.of("alpha")));
+        Task task = createTask(buildRequest("task-paused-resume-terminal", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1375,9 +1515,9 @@ class TaskManagerLifecycleTest {
 
     @Test
     void openEndedTaskStaysNonTerminalUntilSealed() {
-        TaskCreateRequestDto request = buildRequest("task-open-ended", List.of("alpha"));
+        TaskCreateSpec request = buildRequest("task-open-ended", List.of("alpha"));
         request.setOpenEnded(true);
-        Task task = taskManager.createTask(request);
+        Task task = createTask(request);
 
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
 
@@ -1405,7 +1545,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void fileTaskStaysNonTerminalUntilIngestSealed() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-task-open-ingest");
         dto.setProject("demoApp");
         dto.setUserId("agent");
@@ -1413,7 +1553,7 @@ class TaskManagerLifecycleTest {
         dto.setSourceRef("mock/input/demo.csv");
         dto.setInputs(List.of());
 
-        Task task = taskManager.createTask(dto);
+        Task task = createTask(dto);
         assertEquals(TaskIngestStatus.PENDING, task.getIngestStatus());
 
         assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(
@@ -1445,9 +1585,9 @@ class TaskManagerLifecycleTest {
 
     @Test
     void pausedOpenEndedTaskCanAppendWithoutImmediateDispatch() {
-        TaskCreateRequestDto request = buildRequest("task-open-ended-paused-append", List.of("alpha"));
+        TaskCreateSpec request = buildRequest("task-open-ended-paused-append", List.of("alpha"));
         request.setOpenEnded(true);
-        Task task = taskManager.createTask(request);
+        Task task = createTask(request);
         taskManager.approveTask(task.getTid());
         assertTrue(taskManager.pauseTask(task.getTid()));
 
@@ -1471,7 +1611,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void lateCallbackAfterCancelDoesNotMutateTerminalTask() {
-        Task task = taskManager.createTask(buildRequest("task-cancel-late-callback", List.of("alpha")));
+        Task task = createTask(buildRequest("task-cancel-late-callback", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1496,7 +1636,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void lateCallbackEmitsIgnoredLateTrace() {
-        Task task = taskManager.createTask(buildRequest("task-late-trace", List.of("alpha")));
+        Task task = createTask(buildRequest("task-late-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1518,7 +1658,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void duplicateTaskMessageResultKeepsFirstFinalStateAndDoesNotTriggerSchedulerTwice() {
-        Task task = taskManager.createTask(buildRequest("task-result-duplicate", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-duplicate", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1541,7 +1681,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void duplicateCallbackEmitsIgnoredDuplicateTrace() {
-        Task task = taskManager.createTask(buildRequest("task-result-duplicate-trace", List.of("alpha")));
+        Task task = createTask(buildRequest("task-result-duplicate-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1560,7 +1700,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void mixedFinalTaskMessagesProduceMixedTerminalReason() {
-        Task task = taskManager.createTask(buildRequest("task-result-mixed", List.of("alpha", "beta"), 0));
+        Task task = createTask(buildRequest("task-result-mixed", List.of("alpha", "beta"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1579,7 +1719,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void allFailedTaskMessagesProduceFailedTerminalReason() {
-        Task task = taskManager.createTask(buildRequest("task-result-all-failed", List.of("alpha", "beta"), 0));
+        Task task = createTask(buildRequest("task-result-all-failed", List.of("alpha", "beta"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -1598,7 +1738,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateReportsValidTerminalSuccessTask() {
-        Task task = taskManager.createTask(buildRequest("task-validate-valid-terminal"));
+        Task task = createTask(buildRequest("task-validate-valid-terminal"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1622,7 +1762,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateRejectsBlockedTaskWithoutHoldReason() {
-        Task task = taskManager.createTask(buildRequest("task-validate-blocked-hold-reason"));
+        Task task = createTask(buildRequest("task-validate-blocked-hold-reason"));
         assertTrue(taskManager.rejectTask(task.getTid()));
 
         Task blocked = taskManager.getTask(task.getTid());
@@ -1638,7 +1778,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void auditTaskProjectionStateRejectsCompletedMessageWithoutFinalReason() {
-        Task task = taskManager.createTask(buildRequest("task-validate-message-final-reason", List.of("alpha")));
+        Task task = createTask(buildRequest("task-validate-message-final-reason", List.of("alpha")));
         TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         TaskMsg message = storedMessage.toCompatibilityProjection();
         message.markAsAssigned();
@@ -1660,7 +1800,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void auditTaskProjectionStateFlagsActiveAttemptWithFinalMessage() {
-        Task task = taskManager.createTask(buildRequest("task-validate-active-attempt-final-message", List.of("alpha")));
+        Task task = createTask(buildRequest("task-validate-active-attempt-final-message", List.of("alpha")));
         TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         TaskMsg message = storedMessage.toCompatibilityProjection();
         message.markAsAssigned();
@@ -1690,7 +1830,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void auditTaskProjectionStateFlagsMultipleActiveAttemptsForMessage() {
-        Task task = taskManager.createTask(buildRequest("task-validate-multiple-active-attempts", List.of("alpha")));
+        Task task = createTask(buildRequest("task-validate-multiple-active-attempts", List.of("alpha")));
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
 
@@ -1715,7 +1855,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateReportsNeedsResolutionWhenMessagesAreFinalButTaskIsStillRunning() {
-        Task task = taskManager.createTask(buildRequest("task-validate-needs-resolution"));
+        Task task = createTask(buildRequest("task-validate-needs-resolution"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1741,7 +1881,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateEmitsValidationSummaryWhenResolutionIsNeeded() {
-        Task task = taskManager.createTask(buildRequest("task-validate-needs-resolution-trace"));
+        Task task = createTask(buildRequest("task-validate-needs-resolution-trace"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1773,7 +1913,7 @@ class TaskManagerLifecycleTest {
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
         ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
-        Task task = pagingTaskManager.createTask(buildRequest("validate-paged", List.of("a", "b", "c")));
+        Task task = createTask(pagingTaskManager, buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         pagingTaskManager.updateTask(task);
@@ -1796,7 +1936,7 @@ class TaskManagerLifecycleTest {
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
         ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
-        Task task = pagingTaskManager.createTask(buildRequest("audit-paged", List.of("a", "b", "c")));
+        Task task = createTask(pagingTaskManager, buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         pagingTaskManager.updateTask(task);
@@ -1817,7 +1957,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateRejectsTerminalTaskWithoutTerminalReason() {
-        Task task = taskManager.createTask(buildRequest("task-validate-missing-terminal-reason", List.of("alpha")));
+        Task task = createTask(buildRequest("task-validate-missing-terminal-reason", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1840,7 +1980,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateRejectsMismatchedTerminalReason() {
-        Task task = taskManager.createTask(buildRequest("task-validate-reason-mismatch"));
+        Task task = createTask(buildRequest("task-validate-reason-mismatch"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
@@ -1873,7 +2013,7 @@ class TaskManagerLifecycleTest {
                 (task, stats) -> TaskTerminalPolicyDecision.keepRunning(),
                 new InMemoryTaskWorkRuntime()
         );
-        Task task = policyAwareManager.createTask(buildRequest("task-policy-keep-running", List.of("alpha")));
+        Task task = createTask(policyAwareManager, buildRequest("task-policy-keep-running", List.of("alpha")));
         policyAwareManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         policyAwareManager.updateTask(task);
@@ -1905,7 +2045,7 @@ class TaskManagerLifecycleTest {
                 runtimeLimitPolicy,
                 new InMemoryTaskWorkRuntime()
         );
-        Task task = policyAwareManager.createTask(buildRequest("task-policy-force-terminal"));
+        Task task = createTask(policyAwareManager, buildRequest("task-policy-force-terminal"));
         policyAwareManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         policyAwareManager.updateTask(task);
@@ -1935,9 +2075,9 @@ class TaskManagerLifecycleTest {
                 new InMemoryTaskWorkRuntime()
         );
 
-        TaskCreateRequestDto request = buildRequest("task-open-intake-runtime-limit", List.of("alpha"));
+        TaskCreateSpec request = buildRequest("task-open-intake-runtime-limit", List.of("alpha"));
         request.setOpenEnded(true);
-        Task task = policyAwareManager.createTask(request);
+        Task task = createTask(policyAwareManager, request);
         policyAwareManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         policyAwareManager.updateTask(task);
@@ -1964,9 +2104,9 @@ class TaskManagerLifecycleTest {
         );
 
         for (TaskTerminalReason terminalReason : policyDrivenReasons) {
-            TaskCreateRequestDto request = buildRequest("task-open-intake-" + terminalReason.name(), List.of("alpha"));
+            TaskCreateSpec request = buildRequest("task-open-intake-" + terminalReason.name(), List.of("alpha"));
             request.setOpenEnded(true);
-            Task task = taskManager.createTask(request);
+            Task task = createTask(request);
             task.setStatus(TaskStatus.TERMINAL);
             task.setTerminalReason(terminalReason);
             taskManager.updateTask(task);
@@ -1984,7 +2124,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void blockReadyTaskTransitionsToBlocked() {
-        Task task = taskManager.createTask(buildRequest("block-ready"));
+        Task task = createTask(buildRequest("block-ready"));
         taskManager.approveTask(task.getTid()); // NEW -> READY
 
         assertTrue(taskManager.blockTask(task.getTid()));
@@ -1994,7 +2134,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void blockRunningTaskTransitionsToBlocked() {
-        Task task = taskManager.createTask(buildRequest("block-running"));
+        Task task = createTask(buildRequest("block-running"));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2005,7 +2145,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void blockedTaskViaBlockTaskCanBeApprovedBackToReady() {
-        Task task = taskManager.createTask(buildRequest("block-then-approve"));
+        Task task = createTask(buildRequest("block-then-approve"));
         taskManager.approveTask(task.getTid()); // READY
         taskManager.blockTask(task.getTid());   // BLOCKED
 
@@ -2015,7 +2155,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void blockTaskRejectedForNewAndTerminalTasks() {
-        Task newTask = taskManager.createTask(buildRequest("block-new"));
+        Task newTask = createTask(buildRequest("block-new"));
         assertFalse(taskManager.blockTask(newTask.getTid()), "NEW task cannot be blocked via blockTask");
 
         taskManager.approveTask(newTask.getTid());
@@ -2027,7 +2167,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
-        Task task = taskManager.createTask(buildRequest("expire-msg", List.of("alpha"), 0));
+        Task task = createTask(buildRequest("expire-msg", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2050,7 +2190,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireRunningMessageTransitionsToExpired() {
-        Task task = taskManager.createTask(buildRequest("expire-running", List.of("alpha"), 0));
+        Task task = createTask(buildRequest("expire-running", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2065,7 +2205,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireWithRuntimeLeaseRepairsInitProjectionAndExpires() {
-        Task task = taskManager.createTask(buildRequest("expire-runtime-lease-repair", List.of("alpha"), 0));
+        Task task = createTask(buildRequest("expire-runtime-lease-repair", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2094,7 +2234,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireAssignedMessageWithRetryBudgetResetsToInitAndRequestsRedispatch() {
-        Task task = taskManager.createTask(buildRequest("expire-retry", List.of("alpha"), 1));
+        Task task = createTask(buildRequest("expire-retry", List.of("alpha"), 1));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2136,7 +2276,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireInitOrBindingMessageIsRejected() {
-        Task task = taskManager.createTask(buildRequest("expire-init", List.of("alpha")));
+        Task task = createTask(buildRequest("expire-init", List.of("alpha")));
         taskManager.approveTask(task.getTid());
 
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
@@ -2150,7 +2290,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void cancelTaskLeavesStoredTaskMsgProjectionUntouchedAndOverlaysTerminalView() {
-        Task task = taskManager.createTask(buildRequest("cancel-cleanup", List.of("a", "b", "c")));
+        Task task = createTask(buildRequest("cancel-cleanup", List.of("a", "b", "c")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2194,7 +2334,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void cancelTaskOverlaysAssignedMessageWithoutRestampingStoredProjection() {
-        Task task = taskManager.createTask(buildRequest("cancel-no-attempt-residue", List.of("alpha")));
+        Task task = createTask(buildRequest("cancel-no-attempt-residue", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2222,7 +2362,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void cancelTaskDoesNotRestampTaskMsgProjectionFromRuntimeLeaseOnly() {
-        Task task = taskManager.createTask(buildRequest("cancel-no-runtime-lease-restamp", List.of("alpha")));
+        Task task = createTask(buildRequest("cancel-no-runtime-lease-restamp", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2253,7 +2393,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void terminalTaskMessageSnapshotOverlaysCompatibilityViewWithoutMutatingStoredRows() {
-        Task task = taskManager.createTask(buildRequest("cancel-snapshot-overlay", List.of("a", "b")));
+        Task task = createTask(buildRequest("cancel-snapshot-overlay", List.of("a", "b")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2280,7 +2420,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void isCompletedReturnsTrueOnlyWhenTaskStatusIsFinal() {
-        Task task = taskManager.createTask(buildRequest("is-completed", List.of("alpha")));
+        Task task = createTask(buildRequest("is-completed", List.of("alpha")));
 
         // NEW: not final
         assertFalse(task.isCompleted());
@@ -2302,7 +2442,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeRetryBudgetWinsOverStaleTaskMessageProjection() {
-        Task task = taskManager.createTask(buildRequest("task-runtime-retry-budget-owner", List.of("alpha"), 1));
+        Task task = createTask(buildRequest("task-runtime-retry-budget-owner", List.of("alpha"), 1));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2325,16 +2465,65 @@ class TaskManagerLifecycleTest {
         assertNull(retriedMessage.finalReason());
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName) {
+    private Task createTask(TaskCreateSpec request) {
+        return createTask(taskManager, request);
+    }
+
+    private Task createTask(ProjectionAwareTaskManager manager, TaskCreateSpec request) {
+        if (request == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        TaskSourceType sourceType = request.getSourceType();
+        if (sourceType == null) {
+            sourceType = request.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+            request.setSourceType(sourceType);
+        }
+        if (request.getWorkloadClass() == null) {
+            request.setWorkloadClass(TaskWorkloadClass.BULK);
+        }
+        if (sourceType == TaskSourceType.FILE && request.getInputs() != null && !request.getInputs().isEmpty()) {
+            throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
+        }
+        if (sourceType == TaskSourceType.FILE && (request.getSourceRef() == null || request.getSourceRef().isBlank())) {
+            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        }
+        if (sourceType != TaskSourceType.FILE && !request.isOpenEnded()
+                && (request.getInputs() == null || request.getInputs().isEmpty())) {
+            throw new IllegalArgumentException("inputs must be a non-empty list");
+        }
+        if (sourceType == TaskSourceType.BATCH
+                && request.getInputs() != null
+                && request.getInputs().size() > TaskManager.MAX_INITIAL_INLINE_INPUTS) {
+            throw new IllegalArgumentException("BATCH task initial inputs exceed inline create limit: "
+                    + request.getInputs().size() + " > " + TaskManager.MAX_INITIAL_INLINE_INPUTS);
+        }
+        if (sourceType == TaskSourceType.STREAM
+                && request.getInputs() != null
+                && request.getInputs().size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
+            throw new IllegalArgumentException("STREAM task initial inputs exceed ingest batch limit: "
+                    + request.getInputs().size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
+        }
+
+        Task task = manager.createTaskShell(request.toShellRequest());
+        if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+            manager.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+        }
+        if (sourceType != TaskSourceType.FILE && !request.isOpenEnded()) {
+            assertTrue(manager.sealTask(task.getTid()));
+        }
+        return manager.getTask(task.getTid());
+    }
+
+    private TaskCreateSpec buildRequest(String taskName) {
         return buildRequest(taskName, List.of("alpha", "beta"));
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName, List<String> targets) {
+    private TaskCreateSpec buildRequest(String taskName, List<String> targets) {
         return buildRequest(taskName, targets, 3);
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName, List<String> targets, int defaultMsgMaxRetryCount) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+    private TaskCreateSpec buildRequest(String taskName, List<String> targets, int defaultMsgMaxRetryCount) {
+        TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
@@ -2345,6 +2534,50 @@ class TaskManagerLifecycleTest {
         dto.setBatchSize(1);
         dto.setDefaultMsgMaxRetryCount(defaultMsgMaxRetryCount);
         return dto;
+    }
+
+    private static final class TaskCreateSpec extends TaskShellCreateRequestDto {
+        private java.util.List<java.util.Map<String, Object>> inputs;
+        private boolean openEnded;
+        private int defaultMsgMaxRetryCount = 3;
+
+        java.util.List<java.util.Map<String, Object>> getInputs() {
+            return inputs;
+        }
+
+        void setInputs(java.util.List<java.util.Map<String, Object>> inputs) {
+            this.inputs = inputs;
+        }
+
+        boolean isOpenEnded() {
+            return openEnded;
+        }
+
+        void setOpenEnded(boolean openEnded) {
+            this.openEnded = openEnded;
+        }
+
+        int getDefaultMsgMaxRetryCount() {
+            return defaultMsgMaxRetryCount;
+        }
+
+        void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
+            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+        }
+
+        TaskShellCreateRequestDto toShellRequest() {
+            TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
+            dto.setUserId(getUserId());
+            dto.setProject(getProject());
+            dto.setTaskName(getTaskName());
+            dto.setSharedConfig(getSharedConfig());
+            dto.setBatchSize(getBatchSize());
+            dto.setMaxRuntimeSeconds(getMaxRuntimeSeconds());
+            dto.setSourceType(getSourceType());
+            dto.setWorkloadClass(getWorkloadClass());
+            dto.setSourceRef(getSourceRef());
+            return dto;
+        }
     }
 
     private TaskDetailStore.TaskMessageProjection assignMessage(Task task,
@@ -2626,6 +2859,17 @@ class TaskManagerLifecycleTest {
                                                                                                                      String messageId) {
             latestAttemptReadCount.incrementAndGet();
             return super.getLatestTaskMessageAttemptProjection(taskId, messageId);
+        }
+    }
+
+    private static final class TrackingTaskMessageProjectionStorage extends InMemoryTaskStorage {
+        private final AtomicInteger taskMessageProjectionReadCount = new AtomicInteger();
+
+        @Override
+        public java.util.Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId,
+                                                                                                  String messageId) {
+            taskMessageProjectionReadCount.incrementAndGet();
+            return super.getTaskMessageProjection(taskId, messageId);
         }
     }
 

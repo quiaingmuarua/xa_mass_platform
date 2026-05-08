@@ -10,6 +10,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -167,7 +168,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 });
                 assignWorker.start();
 
-                Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
+                Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
@@ -177,7 +178,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
+                Task interactiveTask = materializeTask(taskCommands, buildInteractiveRequest(config));
                 workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
@@ -312,6 +313,27 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             dto.setInputs(buildInputs("interactive", 1));
             dto.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
             return dto;
+        }
+
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreateRequestDto request) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setTaskName(request.getTaskName());
+            shell.setProject(request.getProject());
+            shell.setSharedConfig(request.getSharedConfig());
+            shell.setUserId(request.getUserId());
+            shell.setBatchSize(request.getBatchSize());
+            shell.setWorkloadClass(request.getWorkloadClass());
+            shell.setSourceType(request.getSourceType());
+            shell.setSourceRef(request.getSourceRef());
+            shell.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+            Task task = taskCommands.createTaskShell(shell);
+            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+            }
+            if (!request.isOpenEnded()) {
+                require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
+            }
+            return task;
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {

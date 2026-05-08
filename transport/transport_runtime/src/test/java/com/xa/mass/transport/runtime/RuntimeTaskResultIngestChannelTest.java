@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -411,7 +412,15 @@ class RuntimeTaskResultIngestChannelTest {
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setInputs(List.of(Map.of("target", "alpha")));
-        Task task = taskCommands.createTask(dto);
+        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+        shell.setTaskName(dto.getTaskName());
+        shell.setProject(dto.getProject());
+        shell.setSharedConfig(dto.getSharedConfig());
+        shell.setUserId(dto.getUserId());
+        shell.setBatchSize(dto.getBatchSize());
+        Task task = taskCommands.createTaskShell(shell);
+        taskCommands.appendTaskItems(task.getTid(), dto.getInputs(), dto.getDefaultMsgMaxRetryCount());
+        assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 

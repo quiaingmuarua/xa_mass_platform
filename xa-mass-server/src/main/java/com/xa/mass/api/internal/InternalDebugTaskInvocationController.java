@@ -19,15 +19,12 @@ import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
-import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
-import com.xa.mass.sdk.model.JsonInput;
-import com.xa.mass.sdk.model.MassInput;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.TextInput;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -103,23 +100,23 @@ public class InternalDebugTaskInvocationController {
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
             Task task;
-            List<Map<String, Object>> items;
             if (submitterTaskCreate != null) {
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId(), correlationId),
                         submitterTaskCreate.principal()
                 ));
-                items = toAppendInputs(requestBody.getInputs(), resolvePayloadType(requestBody));
             } else {
                 PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
                         operator
                 ));
-                items = toAppendInputs(requestBody.getInputs(), resolvePayloadType(requestBody));
             }
 
-            taskAdmin.appendTaskItems(task.getTid(), items, requestBody.getDefaultMsgMaxRetryCount());
+            taskAdmin.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .items(requestBody.getInputs())
+                    .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
+                    .build());
             taskAdmin.sealTask(task.getTid());
             taskAdmin.approveTask(task.getTid());
 
@@ -253,7 +250,7 @@ public class InternalDebugTaskInvocationController {
                 .taskName(requestBody.getTaskName())
                 .eventCode(requestBody.getEventCode())
                 .mode(TaskMode.SINGLE_RUN)
-                .payloadType(resolvePayloadType(requestBody))
+                .payloadType(requestBody.getPayloadType() != null ? requestBody.getPayloadType() : com.xa.mass.sdk.catalog.PayloadType.JSON)
                 .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
                 .batchSize(requestBody.getBatchSize())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
@@ -261,10 +258,6 @@ public class InternalDebugTaskInvocationController {
                 .workloadClass(requestBody.getWorkloadClass())
                 .sourceRef(requestBody.getSourceRef())
                 .build();
-    }
-
-    private PayloadType resolvePayloadType(TaskCreateApiRequest requestBody) {
-        return requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON;
     }
 
     private Map<String, Object> mergeSyncKey(Map<String, Object> existing, String syncKey) {
@@ -287,44 +280,6 @@ public class InternalDebugTaskInvocationController {
         if (!projectMetadata.getEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
-    }
-
-    private List<Map<String, Object>> toAppendInputs(List<Object> rawInputs, PayloadType payloadType) {
-        return toMassInputs(rawInputs, payloadType).stream()
-                .map(MassInput::toTaskMsgInput)
-                .toList();
-    }
-
-    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType) {
-        if (rawInputs == null || rawInputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must contain at least one work item");
-        }
-        List<MassInput> converted = new ArrayList<>(rawInputs.size());
-        for (Object rawInput : rawInputs) {
-            converted.add(switch (payloadType) {
-                case TEXT -> {
-                    if (!(rawInput instanceof String text)) {
-                        throw new IllegalArgumentException("TEXT payloadType requires string inputs");
-                    }
-                    yield new TextInput(text);
-                }
-                case JSON -> {
-                    if (!(rawInput instanceof Map<?, ?> map)) {
-                        throw new IllegalArgumentException("JSON payloadType requires object inputs");
-                    }
-                    yield new JsonInput(stringObjectMap(map));
-                }
-            });
-        }
-        return List.copyOf(converted);
-    }
-
-    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
-        Map<String, Object> copy = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-            copy.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return Map.copyOf(copy);
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

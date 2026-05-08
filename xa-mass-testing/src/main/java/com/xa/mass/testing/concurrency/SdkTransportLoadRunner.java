@@ -13,7 +13,9 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -139,7 +141,7 @@ public final class SdkTransportLoadRunner {
                 }
 
                 for (int i = 0; i < config.taskCount(); i++) {
-                    Task task = app.createTask(buildTaskRequest(i));
+                    Task task = createTask(app, buildTaskRequest(i));
                     taskIds.add(task.getTid());
                     require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
                 }
@@ -324,6 +326,30 @@ public final class SdkTransportLoadRunner {
                     .openEnded(false)
                     .maxRuntimeSeconds(config.timeoutSeconds())
                     .build();
+        }
+
+        private Task createTask(MassSdkApplication app, MassTaskCreateRequest request) {
+            Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
+                    .userId(request.getUserId())
+                    .project(request.getProject())
+                    .taskName(request.getTaskName())
+                    .sharedConfig(request.getSharedConfig())
+                    .batchSize(request.getBatchSize())
+                    .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
+                    .sourceType(request.getSourceType())
+                    .workloadClass(request.getWorkloadClass())
+                    .sourceRef(request.getSourceRef())
+                    .build());
+            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+                app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                        .items(new ArrayList<>(request.getInputs()))
+                        .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                        .build());
+            }
+            if (!request.isOpenEnded()) {
+                require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+            }
+            return app.getTask(task.getTid());
         }
 
         private List<Map<String, Object>> buildInputs(int taskIndex) {

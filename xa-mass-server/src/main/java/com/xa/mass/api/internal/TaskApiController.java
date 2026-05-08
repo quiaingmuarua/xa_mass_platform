@@ -366,11 +366,10 @@ public class TaskApiController {
                 return badRequest("items must be a non-empty list");
             }
             validateIngestGuardrails(items);
-            int added = taskAdmin.appendTaskItems(
-                    taskId,
-                    toAppendInputs(items, task),
-                    requestBody.getDefaultMsgMaxRetryCount()
-            );
+            int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .items(items)
+                    .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
+                    .build());
             return ok(Map.of("message", "Items appended", "added", added));
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());
@@ -779,92 +778,6 @@ public class TaskApiController {
         if (!projectMetadata.getEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
-    }
-
-    private List<Map<String, Object>> toPlainJsonInputs(List<Object> rawInputs) {
-        if (rawInputs == null) {
-            return null;
-        }
-        return rawInputs.stream()
-                .map(this::mapInputWithoutDeclaredPayloadType)
-                .collect(Collectors.toList());
-    }
-
-    private List<Map<String, Object>> toAppendInputs(List<Object> rawInputs, Task task) {
-        PayloadType payloadType = resolvePayloadType(task);
-        if (payloadType == null) {
-            return rawInputs.stream()
-                    .map(this::mapInputWithoutDeclaredPayloadType)
-                    .collect(Collectors.toList());
-        }
-        return toMassInputs(rawInputs, payloadType, task.getSourceType()).stream()
-                .map(MassInput::toTaskMsgInput)
-                .collect(Collectors.toList());
-    }
-
-    private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawInput) {
-        if (rawInput instanceof String text) {
-            return new TextInput(text).toTaskMsgInput();
-        }
-        if (rawInput instanceof Map<?, ?> map) {
-            return stringObjectMap(map);
-        }
-        throw new IllegalArgumentException("Unsupported input item type: " + rawInput);
-    }
-
-    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType, TaskSourceType sourceType) {
-        if ((rawInputs == null || rawInputs.isEmpty())
-                && sourceType != null
-                && sourceType.allowsEmptyInitialInputs()) {
-            return List.of();
-        }
-        if (rawInputs == null || rawInputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must contain at least one work item");
-        }
-        PayloadType resolvedPayloadType = payloadType != null ? payloadType : PayloadType.JSON;
-        return rawInputs.stream()
-                .map(rawInput -> toMassInput(rawInput, resolvedPayloadType))
-                .collect(Collectors.toList());
-    }
-
-    private MassInput toMassInput(Object rawInput, PayloadType payloadType) {
-        return switch (payloadType) {
-            case TEXT -> {
-                if (!(rawInput instanceof String text)) {
-                    throw new IllegalArgumentException("TEXT payloadType requires string inputs");
-                }
-                yield new TextInput(text);
-            }
-            case JSON -> {
-                if (!(rawInput instanceof Map<?, ?> map)) {
-                    throw new IllegalArgumentException("JSON payloadType requires object inputs");
-                }
-                yield new JsonInput(stringObjectMap(map));
-            }
-        };
-    }
-
-    private PayloadType resolvePayloadType(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
-            return null;
-        }
-        Object sdk = task.getSharedConfig().get("_sdk");
-        if (!(sdk instanceof Map<?, ?> sdkMetadata)) {
-            return null;
-        }
-        Object payloadType = sdkMetadata.get("payloadType");
-        if (!(payloadType instanceof String payloadTypeName) || payloadTypeName.isBlank()) {
-            return null;
-        }
-        return PayloadType.valueOf(payloadTypeName);
-    }
-
-    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
-        Map<String, Object> copy = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-            copy.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return Map.copyOf(copy);
     }
 
     private void validateIngestGuardrails(List<Object> items) {

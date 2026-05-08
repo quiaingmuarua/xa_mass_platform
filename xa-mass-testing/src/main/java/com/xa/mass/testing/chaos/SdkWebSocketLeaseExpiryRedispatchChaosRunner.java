@@ -13,7 +13,9 @@ import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.testing.support.TestingPaths;
@@ -276,7 +278,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
 
         private Task createUntargetedTask(MassSdkApplication app, String taskName) {
-            Task task = app.createTask(MassTaskCreateRequest.builder()
+            Task task = createTask(app, MassTaskCreateRequest.builder()
                     .userId("sdk-chaos")
                     .project(PROJECT_CODE)
                     .taskName(taskName)
@@ -296,6 +298,30 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     .build());
             require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
             return task;
+        }
+
+        private Task createTask(MassSdkApplication app, MassTaskCreateRequest request) {
+            Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
+                    .userId(request.getUserId())
+                    .project(request.getProject())
+                    .taskName(request.getTaskName())
+                    .sharedConfig(request.getSharedConfig())
+                    .batchSize(request.getBatchSize())
+                    .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
+                    .sourceType(request.getSourceType())
+                    .workloadClass(request.getWorkloadClass())
+                    .sourceRef(request.getSourceRef())
+                    .build());
+            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+                app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                        .items(new ArrayList<>(request.getInputs()))
+                        .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                        .build());
+            }
+            if (!request.isOpenEnded()) {
+                require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+            }
+            return app.getTask(task.getTid());
         }
 
         private void waitForWorkerOnline(MassSdkApplication app, String workerId, String failureMessage) throws Exception {

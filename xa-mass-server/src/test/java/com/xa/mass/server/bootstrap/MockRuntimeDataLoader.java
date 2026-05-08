@@ -9,7 +9,9 @@ import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -158,7 +160,16 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             return;
         }
         for (TaskCreateRequestDto dto : dtos) {
-            runtime.createTask(toSdkRequest(dto));
+            Task task = runtime.createTaskShell(toShellCreateRequest(dto));
+            if (dto.getInputs() != null && !dto.getInputs().isEmpty()) {
+                runtime.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                        .items(new ArrayList<>(dto.getInputs()))
+                        .defaultMsgMaxRetryCount(dto.getDefaultMsgMaxRetryCount())
+                        .build());
+            }
+            if (!dto.isOpenEnded()) {
+                runtime.sealTask(task.getTid());
+            }
         }
         logger.info("Loaded {} task requests [path={}]", dtos.length, taskConfigPath);
     }
@@ -304,17 +315,17 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private MassTaskCreateRequest toSdkRequest(TaskCreateRequestDto dto) {
-        return MassTaskCreateRequest.builder()
+    private MassTaskShellCreateRequest toShellCreateRequest(TaskCreateRequestDto dto) {
+        return MassTaskShellCreateRequest.builder()
                 .userId(dto.getUserId())
                 .project(dto.getProject())
                 .taskName(dto.getTaskName())
                 .sharedConfig(dto.getSharedConfig())
-                .inputs(dto.getInputs())
                 .batchSize(dto.getBatchSize())
-                .defaultMsgMaxRetryCount(dto.getDefaultMsgMaxRetryCount())
-                .openEnded(dto.isOpenEnded())
                 .maxRuntimeSeconds(dto.getMaxRuntimeSeconds())
+                .sourceType(dto.getSourceType())
+                .workloadClass(dto.getWorkloadClass())
+                .sourceRef(dto.getSourceRef())
                 .build();
     }
 }

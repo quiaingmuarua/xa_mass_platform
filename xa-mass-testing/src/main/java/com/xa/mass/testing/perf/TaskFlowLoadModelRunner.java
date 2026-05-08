@@ -9,6 +9,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -199,7 +200,7 @@ public final class TaskFlowLoadModelRunner {
 
                 assignWorker.start();
 
-                Task task = taskCommands.createTask(buildRequest(config));
+                Task task = materializeTask(taskCommands, buildRequest(config));
                 taskIdRef.set(task.getTid());
                 long wallStartNanos = System.nanoTime();
                 require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
@@ -275,6 +276,27 @@ public final class TaskFlowLoadModelRunner {
             dto.setInputs(buildInputs(config.messageCount()));
             dto.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
             return dto;
+        }
+
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreateRequestDto request) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setTaskName(request.getTaskName());
+            shell.setProject(request.getProject());
+            shell.setSharedConfig(request.getSharedConfig());
+            shell.setUserId(request.getUserId());
+            shell.setBatchSize(request.getBatchSize());
+            shell.setWorkloadClass(request.getWorkloadClass());
+            shell.setSourceType(request.getSourceType());
+            shell.setSourceRef(request.getSourceRef());
+            shell.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+            Task task = taskCommands.createTaskShell(shell);
+            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+            }
+            if (!request.isOpenEnded()) {
+                require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
+            }
+            return task;
         }
 
         private static EngineConfig buildEngineConfig(InstrumentedTaskStorage taskStorage,

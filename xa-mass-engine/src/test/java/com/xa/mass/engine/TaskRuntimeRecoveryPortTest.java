@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
@@ -34,8 +34,8 @@ class TaskRuntimeRecoveryPortTest {
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
         TaskManager manager = new TaskManager(scheduler, storage, storage, runtime);
 
-        Task first = manager.createTask(buildRequest("runtime-ready-first"));
-        Task second = manager.createTask(buildRequest("runtime-ready-second"));
+        Task first = createTask(manager, buildRequest("runtime-ready-first"));
+        Task second = createTask(manager, buildRequest("runtime-ready-second"));
         manager.approveTask(first.getTid());
         manager.approveTask(second.getTid());
         runtime.setReadyTaskIds(List.of(second.getTid()));
@@ -53,7 +53,7 @@ class TaskRuntimeRecoveryPortTest {
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
         TaskManager manager = new TaskManager(scheduler, storage, storage, runtime);
 
-        Task task = manager.createTask(buildRequest("runtime-ready-live"));
+        Task task = createTask(manager, buildRequest("runtime-ready-live"));
         manager.approveTask(task.getTid());
         runtime.setReadyTaskIds(List.of(task.getTid(), "missing-task-shell"));
 
@@ -63,16 +63,25 @@ class TaskRuntimeRecoveryPortTest {
         assertEquals(List.of(task.getTid()), recovered.stream().map(Task::getTid).toList());
     }
 
-    private static TaskCreateRequestDto buildRequest(String taskName) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+    private static TaskCreateSpec buildRequest(String taskName) {
+        TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setInputs(List.of(
+        return new TaskCreateSpec(dto, List.of(
                 java.util.Map.of("target", taskName + "-a"),
                 java.util.Map.of("target", taskName + "-b")
         ));
-        return dto;
+    }
+
+    private static Task createTask(TaskManager manager, TaskCreateSpec request) {
+        Task task = manager.createTaskShell(request.shell());
+        manager.appendTaskItems(task.getTid(), request.inputs(), 3);
+        manager.sealTask(task.getTid());
+        return manager.getTask(task.getTid());
+    }
+
+    private record TaskCreateSpec(TaskShellCreateRequestDto shell, List<java.util.Map<String, Object>> inputs) {
     }
 
     private static final class ReadyTaskIdsOverrideRuntime implements TaskWorkRuntime {

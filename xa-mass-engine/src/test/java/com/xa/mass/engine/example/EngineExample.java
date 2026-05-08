@@ -5,12 +5,12 @@ import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -45,8 +45,14 @@ public class EngineExample {
         List<WorkerContext> workerContexts = genMockWorkerContext();
         workerContexts.forEach(workerManager::addWorkerContext);
 
-        TaskCreateRequestDto taskDto = new TaskCreateRequestDto();
-        taskCommands.createTask(taskDto);
+        TaskShellCreateRequestDto taskDto = new TaskShellCreateRequestDto();
+        taskDto.setTaskName("demo-task");
+        taskDto.setProject("demoApp");
+        taskDto.setUserId("demo-user");
+        taskDto.setBatchSize(1);
+        Task task = taskCommands.createTaskShell(taskDto);
+        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("target", "demo-target")), 3);
+        taskCommands.sealTask(task.getTid());
     }
 
     public static Task genMockTask() {

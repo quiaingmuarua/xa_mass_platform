@@ -11,7 +11,7 @@ import com.xa.mass.engine.ProjectionAwareTaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -537,16 +537,18 @@ class SimpleTaskDispatchBinderTest {
     }
 
     private Task createTask(int messageCount) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setTaskName("task");
         dto.setProject("demoApp");
         dto.setSharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
-        dto.setInputs(IntStream.range(0, messageCount)
+        Task task = taskCommands.createTaskShell(dto);
+        taskCommands.appendTaskItems(task.getTid(), IntStream.range(0, messageCount)
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
-                .collect(Collectors.toCollection(ArrayList::new)));
-        return taskCommands.createTask(dto);
+                .collect(Collectors.toCollection(ArrayList::new)), 3);
+        assertTrue(taskCommands.sealTask(task.getTid()));
+        return taskQueries.getTask(task.getTid());
     }
 
     private List<TaskDetailStore.TaskMessageProjection> storedMessages(String taskId) {

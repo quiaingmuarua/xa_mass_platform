@@ -129,7 +129,7 @@ Current fixture behavior:
 - worker JSON entries are mapped to `WorkerRegistration`
 - worker-context JSON entries are mapped to `WorkerContextRegistration`
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
-- task JSON continues to map to `MassTaskCreateRequest`
+- task JSON remains test-fixture compatibility input and currently maps to `MassTaskCreateRequest`
 - rule JSON continues to replace default rules when non-empty
 - default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
 
@@ -358,7 +358,7 @@ High-signal classes:
 
 Fixture rules:
 
-- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)`
+- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `sealTask(...)`
 - worker JSON and worker-context JSON are fixture inputs, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
 - direct `TaskManager` writes stay limited to focused white-box assertions or fault injection

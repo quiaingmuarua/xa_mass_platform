@@ -102,15 +102,9 @@ final class TaskCompatibilityProjectionAccess {
             return false;
         }
         CompatibilityMessageProjection storedProjection = getStoredCompatibilityMessageProjection(taskId, messageId);
-        CompatibilityAttemptProjection latestAuditView =
-                getLatestStoredCompatibilityAttemptProjection(taskId, messageId);
         TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.status() : TaskMsgStatus.ASSIGNED;
-        String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
         int attemptNo = Math.max(1, activeLease.retryCount() + 1);
-        String attemptId = preferredAttemptId;
-        if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
-            attemptId = latestAuditView.attemptId();
-        }
+        String attemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
         if (attemptId == null || attemptId.isBlank()) {
             attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
         }
@@ -327,24 +321,6 @@ final class TaskCompatibilityProjectionAccess {
         return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
     }
 
-    private boolean matchesRuntimeLease(CompatibilityAttemptProjection attempt,
-                                        ActiveLeaseRecord activeLease,
-                                        int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.attemptId() == null || attempt.attemptId().isBlank()) {
-            return false;
-        }
-        if (attempt.attemptNo() != attemptNo) {
-            return false;
-        }
-        if (!Objects.equals(attempt.workerId(), activeLease.workerId())) {
-            return false;
-        }
-        if (!Objects.equals(attempt.workerContextId(), activeLease.workerContextId())) {
-            return false;
-        }
-        return Objects.equals(attempt.batchId(), activeLease.batchId());
-    }
-
     private void emitMessageProjection(CompatibilityMessageProjection projection,
                                        TaskCompatibilityMessageVisitor visitor) {
         if (projection == null || visitor == null) {
@@ -427,9 +403,4 @@ final class TaskCompatibilityProjectionAccess {
                 .toList();
     }
 
-    private CompatibilityAttemptProjection getLatestStoredCompatibilityAttemptProjection(String taskId, String messageId) {
-        return CompatibilityAttemptProjection.fromStorage(
-                taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId).orElse(null)
-        );
-    }
 }

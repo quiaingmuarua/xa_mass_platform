@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 
@@ -23,15 +22,6 @@ public class TaskCommandService {
 
     public TaskCommandService(TaskCommandPort taskCommands) {
         this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
-    }
-
-    /**
-     * Compatibility-only aggregate create entry. Prefer explicit shell create
-     * plus item ingest in new runtime flows.
-     */
-    @Deprecated(forRemoval = true)
-    public Task createTask(TaskCreateRequestDto dto) {
-        return taskCommands.createTask(dto);
     }
 
     public Task createTaskShell(TaskShellCreateRequestDto dto) {

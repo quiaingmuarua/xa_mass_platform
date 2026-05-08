@@ -20,6 +20,7 @@ import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -201,7 +202,7 @@ class TaskApiControllerTest {
         )));
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskAdmin.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
+        when(taskAdmin.appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class))).thenReturn(2);
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
@@ -214,10 +215,11 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.added").value(2));
 
-        verify(taskAdmin).appendTaskItems(TASK_ID, List.of(
-                Map.of("type", "text", "text", "hello"),
-                Map.of("type", "text", "text", "world")
-        ), 5);
+        ArgumentCaptor<MassTaskItemBatchAppendRequest> captor =
+                ArgumentCaptor.forClass(MassTaskItemBatchAppendRequest.class);
+        verify(taskAdmin).appendTaskItems(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
+        assertEquals(List.of("hello", "world"), captor.getValue().getItems());
+        assertEquals(5, captor.getValue().getDefaultMsgMaxRetryCount());
     }
 
     @Test

@@ -3,9 +3,9 @@ package com.xa.mass.runtime.redis;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
@@ -228,7 +228,7 @@ class RedisRuntimeTraceIntegrationTest {
     }
 
     private RunningTaskFixture createAssignedTask(String taskName, int maxRetryCount) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setSharedConfig(Map.of(
@@ -238,8 +238,9 @@ class RedisRuntimeTraceIntegrationTest {
         ));
         dto.setUserId("agent");
         dto.setBatchSize(1);
-        dto.setInputs(List.of(Map.of("target", "alpha")));
-        Task task = taskCommands.createTask(dto);
+        Task task = taskCommands.createTaskShell(dto);
+        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha")), maxRetryCount);
+        assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 

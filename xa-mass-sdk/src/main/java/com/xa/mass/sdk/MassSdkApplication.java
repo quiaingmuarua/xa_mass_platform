@@ -141,74 +141,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         ));
     }
 
-    @Override
-    public Task createTask(MassTaskCreateRequest request) {
-        MassTaskCreateRequest stampedRequest = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
-        Task task = createTaskShell(MassTaskShellCreateRequest.builder()
-                .userId(stampedRequest.getUserId())
-                .project(stampedRequest.getProject())
-                .taskName(stampedRequest.getTaskName())
-                .sharedConfig(stampedRequest.getSharedConfig())
-                .batchSize(stampedRequest.getBatchSize())
-                .maxRuntimeSeconds(stampedRequest.getMaxRuntimeSeconds())
-                .sourceType(stampedRequest.getSourceType())
-                .workloadClass(stampedRequest.getWorkloadClass())
-                .sourceRef(stampedRequest.getSourceRef())
-                .build());
-        if (!stampedRequest.getInputs().isEmpty()) {
-            requireStartedTaskCommands().appendTaskItems(
-                    task.getTid(),
-                    stampedRequest.getInputs(),
-                    stampedRequest.getDefaultMsgMaxRetryCount()
-            );
-        }
-        if (!stampedRequest.isOpenEnded()) {
-            requireStartedTaskCommands().sealTask(task.getTid());
-        }
-        return requireStartedTaskQueries().getTask(task.getTid());
-    }
-
-    @Override
-    public Task createTask(MassTaskRequest request) {
-        MassTaskRequest stampedRequest = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
-        validateTaskCatalogContract(stampedRequest);
-        if (stampedRequest.getEventCode() == null || stampedRequest.getEventCode().isBlank()) {
-            Task task = createTaskShell(MassTaskShellCreateRequest.builder()
-                    .userId(stampedRequest.getUserId())
-                    .project(stampedRequest.getProject())
-                    .taskName(stampedRequest.getTaskName())
-                    .sharedConfig(MassTaskRequestMapper.withSdkMetadata(stampedRequest))
-                    .batchSize(stampedRequest.getBatchSize())
-                    .maxRuntimeSeconds(stampedRequest.getMaxRuntimeSeconds())
-                    .sourceType(stampedRequest.getSourceType())
-                    .workloadClass(stampedRequest.getWorkloadClass())
-                    .sourceRef(stampedRequest.getSourceRef())
-                    .build());
-            if (!stampedRequest.toEngineInputs().isEmpty()) {
-                requireStartedTaskCommands().appendTaskItems(
-                        task.getTid(),
-                        stampedRequest.toEngineInputs(),
-                        stampedRequest.getDefaultMsgMaxRetryCount()
-                );
-            }
-            if (!stampedRequest.isStreaming()) {
-                requireStartedTaskCommands().sealTask(task.getTid());
-            }
-            return requireStartedTaskQueries().getTask(task.getTid());
-        }
-        EventResponse response = dispatchEventInternal(
-                EventRequest.builder()
-                        .event(stampedRequest.getEventCode())
-                        .project(stampedRequest.getProject())
-                        .requestId(UUID.randomUUID().toString())
-                        .payload(Map.of("request", stampedRequest))
-                        .build(),
-                internalPrincipal(stampedRequest.getUserId())
-        );
-        requireSuccessfulEventResponse(response);
-        return (Task) response.getData();
-    }
-
     public Task getTask(String taskId) {
         return requireStartedTaskQueries().getTask(taskId);
     }
@@ -262,6 +194,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         ));
     }
 
+    @Override
+    public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
+        Objects.requireNonNull(request, "request");
+        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
+        if (task == null) {
+            throw new IllegalArgumentException("Task not found: " + taskId);
+        }
+        List<Map<String, Object>> converted = convertAppendItems(task, request.getItems());
+        int retrySeed = request.getDefaultMsgMaxRetryCount() == null ? 3 : request.getDefaultMsgMaxRetryCount();
+        return requireStartedTaskCommands().appendTaskItems(task.getTid(), converted, retrySeed);
+    }
+
+    @Override
+    @Deprecated(forRemoval = true)
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
         EventResponse response = dispatchEventInternal(EventRequest.builder()
                 .event(PlatformEventCodes.TASK_APPEND_ITEMS)
@@ -272,6 +218,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return ((Number) response.getData()).intValue();
     }
 
+    @Override
+    @Deprecated(forRemoval = true)
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount) {
         EventResponse response = dispatchEventInternal(EventRequest.builder()
                 .event(PlatformEventCodes.TASK_APPEND_ITEMS)
@@ -1006,8 +954,125 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 principal == null ? internalPrincipal(null) : principal
         );
         validateTaskCatalogContract(taskRequest);
-        Task task = requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(taskRequest));
+        Task task = materializeCompatibilityTask(
+                taskRequest.getUserId(),
+                taskRequest.getProject(),
+                taskRequest.getTaskName(),
+                taskRequest.getEventCode(),
+                MassTaskRequestMapper.withSdkMetadata(taskRequest),
+                taskRequest.getBatchSize(),
+                taskRequest.getMaxRuntimeSeconds(),
+                taskRequest.getSourceType(),
+                taskRequest.getWorkloadClass(),
+                taskRequest.getSourceRef(),
+                taskRequest.toEngineInputs(),
+                taskRequest.getDefaultMsgMaxRetryCount(),
+                taskRequest.isStreaming()
+        );
         return EventResponse.success(task, request.getRequestId());
+    }
+
+    private Task materializeCompatibilityTask(String userId,
+                                              String project,
+                                              String taskName,
+                                              String eventCode,
+                                              Map<String, Object> sharedConfig,
+                                              int batchSize,
+                                              int maxRuntimeSeconds,
+                                              com.xa.mass.base.enums.task.TaskSourceType sourceType,
+                                              com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
+                                              String sourceRef,
+                                              List<Map<String, Object>> inputs,
+                                              int defaultMsgMaxRetryCount,
+                                              boolean keepIntakeOpen) {
+        Task task = createTaskShell(MassTaskShellCreateRequest.builder()
+                .userId(userId)
+                .project(project)
+                .taskName(taskName)
+                .eventCode(eventCode)
+                .sharedConfig(sharedConfig)
+                .batchSize(batchSize)
+                .maxRuntimeSeconds(maxRuntimeSeconds)
+                .sourceType(sourceType)
+                .workloadClass(workloadClass)
+                .sourceRef(sourceRef)
+                .build());
+        if (inputs != null && !inputs.isEmpty()) {
+            requireStartedTaskCommands().appendTaskItems(
+                    task.getTid(),
+                    inputs,
+                    defaultMsgMaxRetryCount
+            );
+        }
+        if (!keepIntakeOpen) {
+            requireStartedTaskCommands().sealTask(task.getTid());
+        }
+        return requireStartedTaskQueries().getTask(task.getTid());
+    }
+
+    private List<Map<String, Object>> convertAppendItems(Task task, List<Object> rawItems) {
+        PayloadType payloadType = resolveTaskShellPayloadType(task);
+        if (payloadType == null) {
+            return rawItems == null ? List.of() : rawItems.stream()
+                    .map(this::mapInputWithoutDeclaredPayloadType)
+                    .toList();
+        }
+        if (rawItems == null || rawItems.isEmpty()) {
+            return List.of();
+        }
+        return rawItems.stream()
+                .map(rawItem -> toTaskPayloadInput(rawItem, payloadType))
+                .toList();
+    }
+
+    private Map<String, Object> toTaskPayloadInput(Object rawItem, PayloadType payloadType) {
+        return switch (payloadType) {
+            case TEXT -> {
+                if (!(rawItem instanceof String text)) {
+                    throw new IllegalArgumentException("TEXT payloadType requires string items");
+                }
+                yield new TextInput(text).toTaskMsgInput();
+            }
+            case JSON -> {
+                if (!(rawItem instanceof Map<?, ?> rawMap)) {
+                    throw new IllegalArgumentException("JSON payloadType requires object items");
+                }
+                yield stringObjectMap(rawMap);
+            }
+        };
+    }
+
+    private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawItem) {
+        if (rawItem instanceof String text) {
+            return new TextInput(text).toTaskMsgInput();
+        }
+        if (rawItem instanceof Map<?, ?> rawMap) {
+            return stringObjectMap(rawMap);
+        }
+        throw new IllegalArgumentException("Unsupported input item type: " + rawItem);
+    }
+
+    private PayloadType resolveTaskShellPayloadType(Task task) {
+        if (task == null || task.getSharedConfig() == null) {
+            return null;
+        }
+        Object sdkMetadata = task.getSharedConfig().get("_sdk");
+        if (!(sdkMetadata instanceof Map<?, ?> sdkMetadataMap)) {
+            return null;
+        }
+        Object payloadType = sdkMetadataMap.get("payloadType");
+        if (!(payloadType instanceof String payloadTypeName) || payloadTypeName.isBlank()) {
+            return null;
+        }
+        return PayloadType.valueOf(payloadTypeName);
+    }
+
+    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            copy.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     private MassTaskRequest resolveTaskRequest(EventRequest request,

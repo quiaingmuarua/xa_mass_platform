@@ -11,7 +11,6 @@ import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -156,39 +155,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
-    }
-
-    /**
-     * Compatibility-only aggregate create entry.
-     *
-     * <p>Runtime mainline should compose shell create, explicit item ingest,
-     * and optional seal as separate steps. This method remains only so current
-     * in-repo callers can converge without growing new aggregate-create logic.
-     */
-    @Override
-    @Deprecated(forRemoval = true)
-    public Task createTask(TaskCreateRequestDto dto) {
-        validateCreateRequest(dto);
-        List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-        TaskSourceType sourceType = resolveSourceType(dto);
-        Task task = createTaskRecord(
-                fromLegacyCreateRequest(dto, sourceType),
-                sourceType,
-                resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), inputs.size()),
-                resolveInitialIntakeStatus(sourceType, dto.isOpenEnded())
-        );
-        if (inputs.isEmpty()) {
-            return task;
-        }
-
-        for (Map<String, Object> input : inputs) {
-            String messageId = java.util.UUID.randomUUID().toString();
-            addTaskInput(task.getTid(), messageId, input, dto.getDefaultMsgMaxRetryCount());
-        }
-        task.setTaskTargetNumber(inputs.size());
-        task.setTaskEligibleNumber(inputs.size());
-        updateTask(task);
-        return task;
     }
 
     @Override
@@ -612,33 +578,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         concurrencyCoordinator.reconcileTaskProgress(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
     }
 
-    private void validateCreateRequest(TaskCreateRequestDto dto) {
-        if (dto == null) {
-            throw new IllegalArgumentException("task request body is required");
-        }
-        TaskSourceType sourceType = resolveSourceType(dto);
-        validateTaskShellCreateRequest(fromLegacyCreateRequest(dto, sourceType));
-        List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-        if (sourceType == TaskSourceType.FILE
-                && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
-            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
-        }
-        if (sourceType == TaskSourceType.BATCH && inputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must be a non-empty list");
-        }
-        if (sourceType == TaskSourceType.FILE && !inputs.isEmpty()) {
-            throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
-        }
-        if (sourceType == TaskSourceType.BATCH && inputs.size() > MAX_INITIAL_INLINE_INPUTS) {
-            throw new IllegalArgumentException("BATCH task initial inputs exceed inline create limit: "
-                    + inputs.size() + " > " + MAX_INITIAL_INLINE_INPUTS);
-        }
-        if (sourceType == TaskSourceType.STREAM && inputs.size() > MAX_INGEST_BATCH_ITEMS) {
-            throw new IllegalArgumentException("STREAM task initial inputs exceed ingest batch limit: "
-                    + inputs.size() + " > " + MAX_INGEST_BATCH_ITEMS);
-        }
-    }
-
     private void validateTaskShellCreateRequest(TaskShellCreateRequestDto dto) {
         if (dto == null) {
             throw new IllegalArgumentException("task request body is required");
@@ -652,39 +591,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         }
     }
 
-    private TaskSourceType resolveSourceType(TaskCreateRequestDto dto) {
-        if (dto.getSourceType() != null) {
-            return dto.getSourceType();
-        }
-        return dto.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
-    }
-
     private TaskSourceType resolveShellSourceType(TaskShellCreateRequestDto dto) {
         if (dto.getSourceType() != null) {
             return dto.getSourceType();
         }
         return TaskSourceType.STREAM;
-    }
-
-    private TaskIntakeStatus resolveInitialIntakeStatus(TaskSourceType sourceType, boolean openEnded) {
-        if (sourceType == TaskSourceType.FILE) {
-            return TaskIntakeStatus.SEALED;
-        }
-        return (openEnded || sourceType == TaskSourceType.STREAM)
-                ? TaskIntakeStatus.OPEN
-                : TaskIntakeStatus.SEALED;
-    }
-
-    private TaskIngestStatus resolveInitialIngestStatus(TaskSourceType sourceType,
-                                                        boolean openEnded,
-                                                        int initialMessageCount) {
-        if (sourceType == TaskSourceType.FILE) {
-            return initialMessageCount > 0 ? TaskIngestStatus.READY : TaskIngestStatus.PENDING;
-        }
-        if (openEnded || sourceType == TaskSourceType.STREAM) {
-            return TaskIngestStatus.READY;
-        }
-        return TaskIngestStatus.SEALED;
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -788,13 +699,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         eventPublisher.publishTaskMessageLogicallyFinal(task, event);
     }
 
-    private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
-        for (Map<String, Object> input : inputs) {
-            String messageId = java.util.UUID.randomUUID().toString();
-            addTaskInput(taskId, messageId, input, dto.getDefaultMsgMaxRetryCount());
-        }
-    }
-
     private WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {
         if (ingressItem == null || ingressItem.messageId() == null || ingressItem.messageId().isBlank()) {
             return null;
@@ -854,22 +758,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return task;
     }
 
-    private TaskShellCreateRequestDto fromLegacyCreateRequest(TaskCreateRequestDto dto, TaskSourceType sourceType) {
-        if (dto == null) {
-            return null;
-        }
-        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setUserId(dto.getUserId());
-        shell.setProject(dto.getProject());
-        shell.setTaskName(dto.getTaskName());
-        shell.setSharedConfig(dto.getSharedConfig());
-        shell.setBatchSize(dto.getBatchSize());
-        shell.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
-        shell.setSourceType(sourceType);
-        shell.setWorkloadClass(dto.getWorkloadClass());
-        shell.setSourceRef(dto.getSourceRef());
-        return shell;
-    }
 }
 
 

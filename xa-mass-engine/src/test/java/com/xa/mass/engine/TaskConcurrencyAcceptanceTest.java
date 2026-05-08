@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.testutil.TaskCreateRequestMaterializer;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -366,6 +367,7 @@ class TaskConcurrencyAcceptanceTest {
                 null,
                 Map.of("outcome", "success")
         ));
+        taskStorage.clearSuppressedTaskMessageLookup(task.getTid(), message.messageId());
 
         TaskDetailStore.TaskMessageProjection finalMessage =
                 recoveringTaskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
@@ -451,7 +453,10 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private Task createRunningTask(ProjectionAwareTaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
-        Task task = manager.createTask(buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount));
+        Task task = TaskCreateRequestMaterializer.materialize(
+                manager,
+                buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount)
+        );
         assertTrue(manager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
         assertTrue(manager.updateTask(task));
@@ -836,6 +841,10 @@ class TaskConcurrencyAcceptanceTest {
 
         private void suppressNextTaskMessageLookup(String taskId, String messageId) {
             suppressedReads.put(taskId + "|" + messageId, new AtomicInteger(1));
+        }
+
+        private void clearSuppressedTaskMessageLookup(String taskId, String messageId) {
+            suppressedReads.remove(taskId + "|" + messageId);
         }
     }
 }

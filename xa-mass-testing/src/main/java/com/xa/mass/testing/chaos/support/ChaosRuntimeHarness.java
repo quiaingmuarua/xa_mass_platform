@@ -9,7 +9,9 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -122,7 +124,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public Task createApprovedTask(TaskCreateSpec spec) {
-        Task task = app.createTask(MassTaskCreateRequest.builder()
+        Task task = createTask(MassTaskCreateRequest.builder()
                 .userId(spec.userId())
                 .project(spec.projectCode())
                 .taskName(spec.taskName())
@@ -135,6 +137,30 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .build());
         ChaosSupport.require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
         return task;
+    }
+
+    private Task createTask(MassTaskCreateRequest request) {
+        Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
+                .userId(request.getUserId())
+                .project(request.getProject())
+                .taskName(request.getTaskName())
+                .sharedConfig(request.getSharedConfig())
+                .batchSize(request.getBatchSize())
+                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
+                .sourceType(request.getSourceType())
+                .workloadClass(request.getWorkloadClass())
+                .sourceRef(request.getSourceRef())
+                .build());
+        if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+            app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .items(new ArrayList<>(request.getInputs()))
+                    .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                    .build());
+        }
+        if (!request.isOpenEnded()) {
+            ChaosSupport.require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+        }
+        return app.getTask(task.getTid());
     }
 
     public void waitForWorkerOnline(String workerId, int timeoutSeconds, String failureMessage) throws Exception {

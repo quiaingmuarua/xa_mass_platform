@@ -39,8 +39,8 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -86,14 +86,20 @@ app.registerWorkerContext(WorkerContextRegistration.builder()
         .attributes(java.util.Map.of("region", "us"))
         .build());
 
-app.createTask(MassTaskCreateRequest.builder()
+var task = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
         .taskName("demo-task")
         .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
-        .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
         .batchSize(1)
         .build());
+
+app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+        .items(java.util.List.of(
+                java.util.Map.of("target", "target-a")))
+        .build());
+
+app.sealTask(task.getTid());
 
 app.pullWorker("crawler-worker-1").connect();
 ```
@@ -120,7 +126,7 @@ app.registerEventDefinition(EventDefinition.builder()
         .code("bot.command")
         .name("Bot Command")
         .description("Handle a bot command")
-        .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
+        .payloadTypes(java.util.List.of(PayloadType.JSON))
         .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
         .build());
 
@@ -131,10 +137,20 @@ app.registerProject(ProjectMetadata.builder()
         .eventCodes(java.util.List.of("bot.command"))
         .build());
 
-app.createTask(MassTaskRequest.singleRun("botApp", "bot-command")
+var botTask = app.createTaskShell(MassTaskShellCreateRequest.builder()
+        .userId("bot-user")
+        .project("botApp")
+        .taskName("bot-command")
         .eventCode("bot.command")
-        .textInputs(java.util.List.of("/start"))
+        .batchSize(1)
         .build());
+
+app.appendTaskItems(botTask.getTid(), MassTaskItemBatchAppendRequest.builder()
+        .items(java.util.List.of(
+                java.util.Map.of("command", "/start")))
+        .build());
+
+app.sealTask(botTask.getTid());
 ```
 
 Register a lightweight principal credential binding when an embedding app wants
@@ -165,21 +181,21 @@ credential keeps its own permissions, project scopes, and event scopes.
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
-- open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
+- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
+- compatibility aggregate create operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`
 - audit and compatibility diagnostics after `start()`: bounded `getTaskMessageSnapshot(..., limit)`, `resolveTaskState(...)`, and `validateTaskState(...)`
 - explicit compatibility detail after `start()`: `getTaskMessageView(...)`, `getTaskMessageAttemptViews(...)`, `getLatestActiveTaskMessageAttemptView(...)`; these are SDK-owned residue views bridged from internal compatibility projections rather than public engine/base models
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
+- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:
 
 | Area | Contract |
 | --- | --- |
-| task create | `MassTaskCreateRequest` is generic compatibility create; `MassTaskRequest` is SDK v1 for `single-run` / `streaming`, `text` / `json`, and event-aware creation |
+| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; `MassTaskCreateRequest` and `MassTaskRequest` remain compatibility aggregate create surfaces |
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
@@ -192,8 +208,9 @@ For embedded runtime wiring, keep the mainline on storage/runtime contracts
 such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
 `workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
-SDK-internal task creation now maps onto the neutral base
-`TaskCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
+SDK compatibility task creation now maps onto the neutral base
+`TaskCreateRequestDto`; shell-mainline SDK create maps onto
+`TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly
 instead of carrying `RuleManager` as the default outer-layer dependency.

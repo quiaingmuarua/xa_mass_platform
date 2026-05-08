@@ -1,9 +1,8 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 
 import java.util.List;
@@ -15,10 +14,6 @@ import java.util.Map;
 public interface TaskAdminOperations {
 
     com.xa.mass.base.model.Task createTaskShell(MassTaskShellCreateRequest request);
-
-    com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request);
-
-    com.xa.mass.base.model.Task createTask(MassTaskRequest request);
 
     boolean approveTask(String taskId);
 
@@ -38,8 +33,22 @@ public interface TaskAdminOperations {
 
     boolean deleteTask(String taskId);
 
+    int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request);
+
+    /**
+     * Compatibility-only append surface. Prefer
+     * {@link #appendTaskItems(String, MassTaskItemBatchAppendRequest)} in new
+     * callers so shell-level payload contract stays outside the caller.
+     */
+    @Deprecated(forRemoval = true)
     int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
 
+    /**
+     * Compatibility-only append surface. Prefer
+     * {@link #appendTaskItems(String, MassTaskItemBatchAppendRequest)} in new
+     * callers so shell-level payload contract stays outside the caller.
+     */
+    @Deprecated(forRemoval = true)
     int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount);
 
     boolean sealTask(String taskId);

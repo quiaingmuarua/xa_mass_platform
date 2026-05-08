@@ -10,7 +10,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
@@ -53,15 +53,16 @@ class MassEngineStartRecoveryTest {
             ));
         });
 
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setUserId("user-1");
         dto.setProject("demoApp");
         dto.setTaskName("startup-recovery");
-        dto.setInputs(List.of(Map.of("payload", "hello")));
         dto.setSharedConfig(Map.of());
         dto.setBatchSize(1);
 
-        Task task = taskCommands.createTask(dto);
+        Task task = taskCommands.createTaskShell(dto);
+        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")), 3);
+        assertTrue(taskCommands.sealTask(task.getTid()));
         assertTrue(taskCommands.approveTask(task.getTid()));
 
         Task runningTask = taskQueries.getTask(task.getTid());

@@ -11,6 +11,7 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -429,6 +430,9 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public boolean terminateTask(String taskId, com.xa.mass.base.enums.task.TaskTerminalReason reason) { return false; }
+
+        @Override
+        public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) { return 0; }
 
         @Override
         public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) { return 0; }
