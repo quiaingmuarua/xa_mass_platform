@@ -91,7 +91,8 @@ class MassEngineStartRecoveryTest {
             assertEquals("worker-1", dispatchBindings.get(0).workerId());
             assertEquals(Map.of("payload", "hello"), dispatchBindings.get(0).payload());
 
-            TaskMsg message = config.getTaskDetailStore().getTaskMessages(task.getTid(), 1).get(0);
+            com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection message =
+                    config.getTaskDetailStore().getTaskMessageProjections(task.getTid(), 1).get(0);
             assertNotNull(message);
         } finally {
             engine.stop();

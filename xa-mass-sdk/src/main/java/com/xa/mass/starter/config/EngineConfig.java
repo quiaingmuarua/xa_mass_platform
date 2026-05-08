@@ -5,7 +5,6 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.TaskCompatibilityQueryService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -53,7 +52,6 @@ public class EngineConfig {
     private TaskCommandService taskCommandService;
     private TaskEventService taskEventService;
     private TaskQueryService taskQueryService;
-    private TaskCompatibilityQueryService taskCompatibilityQueryService;
     private TaskResultIngestFacade taskResultIngestFacade;
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
@@ -88,7 +86,6 @@ public class EngineConfig {
         this.taskCommandService = source.taskCommandService;
         this.taskEventService = source.taskEventService;
         this.taskQueryService = source.taskQueryService;
-        this.taskCompatibilityQueryService = source.taskCompatibilityQueryService;
         this.taskResultIngestFacade = source.taskResultIngestFacade;
         this.taskAssignmentRuntimePort = source.taskAssignmentRuntimePort;
         this.taskRuntimeMaintenancePort = source.taskRuntimeMaintenancePort;
@@ -166,13 +163,6 @@ public class EngineConfig {
             taskQueryService = new TaskQueryService(ensureTaskManager());
         }
         return taskQueryService;
-    }
-
-    public TaskCompatibilityQueryService getTaskCompatibilityQueryService() {
-        if (taskCompatibilityQueryService == null) {
-            taskCompatibilityQueryService = new TaskCompatibilityQueryService(ensureTaskManager());
-        }
-        return taskCompatibilityQueryService;
     }
 
     public TaskResultIngestFacade getTaskResultIngestFacade() {

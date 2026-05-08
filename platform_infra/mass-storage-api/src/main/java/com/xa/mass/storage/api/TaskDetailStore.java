@@ -1,12 +1,10 @@
 package com.xa.mass.storage.api;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -29,9 +27,9 @@ import java.util.Optional;
  * bounded convergence, and shell/debug reads that must not grow into
  * pagination, analytics, or durable-history contracts.
  *
- * <p>{@link TaskMsg} and {@link TaskMsgAttempt} remain bounded compatibility
- * residue shapes here. This seam must not be treated as a public SDK/server
- * read-model contract or as the runtime-hot-path source of truth.</p>
+ * <p>This seam exposes only neutral storage-edge projection records. Any
+ * compatibility materialization belongs to engine-internal residue owners, not
+ * to this storage contract.</p>
  */
 public interface TaskDetailStore {
 
@@ -49,7 +47,7 @@ public interface TaskDetailStore {
      * Engine-facing bounded projection snapshot read.
      *
      * <p>Mainline engine code should prefer this neutral snapshot view over
-     * reading {@link TaskMsg} directly.</p>
+     * materializing compatibility residue directly.</p>
      */
     @CompatibilityProjectionOnly
     Optional<TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId);
@@ -59,12 +57,6 @@ public interface TaskDetailStore {
 
     @CompatibilityProjectionOnly
     List<TaskMessageProjection> getTaskMessageProjections(String taskId, int limit);
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default boolean upsertTaskMessageProjection(String taskId, TaskMsg taskMsg) {
-        return upsertTaskMessageProjection(taskId, TaskMessageProjection.fromCompatibilityProjection(taskMsg));
-    }
 
     /**
      * Engine-facing bounded latest-attempt projection upsert.
@@ -97,120 +89,6 @@ public interface TaskDetailStore {
         return Optional.empty();
     }
 
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default boolean upsertTaskMessageAttemptProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return upsertTaskMessageAttemptProjection(taskId, messageId,
-                TaskMessageAttemptProjection.fromCompatibilityProjection(attempt));
-    }
-
-    /** Compatibility projection writes used by bounded residue repair paths. */
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        upsertTaskMessageProjection(taskId, TaskMessageProjection.fromCompatibilityProjection(taskMsg));
-    }
-
-    /** Bounded compatibility reads; callers must not treat these as public history APIs. */
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default List<TaskMsg> getTaskMessages(String taskId) {
-        return getTaskMessageProjections(taskId).stream()
-                .map(TaskMessageProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return getTaskMessageProjections(taskId, limit).stream()
-                .map(TaskMessageProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return getTaskMessageProjections(taskId).stream()
-                .filter(projection -> projection != null
-                        && (projection.status() == null || !projection.status().isFinal()))
-                .map(TaskMessageProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @Deprecated(forRemoval = true)
-    default long countTaskMessages(String taskId) {
-        return getTaskMessageStats(taskId).getTotal();
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-        return getTaskMessageProjection(taskId, messageId)
-                .map(TaskMessageProjection::toCompatibilityProjection);
-    }
-
-    /** Compatibility projection repair/update only. */
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        TaskMessageProjection projection = TaskMessageProjection.fromCompatibilityProjection(taskMsg);
-        if (projection == null || projection.messageId() == null) {
-            return false;
-        }
-        if (getTaskMessageProjection(taskId, projection.messageId()).isEmpty()) {
-            return false;
-        }
-        return upsertTaskMessageProjection(taskId, projection);
-    }
-
-    /** Attempt-level compatibility projection writes used by bounded residue repair paths. */
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        upsertTaskMessageAttemptProjection(taskId, messageId,
-                TaskMessageAttemptProjection.fromCompatibilityProjection(attempt));
-    }
-
-    /** Bounded compatibility reads; callers must not treat these as public history APIs. */
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return getTaskMessageAttemptProjections(taskId, messageId).stream()
-                .map(TaskMessageAttemptProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return getLatestTaskMessageAttemptProjection(taskId, messageId)
-                .map(TaskMessageAttemptProjection::toCompatibilityProjection);
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return getLatestActiveTaskMessageAttemptProjection(taskId, messageId)
-                .map(TaskMessageAttemptProjection::toCompatibilityProjection);
-    }
-
-    @CompatibilityProjectionOnly
-    @Deprecated(forRemoval = true)
-    default boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        TaskMessageAttemptProjection projection = TaskMessageAttemptProjection.fromCompatibilityProjection(attempt);
-        if (projection == null || projection.attemptId() == null) {
-            return false;
-        }
-        boolean exists = getTaskMessageAttemptProjections(taskId, messageId).stream()
-                .filter(candidate -> candidate != null)
-                .anyMatch(candidate -> projection.attemptId().equals(candidate.attemptId()));
-        if (!exists) {
-            return false;
-        }
-        return upsertTaskMessageAttemptProjection(taskId, messageId, projection);
-    }
-
     /** Aggregate diagnostics only; these stats do not promote the residue rows to runtime truth. */
     TaskMessageStats getTaskMessageStats(String taskId);
 
@@ -223,7 +101,7 @@ public interface TaskDetailStore {
                                  String taskId,
                                  Map<String, Object> input,
                                  String payloadRef,
-                                 TaskMsgStatus status,
+                                 TaskMessageProjectionStatus status,
                                  LocalDateTime assignedTime,
                                  LocalDateTime createTime,
                                  LocalDateTime updateTime,
@@ -233,7 +111,7 @@ public interface TaskDetailStore {
                                  int maxRetryCount,
                                  String errorMessage,
                                  String errorCode,
-                                 TaskMsgFinalReason finalReason,
+                                 TaskMessageProjectionFinalReason finalReason,
                                  Map<String, Object> output,
                                  String latestAttemptId,
                                  String latestAttemptWorkerId,
@@ -246,81 +124,6 @@ public interface TaskDetailStore {
             retryCount = Math.max(0, retryCount);
             maxRetryCount = Math.max(0, maxRetryCount);
         }
-
-        public static TaskMessageProjection fromCompatibilityProjection(TaskMsg projection) {
-            if (projection == null) {
-                return null;
-            }
-            return new TaskMessageProjection(
-                    projection.getMessageId(),
-                    projection.getTaskId(),
-                    projection.getInput(),
-                    projection.getPayloadRef(),
-                    projection.getStatus(),
-                    projection.getAssignedTime(),
-                    projection.getCreateTime(),
-                    projection.getUpdateTime(),
-                    projection.getStartTime(),
-                    projection.getCompleteTime(),
-                    projection.getRetryCount(),
-                    projection.getMaxRetryCount(),
-                    projection.getErrorMessage(),
-                    projection.getErrorCode(),
-                    projection.getFinalReason(),
-                    projection.getOutput(),
-                    projection.latestAttemptId(),
-                    projection.getLatestAttemptWorkerId(),
-                    projection.getLatestAttemptWorkerContextId(),
-                    projection.getLatestAttemptBatchId()
-            );
-        }
-
-        public TaskMsg toCompatibilityProjection() {
-            TaskMsg taskMsg = payloadRef == null || payloadRef.isBlank()
-                    ? new TaskMsg(messageId, taskId, input)
-                    : new TaskMsg(messageId, taskId, input, payloadRef);
-            rehydrateCompatibilityStatus(taskMsg);
-            taskMsg.setAssignedTime(assignedTime);
-            taskMsg.setCreateTime(createTime);
-            taskMsg.setUpdateTime(updateTime);
-            taskMsg.setStartTime(startTime);
-            taskMsg.setCompleteTime(completeTime);
-            taskMsg.setRetryCount(retryCount);
-            taskMsg.setMaxRetryCount(maxRetryCount);
-            taskMsg.setErrorMessage(errorMessage);
-            taskMsg.setErrorCode(errorCode);
-            taskMsg.setFinalReason(finalReason);
-            taskMsg.setOutput(copyMap(output));
-            taskMsg.applyLatestAttemptProjection(
-                    latestAttemptId,
-                    latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
-                    latestAttemptBatchId
-            );
-            return taskMsg;
-        }
-
-        private void rehydrateCompatibilityStatus(TaskMsg taskMsg) {
-            if (status == null || status == TaskMsgStatus.INIT) {
-                return;
-            }
-            switch (status) {
-                case ASSIGNED -> {
-                    if (!taskMsg.markAsAssigned()) {
-                        throw new IllegalStateException("Unable to project ASSIGNED status for message " + messageId);
-                    }
-                }
-                case RUNNING -> {
-                    if (!taskMsg.markAsAssigned() || !taskMsg.markAsRunning()) {
-                        throw new IllegalStateException("Unable to project RUNNING status for message " + messageId);
-                    }
-                }
-                case SUCCESS, FAILED, EXPIRED -> taskMsg.forceFinalize(status, finalReason, errorMessage);
-                default -> throw new IllegalStateException(
-                        "Unsupported projected status " + status + " for message " + messageId
-                );
-            }
-        }
     }
 
     @CompatibilityProjectionOnly
@@ -331,8 +134,8 @@ public interface TaskDetailStore {
                                         String workerId,
                                         String workerContextId,
                                         String batchId,
-                                        TaskMsgAttemptStatus status,
-                                        TaskMsgAttemptFinalReason finalReason,
+                                        TaskMessageAttemptProjectionStatus status,
+                                        TaskMessageAttemptProjectionFinalReason finalReason,
                                         String errorMessage,
                                         String errorCode,
                                         Map<String, Object> output) {
@@ -340,44 +143,6 @@ public interface TaskDetailStore {
         public TaskMessageAttemptProjection {
             output = copyMap(output);
             attemptNo = Math.max(0, attemptNo);
-        }
-
-        public static TaskMessageAttemptProjection fromCompatibilityProjection(TaskMsgAttempt projection) {
-            if (projection == null) {
-                return null;
-            }
-            return new TaskMessageAttemptProjection(
-                    projection.getAttemptId(),
-                    projection.getTaskId(),
-                    projection.getMessageId(),
-                    projection.getAttemptNo(),
-                    projection.getWorkerId(),
-                    projection.getWorkerContextId(),
-                    projection.getBatchId(),
-                    projection.getStatus(),
-                    projection.getFinalReason(),
-                    projection.getErrorMessage(),
-                    projection.getErrorCode(),
-                    projection.getOutput()
-            );
-        }
-
-        public TaskMsgAttempt toCompatibilityProjection() {
-            TaskMsgAttempt attempt = new TaskMsgAttempt(
-                    attemptId,
-                    taskId,
-                    messageId,
-                    attemptNo
-            );
-            attempt.setWorkerId(workerId);
-            attempt.setWorkerContextId(workerContextId);
-            attempt.setBatchId(batchId);
-            attempt.setStatus(status);
-            attempt.setFinalReason(finalReason);
-            attempt.setErrorMessage(errorMessage);
-            attempt.setErrorCode(errorCode);
-            attempt.setOutput(copyMap(output));
-            return attempt;
         }
     }
 

@@ -1,9 +1,9 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,8 +19,8 @@ record CompatibilityAttemptProjection(String attemptId,
                                       String workerId,
                                       String workerContextId,
                                       String batchId,
-                                      TaskMsgAttemptStatus status,
-                                      TaskMsgAttemptFinalReason finalReason,
+                                      TaskMessageAttemptProjectionStatus status,
+                                      TaskMessageAttemptProjectionFinalReason finalReason,
                                       String errorMessage,
                                       String errorCode,
                                       Map<String, Object> output) {

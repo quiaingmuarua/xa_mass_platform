@@ -1,7 +1,6 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
@@ -19,6 +18,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -305,8 +305,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerContextId(),
                 work.batchId(),
                 null,
-                TaskMsgAttemptStatus.CREATED,
-                TaskMsgAttemptStatus.LEASED,
+                TaskMessageAttemptProjectionStatus.CREATED,
+                TaskMessageAttemptProjectionStatus.LEASED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskDispatchBinder",
                 "attempt leased for dispatch"
@@ -320,8 +320,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerContextId(),
                 work.batchId(),
                 null,
-                TaskMsgAttemptStatus.LEASED,
-                TaskMsgAttemptStatus.DISPATCHED,
+                TaskMessageAttemptProjectionStatus.LEASED,
+                TaskMessageAttemptProjectionStatus.DISPATCHED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskDispatchBinder",
                 "attempt dispatched"

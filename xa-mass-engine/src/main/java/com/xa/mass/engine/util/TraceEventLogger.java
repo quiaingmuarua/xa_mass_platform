@@ -3,10 +3,6 @@ package com.xa.mass.engine.util;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
@@ -14,6 +10,10 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -85,8 +85,8 @@ public final class TraceEventLogger {
     }
 
     public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
-                                        TaskMsgStatus fromStatus,
-                                        TaskMsgStatus toStatus,
+                                        TaskMessageProjectionStatus fromStatus,
+                                        TaskMessageProjectionStatus toStatus,
                                         String trigger,
                                         String source,
                                         String reason) {
@@ -98,8 +98,8 @@ public final class TraceEventLogger {
                                         String workerId,
                                         String workerContextId,
                                         String batchId,
-                                        TaskMsgStatus fromStatus,
-                                        TaskMsgStatus toStatus,
+                                        TaskMessageProjectionStatus fromStatus,
+                                        TaskMessageProjectionStatus toStatus,
                                         String trigger,
                                         String source,
                                         String reason) {
@@ -133,9 +133,9 @@ public final class TraceEventLogger {
                                                String workerId,
                                                String workerContextId,
                                                String batchId,
-                                               TaskMsgAttemptFinalReason finalReason,
-                                               TaskMsgAttemptStatus fromStatus,
-                                               TaskMsgAttemptStatus toStatus,
+                                               TaskMessageAttemptProjectionFinalReason finalReason,
+                                               TaskMessageAttemptProjectionStatus fromStatus,
+                                               TaskMessageAttemptProjectionStatus toStatus,
                                                String trigger,
                                                String source,
                                                String reason) {
@@ -189,7 +189,7 @@ public final class TraceEventLogger {
                         .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
                         .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
                         .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
-                .transition("FAILED_OR_EXPIRED", TaskMsgStatus.INIT.name(), reason)
+                .transition("FAILED_OR_EXPIRED", TaskMessageProjectionStatus.INIT.name(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
@@ -397,7 +397,7 @@ public final class TraceEventLogger {
 
     public void callbackRejectedNoActiveAttempt(String taskId,
                                                 String messageId,
-                                                TaskMsgStatus taskMsgStatus,
+                                                TaskMessageProjectionStatus taskMsgStatus,
                                                 String reason) {
         emit(event(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT)
                 .identity(identity -> identity.taskId(taskId).messageId(messageId))
@@ -432,8 +432,8 @@ public final class TraceEventLogger {
                                          String workerId,
                                          String workerContextId,
                                          String batchId,
-                                         TaskMsgAttemptStatus attemptStatus,
-                                         TaskMsgAttemptFinalReason attemptFinalReason,
+                                         TaskMessageAttemptProjectionStatus attemptStatus,
+                                         TaskMessageAttemptProjectionFinalReason attemptFinalReason,
                                          String trigger,
                                          String source,
                                          String reason) {
@@ -544,7 +544,7 @@ public final class TraceEventLogger {
                         .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
                         .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
                         .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
-                .transition(enumName(taskMsg.status()), TaskMsgStatus.EXPIRED.name(), reason)
+                .transition(enumName(taskMsg.status()), TaskMessageProjectionStatus.EXPIRED.name(), reason)
                 .outcome(false, taskMsg.errorCode(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -880,8 +880,8 @@ public final class TraceEventLogger {
             String latestAttemptWorkerId,
             String latestAttemptWorkerContextId,
             String latestAttemptBatchId,
-            TaskMsgStatus status,
-            TaskMsgFinalReason finalReason,
+            TaskMessageProjectionStatus status,
+            TaskMessageProjectionFinalReason finalReason,
             int retryCount,
             String errorCode
     ) {

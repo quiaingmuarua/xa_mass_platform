@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.util.Map;
 
@@ -11,8 +11,8 @@ import java.util.Map;
 public record TaskMessageLogicallyFinalEvent(
         String taskId,
         String messageId,
-        TaskMsgStatus status,
-        TaskMsgFinalReason finalReason,
+        TaskMessageProjectionStatus status,
+        TaskMessageProjectionFinalReason finalReason,
         int retryCount,
         String errorCode,
         String errorMessage,
@@ -22,8 +22,8 @@ public record TaskMessageLogicallyFinalEvent(
 
     static TaskMessageLogicallyFinalEvent from(String taskId,
                                                String messageId,
-                                               TaskMsgStatus status,
-                                               TaskMsgFinalReason finalReason,
+                                               TaskMessageProjectionStatus status,
+                                               TaskMessageProjectionFinalReason finalReason,
                                                int retryCount,
                                                String errorCode,
                                                String errorMessage,

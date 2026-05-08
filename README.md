@@ -39,7 +39,7 @@ The shared kernel is:
 - Java baseline: JDK 21 with virtual threads used through explicit runtime abstractions
 - Runtime model: task dispatch, result ingest, and system events are explicit transport seams
 - Active transport adapters: polling, websocket, and socket
-- Current task-create HTTP route: `POST /status/api/tasks`
+- Current task shell create HTTP route: `POST /api/v1/tasks`
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/*`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; `TaskMsg.input/output` are per-item payload boundaries

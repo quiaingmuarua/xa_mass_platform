@@ -14,7 +14,6 @@ import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskCompatibilityQueryService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -215,11 +214,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public TaskStateValidationResult validateTaskState(String taskId) {
         return requireStartedTaskQueries().validateTaskState(taskId);
-    }
-
-    @Override
-    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return requireStartedTaskCompatibilityQueries().auditTaskProjectionState(taskId);
     }
 
     @Override
@@ -1564,15 +1558,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Task event service is unavailable for this SDK application");
         }
         return taskEvents;
-    }
-
-    private TaskCompatibilityQueryService requireStartedTaskCompatibilityQueries() {
-        TaskCompatibilityQueryService compatibilityQueries =
-                requireStartedEngine().getConfig().getTaskCompatibilityQueryService();
-        if (compatibilityQueries == null) {
-            throw new IllegalStateException("Task compatibility query service is unavailable for this SDK application");
-        }
-        return compatibilityQueries;
     }
 
     private WorkerStorage requireStartedWorkerStorage() {

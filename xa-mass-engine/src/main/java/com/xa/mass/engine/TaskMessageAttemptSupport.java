@@ -1,8 +1,8 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 
 /**
  * Narrow helper for runtime attempt correlation and compatibility validation.
@@ -48,14 +48,14 @@ public final class TaskMessageAttemptSupport {
             return false;
         }
         return switch (taskMsg.status()) {
-            case SUCCESS -> taskMsg.finalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS;
-            case FAILED -> taskMsg.finalReason() == TaskMsgFinalReason.BUSINESS_FAILED
-                    || taskMsg.finalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
-                    || taskMsg.finalReason() == TaskMsgFinalReason.RETRY_EXHAUSTED;
-            case EXPIRED -> taskMsg.finalReason() == TaskMsgFinalReason.TIMEOUT
-                    || taskMsg.finalReason() == TaskMsgFinalReason.WORKER_LOST
-                    || taskMsg.finalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
-                    || taskMsg.finalReason() == TaskMsgFinalReason.LEASE_EXPIRED;
+            case SUCCESS -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
+            case FAILED -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_FAILED
+                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
+            case EXPIRED -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.TIMEOUT
+                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.WORKER_LOST
+                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.LEASE_EXPIRED;
             default -> false;
         };
     }

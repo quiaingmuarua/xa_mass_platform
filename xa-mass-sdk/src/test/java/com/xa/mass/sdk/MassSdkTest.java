@@ -2742,12 +2742,13 @@ class MassSdkTest {
             assertNotNull(terminalTask);
             Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
 
-            TaskMsg finalMessage = requireDelegate(app).getEngine().getConfig()
+            com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection finalMessage =
+                    requireDelegate(app).getEngine().getConfig()
                     .getTaskDetailStore()
-                    .getTaskMessages(task.getTid(), 1)
+                    .getTaskMessageProjections(task.getTid(), 1)
                     .get(0);
-            Assertions.assertEquals("SUCCESS", String.valueOf(finalMessage.getStatus()));
-            Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
+            Assertions.assertEquals("SUCCESS", String.valueOf(finalMessage.status()));
+            Assertions.assertEquals(200, finalMessage.output().get("httpStatus"));
         } finally {
             app.stop();
         }

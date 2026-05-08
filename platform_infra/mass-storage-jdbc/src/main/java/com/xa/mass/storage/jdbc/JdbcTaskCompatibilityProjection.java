@@ -1,8 +1,8 @@
 package com.xa.mass.storage.jdbc;
 
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,7 +154,7 @@ final class JdbcTaskCompatibilityProjection {
         private final Map<String, TaskDetailStore.TaskMessageProjection> messagesById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
         private final java.util.HashSet<String> nonFinalMessageIds = new java.util.HashSet<>();
-        private final Map<String, TaskMsgStatus> statusByMessageId = new ConcurrentHashMap<>();
+        private final Map<String, TaskMessageProjectionStatus> statusByMessageId = new ConcurrentHashMap<>();
         private int successCount;
         private int failedCount;
         private int expiredCount;
@@ -243,8 +243,8 @@ final class JdbcTaskCompatibilityProjection {
             return processingCount;
         }
 
-        private void reconcileMessageState(String messageId, TaskMsgStatus newStatus) {
-            TaskMsgStatus previousStatus = statusByMessageId.get(messageId);
+        private void reconcileMessageState(String messageId, TaskMessageProjectionStatus newStatus) {
+            TaskMessageProjectionStatus previousStatus = statusByMessageId.get(messageId);
             decrementMessageState(previousStatus);
             incrementMessageState(newStatus);
             if (newStatus == null) {
@@ -259,17 +259,17 @@ final class JdbcTaskCompatibilityProjection {
             }
         }
 
-        private void decrementMessageState(TaskMsgStatus status) {
+        private void decrementMessageState(TaskMessageProjectionStatus status) {
             if (status == null) {
                 return;
             }
-            if (status == TaskMsgStatus.SUCCESS) {
+            if (status == TaskMessageProjectionStatus.SUCCESS) {
                 successCount--;
             }
-            if (status == TaskMsgStatus.FAILED) {
+            if (status == TaskMessageProjectionStatus.FAILED) {
                 failedCount--;
             }
-            if (status == TaskMsgStatus.EXPIRED) {
+            if (status == TaskMessageProjectionStatus.EXPIRED) {
                 expiredCount--;
             }
             if (status.isProcessing()) {
@@ -277,17 +277,17 @@ final class JdbcTaskCompatibilityProjection {
             }
         }
 
-        private void incrementMessageState(TaskMsgStatus status) {
+        private void incrementMessageState(TaskMessageProjectionStatus status) {
             if (status == null) {
                 return;
             }
-            if (status == TaskMsgStatus.SUCCESS) {
+            if (status == TaskMessageProjectionStatus.SUCCESS) {
                 successCount++;
             }
-            if (status == TaskMsgStatus.FAILED) {
+            if (status == TaskMessageProjectionStatus.FAILED) {
                 failedCount++;
             }
-            if (status == TaskMsgStatus.EXPIRED) {
+            if (status == TaskMessageProjectionStatus.EXPIRED) {
                 expiredCount++;
             }
             if (status.isProcessing()) {
@@ -299,7 +299,7 @@ final class JdbcTaskCompatibilityProjection {
     private static final class AttemptBucket {
         private final Map<String, TaskDetailStore.TaskMessageAttemptProjection> attemptsById = new ConcurrentHashMap<>();
         private final ConcurrentLinkedDeque<String> orderedAttemptIds = new ConcurrentLinkedDeque<>();
-        private final Map<String, TaskMsgAttemptStatus> statusByAttemptId = new ConcurrentHashMap<>();
+        private final Map<String, TaskMessageAttemptProjectionStatus> statusByAttemptId = new ConcurrentHashMap<>();
         private String latestActiveAttemptId;
         private int activeAttemptCount;
         private int runningAttemptCount;
@@ -373,8 +373,8 @@ final class JdbcTaskCompatibilityProjection {
         }
 
         private void reconcileAttemptState(String attemptId,
-                                           TaskMsgAttemptStatus previousStatus,
-                                           TaskMsgAttemptStatus currentStatus) {
+                                           TaskMessageAttemptProjectionStatus previousStatus,
+                                           TaskMessageAttemptProjectionStatus currentStatus) {
             decrementStatusCounts(previousStatus);
             incrementStatusCounts(currentStatus);
             if (currentStatus != null && currentStatus.isActive()) {
@@ -387,38 +387,38 @@ final class JdbcTaskCompatibilityProjection {
             }
         }
 
-        private void decrementStatusCounts(TaskMsgAttemptStatus status) {
+        private void decrementStatusCounts(TaskMessageAttemptProjectionStatus status) {
             if (status == null) {
                 return;
             }
             if (status.isActive()) {
                 activeAttemptCount--;
             }
-            if (status == TaskMsgAttemptStatus.RUNNING) {
+            if (status == TaskMessageAttemptProjectionStatus.RUNNING) {
                 runningAttemptCount--;
             }
-            if (status == TaskMsgAttemptStatus.FAILED) {
+            if (status == TaskMessageAttemptProjectionStatus.FAILED) {
                 failedAttemptCount--;
             }
-            if (status == TaskMsgAttemptStatus.EXPIRED) {
+            if (status == TaskMessageAttemptProjectionStatus.EXPIRED) {
                 expiredAttemptCount--;
             }
         }
 
-        private void incrementStatusCounts(TaskMsgAttemptStatus status) {
+        private void incrementStatusCounts(TaskMessageAttemptProjectionStatus status) {
             if (status == null) {
                 return;
             }
             if (status.isActive()) {
                 activeAttemptCount++;
             }
-            if (status == TaskMsgAttemptStatus.RUNNING) {
+            if (status == TaskMessageAttemptProjectionStatus.RUNNING) {
                 runningAttemptCount++;
             }
-            if (status == TaskMsgAttemptStatus.FAILED) {
+            if (status == TaskMessageAttemptProjectionStatus.FAILED) {
                 failedAttemptCount++;
             }
-            if (status == TaskMsgAttemptStatus.EXPIRED) {
+            if (status == TaskMessageAttemptProjectionStatus.EXPIRED) {
                 expiredAttemptCount++;
             }
         }
@@ -427,7 +427,7 @@ final class JdbcTaskCompatibilityProjection {
             java.util.Iterator<String> iterator = orderedAttemptIds.descendingIterator();
             while (iterator.hasNext()) {
                 String attemptId = iterator.next();
-                TaskMsgAttemptStatus status = statusByAttemptId.get(attemptId);
+                TaskMessageAttemptProjectionStatus status = statusByAttemptId.get(attemptId);
                 if (status != null && status.isActive()) {
                     return attemptId;
                 }

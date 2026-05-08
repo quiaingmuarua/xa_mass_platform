@@ -1,10 +1,10 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -21,7 +21,7 @@ record CompatibilityMessageProjection(String messageId,
                                       String taskId,
                                       Map<String, Object> input,
                                       String payloadRef,
-                                      TaskMsgStatus status,
+                                      TaskMessageProjectionStatus status,
                                       LocalDateTime assignedTime,
                                       LocalDateTime createTime,
                                       LocalDateTime updateTime,
@@ -31,7 +31,7 @@ record CompatibilityMessageProjection(String messageId,
                                       int maxRetryCount,
                                       String errorMessage,
                                       String errorCode,
-                                      TaskMsgFinalReason finalReason,
+                                      TaskMessageProjectionFinalReason finalReason,
                                       Map<String, Object> output,
                                       String latestAttemptId,
                                       String latestAttemptWorkerId,
@@ -85,7 +85,7 @@ record CompatibilityMessageProjection(String messageId,
                 runtimeWork.taskId(),
                 Map.of(),
                 runtimeWork.payloadRef(),
-                TaskMsgStatus.INIT,
+                TaskMessageProjectionStatus.INIT,
                 null,
                 createdAt,
                 createdAt,

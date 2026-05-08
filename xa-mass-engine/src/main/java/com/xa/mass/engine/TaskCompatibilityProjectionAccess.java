@@ -1,12 +1,13 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -138,7 +139,7 @@ final class TaskCompatibilityProjectionAccess {
                         ingressItem.taskId(),
                         ingressItem.projectedInput(),
                         ingressItem.payloadRef(),
-                        TaskMsgStatus.INIT,
+                        TaskMessageProjectionStatus.INIT,
                         null,
                         null,
                         null,
@@ -396,8 +397,8 @@ final class TaskCompatibilityProjectionAccess {
                 activeLease.workerContextId(),
                 activeLease.batchId(),
                 runningAttempt
-                        ? com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING.name()
-                        : com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED.name(),
+                        ? TaskMessageAttemptProjectionStatus.RUNNING.name()
+                        : TaskMessageAttemptProjectionStatus.DISPATCHED.name(),
                 leaseExpireTime,
                 dispatchTime,
                 ackTime,
@@ -436,7 +437,7 @@ final class TaskCompatibilityProjectionAccess {
     }
 
     private boolean isProjectedRunningAttempt(CompatibilityMessageProjection storedProjection, String runtimeAttemptId) {
-        if (storedProjection == null || storedProjection.status() != TaskMsgStatus.RUNNING) {
+        if (storedProjection == null || storedProjection.status() != TaskMessageProjectionStatus.RUNNING) {
             return false;
         }
         if (runtimeAttemptId == null || runtimeAttemptId.isBlank()) {

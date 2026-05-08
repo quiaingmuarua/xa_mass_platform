@@ -3,12 +3,12 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -193,7 +193,7 @@ class TaskStateValidator {
             boolean allAttemptsFinal = attemptStats.totalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
                     && !isCompleted(taskMsg)
-                    && taskMsg.status() != TaskMsgStatus.INIT) {
+                    && taskMsg.status() != TaskMessageProjectionStatus.INIT) {
                 attemptNeedsResolution = true;
                 violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
             }

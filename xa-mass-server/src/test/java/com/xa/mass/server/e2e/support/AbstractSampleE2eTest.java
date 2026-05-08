@@ -564,16 +564,12 @@ public abstract class AbstractSampleE2eTest {
 
     @SuppressWarnings("unchecked")
     private int fetchOnlineWorkerCount() {
-        Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/meta/worker-capabilities", HttpMethod.GET, null);
         if (!isApiOk(response)) {
             return 0;
         }
         Object data = response.get("data");
-        if (!(data instanceof Map<?, ?> dataMap)) {
-            return 0;
-        }
-        Object items = dataMap.get("items");
-        if (!(items instanceof List<?> list)) {
+        if (!(data instanceof List<?> list)) {
             return 0;
         }
         return (int) list.stream()

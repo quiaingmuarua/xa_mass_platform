@@ -31,7 +31,7 @@ For the dev Spring Boot shell there is now a sample supervisor script at
 - it bootstraps sample project/event/submitter catalog through `/sample-api/bootstrap/catalog`
 - it replaces runtime default rules through `/sample-api/bootstrap/rules`
 - it registers the curated sample worker set through `/worker-api/*`
-- it creates curated sample tasks through `POST /status/api/tasks`
+- it creates curated sample tasks through `POST /api/v1/tasks` plus explicit item append
 - it starts the external sample worker processes
 - `XaMassServerApplication` can launch it automatically in `dev` profile
   when `sample.worker.auto-start=true`

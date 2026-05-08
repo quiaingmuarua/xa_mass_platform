@@ -2,10 +2,10 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -43,9 +43,9 @@ final class CompatibilityProjectionSupport {
         if (terminalReason != TaskTerminalReason.MANUAL_CANCELLED && !terminalReason.isPolicyDrivenStop()) {
             return storedProjection;
         }
-        TaskMsgStatus finalStatus = storedProjection.status() != null && storedProjection.status().isProcessing()
-                ? TaskMsgStatus.EXPIRED
-                : TaskMsgStatus.FAILED;
+        TaskMessageProjectionStatus finalStatus = storedProjection.status() != null && storedProjection.status().isProcessing()
+                ? TaskMessageProjectionStatus.EXPIRED
+                : TaskMessageProjectionStatus.FAILED;
         return new CompatibilityMessageProjection(
                 storedProjection.messageId(),
                 storedProjection.taskId(),
@@ -99,7 +99,7 @@ final class CompatibilityProjectionSupport {
                 taskId,
                 Map.of(),
                 activeLease.payloadRef(),
-                TaskMsgStatus.INIT,
+                TaskMessageProjectionStatus.INIT,
                 null,
                 null,
                 null,
@@ -129,7 +129,7 @@ final class CompatibilityProjectionSupport {
         boolean attemptProjectionDiffers = !java.util.Objects.equals(base.latestAttemptWorkerId(), activeLease.workerId())
                 || !java.util.Objects.equals(base.latestAttemptWorkerContextId(), activeLease.workerContextId())
                 || !java.util.Objects.equals(base.latestAttemptBatchId(), activeLease.batchId());
-        boolean needsAssignedStatus = base.status() == null || base.status() == TaskMsgStatus.INIT;
+        boolean needsAssignedStatus = base.status() == null || base.status() == TaskMessageProjectionStatus.INIT;
         boolean needsRetryProjection = base.retryCount() != Math.max(0, activeLease.retryCount());
         boolean needsAssignedTime = base.assignedTime() == null && activeLease.leasedAt() != null;
         boolean needsPayloadRefProjection = (base.payloadRef() == null || base.payloadRef().isBlank())
@@ -152,7 +152,7 @@ final class CompatibilityProjectionSupport {
                 base.taskId(),
                 base.input(),
                 needsPayloadRefProjection ? activeLease.payloadRef() : base.payloadRef(),
-                needsAssignedStatus ? TaskMsgStatus.ASSIGNED : base.status(),
+                needsAssignedStatus ? TaskMessageProjectionStatus.ASSIGNED : base.status(),
                 assignedTime,
                 base.createTime(),
                 needsAssignedStatus ? LocalDateTime.now() : base.updateTime(),
@@ -228,12 +228,12 @@ final class CompatibilityProjectionSupport {
         return projection != null && projection.status() != null && projection.status().isFinal();
     }
 
-    private static TaskMsgFinalReason toMessageFinalReason(TaskTerminalReason terminalReason) {
+    private static TaskMessageProjectionFinalReason toMessageFinalReason(TaskTerminalReason terminalReason) {
         return switch (terminalReason) {
-            case MAX_RUNTIME_REACHED -> TaskMsgFinalReason.TIMEOUT;
-            case RETRY_BUDGET_EXHAUSTED -> TaskMsgFinalReason.RETRY_EXHAUSTED;
-            case MANUAL_CANCELLED, SUCCESS_RATE_REACHED -> TaskMsgFinalReason.MANUAL_CANCELLED;
-            default -> TaskMsgFinalReason.MANUAL_CANCELLED;
+            case MAX_RUNTIME_REACHED -> TaskMessageProjectionFinalReason.TIMEOUT;
+            case RETRY_BUDGET_EXHAUSTED -> TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
+            case MANUAL_CANCELLED, SUCCESS_RATE_REACHED -> TaskMessageProjectionFinalReason.MANUAL_CANCELLED;
+            default -> TaskMessageProjectionFinalReason.MANUAL_CANCELLED;
         };
     }
 

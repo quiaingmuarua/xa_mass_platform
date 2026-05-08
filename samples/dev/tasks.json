@@ -31,7 +31,7 @@
       "workloadClass": "INTERACTIVE",
       "sharedConfig": {
         "routingCode": "us",
-        "sourceUrl": "${MASS_BASE_URL}/sdk/meta/events/stock.quote.fetch"
+        "sourceUrl": "${MASS_BASE_URL}/api/v1/meta/events/stock.quote.fetch"
       },
       "inputs": [
         {
