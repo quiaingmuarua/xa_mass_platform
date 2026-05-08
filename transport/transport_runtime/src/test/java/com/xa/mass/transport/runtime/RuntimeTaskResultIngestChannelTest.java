@@ -221,7 +221,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void missingAttemptResidueDoesNotRecreateCompatibilityAttemptResidueWhenRuntimeLeaseAlreadyOwnsTruth() {
+    void missingAttemptResidueKeepsCompatibilityReinsertBoundedToSingleLatestAttemptProjection() {
         scheduler = new RecordingTaskScheduler();
         AttemptWriteCountingStorage countingStorage = new AttemptWriteCountingStorage();
         taskStorage = countingStorage;
@@ -239,8 +239,8 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-bounded-attempt", null));
 
         assertTrue(handled);
-        assertEquals(0, countingStorage.attemptUpsertCount,
-                "result convergence should not restamp compatibility attempt residue when no attempt row exists");
+        assertEquals(1, countingStorage.attemptUpsertCount,
+                "result convergence should keep latest-attempt compatibility residue bounded to one upsert when no attempt row exists");
         TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt = latestAttemptAuditView(fixture);
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, recoveredAttempt.status());

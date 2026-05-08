@@ -83,7 +83,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         java.util.List<TaskMsg> messages = new java.util.ArrayList<>();
-        TaskCompatibilitySnapshotPage snapshot = compatibilityProjectionAccess.visitTaskMessageSnapshot(
+        TaskCompatibilityProjectionAccess.SnapshotPage snapshot = compatibilityProjectionAccess.visitTaskMessageSnapshot(
                 taskId,
                 limit,
                 (messageId, projectedTaskId, status, latestAttemptId, latestAttemptWorkerId,

@@ -30,7 +30,8 @@ public enum TaskTerminalReason {
 
     /**
      * Non-message policy closure reasons. These are terminal reasons whose
-     * semantics are not derived directly from the current TaskMsg aggregate.
+     * semantics are not derived directly from the current compatibility
+     * message projection.
      */
     public boolean isPolicyDrivenStop() {
         return switch (this) {

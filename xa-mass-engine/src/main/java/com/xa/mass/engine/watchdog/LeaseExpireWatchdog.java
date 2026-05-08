@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
  * Background watchdog that enforces two time-based policies:
  *
  * <ol>
- *   <li><b>Lease expiry</b>: any active {@code TaskMsgAttempt} whose
+ *   <li><b>Lease expiry</b>: any active leased work item whose
  *       {@code leaseExpireTime} has passed is expired via
  *       {@link TaskRuntimeMaintenancePort#expireTaskMessage}, which releases the worker
  *       context and re-queues the message (or finalizes it if retries are

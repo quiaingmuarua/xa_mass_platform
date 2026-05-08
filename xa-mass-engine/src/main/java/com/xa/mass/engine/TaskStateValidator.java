@@ -15,7 +15,7 @@ import java.util.List;
 
 /**
  * Validates runtime task state and, when requested explicitly, audits the
- * persisted TaskMsg projection for deeper consistency issues.
+ * persisted compatibility message projection for deeper consistency issues.
  */
 class TaskStateValidator {
 
@@ -130,7 +130,7 @@ class TaskStateValidator {
                 }
                 case MAX_RUNTIME_REACHED, SUCCESS_RATE_REACHED, RETRY_BUDGET_EXHAUSTED -> {
                     // Policy-driven terminal reasons are allowed to close the task
-                    // independently of the current TaskMsg aggregate shape.
+                    // independently of the current compatibility projection shape.
                 }
             }
         }
@@ -170,30 +170,31 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (CompatibilityMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
-            if (taskMsg == null) {
+        for (CompatibilityMessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
+            if (messageProjection == null) {
                 continue;
             }
-            if (isCompleted(taskMsg) && taskMsg.finalReason() == null) {
+            if (isCompleted(messageProjection) && messageProjection.finalReason() == null) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
             }
-            if (isCompleted(taskMsg) && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(taskMsg)) {
+            if (isCompleted(messageProjection)
+                    && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(messageProjection)) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             CompatibilityAttemptStats attemptStats =
-                    getTaskMessageAttemptStats(taskId, taskMsg.messageId());
+                    getTaskMessageAttemptStats(taskId, messageProjection.messageId());
             long activeAttemptCount = attemptStats.activeAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
                 violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
             }
-            if (hasActiveAttempt && isCompleted(taskMsg)) {
+            if (hasActiveAttempt && isCompleted(messageProjection)) {
                 violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
             }
             boolean allAttemptsFinal = attemptStats.totalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
-                    && !isCompleted(taskMsg)
-                    && taskMsg.status() != TaskMessageProjectionStatus.INIT) {
+                    && !isCompleted(messageProjection)
+                    && messageProjection.status() != TaskMessageProjectionStatus.INIT) {
                 attemptNeedsResolution = true;
                 violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
             }
@@ -250,8 +251,8 @@ class TaskStateValidator {
         return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private boolean isCompleted(CompatibilityMessageProjection taskMsg) {
-        return taskMsg != null && taskMsg.isCompleted();
+    private boolean isCompleted(CompatibilityMessageProjection messageProjection) {
+        return messageProjection != null && messageProjection.isCompleted();
     }
 
 }

@@ -1,8 +1,6 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.engine.TaskCompatibilityQueryService;
-import com.xa.mass.engine.TaskCompatibilitySnapshotPage;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -11,7 +9,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 
 public final class ProjectionTestViews {
 
@@ -20,136 +17,129 @@ public final class ProjectionTestViews {
 
     public static CompatibilityMessageSnapshot snapshot(MassSdkApplication app, String taskId, int limit) {
         List<CompatibilityMessageView> messages = new ArrayList<>();
-        TaskCompatibilitySnapshotPage page = queryService(app).visitTaskMessageSnapshot(taskId, limit,
-                (messageId, resolvedTaskId, status, latestAttemptId, latestAttemptWorkerId, latestAttemptWorkerContextId,
-                 latestAttemptBatchId, retryCount, maxRetryCount, errorMessage, errorCode, finalReason, payloadRef,
-                 input, output, assignedTime, createTime, updateTime, startTime, completeTime) -> messages.add(
-                        new CompatibilityMessageView(
-                                messageId,
-                                resolvedTaskId,
-                                status,
-                                latestAttemptId,
-                                latestAttemptWorkerId,
-                                latestAttemptWorkerContextId,
-                                latestAttemptBatchId,
-                                retryCount,
-                                maxRetryCount,
-                                errorMessage,
-                                errorCode,
-                                finalReason,
-                                payloadRef,
-                                input,
-                                output,
-                                assignedTime,
-                                createTime,
-                                updateTime,
-                                startTime,
-                                completeTime
-                        )));
-        return new CompatibilityMessageSnapshot(messages, page.limit(), page.truncated());
+        List<TaskDetailStore.TaskMessageProjection> projections = taskDetailStore(app).getTaskMessageProjections(taskId, limit);
+        for (TaskDetailStore.TaskMessageProjection projection : projections) {
+            messages.add(new CompatibilityMessageView(
+                    projection.messageId(),
+                    projection.taskId(),
+                    projection.status() != null ? projection.status().name() : null,
+                    projection.latestAttemptId(),
+                    projection.latestAttemptWorkerId(),
+                    projection.latestAttemptWorkerContextId(),
+                    projection.latestAttemptBatchId(),
+                    projection.retryCount(),
+                    projection.maxRetryCount(),
+                    projection.errorMessage(),
+                    projection.errorCode(),
+                    projection.finalReason() != null ? projection.finalReason().name() : null,
+                    projection.payloadRef(),
+                    projection.input(),
+                    projection.output(),
+                    projection.assignedTime(),
+                    projection.createTime(),
+                    projection.updateTime(),
+                    projection.startTime(),
+                    projection.completeTime()
+            ));
+        }
+        boolean truncated = limit > 0 && taskDetailStore(app).getTaskMessageProjections(taskId).size() > projections.size();
+        return new CompatibilityMessageSnapshot(messages, Math.max(limit, 0), truncated);
     }
 
     public static CompatibilityMessageView message(MassSdkApplication app, String taskId, String messageId) {
-        AtomicReference<CompatibilityMessageView> ref = new AtomicReference<>();
-        boolean found = queryService(app).visitTaskMessage(taskId, messageId,
-                (resolvedMessageId, resolvedTaskId, status, latestAttemptId, latestAttemptWorkerId,
-                 latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount, errorMessage,
-                 errorCode, finalReason, payloadRef, input, output, assignedTime, createTime, updateTime,
-                 startTime, completeTime) -> ref.set(new CompatibilityMessageView(
-                        resolvedMessageId,
-                        resolvedTaskId,
-                        status,
-                        latestAttemptId,
-                        latestAttemptWorkerId,
-                        latestAttemptWorkerContextId,
-                        latestAttemptBatchId,
-                        retryCount,
-                        maxRetryCount,
-                        errorMessage,
-                        errorCode,
-                        finalReason,
-                        payloadRef,
-                        input,
-                        output,
-                        assignedTime,
-                        createTime,
-                        updateTime,
-                        startTime,
-                        completeTime
-                )));
-        return found ? ref.get() : null;
+        TaskDetailStore.TaskMessageProjection projection =
+                taskDetailStore(app).getTaskMessageProjection(taskId, messageId).orElse(null);
+        if (projection == null) {
+            return null;
+        }
+        return new CompatibilityMessageView(
+                projection.messageId(),
+                projection.taskId(),
+                projection.status() != null ? projection.status().name() : null,
+                projection.latestAttemptId(),
+                projection.latestAttemptWorkerId(),
+                projection.latestAttemptWorkerContextId(),
+                projection.latestAttemptBatchId(),
+                projection.retryCount(),
+                projection.maxRetryCount(),
+                projection.errorMessage(),
+                projection.errorCode(),
+                projection.finalReason() != null ? projection.finalReason().name() : null,
+                projection.payloadRef(),
+                projection.input(),
+                projection.output(),
+                projection.assignedTime(),
+                projection.createTime(),
+                projection.updateTime(),
+                projection.startTime(),
+                projection.completeTime()
+        );
     }
 
     public static List<CompatibilityAttemptView> attempts(MassSdkApplication app, String taskId, String messageId) {
         List<CompatibilityAttemptView> attempts = new ArrayList<>();
-        queryService(app).visitTaskMessageAttemptViews(taskId, messageId,
-                (attemptId, resolvedTaskId, resolvedMessageId, attemptNo, workerId, workerContextId, batchId,
-                 status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime, finalReason,
-                 errorMessage, errorCode, output, createTime, updateTime) -> attempts.add(
-                        new CompatibilityAttemptView(
-                                attemptId,
-                                resolvedTaskId,
-                                resolvedMessageId,
-                                attemptNo,
-                                workerId,
-                                workerContextId,
-                                batchId,
-                                status,
-                                leaseExpireTime,
-                                dispatchTime,
-                                ackTime,
-                                startTime,
-                                finishTime,
-                                finalReason,
-                                errorMessage,
-                                errorCode,
-                                output,
-                                createTime,
-                                updateTime
-                        )));
+        for (TaskDetailStore.TaskMessageAttemptProjection projection
+                : taskDetailStore(app).getTaskMessageAttemptProjections(taskId, messageId)) {
+            attempts.add(new CompatibilityAttemptView(
+                    projection.attemptId(),
+                    projection.taskId(),
+                    projection.messageId(),
+                    projection.attemptNo(),
+                    projection.workerId(),
+                    projection.workerContextId(),
+                    projection.batchId(),
+                    projection.status() != null ? projection.status().name() : null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    projection.finalReason() != null ? projection.finalReason().name() : null,
+                    projection.errorMessage(),
+                    projection.errorCode(),
+                    projection.output(),
+                    null,
+                    null
+            ));
+        }
         return List.copyOf(attempts);
     }
 
     public static CompatibilityAttemptView latestActiveAttempt(MassSdkApplication app, String taskId, String messageId) {
-        AtomicReference<CompatibilityAttemptView> ref = new AtomicReference<>();
-        boolean found = queryService(app).visitLatestActiveTaskMessageAttempt(taskId, messageId,
-                (attemptId, resolvedTaskId, resolvedMessageId, attemptNo, workerId, workerContextId, batchId,
-                 status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime, finalReason,
-                 errorMessage, errorCode, output, createTime, updateTime) -> ref.set(new CompatibilityAttemptView(
-                        attemptId,
-                        resolvedTaskId,
-                        resolvedMessageId,
-                        attemptNo,
-                        workerId,
-                        workerContextId,
-                        batchId,
-                        status,
-                        leaseExpireTime,
-                        dispatchTime,
-                        ackTime,
-                        startTime,
-                        finishTime,
-                        finalReason,
-                        errorMessage,
-                        errorCode,
-                        output,
-                        createTime,
-                        updateTime
-                )));
-        return found ? ref.get() : null;
+        TaskDetailStore.TaskMessageAttemptProjection projection =
+                taskDetailStore(app).getLatestActiveTaskMessageAttemptProjection(taskId, messageId).orElse(null);
+        if (projection == null) {
+            return null;
+        }
+        return new CompatibilityAttemptView(
+                projection.attemptId(),
+                projection.taskId(),
+                projection.messageId(),
+                projection.attemptNo(),
+                projection.workerId(),
+                projection.workerContextId(),
+                projection.batchId(),
+                projection.status() != null ? projection.status().name() : null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                projection.finalReason() != null ? projection.finalReason().name() : null,
+                projection.errorMessage(),
+                projection.errorCode(),
+                projection.output(),
+                null,
+                null
+        );
     }
 
-    private static TaskCompatibilityQueryService queryService(MassSdkApplication app) {
+    private static TaskDetailStore taskDetailStore(MassSdkApplication app) {
         Objects.requireNonNull(app, "app");
         MassApplication delegate = readField(app, "delegate", MassApplication.class);
         MassEngine engine = Objects.requireNonNull(delegate.getEngine(), "engine");
         EngineConfig config = Objects.requireNonNull(engine.getConfig(), "engineConfig");
-        config.getTaskQueryService();
-        TaskManager taskManager = readField(config, "taskManager", TaskManager.class);
-        if (taskManager == null) {
-            throw new IllegalStateException("taskManager is unavailable for projection test views");
-        }
-        return new TaskCompatibilityQueryService(taskManager);
+        return Objects.requireNonNull(config.getTaskDetailStore(), "taskDetailStore");
     }
 
     private static <T> T readField(Object target, String fieldName, Class<T> type) {

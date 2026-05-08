@@ -3,8 +3,7 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.TaskCompatibilityQueryService;
-import com.xa.mass.engine.TaskManager;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -50,9 +49,6 @@ public abstract class AbstractSampleE2eTest {
 
     @Autowired(required = false)
     protected MassSdkApplication app;
-
-    @Autowired(required = false)
-    protected TaskManager taskManager;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -323,74 +319,67 @@ public abstract class AbstractSampleE2eTest {
 
     protected List<Map<String, Object>> fetchTaskMessageAttempts(String taskId, String messageId) {
         List<Map<String, Object>> attempts = new java.util.ArrayList<>();
-        resolveTaskCompatibilityQueries().visitTaskMessageAttemptViews(taskId, messageId,
-                (attemptId, ignoredTaskId, ignoredMessageId, attemptNo, workerId, workerContextId, batchId, status,
-                 leaseExpireTime, dispatchTime, ackTime, startTime, finishTime, finalReason, errorMessage, errorCode,
-                 output, createTime, updateTime) -> {
-                    Map<String, Object> attempt = new LinkedHashMap<>();
-                    attempt.put("attemptId", attemptId);
-                    attempt.put("taskId", ignoredTaskId);
-                    attempt.put("messageId", ignoredMessageId);
-                    attempt.put("attemptNo", attemptNo);
-                    attempt.put("workerId", workerId);
-                    attempt.put("workerContextId", workerContextId);
-                    attempt.put("batchId", batchId);
-                    attempt.put("status", status);
-                    attempt.put("leaseExpireTime", leaseExpireTime);
-                    attempt.put("dispatchTime", dispatchTime);
-                    attempt.put("ackTime", ackTime);
-                    attempt.put("startTime", startTime);
-                    attempt.put("finishTime", finishTime);
-                    attempt.put("finalReason", finalReason);
-                    attempt.put("errorMessage", errorMessage);
-                    attempt.put("errorCode", errorCode);
-                    attempt.put("output", output == null ? null : new LinkedHashMap<>(output));
-                    attempt.put("createTime", createTime);
-                    attempt.put("updateTime", updateTime);
-                    attempts.add(attempt);
-                });
+        for (TaskDetailStore.TaskMessageAttemptProjection projection
+                : resolveTaskDetailStore().getTaskMessageAttemptProjections(taskId, messageId)) {
+            Map<String, Object> attempt = new LinkedHashMap<>();
+            attempt.put("attemptId", projection.attemptId());
+            attempt.put("taskId", projection.taskId());
+            attempt.put("messageId", projection.messageId());
+            attempt.put("attemptNo", projection.attemptNo());
+            attempt.put("workerId", projection.workerId());
+            attempt.put("workerContextId", projection.workerContextId());
+            attempt.put("batchId", projection.batchId());
+            attempt.put("status", projection.status() != null ? projection.status().name() : null);
+            attempt.put("leaseExpireTime", null);
+            attempt.put("dispatchTime", null);
+            attempt.put("ackTime", null);
+            attempt.put("startTime", null);
+            attempt.put("finishTime", null);
+            attempt.put("finalReason", projection.finalReason() != null ? projection.finalReason().name() : null);
+            attempt.put("errorMessage", projection.errorMessage());
+            attempt.put("errorCode", projection.errorCode());
+            attempt.put("output", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
+            attempt.put("createTime", null);
+            attempt.put("updateTime", null);
+            attempts.add(attempt);
+        }
         return attempts;
     }
 
     private List<Map<String, Object>> fetchCompatibilityMessages(String taskId, int limit) {
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
-        resolveTaskCompatibilityQueries().visitTaskMessageSnapshot(taskId, limit,
-                (messageId, ignoredTaskId, status, latestAttemptId, latestAttemptWorkerId, latestAttemptWorkerContextId,
-                 latestAttemptBatchId, retryCount, maxRetryCount, errorMessage, errorCode, finalReason, payloadRef,
-                 input, output, assignedTime, createTime, updateTime, startTime, completeTime) -> {
-                    Map<String, Object> message = new LinkedHashMap<>();
-                    message.put("messageId", messageId);
-                    message.put("taskId", ignoredTaskId);
-                    message.put("status", status);
-                    message.put("latestAttemptId", latestAttemptId);
-                    message.put("latestAttemptWorkerId", latestAttemptWorkerId);
-                    message.put("latestAttemptWorkerContextId", latestAttemptWorkerContextId);
-                    message.put("latestAttemptBatchId", latestAttemptBatchId);
-                    message.put("retryCount", retryCount);
-                    message.put("maxRetryCount", maxRetryCount);
-                    message.put("errorMessage", errorMessage);
-                    message.put("errorCode", errorCode);
-                    message.put("finalReason", finalReason);
-                    message.put("payloadRef", payloadRef);
-                    message.put("input", input == null ? null : new LinkedHashMap<>(input));
-                    message.put("output", output == null ? null : new LinkedHashMap<>(output));
-                    message.put("result", output == null ? null : new LinkedHashMap<>(output));
-                    message.put("assignedTime", assignedTime);
-                    message.put("createTime", createTime);
-                    message.put("updateTime", updateTime);
-                    message.put("startTime", startTime);
-                    message.put("completeTime", completeTime);
-                    messages.add(message);
-                });
+        for (TaskDetailStore.TaskMessageProjection projection
+                : resolveTaskDetailStore().getTaskMessageProjections(taskId, limit)) {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("messageId", projection.messageId());
+            message.put("taskId", projection.taskId());
+            message.put("status", projection.status() != null ? projection.status().name() : null);
+            message.put("latestAttemptId", projection.latestAttemptId());
+            message.put("latestAttemptWorkerId", projection.latestAttemptWorkerId());
+            message.put("latestAttemptWorkerContextId", projection.latestAttemptWorkerContextId());
+            message.put("latestAttemptBatchId", projection.latestAttemptBatchId());
+            message.put("retryCount", projection.retryCount());
+            message.put("maxRetryCount", projection.maxRetryCount());
+            message.put("errorMessage", projection.errorMessage());
+            message.put("errorCode", projection.errorCode());
+            message.put("finalReason", projection.finalReason() != null ? projection.finalReason().name() : null);
+            message.put("payloadRef", projection.payloadRef());
+            message.put("input", projection.input() == null ? null : new LinkedHashMap<>(projection.input()));
+            message.put("output", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
+            message.put("result", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
+            message.put("assignedTime", projection.assignedTime());
+            message.put("createTime", projection.createTime());
+            message.put("updateTime", projection.updateTime());
+            message.put("startTime", projection.startTime());
+            message.put("completeTime", projection.completeTime());
+            messages.add(message);
+        }
         return messages;
     }
 
-    private TaskCompatibilityQueryService resolveTaskCompatibilityQueries() {
-        if (taskManager != null) {
-            return new TaskCompatibilityQueryService(taskManager);
-        }
+    private TaskDetailStore resolveTaskDetailStore() {
         if (app == null) {
-            throw new IllegalStateException("TaskManager test dependency is not available");
+            throw new IllegalStateException("MassSdkApplication is not available for compatibility residue test views");
         }
         try {
             java.lang.reflect.Field delegateField = MassSdkApplication.class.getDeclaredField("delegate");
@@ -398,22 +387,17 @@ public abstract class AbstractSampleE2eTest {
             MassApplication delegate = (MassApplication) delegateField.get(app);
             MassEngine engine = delegate.getEngine();
             if (engine == null) {
-                throw new IllegalStateException("Mass engine is unavailable for test compatibility queries");
+                throw new IllegalStateException("Mass engine is unavailable for test compatibility residue views");
             }
-            java.lang.reflect.Field configField = MassEngine.class.getDeclaredField("config");
-            configField.setAccessible(true);
-            Object config = configField.get(engine);
-            java.lang.reflect.Method taskQueryMethod = config.getClass().getMethod("getTaskQueryService");
-            taskQueryMethod.invoke(config);
-            java.lang.reflect.Field taskManagerField = config.getClass().getDeclaredField("taskManager");
-            taskManagerField.setAccessible(true);
-            TaskManager reflectedTaskManager = (TaskManager) taskManagerField.get(config);
-            if (reflectedTaskManager == null) {
-                throw new IllegalStateException("Task manager is unavailable for test compatibility queries");
+            Object config = readField(engine, "config", Object.class);
+            java.lang.reflect.Method taskDetailStoreMethod = config.getClass().getMethod("getTaskDetailStore");
+            Object taskDetailStore = taskDetailStoreMethod.invoke(config);
+            if (!(taskDetailStore instanceof TaskDetailStore detailStore)) {
+                throw new IllegalStateException("Task detail store is unavailable for test compatibility residue views");
             }
-            return new TaskCompatibilityQueryService(reflectedTaskManager);
+            return detailStore;
         } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Task compatibility queries are unavailable for tests", e);
+            throw new IllegalStateException("Task compatibility residue views are unavailable for tests", e);
         }
     }
 

@@ -22,8 +22,6 @@ Rules:
 
 | Symbol or seam | Current location | Mainline replacement / source of truth | Current in-repo call-site count | Removal condition |
 | --- | --- | --- | --- | --- |
-| `TaskCompatibilityQueryService` compatibility read seam | `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskCompatibilityQueryService.java` | Runtime truth stays in `TaskWorkRuntime`; outer modules assemble their own DTOs via visitor callbacks instead of importing engine-owned compatibility residue models | 14 grep hits for the current compatibility service seam on 2026-05-08 | SDK/server and any remaining outer callers stop depending on engine-owned compatibility queries at all; compatibility reads become engine-internal residue only |
-
 Current tracked seams:
 
-- engine compatibility query callbacks are temporary migration residue and must not grow into a richer public query model
+- engine compatibility projection callbacks are temporary migration residue and must not grow into a richer public query model

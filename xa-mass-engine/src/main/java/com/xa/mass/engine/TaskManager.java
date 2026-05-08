@@ -52,8 +52,7 @@ import java.util.function.Supplier;
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
  * flows. Downstream callers should prefer {@link TaskCommandService},
- * {@link TaskQueryService}, {@link TaskCompatibilityQueryService},
- * {@link TaskResultIngestFacade},
+ * {@link TaskQueryService}, {@link TaskResultIngestFacade},
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
@@ -504,8 +503,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     /**
      * Audit-only invariant validation. This path is intentionally bounded and
      * should not be treated as a hot-path runtime query surface. This method
-     * validates task/runtime aggregates without scanning the full TaskMsg
-     * compatibility projection.
+     * validates task/runtime aggregates without scanning the full
+     * compatibility message projection.
      */
     @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
@@ -513,9 +512,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Explicit deep audit of the persisted TaskMsg projection plus attempt
-     * aggregates. This is diagnostic-only and may require a full task-message
-     * snapshot.
+     * Explicit deep audit of the persisted compatibility projection plus
+     * attempt aggregates. This is diagnostic-only and may require a full
+     * bounded message snapshot.
      */
     @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {

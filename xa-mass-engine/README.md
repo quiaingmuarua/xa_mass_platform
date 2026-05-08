@@ -24,9 +24,9 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
-- `src/main/java/com/xa/mass/engine/TaskCompatibilityQueryService.java` only when
-  you are intentionally working on bounded compatibility `TaskMsg` /
-  `TaskMsgAttempt` residue reads
+- `src/main/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
+  only when you are intentionally working on engine-internal bounded
+  compatibility residue reads or projection-audit residue
 - `src/main/java/com/xa/mass/engine/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
@@ -79,10 +79,8 @@ Keep these facts fixed unless the owning global baselines change:
   not the hot-path runtime owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
-- `TaskCompatibilityQueryService` is the explicit bounded residue-read surface;
-  it exposes a visitor-style compatibility read seam so outer modules assemble
-  their own DTOs instead of importing engine-owned message/attempt view models,
-  and it also owns explicit projection-audit entry
+- `TaskCompatibilityProjectionAccess` is the engine-internal residue owner for
+  bounded compatibility reads and explicit projection-audit support
 - `TaskDetailStore.TaskMessageProjection` and
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the
@@ -111,8 +109,9 @@ Repo-level mainline surfaces:
 
 - shell/admin mutation flows use `TaskCommandService`
 - bounded inspection flows use `TaskQueryService`
-- bounded compatibility message/attempt reads use
-  `TaskCompatibilityQueryService`
+- engine-internal compatibility message/attempt reads stay behind the
+  compatibility projection owner instead of becoming a public engine query
+  surface
 - explicit projection audit stays on the compatibility query path as a
   diagnostic-only read
 - transport/runtime result ingress uses `TaskResultIngestFacade`

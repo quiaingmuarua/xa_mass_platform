@@ -7,7 +7,7 @@ import java.util.Map;
  * Runtime-native logical work ingress item.
  *
  * <p>This is the engine hot-path intake carrier. It exists so runtime enqueue
- * and dispatch ownership do not depend on {@code TaskMsg} projection shape.</p>
+ * and dispatch ownership do not depend on compatibility projection shape.</p>
  */
 record RuntimeTaskIngressItem(String taskId,
                               String messageId,

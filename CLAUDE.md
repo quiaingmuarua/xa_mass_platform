@@ -126,7 +126,7 @@ Canonical trace objects: `com.xa.mass.trace.sink.ExecutionEvent` and `ExecutionE
 
 ## Key Behavioral Contracts
 
-- **Task-create route:** `POST /status/api/tasks` is the only HTTP task-create route
+- **Task task-ingest split:** `POST /api/v1/tasks` creates only the task shell; work items append through `POST /api/v1/tasks/{taskId}/items`
 - **`eventCode`** is globally unique capability identity
 - **`Task.workloadClass`** (`INTERACTIVE` or `BULK`) drives scheduling semantics; do not resolve from free-form `sharedConfig`
 - **`Task.sharedConfig`** and **`TaskMsg.input/output`** are the generic payload boundaries; `target` is only a conventional key inside `TaskMsg.input`, not a model field

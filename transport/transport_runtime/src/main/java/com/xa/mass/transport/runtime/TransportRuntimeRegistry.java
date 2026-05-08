@@ -6,7 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.runtime.worker.TransportRoutingTaskMsgDispatchListener;
+import com.xa.mass.transport.runtime.worker.TransportRoutingTaskDispatchListener;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
 import java.util.LinkedHashMap;
@@ -63,7 +63,7 @@ public final class TransportRuntimeRegistry {
 
     public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchFailureHandler failureHandler,
                                                                 RuntimeTaskExecutor runtimeTaskExecutor) {
-        return new TransportRoutingTaskMsgDispatchListener(
+        return new TransportRoutingTaskDispatchListener(
                 workerLookupStore,
                 this,
                 failureHandler,

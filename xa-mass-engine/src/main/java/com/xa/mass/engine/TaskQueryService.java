@@ -12,8 +12,8 @@ import java.util.Objects;
  * Preferred engine bounded-read surface for cross-module task inspection.
  *
  * <p>This surface intentionally stops at task shell / aggregate state.
- * TaskMsg and TaskMsgAttempt residue lives behind the explicit compatibility
- * query surface instead of the default engine query contract.
+ * Compatibility message/attempt residue lives behind the explicit
+ * compatibility query surface instead of the default engine query contract.
  */
 public class TaskQueryService {
 

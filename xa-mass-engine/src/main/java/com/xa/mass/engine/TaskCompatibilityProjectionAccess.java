@@ -18,8 +18,8 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Engine owner for bounded TaskMsg / TaskMsgAttempt compatibility projection
- * reads and residue writes.
+ * Engine owner for bounded compatibility message/attempt projection reads and
+ * residue writes.
  */
 @CompatibilityProjectionOnly
 final class TaskCompatibilityProjectionAccess {
@@ -47,9 +47,9 @@ final class TaskCompatibilityProjectionAccess {
         this.runtimeStatsLookup = Objects.requireNonNull(runtimeStatsLookup, "runtimeStatsLookup");
     }
 
-    public TaskCompatibilitySnapshotPage visitTaskMessageSnapshot(String taskId,
-                                                                  int limit,
-                                                                  TaskCompatibilityMessageVisitor visitor) {
+    SnapshotPage visitTaskMessageSnapshot(String taskId,
+                                          int limit,
+                                          MessageVisitor visitor) {
         int boundedLimit = Math.max(0, limit);
         List<CompatibilityMessageProjection> stored = boundedLimit == 0
                 ? List.of()
@@ -75,12 +75,12 @@ final class TaskCompatibilityProjectionAccess {
                 emitMessageProjection(projection, visitor);
             }
         }
-        return new TaskCompatibilitySnapshotPage(boundedLimit, truncated, boundedProjected.size());
+        return new SnapshotPage(boundedLimit, truncated, boundedProjected.size());
     }
 
-    public boolean visitTaskMessage(String taskId,
-                                    String messageId,
-                                    TaskCompatibilityMessageVisitor visitor) {
+    boolean visitTaskMessage(String taskId,
+                             String messageId,
+                             MessageVisitor visitor) {
         CompatibilityMessageProjection projection = getVisibleCompatibilityMessageProjection(taskId, messageId);
         if (projection == null) {
             return false;
@@ -91,9 +91,9 @@ final class TaskCompatibilityProjectionAccess {
         return true;
     }
 
-    public void visitTaskMessageAttemptViews(String taskId,
-                                             String messageId,
-                                             TaskCompatibilityMessageAttemptVisitor visitor) {
+    void visitTaskMessageAttemptViews(String taskId,
+                                      String messageId,
+                                      AttemptVisitor visitor) {
         if (visitor == null) {
             return;
         }
@@ -113,9 +113,9 @@ final class TaskCompatibilityProjectionAccess {
         }
     }
 
-    public boolean visitLatestActiveTaskMessageAttempt(String taskId,
-                                                       String messageId,
-                                                       TaskCompatibilityMessageAttemptVisitor visitor) {
+    boolean visitLatestActiveTaskMessageAttempt(String taskId,
+                                                String messageId,
+                                                AttemptVisitor visitor) {
         Task task = taskLookup.apply(taskId);
         if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
             return false;
@@ -305,7 +305,7 @@ final class TaskCompatibilityProjectionAccess {
     }
 
     private void emitMessageProjection(CompatibilityMessageProjection projection,
-                                       TaskCompatibilityMessageVisitor visitor) {
+                                       MessageVisitor visitor) {
         if (projection == null || visitor == null) {
             return;
         }
@@ -334,7 +334,7 @@ final class TaskCompatibilityProjectionAccess {
     }
 
     private void emitAttemptProjection(CompatibilityAttemptProjection projection,
-                                       TaskCompatibilityMessageAttemptVisitor visitor) {
+                                       AttemptVisitor visitor) {
         if (projection == null || visitor == null) {
             return;
         }
@@ -409,7 +409,7 @@ final class TaskCompatibilityProjectionAccess {
     }
 
     private void emitRuntimeActiveAttempt(RuntimeActiveAttemptView activeAttempt,
-                                          TaskCompatibilityMessageAttemptVisitor visitor) {
+                                          AttemptVisitor visitor) {
         if (activeAttempt == null || visitor == null) {
             return;
         }
@@ -485,6 +485,63 @@ final class TaskCompatibilityProjectionAccess {
                                             java.time.LocalDateTime startTime,
                                             java.time.LocalDateTime createTime,
                                             java.time.LocalDateTime updateTime) {
+    }
+
+    @FunctionalInterface
+    interface MessageVisitor {
+
+        void onMessage(String messageId,
+                       String taskId,
+                       String status,
+                       String latestAttemptId,
+                       String latestAttemptWorkerId,
+                       String latestAttemptWorkerContextId,
+                       String latestAttemptBatchId,
+                       int retryCount,
+                       int maxRetryCount,
+                       String errorMessage,
+                       String errorCode,
+                       String finalReason,
+                       String payloadRef,
+                       java.util.Map<String, Object> input,
+                       java.util.Map<String, Object> output,
+                       java.time.LocalDateTime assignedTime,
+                       java.time.LocalDateTime createTime,
+                       java.time.LocalDateTime updateTime,
+                       java.time.LocalDateTime startTime,
+                       java.time.LocalDateTime completeTime);
+    }
+
+    @FunctionalInterface
+    interface AttemptVisitor {
+
+        void onAttempt(String attemptId,
+                       String taskId,
+                       String messageId,
+                       int attemptNo,
+                       String workerId,
+                       String workerContextId,
+                       String batchId,
+                       String status,
+                       java.time.LocalDateTime leaseExpireTime,
+                       java.time.LocalDateTime dispatchTime,
+                       java.time.LocalDateTime ackTime,
+                       java.time.LocalDateTime startTime,
+                       java.time.LocalDateTime finishTime,
+                       String finalReason,
+                       String errorMessage,
+                       String errorCode,
+                       java.util.Map<String, Object> output,
+                       java.time.LocalDateTime createTime,
+                       java.time.LocalDateTime updateTime);
+    }
+
+    record SnapshotPage(int limit, boolean truncated, int returned) {
+
+        SnapshotPage {
+            limit = Math.max(0, limit);
+            returned = Math.max(0, returned);
+        }
     }
 
 }

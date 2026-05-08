@@ -222,7 +222,7 @@ class TaskResultService {
         }
 
         // Active lease plus runtime work is the authoritative callback base.
-        // Compatibility TaskMsg residue stays out of the accepted hot path.
+        // Compatibility message residue stays out of the accepted hot path.
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,

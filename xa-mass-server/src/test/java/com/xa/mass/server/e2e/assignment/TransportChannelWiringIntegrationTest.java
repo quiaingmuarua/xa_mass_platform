@@ -109,7 +109,7 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
 
     @SuppressWarnings("unchecked")
     private void assertRuntimeExecutorDiagnosticsExposeEventExecutor() {
-        Map<String, Object> response = exchange("/api/queue/detail", HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/runtime/queues", HttpMethod.GET, null);
         assertApiOk(response);
         Map<String, Object> runtimeExecutors =
                 (Map<String, Object>) responseData(response).get("runtimeExecutors");

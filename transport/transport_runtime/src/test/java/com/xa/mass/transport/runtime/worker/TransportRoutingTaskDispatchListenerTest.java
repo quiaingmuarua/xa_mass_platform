@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TransportRoutingTaskMsgDispatchListenerTest {
+class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void routesDispatchByWorkerOnlineStrategy() {
@@ -53,7 +53,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, webSocketAdapter, pollingAdapter)
         );
@@ -83,7 +83,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         workerManager.addWorker(worker);
 
         RecordingAdapter realtimeAdapter = new RecordingAdapter("websocket-v2", WorkerTransportHints.REALTIME);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, realtimeAdapter)
         );
@@ -107,7 +107,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         workerManager.addWorker(worker);
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, webSocketAdapter)
         );
@@ -135,7 +135,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         workerManager.addWorker(worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, pollingAdapter)
         );
@@ -164,7 +164,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         pollingAdapter.overrideStatus = DispatchOutcomeStatus.BACKPRESSURE_REJECTED;
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, pollingAdapter)
         );
@@ -196,7 +196,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
             compensated.add(List.copyOf(dispatchBindings));
             return true;
         };
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, pollingAdapter),
                 failureHandler
@@ -225,7 +225,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         AtomicLong now = new AtomicLong(123456789L);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, pollingAdapter),
                 null,
@@ -256,7 +256,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         TransportBinding binding = TransportBinding.builder(pollingAdapter)
                 .routeKeyResolver((dispatchBinding, routeContext) -> "endpoint:" + routeContext.batchId())
                 .build();
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 new TransportRuntimeRegistry(
                         workerManager,
@@ -280,7 +280,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
     void batchReusesResolvedDispatchTargetForRepeatedWorkerBindings() {
         CountingWorkerLookupStore workerLookupStore = new CountingWorkerLookupStore(worker("poll-worker", null, WorkerTransportHints.POLLING));
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerLookupStore,
                 new TransportRuntimeRegistry(
                         workerLookupStore,
@@ -327,7 +327,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         );
 
         try (VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("dispatch-fanout-test-", 8)) {
-            TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+            TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                     workerManager,
                     runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
                     null,
@@ -359,7 +359,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
             compensated.add(List.copyOf(dispatchBindings));
             return true;
         };
-        TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
                 workerManager,
                 runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
                 failureHandler
@@ -486,7 +486,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 report -> true,
                 new NoopWorkerSystemEventChannel(),
                 Arrays.stream(adapters)
-                        .map(TransportRoutingTaskMsgDispatchListenerTest::workerIdRouteBinding)
+                        .map(TransportRoutingTaskDispatchListenerTest::workerIdRouteBinding)
                         .toList()
         );
     }

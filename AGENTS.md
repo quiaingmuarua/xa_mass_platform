@@ -84,7 +84,7 @@ Planning rule for multi-file or core changes:
 - `engine` is a runtime kernel, not a CRUD backend module
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field
-- `POST /status/api/tasks` is the only task-create HTTP route
+- task shell create enters through `POST /api/v1/tasks`, and work-item ingest is explicit through `POST /api/v1/tasks/{taskId}/items`
 - `eventCode` is globally unique capability identity
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design

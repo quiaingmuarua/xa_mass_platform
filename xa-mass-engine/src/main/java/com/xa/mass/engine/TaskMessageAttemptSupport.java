@@ -43,19 +43,22 @@ public final class TaskMessageAttemptSupport {
     }
 
     @CompatibilityProjectionOnly
-    static boolean isTaskMessageFinalReasonCompatible(CompatibilityMessageProjection taskMsg) {
-        if (taskMsg == null || taskMsg.status() == null || !taskMsg.status().isFinal() || taskMsg.finalReason() == null) {
+    static boolean isTaskMessageFinalReasonCompatible(CompatibilityMessageProjection messageProjection) {
+        if (messageProjection == null
+                || messageProjection.status() == null
+                || !messageProjection.status().isFinal()
+                || messageProjection.finalReason() == null) {
             return false;
         }
-        return switch (taskMsg.status()) {
-            case SUCCESS -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
-            case FAILED -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_FAILED
-                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
-                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
-            case EXPIRED -> taskMsg.finalReason() == TaskMessageProjectionFinalReason.TIMEOUT
-                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.WORKER_LOST
-                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
-                    || taskMsg.finalReason() == TaskMessageProjectionFinalReason.LEASE_EXPIRED;
+        return switch (messageProjection.status()) {
+            case SUCCESS -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
+            case FAILED -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_FAILED
+                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
+            case EXPIRED -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.TIMEOUT
+                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.WORKER_LOST
+                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.LEASE_EXPIRED;
             default -> false;
         };
     }
