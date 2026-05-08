@@ -111,6 +111,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(2, terminalSnapshot.messages().size());
             for (Map<String, Object> message : terminalSnapshot.messages()) {
@@ -119,6 +120,12 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
                 assertNotNull(message.get("latestAttemptWorkerContextId"));
                 assertNotNull(message.get("latestAttemptBatchId"));
             }
+
+            // Resume on an already-TERMINAL task must return 409 — not a server error.
+            Map<String, Object> staleResumeResponse = resumeTask(taskId);
+            assertApiError(staleResumeResponse, 409);
+            assertEquals("TERMINAL", waitForTaskSnapshot(taskId, "TERMINAL").task().get("status"),
+                    "Stale resume must not mutate terminal state");
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();

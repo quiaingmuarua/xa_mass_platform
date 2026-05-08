@@ -210,6 +210,18 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
+    void resumeOnTerminalTaskReturnsConflict() {
+        String taskId = createSeededTaskShell("guard-resume-terminal");
+
+        assertApiOk(approveTask(taskId));
+        assertApiOk(terminateTask(taskId));
+        assertEquals("TERMINAL", task(taskId).get("status"));
+
+        Map<String, Object> resumeResponse = resumeTask(taskId);
+        assertApiError(resumeResponse, 409);
+    }
+
+    @Test
     void terminateWorksForReadyAndPausedTasks() {
         String readyTaskId = createSeededTaskShell("guard-terminate-ready");
         Map<String, Object> approveReadyResponse = approveTask(readyTaskId);

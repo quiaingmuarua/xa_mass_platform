@@ -120,7 +120,7 @@ jobs:
       - name: Run canonical server smoke checks
         run: >-
           ./mvnw -q -pl xa-mass-server
-          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiAllMessagesFailedIntegrationTest,TaskApiResumeShortCircuitIntegrationTest,TaskApiBlockedRunningIntegrationTest
+          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiAllMessagesFailedIntegrationTest,TaskApiBlockedRunningIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
       - name: Upload Maven test reports

@@ -59,6 +59,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
         TaskSnapshot snapshot = waitForTerminalTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
+        assertEquals("ALL_MESSAGES_FAILED", snapshot.task().get("terminalReason"));
         assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(0, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, snapshot.messages().size());

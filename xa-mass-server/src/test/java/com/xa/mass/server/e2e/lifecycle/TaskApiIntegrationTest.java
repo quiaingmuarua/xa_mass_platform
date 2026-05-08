@@ -1,5 +1,6 @@
 package com.xa.mass.server.e2e.lifecycle;
 
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         TaskSnapshot snapshot = waitForTerminalTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, snapshot.messages().size());
@@ -72,9 +74,52 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         for (Map<String, Object> message : snapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));
             assertEquals("BUSINESS_SUCCESS", message.get("finalReason"));
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
+            assertNotNull(message.get("latestAttemptWorkerId"));
+            assertNotNull(message.get("latestAttemptWorkerContextId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
         }
+    }
+
+    @Test
+    void interactiveWorkloadClassPreservedThroughTerminal() throws Exception {
+        assertMinOnlineWorkers(2);
+        String taskId = createTaskId(
+                "interactive-workload-task",
+                "interactive workload smoke",
+                List.of("interactive-target-001"),
+                1,
+                TaskWorkloadClass.INTERACTIVE
+        );
+        assertApiOk(audit(taskId, "interactive-workload"));
+
+        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
+        assertEquals("INTERACTIVE", snapshot.task().get("workloadClass"));
+
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(detail);
+        assertEquals("INTERACTIVE", task(detail).get("workloadClass"));
+    }
+
+    @Test
+    void bulkWorkloadClassPreservedThroughTerminal() throws Exception {
+        assertMinOnlineWorkers(2);
+        String taskId = createTaskId(
+                "bulk-workload-task",
+                "bulk workload smoke",
+                List.of("bulk-target-001", "bulk-target-002", "bulk-target-003"),
+                2,
+                TaskWorkloadClass.BULK
+        );
+        assertApiOk(audit(taskId, "bulk-workload"));
+
+        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
+        assertEquals("BULK", snapshot.task().get("workloadClass"));
+        assertEquals(3, snapshot.messages().size());
+
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(detail);
+        assertEquals("BULK", task(detail).get("workloadClass"));
     }
 }
