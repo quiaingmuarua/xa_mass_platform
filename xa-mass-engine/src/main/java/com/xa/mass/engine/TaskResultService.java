@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
@@ -184,8 +185,16 @@ class TaskResultService {
         }
 
         if (task.getStatus().isFinal()) {
-            RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
             ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+            if (isManualOrPolicyTerminalStop(task)) {
+                TaskMessageTraceView lateView = resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
+                traceEventLogger.callbackIgnoredLate(lateView,
+                        "task already terminal in status " + task.getStatus());
+                logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                        taskId, messageId, lateView.status());
+                return TaskMessageMutationOutcome.acceptedNoop();
+            }
+            RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
             if (storedProjection != null && storedProjection.isCompleted()) {
                 traceEventLogger.callbackIgnoredDuplicate(storedProjection.toTraceView(),
                         "task message already final in status " + storedProjection.status());
@@ -204,6 +213,15 @@ class TaskResultService {
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
         TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
+            if (runtimeWork != null) {
+                TaskMessageTraceView noLeaseRuntimeView = resolveTraceTaskMessageView(taskId, messageId, null, null);
+                traceEventLogger.callbackRejectedNoActiveLease(
+                        noLeaseRuntimeView,
+                        "callback arrived without any active runtime lease"
+                );
+                logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
+                return TaskMessageMutationOutcome.rejected();
+            }
             RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
             if (storedProjection != null && storedProjection.isCompleted()) {
                 traceEventLogger.callbackIgnoredDuplicate(storedProjection.toTraceView(),
@@ -770,6 +788,14 @@ class TaskResultService {
         }
         TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, 1L);
         return retryPolicy.workRetryDelayMillis();
+    }
+
+    private boolean isManualOrPolicyTerminalStop(Task task) {
+        if (task == null || task.getTerminalReason() == null) {
+            return false;
+        }
+        TaskTerminalReason terminalReason = task.getTerminalReason();
+        return terminalReason == TaskTerminalReason.MANUAL_CANCELLED || terminalReason.isPolicyDrivenStop();
     }
 
     @CompatibilityProjectionOnly

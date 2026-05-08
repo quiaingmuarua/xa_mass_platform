@@ -13,6 +13,33 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
 
+Current mainline execution path:
+
+- `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
+
+## 0.1 Abstraction Test
+
+This repo is not anti-abstraction. It is anti-fake abstraction.
+
+- module-internal direct dependency is not a problem by itself
+- add a new seam only when it creates a real owner boundary, protocol seam,
+  lifecycle split, or external/default caller surface
+- a same-module pass-through `bridge` / `facade` / `wrapper` / `adapter`
+  that only forwards to an existing owner is usually noise, not architecture
+- narrow surfaces are still required for hot paths, cross-module callers,
+  startup/watchdog wiring, and stable external entry points
+- if a new layer does not change who owns the decision, who may call it, or
+  what lifecycle boundary it protects, it probably should not exist
+
+Common misreads to avoid:
+
+- `TaskManager` implementing multiple engine seams is current owner design, not
+  proof that a second internal bridge layer is needed
+- stable kernel vocabulary such as `TaskMsg` / `TaskMsgAttempt` does not mean
+  those names are still the current hot-path runtime owner shape in code
+- refusing a new wrapper is not "less design"; it is often the design choice
+  that keeps owner boundaries visible
+
 ## 1. First Read
 
 For a new session, read only these before changing behavior:
@@ -93,7 +120,7 @@ Planning rule for multi-file or core changes:
 ## 6. Working Defaults
 
 - verify the current code path before changing behavior
-- prefer explicit owner boundaries over extra abstraction layers; do not introduce `bridge` / `facade` / `wrapper` / `adapter` shells without a real owner boundary, protocol seam, lifecycle split, or concrete replacement need
+- apply the abstraction test above; do not introduce `bridge` / `facade` / `wrapper` / `adapter` shells without a real owner boundary, protocol seam, lifecycle split, or concrete replacement need
 - judge refactors by visibility, owner clarity, dependency surface, and whether the mainline becomes easier to reason about; a large internal orchestrator is acceptable when ownership stays explicit and splitting it would only fragment the mainline
 - prefer logs, traces, and bounded diagnostics over model-coupled realtime observability
 - prefer E2E or integration coverage for lifecycle changes

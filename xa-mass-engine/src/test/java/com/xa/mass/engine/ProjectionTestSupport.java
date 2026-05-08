@@ -191,6 +191,32 @@ final class ProjectionTestSupport {
         );
     }
 
+    static TaskDetailStore.TaskMessageProjection withMaxRetryCount(TaskDetailStore.TaskMessageProjection projection,
+                                                                   int maxRetryCount) {
+        return new TaskDetailStore.TaskMessageProjection(
+                projection.messageId(),
+                projection.taskId(),
+                projection.input(),
+                projection.payloadRef(),
+                projection.status(),
+                projection.assignedTime(),
+                projection.createTime(),
+                projection.updateTime(),
+                projection.startTime(),
+                projection.completeTime(),
+                projection.retryCount(),
+                maxRetryCount,
+                projection.errorMessage(),
+                projection.errorCode(),
+                projection.finalReason(),
+                projection.output(),
+                projection.latestAttemptId(),
+                projection.latestAttemptWorkerId(),
+                projection.latestAttemptWorkerContextId(),
+                projection.latestAttemptBatchId()
+        );
+    }
+
     static TaskDetailStore.TaskMessageAttemptProjection attempt(String attemptId,
                                                                 String taskId,
                                                                 String messageId,

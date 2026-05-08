@@ -24,7 +24,18 @@ flows, commands, and module-local inventories.
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
 - process-local EventBus bridging is optional shell wiring, not default engine runtime truth
 
-Canonical slots:
+Current owner vocabulary:
+
+- `Task` is the task/control aggregate truth
+- `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
+  and result application
+- `TaskMsg` / `TaskMsgAttempt` remain stable kernel vocabulary plus bounded
+  compatibility/audit vocabulary; do not assume they are still the runtime
+  owner shape
+- `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
+  storage-edge compatibility residue shapes
+
+Stable kernel slots:
 
 - worker: `Worker`
 - optional worker context: `WorkerContext`
@@ -39,7 +50,7 @@ Keep one canonical truth per layer:
 
 - HTTP API: typed controller-edge DTOs plus `ApiResponse<T>`
 - SDK API: `MassTaskShellCreateRequest`, `MassTaskItemBatchAppendRequest`, `EventDefinition`
-- engine/core: `Task`, `TaskMsg`, `TaskMsgAttempt`, matching, lifecycle, and terminal semantics
+- engine/core: `Task` aggregate truth plus matching, lifecycle, terminal semantics, and bounded `TaskMsg` / `TaskMsgAttempt` compatibility vocabulary
 - transport runtime: transport-neutral dispatch/result/system-event seams
 - adapter layer: protocol-specific frame I/O and adapter-local codec only
 
@@ -53,6 +64,8 @@ Boundary rules:
 
 ## 4. Mainline Reality
 
+- current mainline execution path:
+  - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
 - real Boot entry: `xa-mass-server`
 - embedded runtime composition: `xa-mass-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions
@@ -71,6 +84,25 @@ Boundary rules:
   - `xa-mass-testing` for `perf`
   - `xa-mass-engine` for `concurrency`
   - `xa-mass-server` for Boot-shell `E2E`
+
+Fast code verification path for new agents:
+
+Read these before inferring architecture from historical vocabulary:
+
+1. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
+2. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskLifecycleService.java`
+3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java`
+4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java`
+5. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
+
+Read them to verify three things quickly:
+
+- runtime admission happens through `TaskWorkRuntime`, not through a
+  task-message CRUD mainline
+- callback/expiry/result convergence is runtime-first, with compatibility
+  projection written afterward as bounded residue
+- bounded message/attempt reads live behind explicit compatibility surfaces and
+  are not the default engine query model
 
 ## 5. Current Contract Summary
 

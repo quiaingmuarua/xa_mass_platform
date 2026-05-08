@@ -23,6 +23,10 @@ It solves one recurring kernel problem: match a batch of structured work items
 (`TaskMsg`) to a batch of heterogeneous, stateful workers, track each result,
 and converge task-level completion state.
 
+Current mainline execution path:
+
+- `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
+
 Common scenarios include IM bots, crawlers, LLM agents, and device/RPA workers.
 The shared kernel is:
 
@@ -43,6 +47,7 @@ The shared kernel is:
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; `TaskMsg.input/output` are per-item payload boundaries
+- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and result application; `TaskMsg` / `TaskMsgAttempt` remain bounded compatibility/audit vocabulary
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 
 ## Module Map

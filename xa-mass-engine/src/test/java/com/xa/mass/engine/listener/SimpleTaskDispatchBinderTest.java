@@ -285,7 +285,7 @@ class SimpleTaskDispatchBinderTest {
 
         assertEquals(3, dispatched.size());
         assertEquals(0, trackingStorage.taskMessageReadCount.get(),
-                "dispatch should synchronize compatibility status without reading TaskMsg projection first");
+                "dispatch should synchronize compatibility status without reading message projection first");
     }
 
     @Test
