@@ -10,10 +10,8 @@ import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.junit.jupiter.api.Test;
@@ -335,7 +333,7 @@ class MockRuntimeDataLoaderTest {
         private final List<WorkerContext> workerContexts = new ArrayList<>();
         private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
         private final List<WorkerContextRegistration> registeredWorkerContexts = new ArrayList<>();
-        private final List<MassTaskCreateRequest> createdTasks = new ArrayList<>();
+        private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
         private final List<RuleDefinition> rules = new ArrayList<>();
 
         @Override
@@ -387,18 +385,10 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public Task createTaskShell(MassTaskShellCreateRequest request) {
-            return new Task();
-        }
-
-        @Override
-        public Task createTask(MassTaskCreateRequest request) {
             createdTasks.add(request);
-            return new Task();
-        }
-
-        @Override
-        public Task createTask(MassTaskRequest request) {
-            return new Task();
+            Task task = new Task();
+            task.setTid("task-" + createdTasks.size());
+            return task;
         }
 
         @Override

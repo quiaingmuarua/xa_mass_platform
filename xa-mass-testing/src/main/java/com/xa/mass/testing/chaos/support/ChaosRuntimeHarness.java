@@ -10,7 +10,6 @@ import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -124,40 +123,35 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public Task createApprovedTask(TaskCreateSpec spec) {
-        Task task = createTask(MassTaskCreateRequest.builder()
+        Task task = createTask(
+                MassTaskShellCreateRequest.builder()
                 .userId(spec.userId())
                 .project(spec.projectCode())
                 .taskName(spec.taskName())
                 .sharedConfig(spec.sharedConfig())
-                .inputs(spec.inputs())
                 .batchSize(spec.batchSize())
-                .defaultMsgMaxRetryCount(spec.defaultMsgMaxRetryCount())
-                .openEnded(false)
                 .maxRuntimeSeconds(spec.maxRuntimeSeconds())
-                .build());
+                .build(),
+                new ArrayList<>(spec.inputs()),
+                spec.defaultMsgMaxRetryCount(),
+                false
+        );
         ChaosSupport.require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
         return task;
     }
 
-    private Task createTask(MassTaskCreateRequest request) {
-        Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
-                .userId(request.getUserId())
-                .project(request.getProject())
-                .taskName(request.getTaskName())
-                .sharedConfig(request.getSharedConfig())
-                .batchSize(request.getBatchSize())
-                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                .sourceType(request.getSourceType())
-                .workloadClass(request.getWorkloadClass())
-                .sourceRef(request.getSourceRef())
-                .build());
-        if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+    private Task createTask(MassTaskShellCreateRequest request,
+                            List<Object> items,
+                            int defaultMsgMaxRetryCount,
+                            boolean keepIntakeOpen) {
+        Task task = app.createTaskShell(request);
+        if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
-                    .items(new ArrayList<>(request.getInputs()))
-                    .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                    .items(items)
+                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
         }
-        if (!request.isOpenEnded()) {
+        if (!keepIntakeOpen) {
             ChaosSupport.require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
         }
         return app.getTask(task.getTid());

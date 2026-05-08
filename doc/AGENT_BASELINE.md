@@ -38,7 +38,7 @@ Canonical slots:
 Keep one canonical truth per layer:
 
 - HTTP API: typed controller-edge DTOs plus `ApiResponse<T>`
-- SDK API: `MassTaskCreateRequest`, `MassTaskRequest`, `EventDefinition`
+- SDK API: `MassTaskShellCreateRequest`, `MassTaskItemBatchAppendRequest`, `EventDefinition`
 - engine/core: `Task`, `TaskMsg`, `TaskMsgAttempt`, matching, lifecycle, and terminal semantics
 - transport runtime: transport-neutral dispatch/result/system-event seams
 - adapter layer: protocol-specific frame I/O and adapter-local codec only

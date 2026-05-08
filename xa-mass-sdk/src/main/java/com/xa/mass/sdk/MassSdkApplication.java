@@ -943,71 +943,25 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (definition.getHandler() != null) {
             return definition.getHandler();
         }
-        return (request, principal) -> dispatchCatalogTaskEvent(request, principal, definition);
+        return (request, principal) -> unsupportedCatalogTaskEvent(request, definition);
     }
 
-    private EventResponse dispatchCatalogTaskEvent(EventRequest request,
-                                                   PrincipalContext principal,
-                                                   EventDefinition definition) {
-        MassTaskRequest taskRequest = TaskOwnershipSupport.stamp(
-                resolveTaskRequest(request, principal, definition),
-                principal == null ? internalPrincipal(null) : principal
-        );
-        validateTaskCatalogContract(taskRequest);
-        Task task = materializeCompatibilityTask(
-                taskRequest.getUserId(),
-                taskRequest.getProject(),
-                taskRequest.getTaskName(),
-                taskRequest.getEventCode(),
-                MassTaskRequestMapper.withSdkMetadata(taskRequest),
-                taskRequest.getBatchSize(),
-                taskRequest.getMaxRuntimeSeconds(),
-                taskRequest.getSourceType(),
-                taskRequest.getWorkloadClass(),
-                taskRequest.getSourceRef(),
-                taskRequest.toEngineInputs(),
-                taskRequest.getDefaultMsgMaxRetryCount(),
-                taskRequest.isStreaming()
-        );
-        return EventResponse.success(task, request.getRequestId());
-    }
-
-    private Task materializeCompatibilityTask(String userId,
-                                              String project,
-                                              String taskName,
-                                              String eventCode,
-                                              Map<String, Object> sharedConfig,
-                                              int batchSize,
-                                              int maxRuntimeSeconds,
-                                              com.xa.mass.base.enums.task.TaskSourceType sourceType,
-                                              com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
-                                              String sourceRef,
-                                              List<Map<String, Object>> inputs,
-                                              int defaultMsgMaxRetryCount,
-                                              boolean keepIntakeOpen) {
-        Task task = createTaskShell(MassTaskShellCreateRequest.builder()
-                .userId(userId)
-                .project(project)
-                .taskName(taskName)
-                .eventCode(eventCode)
-                .sharedConfig(sharedConfig)
-                .batchSize(batchSize)
-                .maxRuntimeSeconds(maxRuntimeSeconds)
-                .sourceType(sourceType)
-                .workloadClass(workloadClass)
-                .sourceRef(sourceRef)
-                .build());
-        if (inputs != null && !inputs.isEmpty()) {
-            requireStartedTaskCommands().appendTaskItems(
-                    task.getTid(),
-                    inputs,
-                    defaultMsgMaxRetryCount
+    private EventResponse unsupportedCatalogTaskEvent(EventRequest request, EventDefinition definition) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(definition, "definition");
+        if (!definition.getTaskModes().isEmpty()) {
+            return EventResponse.failure(
+                    "TASK_BACKED_EVENT_REQUIRES_TASK_API",
+                    "Task-backed event " + definition.getCode()
+                            + " must use createTaskShell + appendTaskItems + sealTask instead of dispatchEvent",
+                    request.getRequestId()
             );
         }
-        if (!keepIntakeOpen) {
-            requireStartedTaskCommands().sealTask(task.getTid());
-        }
-        return requireStartedTaskQueries().getTask(task.getTid());
+        return EventResponse.failure(
+                "EVENT_HANDLER_NOT_REGISTERED",
+                "No runtime event handler registered for event: " + definition.getCode(),
+                request.getRequestId()
+        );
     }
 
     private List<Map<String, Object>> convertAppendItems(Task task, List<Object> rawItems) {
@@ -1073,38 +1027,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             copy.put(String.valueOf(entry.getKey()), entry.getValue());
         }
         return Collections.unmodifiableMap(copy);
-    }
-
-    private MassTaskRequest resolveTaskRequest(EventRequest request,
-                                               PrincipalContext principal,
-                                               EventDefinition definition) {
-        Object embeddedRequest = request.getPayload().get("request");
-        if (embeddedRequest instanceof MassTaskRequest massTaskRequest) {
-            return massTaskRequest;
-        }
-
-        Map<String, Object> payload = request.getPayload();
-        Map<String, String> headers = request.getHeaders();
-        TaskMode mode = parseTaskMode(headers.get("taskMode"), definition);
-        PayloadType payloadType = parsePayloadType(headers.get("payloadType"), definition);
-        MassTaskRequest.Builder builder = MassTaskRequest.builder()
-                .userId(firstNonBlank(headers.get("userId"), principal == null ? null : principal.getUserId()))
-                .project(request.getProject())
-                .taskName(firstNonBlank(headers.get("taskName"), request.getEvent().value()))
-                .eventCode(request.getEvent().value())
-                .mode(mode)
-                .payloadType(payloadType)
-                .sharedConfig(resolveSharedConfig(payload, headers))
-                .batchSize(readInt(headers.get("batchSize"), 1))
-                .defaultMsgMaxRetryCount(readInt(headers.get("defaultMsgMaxRetryCount"), 3))
-                .maxRuntimeSeconds(readInt(headers.get("maxRuntimeSeconds"), 0));
-
-        if (payloadType == PayloadType.TEXT) {
-            builder.inputs(resolveTextInputs(payload));
-        } else {
-            builder.inputs(resolveJsonInputs(payload));
-        }
-        return builder.build();
     }
 
     private Map<String, Object> resolveSharedConfig(Map<String, Object> payload, Map<String, String> headers) {
@@ -1770,42 +1692,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "inputQueueRate", 0,
                 "outputQueueRate", 0
         );
-    }
-
-    private void validateTaskCatalogContract(MassTaskRequest request) {
-        Objects.requireNonNull(request, "request");
-        ProjectMetadata projectMetadata = bootstrapProjectCatalogRegistry.getProject(request.getProject());
-        if (projectMetadata == null) {
-            throw new IllegalArgumentException("Unsupported SDK project: " + request.getProject());
-        }
-        if (!projectMetadata.isEnabled()) {
-            throw new IllegalArgumentException("SDK project is disabled: " + request.getProject());
-        }
-        String eventCode = request.getEventCode();
-        if (eventCode == null || eventCode.isBlank()) {
-            return;
-        }
-        EventDefinition definition = getEvent(eventCode);
-        if (definition == null) {
-            throw new IllegalArgumentException("Unsupported SDK event: " + eventCode);
-        }
-        if (!definition.isEnabled()) {
-            throw new IllegalArgumentException("SDK event is disabled: " + eventCode);
-        }
-        if (definition.getProjectCodes().isEmpty() || !definition.getProjectCodes().contains(request.getProject())) {
-            throw new IllegalArgumentException("SDK project " + request.getProject()
-                    + " does not support event: " + eventCode);
-        }
-        if (!definition.getPayloadTypes().isEmpty()
-                && !definition.getPayloadTypes().contains(request.getPayloadType())) {
-            throw new IllegalArgumentException("SDK event " + eventCode
-                    + " does not support payload type: " + request.getPayloadType());
-        }
-        if (!definition.getTaskModes().isEmpty()
-                && !definition.getTaskModes().contains(request.getMode())) {
-            throw new IllegalArgumentException("SDK event " + eventCode
-                    + " does not support task mode: " + request.getMode());
-        }
     }
 
     /**

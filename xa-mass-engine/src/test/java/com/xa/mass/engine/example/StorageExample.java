@@ -10,8 +10,8 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
+import com.xa.mass.engine.monkey.MonkeyGenerator.TaskFixture;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -127,7 +127,7 @@ public class StorageExample {
         }
 
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
+        List<TaskFixture> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
         var ruleManager = RuleManagerFactory.getProjectRuleManager(new InMemoryRuleStorage(), "demoApp");
@@ -149,7 +149,7 @@ public class StorageExample {
                 taskManager.events()
         );
 
-        for (TaskCreateRequestDto dto : taskDtos) {
+        for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
             log.info("Testing task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
@@ -214,10 +214,10 @@ public class StorageExample {
         }
 
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
+        List<TaskFixture> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        for (TaskCreateRequestDto dto : taskDtos) {
+        for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
             log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
@@ -296,10 +296,10 @@ public class StorageExample {
         }
 
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
+        List<TaskFixture> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        for (TaskCreateRequestDto dto : taskDtos) {
+        for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
             log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
@@ -343,7 +343,7 @@ public class StorageExample {
         log.info("=== testMockAppActualRun complete ===");
     }
 
-    private static String routingCode(TaskCreateRequestDto dto) {
+    private static String routingCode(TaskFixture dto) {
         return TaskSharedConfig.stringValue(
                 dto != null ? dto.getSharedConfig() : Map.of(),
                 TaskSharedConfig.ROUTING_CODE

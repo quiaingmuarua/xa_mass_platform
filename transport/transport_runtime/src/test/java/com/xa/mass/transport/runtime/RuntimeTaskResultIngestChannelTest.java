@@ -14,7 +14,6 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskMessageAttemptSupport;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -401,25 +400,19 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private RunningTaskFixture createRunningTask(String taskName, boolean persistAttemptResidue) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setTaskName(taskName);
-        dto.setProject("demoApp");
-        dto.setSharedConfig(java.util.Map.of(
+        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+        shell.setTaskName(taskName);
+        shell.setProject("demoApp");
+        shell.setSharedConfig(java.util.Map.of(
                 "textContent", "hello",
                 "routingCode", "us",
                 "_sdk", java.util.Map.of("eventCode", "crawler.fetch-page")
         ));
-        dto.setUserId("agent");
-        dto.setBatchSize(1);
-        dto.setInputs(List.of(Map.of("target", "alpha")));
-        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setTaskName(dto.getTaskName());
-        shell.setProject(dto.getProject());
-        shell.setSharedConfig(dto.getSharedConfig());
-        shell.setUserId(dto.getUserId());
-        shell.setBatchSize(dto.getBatchSize());
+        shell.setUserId("agent");
+        shell.setBatchSize(1);
+        List<Map<String, Object>> inputs = List.of(Map.of("target", "alpha"));
         Task task = taskCommands.createTaskShell(shell);
-        taskCommands.appendTaskItems(task.getTid(), dto.getInputs(), dto.getDefaultMsgMaxRetryCount());
+        taskCommands.appendTaskItems(task.getTid(), inputs, 3);
         assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);

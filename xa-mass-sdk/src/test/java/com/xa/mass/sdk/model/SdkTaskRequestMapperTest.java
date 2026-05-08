@@ -2,10 +2,9 @@ package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,38 +12,43 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class SdkTaskRequestMapperTest {
 
     @Test
-    void massTaskCreateRequestMapsExplicitWorkloadClass() {
-        MassTaskCreateRequest request = MassTaskCreateRequest.builder()
+    void massTaskShellCreateRequestMapsExplicitWorkloadClass() {
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
                 .taskName("interactive-task")
-                .inputs(List.of(Map.of("target", "alpha")))
+                .eventCode("interactive.run")
+                .sharedConfig(Map.of("source", "sdk"))
                 .sourceType(TaskSourceType.BATCH)
                 .workloadClass(TaskWorkloadClass.INTERACTIVE)
                 .build();
 
-        TaskCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
+        TaskShellCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
 
         assertEquals(TaskWorkloadClass.INTERACTIVE, dto.getWorkloadClass());
         assertEquals(TaskSourceType.BATCH, dto.getSourceType());
+        assertEquals("interactive.run",
+                ((Map<?, ?>) dto.getSharedConfig().get("_sdk")).get("eventCode"));
     }
 
     @Test
-    void massTaskRequestMapsExplicitWorkloadClass() {
-        MassTaskRequest request = MassTaskRequest.builder()
+    void massTaskShellCreateRequestPreservesSharedConfig() {
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
                 .taskName("bulk-task")
                 .eventCode("crawler.fetch-page")
-                .jsonInputs(List.of(Map.of("url", "https://example.test")))
                 .sourceType(TaskSourceType.STREAM)
                 .workloadClass(TaskWorkloadClass.BULK)
+                .sharedConfig(Map.of("_sdk", Map.of("eventCode", "crawler.fetch-page")))
                 .build();
 
-        TaskCreateRequestDto dto = MassTaskRequestMapper.toEngineRequest(request);
+        TaskShellCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
 
         assertEquals(TaskWorkloadClass.BULK, dto.getWorkloadClass());
         assertEquals(TaskSourceType.STREAM, dto.getSourceType());
+        assertEquals("crawler.fetch-page",
+                ((Map<?, ?>) dto.getSharedConfig().get("_sdk")).get("eventCode"));
     }
 }
 

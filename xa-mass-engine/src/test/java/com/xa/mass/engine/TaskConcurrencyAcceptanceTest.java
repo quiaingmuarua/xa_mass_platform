@@ -6,10 +6,9 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.engine.testutil.TaskCreateRequestMaterializer;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -453,25 +452,20 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private Task createRunningTask(ProjectionAwareTaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
-        Task task = TaskCreateRequestMaterializer.materialize(
-                manager,
-                buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount)
-        );
+        Task task = createTask(manager, buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount));
         assertTrue(manager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
         assertTrue(manager.updateTask(task));
         return task;
     }
 
-    private TaskCreateRequestDto buildRequestWithRetry(String taskName, int defaultMsgMaxRetryCount) {
-        TaskCreateRequestDto dto = buildRequestWithRetry(taskName, 1, defaultMsgMaxRetryCount);
-        return dto;
+    private TaskCreateSpec buildRequestWithRetry(String taskName, int defaultMsgMaxRetryCount) {
+        return buildRequestWithRetry(taskName, 1, defaultMsgMaxRetryCount);
     }
 
-    private TaskCreateRequestDto buildRequestWithRetry(String taskName, int messageCount, int defaultMsgMaxRetryCount) {
-        TaskCreateRequestDto dto = buildRequest(taskName, messageCount);
-        dto.setDefaultMsgMaxRetryCount(defaultMsgMaxRetryCount);
-        return dto;
+    private TaskCreateSpec buildRequestWithRetry(String taskName, int messageCount, int defaultMsgMaxRetryCount) {
+        TaskCreateSpec dto = buildRequest(taskName, messageCount);
+        return new TaskCreateSpec(dto.shell(), dto.inputs(), defaultMsgMaxRetryCount);
     }
 
     private void registerCounts(String taskId,
@@ -495,26 +489,40 @@ class TaskConcurrencyAcceptanceTest {
         });
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName) {
+    private TaskCreateSpec buildRequest(String taskName) {
         return buildRequest(taskName, 1);
     }
 
-    private TaskCreateRequestDto buildRequest(String taskName, int messageCount) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setTaskName(taskName);
-        dto.setProject("demoApp");
-        dto.setSharedConfig(Map.of("textContent", "concurrency", "routingCode", "us"));
-        dto.setUserId("agent");
-        dto.setInputs(java.util.stream.IntStream.range(0, messageCount)
+    private TaskCreateSpec buildRequest(String taskName, int messageCount) {
+        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+        shell.setTaskName(taskName);
+        shell.setProject("demoApp");
+        shell.setSharedConfig(Map.of("textContent", "concurrency", "routingCode", "us"));
+        shell.setUserId("agent");
+        shell.setBatchSize(1);
+        List<Map<String, Object>> inputs = java.util.stream.IntStream.range(0, messageCount)
                 .mapToObj(index -> Map.<String, Object>of("target", "alpha-" + index))
-                .toList());
-        dto.setBatchSize(1);
-        return dto;
+                .toList();
+        return new TaskCreateSpec(shell, inputs, 3);
+    }
+
+    private Task createTask(ProjectionAwareTaskManager manager, TaskCreateSpec request) {
+        Task task = manager.createTaskShell(request.shell());
+        if (!request.inputs().isEmpty()) {
+            manager.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
+        }
+        assertTrue(manager.sealTask(task.getTid()));
+        return manager.getTask(task.getTid());
     }
 
     private TaskDetailStore.TaskMessageProjection assignMessage(Task task,
                                                                 TaskDetailStore.TaskMessageProjection message) {
         return assignMessage(taskManager, task, message);
+    }
+
+    private record TaskCreateSpec(TaskShellCreateRequestDto shell,
+                                  List<Map<String, Object>> inputs,
+                                  int defaultMsgMaxRetryCount) {
     }
 
     private TaskDetailStore.TaskMessageProjection assignMessage(ProjectionAwareTaskManager manager,

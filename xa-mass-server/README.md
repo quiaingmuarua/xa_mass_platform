@@ -129,7 +129,7 @@ Current fixture behavior:
 - worker JSON entries are mapped to `WorkerRegistration`
 - worker-context JSON entries are mapped to `WorkerContextRegistration`
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
-- task JSON remains test-fixture compatibility input and currently maps to `MassTaskCreateRequest`
+- task JSON fixture bootstrap currently still carries aggregate test input and is pending migration to shell-create plus item-batch fixture shape
 - rule JSON continues to replace default rules when non-empty
 - default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
 

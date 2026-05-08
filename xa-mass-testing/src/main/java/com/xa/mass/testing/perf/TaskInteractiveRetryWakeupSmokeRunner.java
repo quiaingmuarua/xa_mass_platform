@@ -21,7 +21,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -280,16 +279,15 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private static TaskCreateRequestDto buildBulkRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("bulk-retry-wakeup-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("retry-wakeup-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.BULK);
-            dto.setBatchSize(config.bulkBatchSize());
-            dto.setInputs(buildInputs("bulk", config.bulkMessages()));
-            dto.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
-            return dto;
+        private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setTaskName("bulk-retry-wakeup-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("retry-wakeup-smoke");
+            shell.setWorkloadClass(TaskWorkloadClass.BULK);
+            shell.setBatchSize(config.bulkBatchSize());
+            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
+            return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), 3, false);
         }
 
         private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
@@ -302,38 +300,32 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             return engineConfig;
         }
 
-        private static TaskCreateRequestDto buildInteractiveRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("interactive-retry-wakeup-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("retry-wakeup-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            dto.setBatchSize(1);
-            dto.setDefaultMsgMaxRetryCount(1);
-            dto.setInputs(buildInputs("interactive", 1));
-            dto.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
-            return dto;
+        private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setTaskName("interactive-retry-wakeup-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("retry-wakeup-smoke");
+            shell.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            shell.setBatchSize(1);
+            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
+            return new TaskCreatePlan(shell, buildInputs("interactive", 1), 1, false);
         }
 
-        private static Task materializeTask(TaskCommandService taskCommands, TaskCreateRequestDto request) {
-            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName(request.getTaskName());
-            shell.setProject(request.getProject());
-            shell.setSharedConfig(request.getSharedConfig());
-            shell.setUserId(request.getUserId());
-            shell.setBatchSize(request.getBatchSize());
-            shell.setWorkloadClass(request.getWorkloadClass());
-            shell.setSourceType(request.getSourceType());
-            shell.setSourceRef(request.getSourceRef());
-            shell.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-            Task task = taskCommands.createTaskShell(shell);
-            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
-                taskCommands.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
+            Task task = taskCommands.createTaskShell(request.shell());
+            if (!request.inputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
             }
-            if (!request.isOpenEnded()) {
+            if (!request.openEnded()) {
                 require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
             }
             return task;
+        }
+
+        private record TaskCreatePlan(TaskShellCreateRequestDto shell,
+                                      List<Map<String, Object>> inputs,
+                                      int defaultMsgMaxRetryCount,
+                                      boolean openEnded) {
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {

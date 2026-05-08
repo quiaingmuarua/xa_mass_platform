@@ -20,7 +20,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -265,38 +264,32 @@ public final class TaskFlowLoadModelRunner {
             }
         }
 
-        private static TaskCreateRequestDto buildRequest(LoadConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("task-flow-load-model");
-            dto.setProject("demoApp");
-            dto.setUserId("load-model");
-            dto.setBatchSize(config.batchSize());
-            dto.setDefaultMsgMaxRetryCount(config.maxRetryCount());
-            dto.setWorkloadClass(config.workloadClass());
-            dto.setInputs(buildInputs(config.messageCount()));
-            dto.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
-            return dto;
+        private static TaskCreatePlan buildRequest(LoadConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setTaskName("task-flow-load-model");
+            shell.setProject("demoApp");
+            shell.setUserId("load-model");
+            shell.setBatchSize(config.batchSize());
+            shell.setWorkloadClass(config.workloadClass());
+            shell.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
+            return new TaskCreatePlan(shell, buildInputs(config.messageCount()), config.maxRetryCount(), false);
         }
 
-        private static Task materializeTask(TaskCommandService taskCommands, TaskCreateRequestDto request) {
-            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName(request.getTaskName());
-            shell.setProject(request.getProject());
-            shell.setSharedConfig(request.getSharedConfig());
-            shell.setUserId(request.getUserId());
-            shell.setBatchSize(request.getBatchSize());
-            shell.setWorkloadClass(request.getWorkloadClass());
-            shell.setSourceType(request.getSourceType());
-            shell.setSourceRef(request.getSourceRef());
-            shell.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-            Task task = taskCommands.createTaskShell(shell);
-            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
-                taskCommands.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
+            Task task = taskCommands.createTaskShell(request.shell());
+            if (!request.inputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
             }
-            if (!request.isOpenEnded()) {
+            if (!request.openEnded()) {
                 require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
             }
             return task;
+        }
+
+        private record TaskCreatePlan(TaskShellCreateRequestDto shell,
+                                      List<Map<String, Object>> inputs,
+                                      int defaultMsgMaxRetryCount,
+                                      boolean openEnded) {
         }
 
         private static EngineConfig buildEngineConfig(InstrumentedTaskStorage taskStorage,

@@ -182,7 +182,6 @@ The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
 - mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
-- compatibility aggregate create operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`
 - audit and compatibility diagnostics after `start()`: bounded `getTaskMessageSnapshot(..., limit)`, `resolveTaskState(...)`, and `validateTaskState(...)`
 - explicit compatibility detail after `start()`: `getTaskMessageView(...)`, `getTaskMessageAttemptViews(...)`, `getLatestActiveTaskMessageAttemptView(...)`; these are SDK-owned residue views bridged from internal compatibility projections rather than public engine/base models
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
@@ -195,7 +194,7 @@ Current SDK contracts:
 
 | Area | Contract |
 | --- | --- |
-| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; `MassTaskCreateRequest` and `MassTaskRequest` remain compatibility aggregate create surfaces |
+| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; task-backed event definitions are metadata plus permission contracts, not an implicit aggregate create API |
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
@@ -208,9 +207,7 @@ For embedded runtime wiring, keep the mainline on storage/runtime contracts
 such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
 `workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
-SDK compatibility task creation now maps onto the neutral base
-`TaskCreateRequestDto`; shell-mainline SDK create maps onto
-`TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
+Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly
 instead of carrying `RuleManager` as the default outer-layer dependency.

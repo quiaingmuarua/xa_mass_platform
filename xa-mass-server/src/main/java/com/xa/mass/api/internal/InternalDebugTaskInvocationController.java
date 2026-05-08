@@ -23,7 +23,6 @@ import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;

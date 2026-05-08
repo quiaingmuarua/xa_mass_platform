@@ -5,7 +5,8 @@ import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -90,13 +91,19 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         try {
             waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
 
-            var task = app.createTask(MassTaskRequest.singleRun("crawlerApp", "crawler-fetch-page")
-                    .userId("crawler-agent")
-                    .eventCode("crawler.fetch-page")
-                    .sharedConfig(Map.of("routingCode", "us"))
-                    .jsonInputs(List.of(Map.of("url", "https://example.test/page-1")))
-                    .batchSize(1)
-                    .build());
+            var task = createTask(
+                    MassTaskShellCreateRequest.builder()
+                            .userId("crawler-agent")
+                            .project("crawlerApp")
+                            .taskName("crawler-fetch-page")
+                            .eventCode("crawler.fetch-page")
+                            .sharedConfig(Map.of("routingCode", "us"))
+                            .batchSize(1)
+                            .build(),
+                    List.of(Map.of("url", "https://example.test/page-1")),
+                    3,
+                    false
+            );
 
             assertTrue(app.approveTask(task.getTid()));
 
@@ -136,6 +143,23 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         }
 
         waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must mark the worker offline");
+    }
+
+    private com.xa.mass.base.model.Task createTask(MassTaskShellCreateRequest request,
+                                                   List<Object> items,
+                                                   int defaultMsgMaxRetryCount,
+                                                   boolean keepIntakeOpen) {
+        com.xa.mass.base.model.Task task = app.createTaskShell(request);
+        if (items != null && !items.isEmpty()) {
+            app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .items(items)
+                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
+                    .build());
+        }
+        if (!keepIntakeOpen) {
+            assertTrue(app.sealTask(task.getTid()));
+        }
+        return app.getTask(task.getTid());
     }
 
     private RuleDefinition rule(String id, String content) {

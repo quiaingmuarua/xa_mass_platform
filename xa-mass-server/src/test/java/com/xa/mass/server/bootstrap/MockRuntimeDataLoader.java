@@ -3,9 +3,11 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.xa.mass.base.enums.task.TaskSourceType;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
+import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
@@ -153,13 +155,13 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private void loadTasks(MassRuntimeControl runtime) {
-        TaskCreateRequestDto[] dtos = readConfig(taskConfigPath, TaskCreateRequestDto[].class);
+        BootstrapTaskFixture[] dtos = readConfig(taskConfigPath, BootstrapTaskFixture[].class);
         if (dtos == null) return;
         if (dtos.length == 0) {
             logger.info("Task config is empty, no bootstrap tasks [path={}]", taskConfigPath);
             return;
         }
-        for (TaskCreateRequestDto dto : dtos) {
+        for (BootstrapTaskFixture dto : dtos) {
             Task task = runtime.createTaskShell(toShellCreateRequest(dto));
             if (dto.getInputs() != null && !dto.getInputs().isEmpty()) {
                 runtime.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
@@ -315,7 +317,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private MassTaskShellCreateRequest toShellCreateRequest(TaskCreateRequestDto dto) {
+    private MassTaskShellCreateRequest toShellCreateRequest(BootstrapTaskFixture dto) {
         return MassTaskShellCreateRequest.builder()
                 .userId(dto.getUserId())
                 .project(dto.getProject())
@@ -327,6 +329,117 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .workloadClass(dto.getWorkloadClass())
                 .sourceRef(dto.getSourceRef())
                 .build();
+    }
+
+    private static final class BootstrapTaskFixture {
+        private String userId;
+        private String project;
+        private String taskName;
+        private java.util.Map<String, Object> sharedConfig;
+        private java.util.List<java.util.Map<String, Object>> inputs;
+        private int batchSize;
+        private int defaultMsgMaxRetryCount = 3;
+        private boolean openEnded;
+        private int maxRuntimeSeconds;
+        private TaskSourceType sourceType;
+        private TaskWorkloadClass workloadClass;
+        private String sourceRef;
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        public String getProject() {
+            return project;
+        }
+
+        public void setProject(String project) {
+            this.project = project;
+        }
+
+        public String getTaskName() {
+            return taskName;
+        }
+
+        public void setTaskName(String taskName) {
+            this.taskName = taskName;
+        }
+
+        public java.util.Map<String, Object> getSharedConfig() {
+            return sharedConfig;
+        }
+
+        public void setSharedConfig(java.util.Map<String, Object> sharedConfig) {
+            this.sharedConfig = sharedConfig;
+        }
+
+        public java.util.List<java.util.Map<String, Object>> getInputs() {
+            return inputs;
+        }
+
+        public void setInputs(java.util.List<java.util.Map<String, Object>> inputs) {
+            this.inputs = inputs;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public int getDefaultMsgMaxRetryCount() {
+            return defaultMsgMaxRetryCount;
+        }
+
+        public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
+            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+        }
+
+        public boolean isOpenEnded() {
+            return openEnded;
+        }
+
+        public void setOpenEnded(boolean openEnded) {
+            this.openEnded = openEnded;
+        }
+
+        public int getMaxRuntimeSeconds() {
+            return maxRuntimeSeconds;
+        }
+
+        public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+            this.maxRuntimeSeconds = maxRuntimeSeconds;
+        }
+
+        public TaskSourceType getSourceType() {
+            return sourceType;
+        }
+
+        public void setSourceType(TaskSourceType sourceType) {
+            this.sourceType = sourceType;
+        }
+
+        public TaskWorkloadClass getWorkloadClass() {
+            return workloadClass;
+        }
+
+        public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+            this.workloadClass = workloadClass;
+        }
+
+        public String getSourceRef() {
+            return sourceRef;
+        }
+
+        public void setSourceRef(String sourceRef) {
+            this.sourceRef = sourceRef;
+        }
     }
 }
 

@@ -14,7 +14,6 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -309,47 +308,45 @@ public final class SdkTransportLoadRunner {
             return active;
         }
 
-        private MassTaskCreateRequest buildTaskRequest(int taskIndex) {
-            return MassTaskCreateRequest.builder()
-                    .userId("sdk-load")
-                    .project("demoApp")
-                    .taskName("sdk-transport-load-" + taskIndex)
-                    .workloadClass(config.workloadClass())
-                    .sharedConfig(Map.of(
-                            "source", "SdkTransportLoadRunner",
-                            "taskIndex", taskIndex,
-                            "routingCode", "us"
-                    ))
-                    .inputs(buildInputs(taskIndex))
-                    .batchSize(config.batchSize())
-                    .defaultMsgMaxRetryCount(config.maxRetryCount())
-                    .openEnded(false)
-                    .maxRuntimeSeconds(config.timeoutSeconds())
-                    .build();
+        private TaskCreateSpec buildTaskRequest(int taskIndex) {
+            return new TaskCreateSpec(
+                    MassTaskShellCreateRequest.builder()
+                            .userId("sdk-load")
+                            .project("demoApp")
+                            .taskName("sdk-transport-load-" + taskIndex)
+                            .workloadClass(config.workloadClass())
+                            .sharedConfig(Map.of(
+                                    "source", "SdkTransportLoadRunner",
+                                    "taskIndex", taskIndex,
+                                    "routingCode", "us"
+                            ))
+                            .batchSize(config.batchSize())
+                            .maxRuntimeSeconds(config.timeoutSeconds())
+                            .build(),
+                    new ArrayList<>(buildInputs(taskIndex)),
+                    config.maxRetryCount(),
+                    false
+            );
         }
 
-        private Task createTask(MassSdkApplication app, MassTaskCreateRequest request) {
-            Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
-                    .userId(request.getUserId())
-                    .project(request.getProject())
-                    .taskName(request.getTaskName())
-                    .sharedConfig(request.getSharedConfig())
-                    .batchSize(request.getBatchSize())
-                    .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                    .sourceType(request.getSourceType())
-                    .workloadClass(request.getWorkloadClass())
-                    .sourceRef(request.getSourceRef())
-                    .build());
-            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+        private Task createTask(MassSdkApplication app, TaskCreateSpec request) {
+            Task task = app.createTaskShell(request.shell());
+            if (request.items() != null && !request.items().isEmpty()) {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
-                        .items(new ArrayList<>(request.getInputs()))
-                        .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                        .items(request.items())
+                        .defaultMsgMaxRetryCount(request.defaultMsgMaxRetryCount())
                         .build());
             }
-            if (!request.isOpenEnded()) {
+            if (!request.keepIntakeOpen()) {
                 require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
             }
             return app.getTask(task.getTid());
+        }
+
+        private record TaskCreateSpec(MassTaskShellCreateRequest shell,
+                                      List<Object> items,
+                                      int defaultMsgMaxRetryCount,
+                                      boolean keepIntakeOpen) {
         }
 
         private List<Map<String, Object>> buildInputs(int taskIndex) {

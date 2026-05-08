@@ -2,9 +2,10 @@ package com.xa.mass.engine.monkey;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
+import com.xa.mass.base.enums.task.TaskSourceType;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.storage.rule.RuleDefinition;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public class MonkeyGenerator {
         TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("WorkerContext", WorkerContext.class);
         TypeRegistry.register("RuleDefinition", RuleDefinition.class);
-        TypeRegistry.register("TaskCreateRequestDto", TaskCreateRequestDto.class);
+        TypeRegistry.register("TaskFixture", TaskFixture.class);
     }
 
     public static List<Worker> generateWorkers(String jsonDsl) {
@@ -35,8 +36,8 @@ public class MonkeyGenerator {
         return JsonDslEngine.generateList(jsonDsl, WorkerContext.class);
     }
 
-    public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
-        return JsonDslEngine.generateList(jsonDsl, TaskCreateRequestDto.class);
+    public static List<TaskFixture> generateTasks(String jsonDsl) {
+        return JsonDslEngine.generateList(jsonDsl, TaskFixture.class);
     }
 
     public static List<RuleDefinition> generateRules(String jsonDsl) {
@@ -46,7 +47,7 @@ public class MonkeyGenerator {
     public static String exampleTasksJsonDsl() {
         return """
                 {
-                  "MODEL": "TaskCreateRequestDto",
+                  "MODEL": "TaskFixture",
                   "COUNT": 2,
                   "FIELDS": {
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
@@ -83,6 +84,117 @@ public class MonkeyGenerator {
                   }
                 }
                 """;
+    }
+
+    public static final class TaskFixture {
+        private String userId;
+        private String project;
+        private String taskName;
+        private java.util.Map<String, Object> sharedConfig;
+        private java.util.List<java.util.Map<String, Object>> inputs;
+        private int batchSize;
+        private int defaultMsgMaxRetryCount = 3;
+        private boolean openEnded;
+        private int maxRuntimeSeconds;
+        private TaskSourceType sourceType;
+        private TaskWorkloadClass workloadClass;
+        private String sourceRef;
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        public String getProject() {
+            return project;
+        }
+
+        public void setProject(String project) {
+            this.project = project;
+        }
+
+        public String getTaskName() {
+            return taskName;
+        }
+
+        public void setTaskName(String taskName) {
+            this.taskName = taskName;
+        }
+
+        public java.util.Map<String, Object> getSharedConfig() {
+            return sharedConfig;
+        }
+
+        public void setSharedConfig(java.util.Map<String, Object> sharedConfig) {
+            this.sharedConfig = sharedConfig;
+        }
+
+        public java.util.List<java.util.Map<String, Object>> getInputs() {
+            return inputs;
+        }
+
+        public void setInputs(java.util.List<java.util.Map<String, Object>> inputs) {
+            this.inputs = inputs;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public int getDefaultMsgMaxRetryCount() {
+            return defaultMsgMaxRetryCount;
+        }
+
+        public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
+            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+        }
+
+        public boolean isOpenEnded() {
+            return openEnded;
+        }
+
+        public void setOpenEnded(boolean openEnded) {
+            this.openEnded = openEnded;
+        }
+
+        public int getMaxRuntimeSeconds() {
+            return maxRuntimeSeconds;
+        }
+
+        public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+            this.maxRuntimeSeconds = maxRuntimeSeconds;
+        }
+
+        public TaskSourceType getSourceType() {
+            return sourceType;
+        }
+
+        public void setSourceType(TaskSourceType sourceType) {
+            this.sourceType = sourceType;
+        }
+
+        public TaskWorkloadClass getWorkloadClass() {
+            return workloadClass;
+        }
+
+        public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+            this.workloadClass = workloadClass;
+        }
+
+        public String getSourceRef() {
+            return sourceRef;
+        }
+
+        public void setSourceRef(String sourceRef) {
+            this.sourceRef = sourceRef;
+        }
     }
 }
 

@@ -1,6 +1,5 @@
 package com.xa.mass.sdk.model;
 
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -14,24 +13,6 @@ import java.util.*;
 public final class SdkResourceMapper {
 
     private SdkResourceMapper() {
-    }
-
-    public static TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
-        Objects.requireNonNull(request, "request");
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(request.getSharedConfig());
-        dto.setInputs(request.getInputs());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isOpenEnded());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        dto.setSourceType(request.getSourceType());
-        dto.setWorkloadClass(request.getWorkloadClass());
-        dto.setSourceRef(request.getSourceRef());
-        return dto;
     }
 
     public static TaskShellCreateRequestDto toEngineRequest(MassTaskShellCreateRequest request) {

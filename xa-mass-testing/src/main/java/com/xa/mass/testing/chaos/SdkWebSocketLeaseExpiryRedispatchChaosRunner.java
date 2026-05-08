@@ -14,7 +14,6 @@ import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -278,7 +277,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
 
         private Task createUntargetedTask(MassSdkApplication app, String taskName) {
-            Task task = createTask(app, MassTaskCreateRequest.builder()
+            Task task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("sdk-chaos")
                     .project(PROJECT_CODE)
                     .taskName(taskName)
@@ -286,39 +285,33 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                             TaskSharedConfig.ROUTING_CODE, ROUTING_CODE,
                             "source", "SdkWebSocketLeaseExpiryRedispatchChaosRunner"
                     ))
-                    .inputs(List.of(Map.of(
+                    .batchSize(1)
+                    .maxRuntimeSeconds(config.timeoutSeconds())
+                    .build(),
+                    List.of(Map.of(
                             "seq", 0,
                             "taskName", taskName,
                             "target", taskName + "-target-0"
-                    )))
-                    .batchSize(1)
-                    .defaultMsgMaxRetryCount(1)
-                    .openEnded(false)
-                    .maxRuntimeSeconds(config.timeoutSeconds())
-                    .build());
+                    )),
+                    1,
+                    false);
             require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
             return task;
         }
 
-        private Task createTask(MassSdkApplication app, MassTaskCreateRequest request) {
-            Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
-                    .userId(request.getUserId())
-                    .project(request.getProject())
-                    .taskName(request.getTaskName())
-                    .sharedConfig(request.getSharedConfig())
-                    .batchSize(request.getBatchSize())
-                    .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                    .sourceType(request.getSourceType())
-                    .workloadClass(request.getWorkloadClass())
-                    .sourceRef(request.getSourceRef())
-                    .build());
-            if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+        private Task createTask(MassSdkApplication app,
+                                MassTaskShellCreateRequest request,
+                                List<Object> items,
+                                int defaultMsgMaxRetryCount,
+                                boolean keepIntakeOpen) {
+            Task task = app.createTaskShell(request);
+            if (items != null && !items.isEmpty()) {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
-                        .items(new ArrayList<>(request.getInputs()))
-                        .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                        .items(items)
+                        .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                         .build());
             }
-            if (!request.isOpenEnded()) {
+            if (!keepIntakeOpen) {
                 require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
             }
             return app.getTask(task.getTid());
