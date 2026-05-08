@@ -1,5 +1,6 @@
 package com.xa.mass.server.e2e.lifecycle;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 @ActiveProfiles("dev")
 @DirtiesContext
 class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -43,20 +49,12 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void rejectThenApproveTransitionsTaskFromNewToBlockedToReady() {
         String taskId = createTask("guard-reject-approve");
 
-        Map<String, Object> rejectResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=false&comment=reject",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> rejectResponse = rejectTask(taskId);
         assertApiOk(rejectResponse);
         assertEquals("BLOCKED", responseData(rejectResponse).get("newStatus"));
         assertEquals("BLOCKED", task(taskId).get("status"));
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
         assertEquals("READY", responseData(approveResponse).get("newStatus"));
         assertEquals("READY", task(taskId).get("status"));
@@ -66,27 +64,15 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void pauseAndResumeWorkForReadyTaskWhenNoDevicesAreAvailable() {
         String taskId = createTask("guard-pause-resume");
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
-        Map<String, Object> pauseResponse = exchange(
-                "/status/api/tasks/" + taskId + "/pause",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> pauseResponse = pauseTask(taskId);
         assertApiOk(pauseResponse);
         assertEquals("PAUSED", task(taskId).get("status"));
 
-        Map<String, Object> resumeResponse = exchange(
-                "/status/api/tasks/" + taskId + "/resume",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> resumeResponse = resumeTask(taskId);
         assertApiOk(resumeResponse);
         assertEquals("READY", task(taskId).get("status"));
     }
@@ -95,27 +81,15 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void readyTaskCanBeBlockedAndApprovedBackToReady() {
         String taskId = createTask("guard-block-approve");
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
-        Map<String, Object> blockResponse = exchange(
-                "/status/api/tasks/" + taskId + "/block",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> blockResponse = blockTask(taskId);
         assertApiOk(blockResponse);
         assertEquals("BLOCKED", task(taskId).get("status"));
 
-        Map<String, Object> reapproveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=reapprove",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> reapproveResponse = approveTask(taskId);
         assertApiOk(reapproveResponse);
         assertEquals("READY", task(taskId).get("status"));
     }
@@ -124,21 +98,12 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void statusEndpointBlocksReadyTaskViaRuntimeBlockPath() {
         String taskId = createTask("guard-status-block");
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
-        Map<String, Object> blockResponse = exchange(
-                "/status/api/tasks/" + taskId + "/status?status=BLOCKED",
-                HttpMethod.PUT,
-                null
-        );
+        Map<String, Object> blockResponse = blockTask(taskId);
         assertApiOk(blockResponse);
-        assertEquals("BLOCKED", responseData(blockResponse).get("newStatus"));
         assertEquals("BLOCKED", task(taskId).get("status"));
     }
 
@@ -149,12 +114,11 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle", "routingCode", "us"));
         createBody.put("userId", "itest");
-        createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);
         createBody.put("targetJsonList", java.util.List.of("{\"phone\":\"123\"}"));
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "http://127.0.0.1:" + port + "/status/api/tasks",
+                "http://127.0.0.1:" + port + "/api/v1/tasks",
                 HttpMethod.POST,
                 new HttpEntity<>(createBody),
                 String.class
@@ -170,11 +134,10 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime", "routingCode", "us"));
         createBody.put("userId", "itest");
-        createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);
         createBody.put("maxRuntimeSeconds", 120);
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
 
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -188,14 +151,9 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
         updateBody.put("taskName", "guard-update-renamed");
-        updateBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-x")));
+        updateBody.put("items", java.util.List.of(java.util.Map.of("target", "target-x")));
 
-        ResponseEntity<String> response = restTemplate.exchange(
-                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updateBody),
-                String.class
-        );
+        ResponseEntity<String> response = patch("/api/v1/tasks/" + taskId, updateBody);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("NEW", task(taskId).get("status"));
@@ -205,23 +163,14 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void updateTaskRejectsReadyTaskMutation() {
         String taskId = createTask("guard-update-ready");
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
         Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
         updateBody.put("taskName", "ready-should-not-update");
 
-        ResponseEntity<String> response = restTemplate.exchange(
-                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updateBody),
-                String.class
-        );
+        ResponseEntity<String> response = patch("/api/v1/tasks/" + taskId, updateBody);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("READY", task(taskId).get("status"));
@@ -231,16 +180,12 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     void deleteGuardRejectsApprovedTaskButAllowsDeletingNewTask() {
         String approvedTaskId = createTask("guard-delete-approved");
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + approvedTaskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(approvedTaskId);
         assertApiOk(approveResponse);
         assertEquals("READY", task(approvedTaskId).get("status"));
 
         Map<String, Object> rejectDeleteResponse = exchange(
-                "/status/api/tasks/" + approvedTaskId,
+                "/api/v1/tasks/" + approvedTaskId,
                 HttpMethod.DELETE,
                 null
         );
@@ -249,14 +194,14 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
         String newTaskId = createTask("guard-delete-new");
         Map<String, Object> deleteNewResponse = exchange(
-                "/status/api/tasks/" + newTaskId,
+                "/api/v1/tasks/" + newTaskId,
                 HttpMethod.DELETE,
                 null
         );
         assertApiOk(deleteNewResponse);
 
         ResponseEntity<Map> missingTaskResponse = restTemplate.exchange(
-                "http://127.0.0.1:" + port + "/status/api/tasks/" + newTaskId,
+                "http://127.0.0.1:" + port + "/api/v1/tasks/" + newTaskId,
                 HttpMethod.GET,
                 HttpEntity.EMPTY,
                 Map.class
@@ -267,42 +212,22 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void terminateWorksForReadyAndPausedTasks() {
         String readyTaskId = createTask("guard-terminate-ready");
-        Map<String, Object> approveReadyResponse = exchange(
-                "/status/api/tasks/" + readyTaskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveReadyResponse = approveTask(readyTaskId);
         assertApiOk(approveReadyResponse);
         assertEquals("READY", task(readyTaskId).get("status"));
 
-        Map<String, Object> terminateReadyResponse = exchange(
-                "/status/api/tasks/" + readyTaskId + "/terminate",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> terminateReadyResponse = terminateTask(readyTaskId);
         assertApiOk(terminateReadyResponse);
         assertEquals("TERMINAL", task(readyTaskId).get("status"));
 
         String pausedTaskId = createTask("guard-terminate-paused");
-        Map<String, Object> approvePausedResponse = exchange(
-                "/status/api/tasks/" + pausedTaskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approvePausedResponse = approveTask(pausedTaskId);
         assertApiOk(approvePausedResponse);
-        Map<String, Object> pauseResponse = exchange(
-                "/status/api/tasks/" + pausedTaskId + "/pause",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> pauseResponse = pauseTask(pausedTaskId);
         assertApiOk(pauseResponse);
         assertEquals("PAUSED", task(pausedTaskId).get("status"));
 
-        Map<String, Object> terminatePausedResponse = exchange(
-                "/status/api/tasks/" + pausedTaskId + "/terminate",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> terminatePausedResponse = terminateTask(pausedTaskId);
         assertApiOk(terminatePausedResponse);
         assertEquals("TERMINAL", task(pausedTaskId).get("status"));
     }
@@ -313,9 +238,25 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         return taskId;
     }
 
+    private ResponseEntity<String> patch(String path, Object body) {
+        try {
+            String jsonBody = OBJECT_MAPPER.writeValueAsString(body);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + path))
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
+            HttpResponse<String> response = HttpClient.newHttpClient()
+                    .send(request, HttpResponse.BodyHandlers.ofString());
+            return ResponseEntity.status(response.statusCode()).body(response.body());
+        } catch (Exception e) {
+            throw new IllegalStateException("PATCH request failed", e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> task(String taskId) {
-        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detailResponse);
         return task(detailResponse);
     }

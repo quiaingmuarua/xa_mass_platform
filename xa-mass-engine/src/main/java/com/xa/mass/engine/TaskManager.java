@@ -377,6 +377,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (ingressItems == null || ingressItems.isEmpty()) {
             throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
+        LogUtils.setTaskId(task.getTid());
+        LogUtils.logOperationStart("ADD_TASK_MESSAGE_BATCH", "TaskManager",
+                "taskId", task.getTid(),
+                "messageCount", String.valueOf(ingressItems.size()));
         for (RuntimeTaskIngressItem ingressItem : ingressItems) {
             if (ingressItem == null) {
                 throw new IllegalArgumentException("ingressItems must not contain null");
@@ -385,26 +389,28 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 throw new IllegalArgumentException("ingress item taskId mismatch: expected "
                         + task.getTid() + " but was " + ingressItem.taskId());
             }
-            addRuntimeIngressItem(ingressItem);
+            WorkEnqueueOutcome outcome = enqueueTaskWork(task, ingressItem);
+            if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
+                throw new IllegalStateException("task work enqueue failed: status="
+                        + outcome.status() + ", reason=" + outcome.reason());
+            }
+            if (!compatibilityProjectionAccess.upsertRuntimeIngressProjection(ingressItem, "runtime ingress accepted")) {
+                logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
+                        ingressItem.taskId(), ingressItem.messageId());
+            }
         }
+        LogUtils.logOperationSuccess("task message batch added: count=" + ingressItems.size(), 0);
     }
 
     private void addRuntimeIngressItem(RuntimeTaskIngressItem ingressItem) {
-        String taskId = ingressItem.taskId();
-        String messageId = ingressItem.messageId();
-        LogUtils.setTaskId(taskId);
-        LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
-                "taskId", taskId,
-                "messageId", messageId);
-
-        WorkEnqueueOutcome outcome = enqueueTaskWork(ingressItem);
-        if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
-            throw new IllegalStateException("task work enqueue failed: status="
-                    + outcome.status() + ", reason=" + outcome.reason());
+        if (ingressItem == null) {
+            throw new IllegalArgumentException("ingressItem is required");
         }
-        compatibilityProjectionAccess.upsertRuntimeIngressProjection(ingressItem, "runtime ingress accepted");
-
-        LogUtils.logOperationSuccess("task message added", 0);
+        Task task = taskStorage.getTask(ingressItem.taskId()).orElse(null);
+        if (task == null) {
+            throw new IllegalArgumentException("Task not found: " + ingressItem.taskId());
+        }
+        addRuntimeIngressItems(task, List.of(ingressItem));
     }
 
     public long getTaskMessageLeaseSeconds() {
@@ -718,11 +724,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         eventPublisher.publishTaskMessageLogicallyFinal(task, event);
     }
 
-    private WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {
+    private WorkEnqueueOutcome enqueueTaskWork(Task task, RuntimeTaskIngressItem ingressItem) {
         if (ingressItem == null || ingressItem.messageId() == null || ingressItem.messageId().isBlank()) {
             return null;
         }
-        Task task = taskStorage.getTask(ingressItem.taskId()).orElse(null);
         TaskWorkEnvelope item = new TaskWorkEnvelope(
                 ingressItem.taskId(),
                 ingressItem.messageId(),

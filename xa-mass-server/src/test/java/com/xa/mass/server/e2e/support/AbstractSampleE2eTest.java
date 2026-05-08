@@ -158,22 +158,19 @@ public abstract class AbstractSampleE2eTest {
         }
         createBody.put("batchSize", batchSize);
 
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
-        Map<String, Object> ingestResponse = exchange(
-                "/api/v1/tasks/" + taskId + "/items",
-                HttpMethod.POST,
-                Map.of(
-                        "items", targets.stream()
-                                .map(target -> Map.<String, Object>of("target", target))
-                                .toList(),
-                        "defaultMsgMaxRetryCount", 3
-                )
+        Map<String, Object> ingestResponse = appendTaskItems(
+                taskId,
+                targets.stream()
+                        .map(target -> Map.<String, Object>of("target", target))
+                        .toList(),
+                3
         );
         assertApiOk(ingestResponse);
-        Map<String, Object> sealResponse = exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null);
+        Map<String, Object> sealResponse = sealTask(taskId);
         assertApiOk(sealResponse);
         return taskId;
     }
@@ -187,7 +184,50 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected Map<String, Object> audit(String taskId, String comment) {
+        return approveTask(taskId);
+    }
+
+    protected Map<String, Object> createTaskShell(Object body) {
+        return exchange("/api/v1/tasks", HttpMethod.POST, body);
+    }
+
+    protected Map<String, Object> createTaskShell(Object body, HttpHeaders headers) {
+        return exchange("/api/v1/tasks", HttpMethod.POST, body, headers);
+    }
+
+    protected Map<String, Object> appendTaskItems(String taskId, List<?> items, int defaultMsgMaxRetryCount) {
+        return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "items", items,
+                "defaultMsgMaxRetryCount", defaultMsgMaxRetryCount
+        ));
+    }
+
+    protected Map<String, Object> sealTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> approveTask(String taskId) {
         return exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> rejectTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":reject", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> pauseTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":pause", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> resumeTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":resume", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> blockTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":block", HttpMethod.POST, null);
+    }
+
+    protected Map<String, Object> terminateTask(String taskId) {
+        return exchange("/api/v1/tasks/" + taskId + ":terminate", HttpMethod.POST, null);
     }
 
     @SuppressWarnings("unchecked")
