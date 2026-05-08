@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -140,6 +141,24 @@ public abstract class TaskDetailStoreContractTest {
     }
 
     @Test
+    void projectionsPreserveOutputEntriesWithNullValues() {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("workerId", "worker-1");
+        output.put("title", null);
+
+        store.upsertTaskMessageProjection("t1", messageWithOutput("t1", "m1", output));
+        store.upsertTaskMessageAttemptProjection("t1", "m1",
+                attemptWithOutput("t1", "m1", "a1", output));
+
+        assertThat(store.getTaskMessageProjection("t1", "m1")).get()
+                .extracting(TaskDetailStore.TaskMessageProjection::output)
+                .isEqualTo(output);
+        assertThat(store.getLatestTaskMessageAttemptProjection("t1", "m1")).get()
+                .extracting(TaskDetailStore.TaskMessageAttemptProjection::output)
+                .isEqualTo(output);
+    }
+
+    @Test
     void getLatestActiveTaskMessageAttemptProjection_returnsEmpty_whenAllAttemptsFinalized() {
         store.upsertTaskMessageProjection("t1", msg("t1", "m1"));
         store.upsertTaskMessageAttemptProjection("t1", "m1", attempt("t1", "m1", "a1"));
@@ -218,6 +237,54 @@ public abstract class TaskDetailStoreContractTest {
                 null,
                 null,
                 null
+        );
+    }
+
+    protected TaskDetailStore.TaskMessageProjection messageWithOutput(String taskId,
+                                                                      String messageId,
+                                                                      Map<String, Object> output) {
+        initTask(taskId);
+        return new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                taskId,
+                Map.of("k", "v"),
+                null,
+                TaskMsgStatus.SUCCESS,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                null,
+                null,
+                null,
+                output,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    protected TaskDetailStore.TaskMessageAttemptProjection attemptWithOutput(String taskId,
+                                                                             String messageId,
+                                                                             String attemptId,
+                                                                             Map<String, Object> output) {
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                taskId,
+                messageId,
+                1,
+                null,
+                null,
+                null,
+                TaskMsgAttemptStatus.SUCCEEDED,
+                null,
+                null,
+                null,
+                output
         );
     }
 

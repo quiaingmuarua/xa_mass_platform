@@ -9,6 +9,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -436,6 +438,19 @@ public interface TaskDetailStore {
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {
-        return source == null ? null : Map.copyOf(source);
+        if (source == null) {
+            return null;
+        }
+        if (source.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException("map key");
+            }
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        return Collections.unmodifiableMap(copy);
     }
 }

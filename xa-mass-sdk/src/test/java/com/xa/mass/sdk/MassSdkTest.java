@@ -417,27 +417,15 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
-
-        TransportAdapterBootstrapContext bootstrapContext;
-        try {
-            bootstrapContext = new TransportAdapterBootstrapContext(
-                    new CompositeWorkerEndpointRegistry(),
-                    null,
-                    new RuntimeEventBusWorkerSystemEventChannel(),
-                    deliveryService(),
-                    runtimeTaskExecutor
-            );
-            adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertNull(bootstrapContext.getTransportBinding());
-        assertNull(bootstrapContext.getManagedTransportAdapter());
-        assertNull(bootstrapContext.getTransportServer());
-        assertNull(bootstrapContext.getRawWorkerMessageChannel());
+        assertEquals(
+                List.of(),
+                runtimeComposition.resolveTransportAdapterBootstraps().stream()
+                        .map(TransportAdapterBootstrap::descriptor)
+                        .filter(Objects::nonNull)
+                        .map(TransportAdapterDescriptor::getAdapterId)
+                        .filter("websocket"::equals)
+                        .toList()
+        );
     }
 
     @Test
@@ -747,7 +735,7 @@ class MassSdkTest {
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        Assertions.assertEquals(2, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
     @Test
@@ -770,10 +758,10 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertNotNull(adapterBootstrap(runtimeComposition, "websocket"));
-        assertNotNull(adapterBootstrap(runtimeComposition, "socket"));
+        assertThrows(AssertionError.class, () -> adapterBootstrap(runtimeComposition, "socket"));
         assertNotNull(adapterBootstrap(runtimeComposition, "ws-internal"));
         assertNotNull(adapterBootstrap(runtimeComposition, "socket-edge"));
-        assertEquals(4, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
     @Test

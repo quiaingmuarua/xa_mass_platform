@@ -52,21 +52,8 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return taskDetailStore.getTaskMessageProjections(taskId, limit);
     }
 
-    public List<TaskMsg> getTaskMessages(String taskId) {
-        return materializeCompatibilityTaskMessages(getTaskMessageRecords(taskId));
-    }
-
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return materializeCompatibilityTaskMessages(getTaskMessageRecords(taskId, limit));
-    }
-
     public TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
-    }
-
-    public TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
-        TaskDetailStore.TaskMessageProjection projection = getStoredTaskMessageRecord(taskId, messageId);
-        return projection != null ? projection.toCompatibilityProjection() : null;
     }
 
     public TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
@@ -81,11 +68,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
             );
         }
         return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
-    }
-
-    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
-        TaskDetailStore.TaskMessageProjection visibleProjection = getVisibleTaskMessageProjection(taskId, messageId);
-        return visibleProjection != null ? visibleProjection.toCompatibilityProjection() : null;
     }
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
@@ -106,11 +88,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return new TaskMessageSnapshot(projected, boundedLimit, truncated);
     }
 
-    public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
-        return upsertTaskMessageProjectionRecord(taskId,
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null);
-    }
-
     public boolean upsertTaskMessageProjectionRecord(String taskId,
                                                      TaskDetailStore.TaskMessageProjection projection) {
         return taskDetailStore.upsertTaskMessageProjection(
@@ -119,24 +96,9 @@ public class ProjectionAwareTaskManager extends TaskManager {
         );
     }
 
-    public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        upsertTaskMessageAttemptAuditProjectionRecord(taskId, messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
-    }
-
     public TaskDetailStore.TaskMessageAttemptProjection getLatestTaskMessageAttemptAuditProjection(String taskId,
                                                                                                    String messageId) {
         return taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId).orElse(null);
-    }
-
-    public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
-        TaskDetailStore.TaskMessageAttemptProjection projection = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-        return projection != null ? projection.toCompatibilityProjection() : null;
-    }
-
-    public boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return upsertTaskMessageAttemptAuditProjectionRecord(taskId, messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
     }
 
     public boolean upsertTaskMessageAttemptAuditProjectionRecord(String taskId,

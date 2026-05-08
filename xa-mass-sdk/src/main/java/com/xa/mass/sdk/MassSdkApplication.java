@@ -1704,7 +1704,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (source.isEmpty()) {
             return Map.of();
         }
-        return Map.copyOf(new LinkedHashMap<>(source));
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException("map key");
+            }
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     private String enumName(Enum<?> value) {
