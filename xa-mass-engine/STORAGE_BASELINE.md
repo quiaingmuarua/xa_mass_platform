@@ -56,7 +56,7 @@ Current runtime-essential helpers:
 
 - `upsertTaskMessageProjection(TaskMessageProjection)`
 - `getTaskMessageProjection(...)`
-- `getTaskMessageProjections(...)`
+- `getTaskMessageProjections(..., limit)`
 - `upsertTaskMessageAttemptProjection(TaskMessageAttemptProjection)`
 - `getTaskMessageAttemptProjections(...)`
 - `getLatestTaskMessageAttemptProjection(...)`
@@ -95,7 +95,10 @@ Rules:
   `TaskMessageSnapshot` should be explicitly marked compatibility-only and must
   not be treated as the default external read API going forward
 - runtime mainline must not depend on full-message scans
-- full `TaskMsg` scans are allowed only in explicit projection-audit paths
+- bounded projection reads must be explicit about their `limit`
+- full `TaskMsg` scans are allowed only in explicit projection-audit paths, and
+  those callers should derive a bounded limit from stats instead of depending on
+  an unbounded storage helper
 - engine mainline should treat `TaskDetailStore` as a bounded projection sink;
   it should call projection upsert helpers rather than open-coding add/update
   CRUD flow in engine services

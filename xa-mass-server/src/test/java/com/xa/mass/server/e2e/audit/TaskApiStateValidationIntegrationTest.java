@@ -47,7 +47,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void getTaskExposesValidTerminalStateValidationOverRealRuntime() throws Exception {
-        String taskId = createTask("state-validation-terminal");
+        String taskId = createSeededTaskShell("state-validation-terminal");
 
         Map<String, Object> created = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(created);
@@ -76,7 +76,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void getTaskExposesNeedsResolutionWhenTaskIsReopenedAfterMessagesCompleted() throws Exception {
-        String taskId = createTask("state-validation-needs-resolution");
+        String taskId = createSeededTaskShell("state-validation-needs-resolution");
 
         Map<String, Object> auditResponse = exchange(
                 "/api/v1/tasks/" + taskId + ":approve",
@@ -107,7 +107,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void getTaskExposesInvalidStateWhenTerminalReasonIsMissing() throws Exception {
-        String taskId = createTask("state-validation-missing-terminal-reason");
+        String taskId = createSeededTaskShell("state-validation-missing-terminal-reason");
 
         Map<String, Object> auditResponse = exchange(
                 "/api/v1/tasks/" + taskId + ":approve",
@@ -134,7 +134,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void getTaskExposesInvalidStateWhenTerminalReasonDoesNotMatchMessageResults() throws Exception {
-        String taskId = createTask("state-validation-terminal-reason-mismatch");
+        String taskId = createSeededTaskShell("state-validation-terminal-reason-mismatch");
 
         Map<String, Object> auditResponse = exchange(
                 "/api/v1/tasks/" + taskId + ":approve",
@@ -160,7 +160,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(List.of("TERMINAL_REASON_MISMATCH_ALL_FAILED"), violations(validation));
     }
 
-    private String createTask(String taskName) {
+    private String createSeededTaskShell(String taskName) {
         return createTaskId(taskName, "state validation integration", List.of("target-a", "target-b"), 1);
     }
 }

@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskDiagnosticOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -53,6 +54,9 @@ class TaskApiControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
+    private TaskDiagnosticOperations taskDiagnostics;
+
+    @Mock
     private TaskAdminOperations taskAdmin;
 
     @Mock
@@ -63,7 +67,7 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), authProvider)
+                new TaskApiController(taskQueries, taskDiagnostics, taskAdmin, createTaskCatalog(), authProvider)
         ).build();
     }
 
@@ -177,7 +181,7 @@ class TaskApiControllerTest {
         Task task = taskWithStatus(TaskStatus.READY);
         task.setTaskName("detail-task");
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.validateTaskState(TASK_ID)).thenReturn(Map.of("ok", true));
+        when(taskDiagnostics.validateTaskState(TASK_ID)).thenReturn(Map.of("ok", true));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())

@@ -513,20 +513,23 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private TaskDetailStore.TaskMessageProjection storedCompatibilityMessage(RunningTaskFixture fixture) {
-        return taskStorage.getTaskMessageProjections(fixture.taskId()).get(0);
+        int limit = (int) Math.max(1L, taskStorage.getTaskMessageStats(fixture.taskId()).getTotal());
+        return taskStorage.getTaskMessageProjections(fixture.taskId(), limit).stream()
+                .filter(projection -> fixture.messageId().equals(projection.messageId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Task message projection not found: taskId="
+                                + fixture.taskId() + ", messageId=" + fixture.messageId()));
     }
 
     private TaskDetailStore.TaskMessageProjection firstMessage(String taskId) {
-        return taskStorage.getTaskMessageProjections(taskId).get(0);
+        return taskStorage.getTaskMessageProjections(taskId, 1).get(0);
     }
 
     private TaskDetailStore.TaskMessageProjection compatibilityMessageSnapshotViewById(String taskId, String messageId) {
-        return taskStorage.getTaskMessageProjections(taskId).stream()
-                .filter(message -> messageId.equals(message.messageId()))
-                .findFirst()
+        return taskStorage.getTaskMessageProjection(taskId, messageId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Task message not found in bounded compatibility snapshot: taskId="
-                                + taskId + ", messageId=" + messageId));
+                        "Task message projection not found: taskId=" + taskId + ", messageId=" + messageId));
     }
 
     private TaskResultReport report(RunningTaskFixture fixture, String status, String detail, String errorCode) {

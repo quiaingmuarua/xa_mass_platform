@@ -59,14 +59,14 @@ class JdbcStorageH2Test {
             assertThat(storage.pollExpiredMaxRuntimeTasks(LocalDateTime.now(), 10)).hasSize(1);
             assertThat(storage.getTaskMessageStats("task-1").getTotal()).isEqualTo(1);
             assertThat(storage.getTaskMessageProjections("task-1", 1)).hasSize(1);
-            assertThat(storage.getTaskMessageProjections("task-1"))
+            assertThat(storage.getTaskMessageProjections("task-1", 1))
                     .allMatch(projection -> projection.status() == null || !projection.status().isFinal());
             assertThat(storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1")).isPresent();
 
             JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new H2JdbcDialect());
             assertThat(restartedStorage.getTask("task-1")).isPresent();
             assertThat(restartedStorage.getTaskMessageStats("task-1").getTotal()).isZero();
-            assertThat(restartedStorage.getTaskMessageProjections("task-1")).isEmpty();
+            assertThat(restartedStorage.getTaskMessageProjections("task-1", 1)).isEmpty();
             assertThat(restartedStorage.getTaskMessageAttemptProjections("task-1", "msg-1")).isEmpty();
 
             assertThat(storage.deleteTask("task-1")).isTrue();

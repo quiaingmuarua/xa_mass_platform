@@ -1130,7 +1130,7 @@ class TaskResultService {
         }
 
         @CompatibilityProjectionOnly
-        static RuntimeMessageView from(CompatibilityMessageProjection projection) {
+        static RuntimeMessageView from(TaskCompatibilityProjectionAccess.MessageProjection projection) {
             if (projection == null) {
                 return null;
             }

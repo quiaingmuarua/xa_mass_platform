@@ -91,7 +91,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         try {
             waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
 
-            var task = createTask(
+            var task = createShellWithOptionalItems(
                     MassTaskShellCreateRequest.builder()
                             .userId("crawler-agent")
                             .project("crawlerApp")
@@ -145,10 +145,10 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must mark the worker offline");
     }
 
-    private com.xa.mass.base.model.Task createTask(MassTaskShellCreateRequest request,
-                                                   List<Object> items,
-                                                   int defaultMsgMaxRetryCount,
-                                                   boolean keepIntakeOpen) {
+    private com.xa.mass.base.model.Task createShellWithOptionalItems(MassTaskShellCreateRequest request,
+                                                                     List<Object> items,
+                                                                     int defaultMsgMaxRetryCount,
+                                                                     boolean keepIntakeOpen) {
         com.xa.mass.base.model.Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()

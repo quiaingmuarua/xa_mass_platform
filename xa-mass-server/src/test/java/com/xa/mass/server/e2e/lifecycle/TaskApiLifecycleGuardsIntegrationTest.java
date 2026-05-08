@@ -47,7 +47,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void rejectThenApproveTransitionsTaskFromNewToBlockedToReady() {
-        String taskId = createTask("guard-reject-approve");
+        String taskId = createSeededTaskShell("guard-reject-approve");
 
         Map<String, Object> rejectResponse = rejectTask(taskId);
         assertApiOk(rejectResponse);
@@ -62,7 +62,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void pauseAndResumeWorkForReadyTaskWhenNoDevicesAreAvailable() {
-        String taskId = createTask("guard-pause-resume");
+        String taskId = createSeededTaskShell("guard-pause-resume");
 
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
@@ -79,7 +79,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void readyTaskCanBeBlockedAndApprovedBackToReady() {
-        String taskId = createTask("guard-block-approve");
+        String taskId = createSeededTaskShell("guard-block-approve");
 
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
@@ -96,7 +96,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void statusEndpointBlocksReadyTaskViaRuntimeBlockPath() {
-        String taskId = createTask("guard-status-block");
+        String taskId = createSeededTaskShell("guard-status-block");
 
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
@@ -147,7 +147,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void updateTaskRejectsUnsupportedFieldsInRequestBody() {
-        String taskId = createTask("guard-update-unknown-fields");
+        String taskId = createSeededTaskShell("guard-update-unknown-fields");
 
         Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
         updateBody.put("taskName", "guard-update-renamed");
@@ -161,7 +161,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void updateTaskRejectsReadyTaskMutation() {
-        String taskId = createTask("guard-update-ready");
+        String taskId = createSeededTaskShell("guard-update-ready");
 
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
@@ -178,7 +178,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void deleteGuardRejectsApprovedTaskButAllowsDeletingNewTask() {
-        String approvedTaskId = createTask("guard-delete-approved");
+        String approvedTaskId = createSeededTaskShell("guard-delete-approved");
 
         Map<String, Object> approveResponse = approveTask(approvedTaskId);
         assertApiOk(approveResponse);
@@ -192,7 +192,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         assertApiError(rejectDeleteResponse, 400);
         assertEquals("READY", task(approvedTaskId).get("status"));
 
-        String newTaskId = createTask("guard-delete-new");
+        String newTaskId = createSeededTaskShell("guard-delete-new");
         Map<String, Object> deleteNewResponse = exchange(
                 "/api/v1/tasks/" + newTaskId,
                 HttpMethod.DELETE,
@@ -211,7 +211,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void terminateWorksForReadyAndPausedTasks() {
-        String readyTaskId = createTask("guard-terminate-ready");
+        String readyTaskId = createSeededTaskShell("guard-terminate-ready");
         Map<String, Object> approveReadyResponse = approveTask(readyTaskId);
         assertApiOk(approveReadyResponse);
         assertEquals("READY", task(readyTaskId).get("status"));
@@ -220,7 +220,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(terminateReadyResponse);
         assertEquals("TERMINAL", task(readyTaskId).get("status"));
 
-        String pausedTaskId = createTask("guard-terminate-paused");
+        String pausedTaskId = createSeededTaskShell("guard-terminate-paused");
         Map<String, Object> approvePausedResponse = approveTask(pausedTaskId);
         assertApiOk(approvePausedResponse);
         Map<String, Object> pauseResponse = pauseTask(pausedTaskId);
@@ -232,7 +232,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("TERMINAL", task(pausedTaskId).get("status"));
     }
 
-    private String createTask(String taskName) {
+    private String createSeededTaskShell(String taskName) {
         String taskId = createTaskId(taskName, "guard lifecycle", java.util.List.of("target-a", "target-b"), 1);
         assertEquals("NEW", task(taskId).get("status"));
         return taskId;

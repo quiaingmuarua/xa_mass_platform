@@ -160,12 +160,6 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.snapshot() : List.of();
-    }
-
-    @Override
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
         if (limit <= 0) {
             return List.of();

@@ -875,7 +875,7 @@ class MassSdkTest {
                 .build();
 
         Assertions.assertThrows(IllegalStateException.class,
-                () -> createTask(app, MassTaskShellCreateRequest.builder().build(), List.of(), 3, false));
+                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), List.of(), 3, false));
         assertEngineOperationsFailFast(app);
     }
 
@@ -1204,7 +1204,7 @@ class MassSdkTest {
                 .maxRuntimeSeconds(600)
                 .build();
 
-        Task result = createTask(app, request, List.of(
+        Task result = createShellWithOptionalItems(app, request, List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), 5, true);
@@ -1522,7 +1522,7 @@ class MassSdkTest {
                 .maxRuntimeSeconds(60)
                 .build();
 
-        Task result = createTask(app, request, List.of(
+        Task result = createShellWithOptionalItems(app, request, List.of(
                 Map.of("url", "https://example.test/page-1"),
                 Map.of("url", "https://example.test/page-2")
         ), 2, true);
@@ -1987,7 +1987,7 @@ class MassSdkTest {
                     .eventCodes(List.of("chatbot.reply"))
                     .build());
 
-            Task task = createTask(app, MassTaskShellCreateRequest.builder()
+            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
                     .taskName("custom-project-task")
@@ -2028,7 +2028,7 @@ class MassSdkTest {
                     .eventCodes(List.of("bot.command"))
                     .build());
 
-            Task task = createTask(app, MassTaskShellCreateRequest.builder()
+            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppCatalogTest")
                     .taskName("bot-command-task")
@@ -2701,7 +2701,7 @@ class MassSdkTest {
             PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
 
-            Task task = createTask(app, MassTaskShellCreateRequest.builder()
+            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
                     .project("demoApp")
                     .taskName("fetch-page")
@@ -3083,11 +3083,11 @@ class MassSdkTest {
                 ));
     }
 
-    private static Task createTask(MassSdkApplication app,
-                                   MassTaskShellCreateRequest request,
-                                   List<Object> items,
-                                   int defaultMsgMaxRetryCount,
-                                   boolean keepIntakeOpen) {
+    private static Task createShellWithOptionalItems(MassSdkApplication app,
+                                                     MassTaskShellCreateRequest request,
+                                                     List<Object> items,
+                                                     int defaultMsgMaxRetryCount,
+                                                     boolean keepIntakeOpen) {
         Objects.requireNonNull(app, "app");
         Objects.requireNonNull(request, "request");
         Task task = app.createTaskShell(request);

@@ -43,7 +43,7 @@ public final class TaskMessageAttemptSupport {
     }
 
     @CompatibilityProjectionOnly
-    static boolean isTaskMessageFinalReasonCompatible(CompatibilityMessageProjection messageProjection) {
+    static boolean isTaskMessageFinalReasonCompatible(TaskCompatibilityProjectionAccess.MessageProjection messageProjection) {
         if (messageProjection == null
                 || messageProjection.status() == null
                 || !messageProjection.status().isFinal()

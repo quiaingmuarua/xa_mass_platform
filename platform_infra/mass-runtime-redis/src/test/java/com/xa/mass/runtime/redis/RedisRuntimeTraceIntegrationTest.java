@@ -349,12 +349,9 @@ class RedisRuntimeTraceIntegrationTest {
     }
 
     private TaskDetailStore.TaskMessageProjection compatibilityMessageSnapshotView(String taskId, String messageId) {
-        return taskStorage.getTaskMessageProjections(taskId).stream()
-                .filter(message -> messageId.equals(message.messageId()))
-                .findFirst()
+        return taskStorage.getTaskMessageProjection(taskId, messageId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Task message not found in bounded compatibility snapshot: taskId="
-                                + taskId + ", messageId=" + messageId));
+                        "Task message projection not found: taskId=" + taskId + ", messageId=" + messageId));
     }
 
     private record RunningTaskFixture(Task task,

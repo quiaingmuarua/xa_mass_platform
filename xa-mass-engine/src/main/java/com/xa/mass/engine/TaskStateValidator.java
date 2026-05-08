@@ -170,7 +170,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (CompatibilityMessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
+        for (TaskCompatibilityProjectionAccess.MessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
             if (messageProjection == null) {
                 continue;
             }
@@ -181,7 +181,7 @@ class TaskStateValidator {
                     && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(messageProjection)) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
-            CompatibilityAttemptStats attemptStats =
+            TaskCompatibilityProjectionAccess.AttemptStats attemptStats =
                     getTaskMessageAttemptStats(taskId, messageProjection.messageId());
             long activeAttemptCount = attemptStats.activeAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
@@ -243,15 +243,15 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private java.util.List<CompatibilityMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
+    private java.util.List<TaskCompatibilityProjectionAccess.MessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
         return compatibilityProjectionAccess.getTaskMessageProjectionsForAudit(taskId);
     }
 
-    private CompatibilityAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    private TaskCompatibilityProjectionAccess.AttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private boolean isCompleted(CompatibilityMessageProjection messageProjection) {
+    private boolean isCompleted(TaskCompatibilityProjectionAccess.MessageProjection messageProjection) {
         return messageProjection != null && messageProjection.isCompleted();
     }
 

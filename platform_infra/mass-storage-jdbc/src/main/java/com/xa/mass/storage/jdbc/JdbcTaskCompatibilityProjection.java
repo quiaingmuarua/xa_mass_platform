@@ -50,11 +50,6 @@ final class JdbcTaskCompatibilityProjection {
         return false;
     }
 
-    List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.snapshot() : List.of();
-    }
-
     List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
         if (limit <= 0) {
             return List.of();

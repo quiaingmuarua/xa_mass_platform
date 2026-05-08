@@ -3,6 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskDiagnosticOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,11 +30,14 @@ class TaskApiListControllerTest {
     @Mock
     private TaskAdminOperations taskAdmin;
 
+    @Mock
+    private TaskDiagnosticOperations taskDiagnostics;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskDiagnostics, taskAdmin)).build();
     }
 
     @Test

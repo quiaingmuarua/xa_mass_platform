@@ -8,7 +8,7 @@ import {
 } from '@/api/tasks'
 
 describe('tasks API facade', () => {
-    it('creates a task through atomic mock adapters and exposes it in list and detail reads', async () => {
+    it('creates a task shell through atomic mock adapters and exposes it in list and detail reads', async () => {
         const result = await createTaskShell({
             userId: 'ops-admin',
             project: 'demoApp',

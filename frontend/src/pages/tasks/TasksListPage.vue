@@ -14,7 +14,7 @@
         type="primary"
         @click="openCreateDialog"
       >
-        Create task
+        Create task shell
       </el-button>
     </header>
 
@@ -87,7 +87,7 @@
 
     <el-dialog
       v-model="createDialogVisible"
-      title="Create task"
+      title="Create task shell"
       width="760px"
       destroy-on-close
     >
@@ -252,7 +252,7 @@
       <template #footer>
         <el-button @click="createDialogVisible = false">Cancel</el-button>
         <el-button type="primary" :loading="creatingTask" @click="handleCreate">
-          Create
+          Create shell
         </el-button>
       </template>
     </el-dialog>

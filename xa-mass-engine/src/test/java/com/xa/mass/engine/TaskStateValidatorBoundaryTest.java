@@ -130,9 +130,9 @@ class TaskStateValidatorBoundaryTest {
         private final AtomicInteger projectionAuditReads = new AtomicInteger();
 
         @Override
-        public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
+        public TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
             projectionAuditReads.incrementAndGet();
-            return super.getTaskMessageProjections(taskId);
+            return super.getTaskMessageStats(taskId);
         }
     }
 }

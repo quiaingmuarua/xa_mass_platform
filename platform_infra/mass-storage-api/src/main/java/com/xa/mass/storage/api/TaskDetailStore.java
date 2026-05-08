@@ -53,9 +53,6 @@ public interface TaskDetailStore {
     Optional<TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId);
 
     @CompatibilityProjectionOnly
-    List<TaskMessageProjection> getTaskMessageProjections(String taskId);
-
-    @CompatibilityProjectionOnly
     List<TaskMessageProjection> getTaskMessageProjections(String taskId, int limit);
 
     /**

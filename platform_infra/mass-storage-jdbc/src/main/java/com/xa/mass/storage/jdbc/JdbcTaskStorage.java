@@ -144,11 +144,6 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
-        return runtimeProjection.getTaskMessageProjections(taskId);
-    }
-
-    @Override
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
         return runtimeProjection.getTaskMessageProjections(taskId, limit);
     }

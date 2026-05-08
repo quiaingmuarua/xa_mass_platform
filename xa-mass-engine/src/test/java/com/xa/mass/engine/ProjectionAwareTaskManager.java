@@ -13,7 +13,7 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import java.util.List;
 
 /**
- * Test-only compatibility access for bounded TaskMsg / TaskMsgAttempt residue.
+ * Test-only bounded access to compatibility projection residue.
  *
  * <p>Mainline engine code should not call through TaskManager for these reads
  * and writes anymore. Tests that still need bounded residue assertions use
@@ -58,7 +58,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageRecords(String taskId) {
-        return taskDetailStore.getTaskMessageProjections(taskId);
+        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
+        if (total <= 0) {
+            return List.of();
+        }
+        return taskDetailStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
     }
 
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageRecords(String taskId, int limit) {
@@ -66,13 +70,13 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
-        CompatibilityMessageProjection projection =
+        TaskCompatibilityProjectionAccess.MessageProjection projection =
                 compatibilityProjectionAccess.getStoredCompatibilityMessageProjection(taskId, messageId);
         return projection != null ? projection.toStorageProjection() : null;
     }
 
     public TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
-        CompatibilityMessageProjection projection =
+        TaskCompatibilityProjectionAccess.MessageProjection projection =
                 compatibilityProjectionAccess.getVisibleCompatibilityMessageProjection(taskId, messageId);
         return projection != null ? projection.toStorageProjection() : null;
     }
@@ -81,8 +85,8 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return getActiveLease(taskId, messageId).orElse(null);
     }
 
-    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        java.util.List<TaskMsg> messages = new java.util.ArrayList<>();
+    public ProjectionTestSupport.MessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        java.util.List<TaskDetailStore.TaskMessageProjection> messages = new java.util.ArrayList<>();
         TaskCompatibilityProjectionAccess.SnapshotPage snapshot = compatibilityProjectionAccess.visitTaskMessageSnapshot(
                 taskId,
                 limit,
@@ -90,30 +94,34 @@ public class ProjectionAwareTaskManager extends TaskManager {
                  latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount,
                  errorMessage, errorCode, finalReason, payloadRef, input, output,
                  assignedTime, createTime, updateTime, startTime, completeTime) ->
-                        messages.add(toCompatibilityTaskMessage(
+                        messages.add(new TaskDetailStore.TaskMessageProjection(
                                 messageId,
                                 projectedTaskId,
-                                status,
-                                latestAttemptId,
-                                latestAttemptWorkerId,
-                                latestAttemptWorkerContextId,
-                                latestAttemptBatchId,
-                                retryCount,
-                                maxRetryCount,
-                                errorMessage,
-                                errorCode,
-                                finalReason,
-                                payloadRef,
                                 input,
-                                output,
+                                payloadRef,
+                                status != null
+                                        ? com.xa.mass.storage.api.projection.TaskMessageProjectionStatus.valueOf(status)
+                                        : null,
                                 assignedTime,
                                 createTime,
                                 updateTime,
                                 startTime,
-                                completeTime
+                                completeTime,
+                                retryCount,
+                                maxRetryCount,
+                                errorMessage,
+                                errorCode,
+                                finalReason != null
+                                        ? com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason.valueOf(finalReason)
+                                        : null,
+                                output,
+                                latestAttemptId,
+                                latestAttemptWorkerId,
+                                latestAttemptWorkerContextId,
+                                latestAttemptBatchId
                         ))
         );
-        return new TaskMessageSnapshot(messages, snapshot.limit(), snapshot.truncated());
+        return new ProjectionTestSupport.MessageSnapshot(messages, snapshot.limit(), snapshot.truncated());
     }
 
     public boolean upsertTaskMessageProjectionRecord(String taskId,
@@ -200,51 +208,5 @@ public class ProjectionAwareTaskManager extends TaskManager {
                         ))
         );
         return List.copyOf(attempts);
-    }
-
-    private TaskMsg toCompatibilityTaskMessage(String messageId,
-                                               String taskId,
-                                               String status,
-                                               String latestAttemptId,
-                                               String latestAttemptWorkerId,
-                                               String latestAttemptWorkerContextId,
-                                               String latestAttemptBatchId,
-                                               int retryCount,
-                                               int maxRetryCount,
-                                               String errorMessage,
-                                               String errorCode,
-                                               String finalReason,
-                                               String payloadRef,
-                                               java.util.Map<String, Object> input,
-                                               java.util.Map<String, Object> output,
-                                               java.time.LocalDateTime assignedTime,
-                                               java.time.LocalDateTime createTime,
-                                               java.time.LocalDateTime updateTime,
-                                               java.time.LocalDateTime startTime,
-                                               java.time.LocalDateTime completeTime) {
-        TaskMsg taskMsg = payloadRef == null || payloadRef.isBlank()
-                ? new TaskMsg(messageId, taskId, input)
-                : new TaskMsg(messageId, taskId, input, payloadRef);
-        taskMsg.setStatus(status != null ? TaskMsgStatus.valueOf(status) : null);
-        taskMsg.applyLatestAttemptProjection(
-                latestAttemptId,
-                latestAttemptWorkerId,
-                latestAttemptWorkerContextId,
-                latestAttemptBatchId
-        );
-        taskMsg.setRetryCount(retryCount);
-        taskMsg.setMaxRetryCount(maxRetryCount);
-        taskMsg.setErrorMessage(errorMessage);
-        taskMsg.setErrorCode(errorCode);
-        taskMsg.setFinalReason(finalReason != null
-                ? TaskMsgFinalReason.valueOf(finalReason)
-                : null);
-        taskMsg.setOutput(output);
-        taskMsg.setAssignedTime(assignedTime);
-        taskMsg.setCreateTime(createTime);
-        taskMsg.setUpdateTime(updateTime);
-        taskMsg.setStartTime(startTime);
-        taskMsg.setCompleteTime(completeTime);
-        return taskMsg;
     }
 }

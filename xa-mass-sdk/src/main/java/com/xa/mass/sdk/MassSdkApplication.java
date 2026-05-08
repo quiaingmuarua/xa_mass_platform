@@ -53,7 +53,7 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskDiagnosticOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
@@ -208,10 +208,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
+    @Override
     public TaskStateResolutionResult resolveTaskState(String taskId) {
         return requireStartedTaskQueries().resolveTaskState(taskId);
     }
 
+    @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
         return requireStartedTaskQueries().validateTaskState(taskId);
     }

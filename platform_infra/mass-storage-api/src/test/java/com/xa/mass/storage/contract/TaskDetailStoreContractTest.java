@@ -47,8 +47,8 @@ public abstract class TaskDetailStoreContractTest {
     }
 
     @Test
-    void getTaskMessageProjections_returnsEmptyList_whenNoneAdded() {
-        assertThat(store.getTaskMessageProjections("no-task")).isNotNull().isEmpty();
+    void getTaskMessageProjections_withLimit_returnsEmptyList_whenNoneAdded() {
+        assertThat(store.getTaskMessageProjections("no-task", 1)).isNotNull().isEmpty();
     }
 
     @Test

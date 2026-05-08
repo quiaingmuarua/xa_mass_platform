@@ -50,8 +50,8 @@ For verified startup and validation flows, use
   supported ownership state through `data.security`, not the raw reserved
   envelope.
 - task detail is now shell-oriented and does not implicitly return item payload
-  snapshots. Item, attempt, and compatibility/projection audit data are exposed
-  through explicit routes.
+  snapshots. Public v1 does not expose item, attempt, or
+  compatibility/projection-audit read routes.
 - public task create is now shell-only. Public ingest is explicit and happens
   after shell creation by `taskId`.
 - request safety for item ingest is enforced at the server ingress layer with:
@@ -197,7 +197,7 @@ Base path: `/api/v1/tasks`
 Task API is now explicitly split into:
 
 - shell lifecycle
-- item ingest / audit
+- item ingest
 - command routes
 
 Public create no longer accepts `inputs` and no longer mixes create with

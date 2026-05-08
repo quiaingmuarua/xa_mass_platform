@@ -150,7 +150,7 @@ class InMemoryTaskStorageTest {
         storage.upsertTaskMessageProjection("task-1", toProjection(failed));
 
         assertEquals(java.util.Set.of("msg-init", "msg-assigned"),
-                storage.getTaskMessageProjections("task-1").stream()
+                allMessageProjections(storage, "task-1").stream()
                         .filter(projection -> projection.status() == null || !projection.status().isFinal())
                         .map(TaskDetailStore.TaskMessageProjection::messageId)
                         .collect(java.util.stream.Collectors.toSet()));
@@ -159,7 +159,7 @@ class InMemoryTaskStorageTest {
         assertTrue(storage.upsertTaskMessageProjection("task-1", toProjection(assigned)));
 
         assertEquals(java.util.Set.of("msg-init"),
-                storage.getTaskMessageProjections("task-1").stream()
+                allMessageProjections(storage, "task-1").stream()
                         .filter(projection -> projection.status() == null || !projection.status().isFinal())
                         .map(TaskDetailStore.TaskMessageProjection::messageId)
                         .collect(java.util.stream.Collectors.toSet()));
@@ -177,7 +177,7 @@ class InMemoryTaskStorageTest {
 
         assertTrue(storage.deleteTask("task-1"));
         assertTrue(storage.getTask("task-1").isEmpty());
-        assertTrue(storage.getTaskMessageProjections("task-1").isEmpty());
+        assertTrue(allMessageProjections(storage, "task-1").isEmpty());
         assertEquals(0, storage.getTaskMessageStats("task-1").getTotal());
         assertTrue(storage.getTaskMessageAttemptProjections("task-1", "msg-init").isEmpty());
     }
@@ -197,8 +197,17 @@ class InMemoryTaskStorageTest {
 
         assertEquals(1, storage.getTaskMessageStats("task-1").getTotal());
         assertEquals(List.of("msg-init"),
-                storage.getTaskMessageProjections("task-1").stream().map(TaskDetailStore.TaskMessageProjection::messageId).toList());
+                allMessageProjections(storage, "task-1").stream().map(TaskDetailStore.TaskMessageProjection::messageId).toList());
         assertEquals(1, storage.getTaskMessageAttemptProjections("task-1", "msg-init").size());
+    }
+
+    private List<TaskDetailStore.TaskMessageProjection> allMessageProjections(InMemoryTaskStorage storage,
+                                                                              String taskId) {
+        long total = storage.getTaskMessageStats(taskId).getTotal();
+        if (total <= 0) {
+            return List.of();
+        }
+        return storage.getTaskMessageProjections(taskId, Math.toIntExact(total));
     }
 
     private TaskMsgAttempt attempt(String attemptId, int attemptNo, TaskMsgAttemptStatus status) {

@@ -16,6 +16,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskDiagnosticOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -47,6 +48,7 @@ public class TaskApiController {
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
+    private final TaskDiagnosticOperations taskDiagnostics;
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final ApiAuthService apiAuthService;
@@ -54,34 +56,39 @@ public class TaskApiController {
     private final TaskSecurityViewSupport taskSecurityViewSupport;
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskDiagnosticOperations taskDiagnostics,
                              TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+        this(taskQueries, taskDiagnostics, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
                 new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskDiagnosticOperations taskDiagnostics,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
+        this(taskQueries, taskDiagnostics, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskDiagnosticOperations taskDiagnostics,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
+        this(taskQueries, taskDiagnostics, taskAdmin, metadataCatalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskDiagnosticOperations taskDiagnostics,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
+        this.taskDiagnostics = taskDiagnostics;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
@@ -143,7 +150,7 @@ public class TaskApiController {
                         "project", task.getProject(),
                         "userId", task.getUser() != null ? task.getUser().getUserId() : submitterTaskCreate.userId(),
                         "principalId", submitterTaskCreate.principal().getPrincipalId(),
-                        "message", "Task created"
+                        "message", "Task shell created"
                 ));
             }
 
@@ -176,7 +183,7 @@ public class TaskApiController {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", toTaskDetailTaskView(task));
             response.put("security", taskSecurityViewSupport.toSecurityView(task));
-            response.put("stateValidation", taskQueries.validateTaskState(taskId));
+            response.put("stateValidation", taskDiagnostics.validateTaskState(taskId));
             return ok(response);
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());

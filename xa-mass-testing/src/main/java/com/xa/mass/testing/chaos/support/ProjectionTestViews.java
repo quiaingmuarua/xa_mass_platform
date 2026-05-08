@@ -42,7 +42,8 @@ public final class ProjectionTestViews {
                     projection.completeTime()
             ));
         }
-        boolean truncated = limit > 0 && taskDetailStore(app).getTaskMessageProjections(taskId).size() > projections.size();
+        long total = taskDetailStore(app).getTaskMessageStats(taskId).getTotal();
+        boolean truncated = limit > 0 && total > projections.size();
         return new CompatibilityMessageSnapshot(messages, Math.max(limit, 0), truncated);
     }
 

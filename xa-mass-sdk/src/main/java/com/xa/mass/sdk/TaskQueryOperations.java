@@ -13,8 +13,4 @@ public interface TaskQueryOperations {
     List<Task> listTasksPaged(int offset, int limit);
 
     List<Task> getTasksByStatus(TaskStatus status);
-
-    Object validateTaskState(String taskId);
-
-    Object resolveTaskState(String taskId);
 }
