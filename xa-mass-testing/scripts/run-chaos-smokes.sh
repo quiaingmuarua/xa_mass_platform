@@ -19,9 +19,9 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/chaos-smokes.classpath"
 cd "${REPO_ROOT}"
 
 echo "== Building xa-mass-testing and sibling modules =="
-./mvnw -q -pl xa-mass-testing -am -Dmaven.test.skip=true install
+./mvnw -q -pl xa-mass-testing -am -DskipTests install
 
-./mvnw -q -f xa-mass-testing/pom.xml \
+./mvnw -q -pl xa-mass-testing \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \
   -Dmdep.pathSeparator=":"

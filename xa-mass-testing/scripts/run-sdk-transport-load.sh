@@ -8,7 +8,7 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/sdk-transport-load.classpath
 cd "${REPO_ROOT}"
 
 ./mvnw -q -pl xa-mass-testing -am test-compile
-./mvnw -q -f xa-mass-testing/pom.xml \
+./mvnw -q -pl xa-mass-testing \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \
   -Dmdep.pathSeparator=":"

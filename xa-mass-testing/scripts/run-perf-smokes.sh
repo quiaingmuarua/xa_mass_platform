@@ -7,8 +7,8 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/perf-smokes.classpath"
 
 cd "${REPO_ROOT}"
 
-./mvnw -q -pl xa-mass-testing -am -Dmaven.test.skip=true install
-./mvnw -q -f xa-mass-testing/pom.xml \
+./mvnw -q -pl xa-mass-testing -am -DskipTests install
+./mvnw -q -pl xa-mass-testing \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \
   -Dmdep.pathSeparator=":"
