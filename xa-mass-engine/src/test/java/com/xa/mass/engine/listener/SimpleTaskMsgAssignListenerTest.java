@@ -17,6 +17,7 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,7 @@ class SimpleTaskMsgAssignListenerTest {
         Task task = createTask(3);
         task.setBatchSize(10);
         List<String> storedMsgIds = storedMessages(task.getTid()).stream()
-                .map(TaskMsg::getMessageId)
+                .map(TaskDetailStore.TaskMessageProjection::messageId)
                 .collect(Collectors.toList());
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(
@@ -94,36 +95,38 @@ class SimpleTaskMsgAssignListenerTest {
 
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
-        List<TaskMsg> stored = storedMessages(task.getTid());
-        List<TaskMsg> projected = projectedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> projected = projectedMessages(task.getTid());
         assertEquals(4, projected.size());
-        assertTrue(stored.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.status() == TaskMsgStatus.INIT));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerId() == null));
         assertEquals(List.of(TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED),
-                projected.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                projected.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
-                projected.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
-        List<String> batchIds = projected.stream().map(TaskMsg::getLatestAttemptBatchId).collect(Collectors.toList());
+                projected.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptWorkerId).collect(Collectors.toList()));
+        List<String> batchIds = projected.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptBatchId).collect(Collectors.toList());
         assertTrue(batchIds.stream().allMatch(id -> id != null && !id.isBlank()));
         assertEquals(batchIds.get(0), batchIds.get(2));
         assertEquals(batchIds.get(1), batchIds.get(3));
         assertNotEquals(batchIds.get(0), batchIds.get(1));
-        assertTrue(projected.stream().allMatch(msg -> msg.getAssignedTime() != null));
+        assertTrue(projected.stream().allMatch(msg -> msg.assignedTime() != null));
         assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
         assertEquals(task.getTid(), wc1.getLastBindTaskId());
         assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
         assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
-        List<TaskMsgAttempt> attempts = stored.stream()
-                .map(msg -> latestActiveAttemptProjection(task.getTid(), msg.getMessageId()))
+        List<TaskDetailStore.TaskMessageAttemptProjection> attempts = stored.stream()
+                .map(msg -> latestActiveAttemptProjection(task.getTid(), msg.messageId()))
                 .collect(Collectors.toList());
         assertEquals(4, attempts.size());
-        assertTrue(stored.stream().allMatch(msg -> taskStorage.getTaskMessageAttempts(task.getTid(), msg.getMessageId()).isEmpty()));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getAttemptNo() == 1));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.DISPATCHED));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getDispatchTime() != null));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getBatchId() != null && !attempt.getBatchId().isBlank()));
+        assertTrue(stored.stream().allMatch(msg -> taskStorage.getTaskMessageAttemptProjections(task.getTid(), msg.messageId()).isEmpty()));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.attemptNo() == 1));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.status() == TaskMsgAttemptStatus.DISPATCHED));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.workerId() != null));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.batchId() != null && !attempt.batchId().isBlank()));
+        assertTrue(stored.stream()
+                .map(msg -> activeLease(task.getTid(), msg.messageId()))
+                .allMatch(lease -> lease != null && lease.leasedAt() != null && lease.leaseExpireAt() != null));
 
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
@@ -144,13 +147,16 @@ class SimpleTaskMsgAssignListenerTest {
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
         LocalDateTime afterAssign = LocalDateTime.now();
 
-        TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = latestActiveAttemptProjection(task.getTid(), message.getMessageId());
+        TaskDetailStore.TaskMessageProjection message = storedMessages(task.getTid()).get(0);
+        TaskDetailStore.TaskMessageAttemptProjection attempt = latestActiveAttemptProjection(task.getTid(), message.messageId());
+        ActiveLeaseRecord activeLease = activeLease(task.getTid(), message.messageId());
 
         assertNotNull(attempt);
-        assertNotNull(attempt.getLeaseExpireTime());
-        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
-        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertNotNull(activeLease);
+        assertNotNull(activeLease.leaseExpireAt());
+        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault());
+        long lowerBound = Duration.between(beforeAssign, leaseExpireTime).getSeconds();
+        long upperBound = Duration.between(afterAssign, leaseExpireTime).getSeconds();
         assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
         assertTrue(upperBound <= 2, "lease should stay close to configured 2-second window");
     }
@@ -168,16 +174,16 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", null, null, null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -193,13 +199,16 @@ class SimpleTaskMsgAssignListenerTest {
         listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
         LocalDateTime afterAssign = LocalDateTime.now();
 
-        TaskMsg message = storedMessages(task.getTid()).get(0);
-        TaskMsgAttempt attempt = latestActiveAttemptProjection(task.getTid(), message.getMessageId());
+        TaskDetailStore.TaskMessageProjection message = storedMessages(task.getTid()).get(0);
+        TaskDetailStore.TaskMessageAttemptProjection attempt = latestActiveAttemptProjection(task.getTid(), message.messageId());
+        ActiveLeaseRecord activeLease = activeLease(task.getTid(), message.messageId());
 
         assertNotNull(attempt);
-        assertNotNull(attempt.getLeaseExpireTime());
-        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
-        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertNotNull(activeLease);
+        assertNotNull(activeLease.leaseExpireAt());
+        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault());
+        long lowerBound = Duration.between(beforeAssign, leaseExpireTime).getSeconds();
+        long upperBound = Duration.between(afterAssign, leaseExpireTime).getSeconds();
         assertTrue(lowerBound >= 29, "interactive short lease should stay close to 30 seconds");
         assertTrue(upperBound <= 30, "interactive short lease should be capped by the short lease profile");
     }
@@ -291,12 +300,12 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
 
         assertEquals(1, dispatched.size());
-        TaskMsg stored = storedMessages(task.getTid()).get(0);
-        TaskMsg visible = taskMessageProjection(task.getTid(), stored.getMessageId());
-        assertEquals(TaskMsgStatus.INIT, stored.getStatus());
-        assertEquals(TaskMsgStatus.ASSIGNED, visible.getStatus());
-        assertEquals("d1", visible.getLatestAttemptWorkerId());
-        assertTrue(failingStorage.getTaskMessageAttempts(task.getTid(), stored.getMessageId()).isEmpty());
+        TaskDetailStore.TaskMessageProjection stored = storedMessages(task.getTid()).get(0);
+        TaskDetailStore.TaskMessageProjection visible = taskMessageProjection(task.getTid(), stored.messageId());
+        assertEquals(TaskMsgStatus.INIT, stored.status());
+        assertEquals(TaskMsgStatus.ASSIGNED, visible.status());
+        assertEquals("d1", visible.latestAttemptWorkerId());
+        assertTrue(failingStorage.getTaskMessageAttemptProjections(task.getTid(), stored.messageId()).isEmpty());
     }
 
     @Test
@@ -318,22 +327,22 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
 
         assertTrue(dispatched.isEmpty());
-        List<TaskMsg> stored = storedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
         assertEquals(List.of(TaskMsgStatus.INIT, TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
-        assertTrue(stored.stream().allMatch(msg -> msg.getRetryCount() == 1));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
+        assertTrue(stored.stream().allMatch(msg -> msg.retryCount() == 1));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() == null));
 
-        List<TaskMsgAttempt> attempts = stored.stream()
-                .map(msg -> taskStorage.getLatestTaskMessageAttempt(task.getTid(), msg.getMessageId()).orElseThrow())
+        List<TaskDetailStore.TaskMessageAttemptProjection> attempts = stored.stream()
+                .map(msg -> taskStorage.getLatestTaskMessageAttemptProjection(task.getTid(), msg.messageId()).orElseThrow())
                 .collect(Collectors.toList());
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.REVOKED));
-        assertTrue(attempts.stream().allMatch(attempt -> attempt.getFinalReason()
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.status() == TaskMsgAttemptStatus.REVOKED));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.finalReason()
                 == com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason.REVOKED_FOR_RETRY));
-        assertTrue(attempts.stream().allMatch(attempt -> "DISPATCH_SUBMIT_FAILED".equals(attempt.getErrorCode())));
+        assertTrue(attempts.stream().allMatch(attempt -> "DISPATCH_SUBMIT_FAILED".equals(attempt.errorCode())));
 
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
@@ -426,16 +435,16 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(4, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1", "d2", null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -449,15 +458,15 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
 
         assertEquals(2, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d1", null, null),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -472,14 +481,14 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskDispatchBinding> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
-        List<TaskMsg> stored = projectedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertEquals(List.of(
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.ASSIGNED),
-                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1"),
-                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskDetailStore.TaskMessageProjection::latestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -488,9 +497,9 @@ class SimpleTaskMsgAssignListenerTest {
         task.setBatchSize(10);
         assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
-        List<TaskMsg> stored = projectedMessages(task.getTid());
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() != null && !msg.getLatestAttemptBatchId().isBlank()));
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() != null && !msg.latestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
                 any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
@@ -504,8 +513,8 @@ class SimpleTaskMsgAssignListenerTest {
         blocked.block();
         assertTrue(listener.onMsgAssign(task, List.of(matched(worker("d1"), blocked))).isEmpty());
 
-        List<TaskMsg> stored = storedMessages(task.getTid());
-        assertEquals(TaskMsgStatus.INIT, stored.get(0).getStatus());
+        List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
+        assertEquals(TaskMsgStatus.INIT, stored.get(0).status());
         verify(workerManager).unlockWorker("d1");
         verify(recordService, never()).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
@@ -516,14 +525,14 @@ class SimpleTaskMsgAssignListenerTest {
     void emptyWorkerListSkipsWithoutMutation() {
         Task task = createTask(2);
         List<String> before = storedMessages(task.getTid()).stream()
-                .map(TaskMsg::getMessageId)
+                .map(TaskDetailStore.TaskMessageProjection::messageId)
                 .collect(Collectors.toList());
 
         assertTrue(listener.onMsgAssign(task, List.of()).isEmpty());
 
-        List<TaskMsg> after = storedMessages(task.getTid());
-        assertEquals(before, after.stream().map(TaskMsg::getMessageId).collect(Collectors.toList()));
-        assertTrue(after.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
+        List<TaskDetailStore.TaskMessageProjection> after = storedMessages(task.getTid());
+        assertEquals(before, after.stream().map(TaskDetailStore.TaskMessageProjection::messageId).collect(Collectors.toList()));
+        assertTrue(after.stream().allMatch(msg -> msg.status() == TaskMsgStatus.INIT));
         verifyNoInteractions(recordService);
     }
 
@@ -540,28 +549,30 @@ class SimpleTaskMsgAssignListenerTest {
         return taskCommands.createTask(dto);
     }
 
-    private List<TaskMsg> storedMessages(String taskId) {
+    private List<TaskDetailStore.TaskMessageProjection> storedMessages(String taskId) {
         long count = taskStorage.getTaskMessageStats(taskId).getTotal();
         if (count == 0) {
             return List.of();
         }
-        return taskStorage.getTaskMessageProjections(taskId, Math.toIntExact(count)).stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList();
+        return taskStorage.getTaskMessageProjections(taskId, Math.toIntExact(count));
     }
 
-    private List<TaskMsg> projectedMessages(String taskId) {
+    private List<TaskDetailStore.TaskMessageProjection> projectedMessages(String taskId) {
         return storedMessages(taskId).stream()
-                .map(msg -> taskMessageProjection(taskId, msg.getMessageId()))
+                .map(msg -> taskMessageProjection(taskId, msg.messageId()))
                 .collect(Collectors.toList());
     }
 
-    private TaskMsg taskMessageProjection(String taskId, String messageId) {
-        return taskManager.getTaskMessageProjection(taskId, messageId);
+    private TaskDetailStore.TaskMessageProjection taskMessageProjection(String taskId, String messageId) {
+        return taskManager.getVisibleTaskMessageProjection(taskId, messageId);
     }
 
-    private TaskMsgAttempt latestActiveAttemptProjection(String taskId, String messageId) {
-        return taskManager.getLatestActiveAttemptProjection(taskId, messageId);
+    private TaskDetailStore.TaskMessageAttemptProjection latestActiveAttemptProjection(String taskId, String messageId) {
+        return taskManager.getLatestActiveAttemptProjectionRecord(taskId, messageId);
+    }
+
+    private ActiveLeaseRecord activeLease(String taskId, String messageId) {
+        return taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
     }
 
     private Worker worker(String id) {

@@ -570,8 +570,10 @@ class TaskConcurrencyAcceptanceTest {
         TaskDetailStore.TaskMessageProjection runningProjection =
                 TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(compatibilityAssigned);
         assertTrue(taskManager.upsertTaskMessageProjectionRecord(task.getTid(), runningProjection));
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveAttemptProjection(task.getTid(), assigned.messageId());
-        assertNotNull(activeAttempt);
+        TaskDetailStore.TaskMessageAttemptProjection activeAttemptRecord =
+                taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), assigned.messageId());
+        assertNotNull(activeAttemptRecord);
+        TaskMsgAttempt activeAttempt = activeAttemptRecord.toCompatibilityProjection();
         if (activeAttempt.getStatus() != TaskMsgAttemptStatus.RUNNING) {
             assertTrue(activeAttempt.markRunning());
         }
