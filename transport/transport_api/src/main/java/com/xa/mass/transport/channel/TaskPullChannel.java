@@ -6,6 +6,9 @@ import java.util.List;
 
 /**
  * Pull-based task intake channel for polling workers.
+ *
+ * <p>Delivered items are worker-facing dispatch views, not the transport queue
+ * protocol itself.</p>
  */
 public interface TaskPullChannel {
 

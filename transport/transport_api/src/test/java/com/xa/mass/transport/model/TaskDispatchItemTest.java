@@ -157,7 +157,7 @@ class TaskDispatchItemTest {
                 Map.of("mode", "fast")
         );
 
-        assertSame(item.toTransportPayload(), item.toTransportPayload());
+        assertSame(item.transportPayloadView(), item.transportPayloadView());
     }
 
     @Test

@@ -543,6 +543,7 @@ public class TaskApiController {
         view.put("updateTime", taskMsg.updateTime());
         view.put("startTime", taskMsg.startTime());
         view.put("completeTime", taskMsg.completeTime());
+        view.put("output", taskMsg.output() == null ? null : new LinkedHashMap<>(taskMsg.output()));
         return view;
     }
 

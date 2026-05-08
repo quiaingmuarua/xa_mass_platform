@@ -53,6 +53,10 @@ public final class TaskPullResult {
         return status;
     }
 
+    /**
+     * Worker-facing dispatch views reconstructed from transport packets when
+     * delivery succeeds.
+     */
     public List<TaskDispatchItem> getItems() {
         return items;
     }

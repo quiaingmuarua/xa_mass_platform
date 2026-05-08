@@ -93,7 +93,7 @@ class TaskResultReportTest {
                 Map.of("status", "SUCCESS")
         );
 
-        Map<String, Object> payload = report.toTransportPayload();
+        Map<String, Object> payload = report.transportPayloadView();
         TransportPacket packet = new TransportPacket(
                 TransportPacket.CURRENT_VERSION,
                 "packet-1",
@@ -112,14 +112,14 @@ class TaskResultReportTest {
         TaskResultReport decoded = TaskResultReport.fromTransportPacket(packet);
 
         assertSame(payload.get(TransportPacket.PAYLOAD_OUTPUT), report.getOutput());
-        assertSame(payload, report.toTransportPayload());
+        assertSame(payload, report.transportPayloadView());
         assertEquals(report.getTaskId(), decoded.getTaskId());
         assertEquals(report.getMessageId(), decoded.getMessageId());
         assertEquals(report.isSuccess(), decoded.isSuccess());
         assertEquals(report.getDetail(), decoded.getDetail());
         assertEquals(report.getErrorCode(), decoded.getErrorCode());
         assertEquals(report.getOutput(), decoded.getOutput());
-        assertSame(packet.payload(), decoded.toTransportPayload());
+        assertSame(packet.payload(), decoded.transportPayloadView());
     }
 
     @Test

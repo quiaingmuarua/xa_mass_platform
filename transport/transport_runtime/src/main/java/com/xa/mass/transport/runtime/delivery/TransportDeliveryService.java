@@ -68,18 +68,18 @@ public final class TransportDeliveryService {
         return result;
     }
 
-    public List<TaskDispatchItem> pollDispatchItems(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        return toDispatchItems(pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes());
+    public List<TaskDispatchItem> pollDispatchViews(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        return toDispatchViews(pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes());
     }
 
-    public static TaskDispatchItem toDispatchItem(TransportDispatchEnvelope envelope) {
+    public static TaskDispatchItem toDispatchView(TransportDispatchEnvelope envelope) {
         if (envelope == null) {
             throw new IllegalArgumentException("envelope must not be null");
         }
         return TaskDispatchItem.fromTransportPacket(envelope.getPacket());
     }
 
-    public static List<TaskDispatchItem> toDispatchItems(List<TransportDispatchEnvelope> envelopes) {
+    public static List<TaskDispatchItem> toDispatchViews(List<TransportDispatchEnvelope> envelopes) {
         if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
@@ -194,7 +194,7 @@ public final class TransportDeliveryService {
             if (cached != null) {
                 return cached;
             }
-            TaskDispatchItem resolved = toDispatchItem(envelopes.get(index));
+            TaskDispatchItem resolved = toDispatchView(envelopes.get(index));
             cache[index] = resolved;
             return resolved;
         }

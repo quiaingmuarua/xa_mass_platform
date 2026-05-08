@@ -15,6 +15,10 @@ import java.util.Objects;
 /**
  * SDK-facing pull worker session for crawlers, queue consumers, and other
  * executors that receive work by polling instead of server push.
+ *
+ * <p>This session exposes {@link TaskDispatchItem} as the worker-facing pull
+ * view. Transport runtime still owns packet/envelope assembly and canonical
+ * addressing underneath.</p>
  */
 public class PullWorkerSession {
 

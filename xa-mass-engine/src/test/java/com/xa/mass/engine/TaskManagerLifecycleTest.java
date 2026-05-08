@@ -62,13 +62,13 @@ class TaskManagerLifecycleTest {
         assertNotNull(task.getUser());
         assertEquals("agent", task.getUser().getUserId());
 
-        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> messages = taskManager.getTaskMessageRecords(task.getTid());
         assertEquals(2, messages.size());
-        assertEquals("alpha", messages.get(0).getInput().get("target"));
-        assertEquals("beta", messages.get(1).getInput().get("target"));
-        assertEquals(task.getTid(), messages.get(0).getTaskId());
-        assertEquals(task.getTid(), messages.get(1).getTaskId());
-        assertNotEquals(messages.get(0).getMessageId(), messages.get(1).getMessageId());
+        assertEquals("alpha", messages.get(0).input().get("target"));
+        assertEquals("beta", messages.get(1).input().get("target"));
+        assertEquals(task.getTid(), messages.get(0).taskId());
+        assertEquals(task.getTid(), messages.get(1).taskId());
+        assertNotEquals(messages.get(0).messageId(), messages.get(1).messageId());
         assertEquals(2, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
     }
 
@@ -195,7 +195,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskIngestStatus.READY, task.getIngestStatus());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
-        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
     }
 
     @Test
@@ -216,7 +216,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertEquals("mock/input/demo.csv", task.getSourceRef());
         assertEquals(0, task.getTaskTargetNumber());
-        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
     }
 
     @Test
@@ -265,10 +265,11 @@ class TaskManagerLifecycleTest {
 
         taskManager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 5);
 
-        TaskMsg projection = taskManager.getTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection projection =
+                taskManager.getVisibleTaskMessageProjection(task.getTid(), messageId);
         assertNotNull(projection);
-        assertEquals(payloadRef, projection.getPayloadRef());
-        assertTrue(projection.getInput().isEmpty());
+        assertEquals(payloadRef, projection.payloadRef());
+        assertTrue(projection.input() == null || projection.input().isEmpty());
         assertEquals(1, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
         ClaimedTaskWork claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
@@ -309,7 +310,7 @@ class TaskManagerLifecycleTest {
 
         manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 2);
 
-        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+        assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
         assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
@@ -331,12 +332,13 @@ class TaskManagerLifecycleTest {
                 java.util.Map.of("outcome", "success")
         ));
 
-        TaskMsg projection = manager.getTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection projection =
+                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
         assertNotNull(projection);
-        assertEquals(TaskMsgStatus.SUCCESS, projection.getStatus());
-        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, projection.getFinalReason());
-        assertTrue(projection.getInput().isEmpty());
-        assertEquals(java.util.Map.of("outcome", "success"), projection.getOutput());
+        assertEquals(TaskMsgStatus.SUCCESS, projection.status());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, projection.finalReason());
+        assertTrue(projection.input() == null || projection.input().isEmpty());
+        assertEquals(java.util.Map.of("outcome", "success"), projection.output());
     }
 
     @Test
@@ -368,7 +370,7 @@ class TaskManagerLifecycleTest {
 
         manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 0);
 
-        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+        assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
         assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
@@ -382,15 +384,17 @@ class TaskManagerLifecycleTest {
 
         assertTrue(manager.expireTaskMessage(task.getTid(), messageId));
 
-        TaskMsg projection = manager.getTaskMessageProjection(task.getTid(), messageId);
-        TaskMsgAttempt latestAttempt = manager.getLatestTaskMessageAttemptAuditView(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection projection =
+                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
+                manager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), messageId);
         assertNotNull(projection);
-        assertEquals(TaskMsgStatus.EXPIRED, projection.getStatus());
-        assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, projection.getFinalReason());
-        assertTrue(projection.getInput().isEmpty());
-        assertEquals(payloadRef, projection.getPayloadRef());
+        assertEquals(TaskMsgStatus.EXPIRED, projection.status());
+        assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, projection.finalReason());
+        assertTrue(projection.input() == null || projection.input().isEmpty());
+        assertEquals(payloadRef, projection.payloadRef());
         assertNotNull(latestAttempt);
-        assertEquals(TaskMsgAttemptStatus.EXPIRED, latestAttempt.getStatus());
+        assertEquals(TaskMsgAttemptStatus.EXPIRED, latestAttempt.status());
     }
 
     @Test
@@ -422,7 +426,7 @@ class TaskManagerLifecycleTest {
 
         manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 1);
 
-        assertNull(manager.getStoredTaskMessageProjection(task.getTid(), messageId));
+        assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
@@ -432,13 +436,14 @@ class TaskManagerLifecycleTest {
         ).get(0);
         assertEquals(payloadRef, claimed.payloadRef());
 
-        TaskMsg leasedView = manager.getTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection leasedView =
+                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
         TaskMessageSnapshot snapshot = manager.getTaskMessageSnapshot(task.getTid(), 10);
 
         assertNotNull(leasedView);
-        assertEquals(TaskMsgStatus.ASSIGNED, leasedView.getStatus());
-        assertEquals(payloadRef, leasedView.getPayloadRef());
-        assertEquals("worker-overlay-best-effort", leasedView.getLatestAttemptWorkerId());
+        assertEquals(TaskMsgStatus.ASSIGNED, leasedView.status());
+        assertEquals(payloadRef, leasedView.payloadRef());
+        assertEquals("worker-overlay-best-effort", leasedView.latestAttemptWorkerId());
         assertEquals(1, snapshot.messages().size());
         assertEquals(messageId, snapshot.messages().get(0).getMessageId());
         assertEquals(TaskMsgStatus.ASSIGNED, snapshot.messages().get(0).getStatus());

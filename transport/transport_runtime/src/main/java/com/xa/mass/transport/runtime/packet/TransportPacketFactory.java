@@ -22,19 +22,19 @@ public final class TransportPacketFactory {
         this.packetIdSupplier = Objects.requireNonNull(packetIdSupplier, "packetIdSupplier");
     }
 
-    public TransportPacket fromDispatchItem(String adapterId,
+    public TransportPacket fromDispatchView(String adapterId,
                                             String routeKey,
                                             String traceId,
-                                            TaskDispatchItem item) {
-        return fromDispatchItem(packetIdSupplier.get(), adapterId, routeKey, traceId, item);
+                                            TaskDispatchItem dispatchView) {
+        return fromDispatchView(packetIdSupplier.get(), adapterId, routeKey, traceId, dispatchView);
     }
 
-    public TransportPacket fromDispatchItem(String packetId,
+    public TransportPacket fromDispatchView(String packetId,
                                             String adapterId,
                                             String routeKey,
                                             String traceId,
-                                            TaskDispatchItem item) {
-        Objects.requireNonNull(item, "item");
+                                            TaskDispatchItem dispatchView) {
+        Objects.requireNonNull(dispatchView, "dispatchView");
         return new TransportPacket(
                 TransportPacket.CURRENT_VERSION,
                 packetId,
@@ -42,12 +42,12 @@ public final class TransportPacketFactory {
                 PacketType.TASK_DISPATCH,
                 adapterId,
                 routeKey,
-                item.getTaskId(),
-                item.getMessageId(),
-                item.attemptId(),
-                item.getEventCode(),
+                dispatchView.getTaskId(),
+                dispatchView.getMessageId(),
+                dispatchView.attemptId(),
+                dispatchView.getEventCode(),
                 TransportPacket.JSON_CONTENT_TYPE,
-                item.toTransportPayload()
+                dispatchView.transportPayloadView()
         );
     }
 
@@ -69,7 +69,7 @@ public final class TransportPacketFactory {
                 normalize(attemptId),
                 null,
                 TransportPacket.JSON_CONTENT_TYPE,
-                report.toTransportPayload()
+                report.transportPayloadView()
         );
     }
 

@@ -44,24 +44,34 @@ public class ProjectionAwareTaskManager extends TaskManager {
         this.taskDetailStore = taskDetailStore;
     }
 
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageRecords(String taskId) {
+        return taskDetailStore.getTaskMessageProjections(taskId);
+    }
+
+    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageRecords(String taskId, int limit) {
+        return taskDetailStore.getTaskMessageProjections(taskId, limit);
+    }
+
     public List<TaskMsg> getTaskMessages(String taskId) {
-        return materializeCompatibilityTaskMessages(taskDetailStore.getTaskMessageProjections(taskId));
+        return materializeCompatibilityTaskMessages(getTaskMessageRecords(taskId));
     }
 
     public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return materializeCompatibilityTaskMessages(taskDetailStore.getTaskMessageProjections(taskId, limit));
+        return materializeCompatibilityTaskMessages(getTaskMessageRecords(taskId, limit));
+    }
+
+    public TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
+        return taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
     }
 
     public TaskMsg getStoredTaskMessageProjection(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .orElse(null);
+        TaskDetailStore.TaskMessageProjection projection = getStoredTaskMessageRecord(taskId, messageId);
+        return projection != null ? projection.toCompatibilityProjection() : null;
     }
 
-    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+    public TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
         Task task = getTask(taskId);
-        TaskDetailStore.TaskMessageProjection projection =
-                taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
+        TaskDetailStore.TaskMessageProjection projection = getStoredTaskMessageRecord(taskId, messageId);
         if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
             projection = CompatibilityProjectionSupport.overlayActiveLeaseProjection(
                     projection,
@@ -70,8 +80,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
                     messageId
             );
         }
-        TaskDetailStore.TaskMessageProjection visibleProjection =
-                CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
+        return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
+    }
+
+    public TaskMsg getTaskMessageProjection(String taskId, String messageId) {
+        TaskDetailStore.TaskMessageProjection visibleProjection = getVisibleTaskMessageProjection(taskId, messageId);
         return visibleProjection != null ? visibleProjection.toCompatibilityProjection() : null;
     }
 
@@ -94,32 +107,52 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public boolean updateTaskMessageProjection(String taskId, TaskMsg taskMsg) {
+        return upsertTaskMessageProjectionRecord(taskId,
+                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null);
+    }
+
+    public boolean upsertTaskMessageProjectionRecord(String taskId,
+                                                     TaskDetailStore.TaskMessageProjection projection) {
         return taskDetailStore.upsertTaskMessageProjection(
                 taskId,
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null
+                projection
         );
     }
 
     public void addTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskDetailStore.upsertTaskMessageAttemptProjection(
-                taskId,
-                messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null
-        );
+        upsertTaskMessageAttemptAuditProjectionRecord(taskId, messageId,
+                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
+    }
+
+    public TaskDetailStore.TaskMessageAttemptProjection getLatestTaskMessageAttemptAuditProjection(String taskId,
+                                                                                                   String messageId) {
+        return taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId).orElse(null);
     }
 
     public TaskMsgAttempt getLatestTaskMessageAttemptAuditView(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                .orElse(null);
+        TaskDetailStore.TaskMessageAttemptProjection projection = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
+        return projection != null ? projection.toCompatibilityProjection() : null;
     }
 
     public boolean updateTaskMessageAttemptAuditProjection(String taskId, String messageId, TaskMsgAttempt attempt) {
+        return upsertTaskMessageAttemptAuditProjectionRecord(taskId, messageId,
+                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
+    }
+
+    public boolean upsertTaskMessageAttemptAuditProjectionRecord(String taskId,
+                                                                 String messageId,
+                                                                 TaskDetailStore.TaskMessageAttemptProjection projection) {
         return taskDetailStore.upsertTaskMessageAttemptProjection(
                 taskId,
                 messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null
+                projection
         );
+    }
+
+    public TaskDetailStore.TaskMessageAttemptProjection getLatestActiveAttemptProjectionRecord(String taskId,
+                                                                                               String messageId) {
+        TaskMsgAttempt attempt = getLatestActiveAttemptProjection(taskId, messageId);
+        return attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null;
     }
 
     public TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
@@ -131,14 +164,14 @@ public class ProjectionAwareTaskManager extends TaskManager {
         if (activeLease == null) {
             return null;
         }
-        TaskMsg storedProjection = getStoredTaskMessageProjection(taskId, messageId);
-        TaskMsgAttempt latestAuditView = getLatestTaskMessageAttemptAuditView(taskId, messageId);
-        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.getStatus() : TaskMsgStatus.ASSIGNED;
+        TaskDetailStore.TaskMessageProjection storedProjection = getStoredTaskMessageRecord(taskId, messageId);
+        TaskDetailStore.TaskMessageAttemptProjection latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
+        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.status() : TaskMsgStatus.ASSIGNED;
         String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
         int attemptNo = Math.max(1, activeLease.retryCount() + 1);
         String attemptId = preferredAttemptId;
         if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
-            attemptId = latestAuditView.getAttemptId();
+            attemptId = latestAuditView.attemptId();
         }
         if (attemptId == null || attemptId.isBlank()) {
             attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
@@ -168,22 +201,22 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return attempt;
     }
 
-    private boolean matchesRuntimeLease(TaskMsgAttempt attempt,
+    private boolean matchesRuntimeLease(TaskDetailStore.TaskMessageAttemptProjection attempt,
                                         ActiveLeaseRecord activeLease,
                                         int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.getAttemptId() == null || attempt.getAttemptId().isBlank()) {
+        if (attempt == null || activeLease == null || attempt.attemptId() == null || attempt.attemptId().isBlank()) {
             return false;
         }
-        if (attempt.getAttemptNo() != attemptNo) {
+        if (attempt.attemptNo() != attemptNo) {
             return false;
         }
-        if (!java.util.Objects.equals(attempt.getWorkerId(), activeLease.workerId())) {
+        if (!java.util.Objects.equals(attempt.workerId(), activeLease.workerId())) {
             return false;
         }
-        if (!java.util.Objects.equals(attempt.getWorkerContextId(), activeLease.workerContextId())) {
+        if (!java.util.Objects.equals(attempt.workerContextId(), activeLease.workerContextId())) {
             return false;
         }
-        return java.util.Objects.equals(attempt.getBatchId(), activeLease.batchId());
+        return java.util.Objects.equals(attempt.batchId(), activeLease.batchId());
     }
 
     private List<TaskMsg> materializeCompatibilityTaskMessages(List<TaskDetailStore.TaskMessageProjection> projections) {

@@ -56,7 +56,7 @@ class TransportDeliveryPollResultTest {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchItem("polling", item.getWorkerId(), item.attemptId(), item),
+                        .fromDispatchView("polling", item.getWorkerId(), item.attemptId(), item),
                 1L
         );
     }

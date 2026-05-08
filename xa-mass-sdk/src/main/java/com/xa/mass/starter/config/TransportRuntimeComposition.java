@@ -184,19 +184,19 @@ public class TransportRuntimeComposition {
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        if (usesCustomWorkerTransportRuntimeFactory()) {
+        if (!hasRegistrationDescriptors()) {
             if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
                 return requestedAdapterId.trim().toLowerCase(java.util.Locale.ROOT);
             }
             throw new IllegalStateException(
-                    "worker adapterId must be set before runtime start when a custom worker transport runtime factory is configured");
+                    "worker adapterId must be set before runtime start when transport registration metadata is unavailable");
         }
         return registrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
     public List<TransportAdapterBootstrap> resolveTransportAdapterBootstraps() {
         List<TransportAdapterBootstrap> bootstraps = bootstrapCandidates().stream()
-                .filter(BootstrapCandidate::runtimeEnabled)
+                .filter(BootstrapCandidate::runtimeIncluded)
                 .map(BootstrapCandidate::bootstrap)
                 .toList();
         validateUniqueAdapterIds(bootstraps);
@@ -256,12 +256,14 @@ public class TransportRuntimeComposition {
 
     private List<TransportAdapterDescriptor> resolveRegistrationDescriptors() {
         List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
-        descriptors.add(new TransportAdapterDescriptor(
-                PollingWorkerAdapter.PROTOCOL,
-                WorkerTransportHints.POLLING
-        ));
+        if (workerTransportRuntimeFactory == null) {
+            descriptors.add(new TransportAdapterDescriptor(
+                    PollingWorkerAdapter.PROTOCOL,
+                    WorkerTransportHints.POLLING
+            ));
+        }
         for (BootstrapCandidate candidate : bootstrapCandidates()) {
-            if (!candidate.registrationEnabled()) {
+            if (!candidate.registrationIncluded()) {
                 continue;
             }
             TransportAdapterDescriptor descriptor = candidate.bootstrap().descriptor();
@@ -273,33 +275,35 @@ public class TransportRuntimeComposition {
         return List.copyOf(descriptors);
     }
 
-    private boolean usesCustomWorkerTransportRuntimeFactory() {
-        return workerTransportRuntimeFactory != null;
+    private boolean hasRegistrationDescriptors() {
+        return !resolveRegistrationDescriptors().isEmpty();
     }
 
     private List<BootstrapCandidate> bootstrapCandidates() {
         List<BootstrapCandidate> candidates = new ArrayList<>();
         candidates.add(new BootstrapCandidate(
                 resolvePrimaryTransportAdapterBootstrap(),
-                true,
+                primaryTransportAdapterBootstrap != null
+                        || bundledWebSocketAdapterConfig.isEnabled()
+                        || bundledWebSocketAdapterConfig.isServerEnabled(),
                 primaryTransportAdapterBootstrap != null || bundledWebSocketAdapterConfig.isEnabled()
         ));
         candidates.add(new BootstrapCandidate(
                 resolveBundledSocketTransportAdapterBootstrap(),
-                true,
+                bundledSocketAdapterConfig.isEnabled() || bundledSocketAdapterConfig.isServerEnabled(),
                 bundledSocketAdapterConfig.isEnabled()
         ));
         for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
             candidates.add(new BootstrapCandidate(
                     new WebSocketTransportAdapterBootstrap(config),
-                    true,
+                    config.isEnabled() || config.isServerEnabled(),
                     config.isEnabled()
             ));
         }
         for (SocketAdapterConfig config : supplementalSocketAdapterConfigs) {
             candidates.add(new BootstrapCandidate(
                     new SocketTransportAdapterBootstrap(config),
-                    true,
+                    config.isEnabled() || config.isServerEnabled(),
                     config.isEnabled()
             ));
         }
@@ -342,8 +346,8 @@ public class TransportRuntimeComposition {
     }
 
     private record BootstrapCandidate(TransportAdapterBootstrap bootstrap,
-                                      boolean runtimeEnabled,
-                                      boolean registrationEnabled) {
+                                      boolean runtimeIncluded,
+                                      boolean registrationIncluded) {
     }
 }
 

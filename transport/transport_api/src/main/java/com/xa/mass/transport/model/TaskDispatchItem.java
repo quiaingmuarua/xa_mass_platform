@@ -11,12 +11,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Transport-neutral logical dispatch item delivered to worker transports.
+ * Worker-facing dispatch view reconstructed from or assembled into the
+ * transport packet mainline.
  *
- * <p>This class is currently a narrow hybrid: worker-facing task payload plus
- * runtime dispatch metadata used by adapters. Internal metadata such as
- * {@link #attemptId()} intentionally avoids JavaBean getter naming so worker
- * API serializers do not expose it by convention.</p>
+ * <p>This class is intentionally not the transport queue/store protocol.
+ * {@link TransportPacket} remains the transport-owned main protocol. This view
+ * exists for worker APIs and adapter codecs that need the dispatch payload in a
+ * convenient structured shape while still carrying bounded runtime metadata
+ * such as {@link #attemptId()} and {@link #routeKey()}.</p>
  *
  * <p>Do not add more lifecycle or security state here. If this hybrid becomes
  * a constraint, split worker payload and runtime dispatch context deliberately
@@ -265,7 +267,7 @@ public final class TaskDispatchItem {
         return sharedConfig;
     }
 
-    public Map<String, Object> toTransportPayload() {
+    public Map<String, Object> transportPayloadView() {
         return transportPayload;
     }
 

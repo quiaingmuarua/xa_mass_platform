@@ -32,7 +32,7 @@ class TransportPacketFactoryTest {
                 Map.of("textContent", "hello")
         );
 
-        TransportPacket packet = factory.fromDispatchItem("websocket", "route-1", "trace-1", item);
+        TransportPacket packet = factory.fromDispatchView("websocket", "route-1", "trace-1", item);
 
         assertEquals("packet-1", packet.packetId());
         assertEquals(PacketType.TASK_DISPATCH, packet.type());

@@ -184,7 +184,7 @@ class WebSocketTaskDispatchChannelTest {
                         item.attemptId(),
                         item.getEventCode(),
                         TransportPacket.JSON_CONTENT_TYPE,
-                        item.toTransportPayload()
+                        item.transportPayloadView()
                 ),
                 1L
         );

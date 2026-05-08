@@ -673,7 +673,8 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].status").value("INIT"))
                 .andExpect(jsonPath("$.data.messages[0].input").doesNotExist())
-                .andExpect(jsonPath("$.data.messages[0].output").doesNotExist())
+                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"))
+                .andExpect(jsonPath("$.data.messages[1].output").isEmpty())
                 .andExpect(jsonPath("$.data.messages[1].messageId").value("msg-2"));
 
         verify(taskQueries).getTaskMessageSnapshot(TASK_ID, 100);

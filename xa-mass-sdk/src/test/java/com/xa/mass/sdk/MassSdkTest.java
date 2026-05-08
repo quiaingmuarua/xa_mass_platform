@@ -692,6 +692,54 @@ class MassSdkTest {
     }
 
     @Test
+    void transportRuntimeCompositionRequiresExplicitAdapterIdWhenCustomRuntimeFactoryHasNoRegistrationMetadata() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+                                                taskResultIngestChannel,
+                                                systemEventChannel,
+                                                deliveryService,
+                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "polling")
+        );
+        assertEquals(
+                "worker adapterId must be set before runtime start when transport registration metadata is unavailable",
+                error.getMessage()
+        );
+        assertEquals("custom-polling",
+                runtimeComposition.resolveRegistrationAdapterId(" custom-polling ", "polling"));
+    }
+
+    @Test
+    void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
+        TransportConfig config = new TransportConfig();
+        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+                                                taskResultIngestChannel,
+                                                systemEventChannel,
+                                                deliveryService,
+                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
+        config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
+                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
+        ));
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
+        );
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+                error.getMessage());
+    }
+
+    @Test
     void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
         TransportConfig config = new TransportConfig();
         config.addSupplementalTransportAdapterBootstrap(context -> {

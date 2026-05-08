@@ -159,7 +159,7 @@ class RedisTransportDeliveryStoreTest {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchItem(adapterId, item.getWorkerId(), item.attemptId(), item),
+                        .fromDispatchView(adapterId, item.getWorkerId(), item.attemptId(), item),
                 1L
         );
     }
@@ -169,7 +169,7 @@ class RedisTransportDeliveryStoreTest {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchItem(adapterId, " ", item.attemptId(), item),
+                        .fromDispatchView(adapterId, " ", item.attemptId(), item),
                 1L
         );
     }

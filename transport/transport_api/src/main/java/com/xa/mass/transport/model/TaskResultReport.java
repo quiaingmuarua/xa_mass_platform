@@ -9,7 +9,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Transport-neutral task execution result reported by a worker.
+ * Worker-reported result payload consumed by the transport result-ingress path.
+ *
+ * <p>This class is the worker-facing result payload, not the transport-owned
+ * ingress envelope. {@link TransportResultEnvelope} carries transport address
+ * metadata around this payload when runtime ingress needs adapter/route
+ * context.</p>
  *
  * <p>{@code output} is a JSON-object payload boundary. Values must remain
  * JSON-safe so result reports can round-trip through non-memory transport
@@ -77,7 +82,11 @@ public final class TaskResultReport {
         return output;
     }
 
-    public Map<String, Object> toTransportPayload() {
+    /**
+     * Internal packet payload projection reused by runtime packet assembly and
+     * decode paths.
+     */
+    public Map<String, Object> transportPayloadView() {
         return transportPayload;
     }
 

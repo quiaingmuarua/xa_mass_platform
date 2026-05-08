@@ -128,7 +128,7 @@ class TransportDeliveryServiceTest {
         service.enqueue(List.of(envelope(item)));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
-                .map(TransportDeliveryService::toDispatchItem)
+                .map(TransportDeliveryService::toDispatchView)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
     }
@@ -140,7 +140,7 @@ class TransportDeliveryServiceTest {
         service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " worker-1 ", item)));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
-                .map(TransportDeliveryService::toDispatchItem)
+                .map(TransportDeliveryService::toDispatchView)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
     }
@@ -158,7 +158,7 @@ class TransportDeliveryServiceTest {
     @Test
     void toDispatchItemsCachesProjectedItemsPerEnvelopeIndex() {
         TaskDispatchItem item = item("msg-1", "worker-1");
-        List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchItems(List.of(envelope(item)));
+        List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchViews(List.of(envelope(item)));
 
         assertSame(projected.get(0), projected.get(0));
         assertEquals("msg-1", projected.get(0).getMessageId());
@@ -272,7 +272,7 @@ class TransportDeliveryServiceTest {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchItem(adapterId, routeKey, item.attemptId(), item),
+                        .fromDispatchView(adapterId, routeKey, item.attemptId(), item),
                 1L
         );
     }
