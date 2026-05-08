@@ -4,6 +4,7 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -65,7 +66,7 @@ class DispatcherInboundHandlerTest {
 
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
-        sessionManager = new ServerSessionManager();
+        sessionManager = new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         handler = new DispatcherInboundHandler(codec, inboundMessageSink, sessionManager);
     }
@@ -259,7 +260,8 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
+                new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 10,
@@ -310,7 +312,8 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
+                new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 1,

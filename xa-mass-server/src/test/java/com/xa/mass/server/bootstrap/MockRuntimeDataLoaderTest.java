@@ -425,9 +425,6 @@ class MockRuntimeDataLoaderTest {
         public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) { return 0; }
 
         @Override
-        public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) { return 0; }
-
-        @Override
         public boolean sealTask(String taskId) { return false; }
 
         private WorkerContext workerContextById(String workerContextId) {

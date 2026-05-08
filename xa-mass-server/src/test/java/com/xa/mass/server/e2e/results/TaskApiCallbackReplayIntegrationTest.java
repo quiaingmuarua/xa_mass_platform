@@ -56,7 +56,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTaskId("integration-task-callback-replay", "integration callback replay", List.of("target-a", "target-b"), 1);
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration-replay",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );

@@ -1,7 +1,6 @@
 package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
@@ -15,7 +14,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -72,7 +70,7 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
 
             String taskId = createTaskId("redis-runtime-late-replay", "redis runtime replay integration", "target-a");
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=redis-runtime-late-replay",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -104,10 +102,10 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 Object originalResult = terminal.messages().get(0).get("result");
 
                 String messageId = String.valueOf(terminal.messages().get(0).get("messageId"));
-                List<SdkTaskMessageAttemptView> attemptsBeforeReplay = app.getTaskMessageAttemptViews(taskId, messageId);
+                var attemptsBeforeReplay = fetchTaskMessageAttempts(taskId, messageId);
                 assertEquals(2, attemptsBeforeReplay.size(), "redis runtime should produce one expired attempt and one success attempt");
-                assertEquals("EXPIRED", attemptsBeforeReplay.get(0).status());
-                assertEquals("SUCCEEDED", attemptsBeforeReplay.get(1).status());
+                assertEquals("EXPIRED", attemptsBeforeReplay.get(0).get("status"));
+                assertEquals("SUCCEEDED", attemptsBeforeReplay.get(1).get("status"));
 
                 ReplayWebSocketClient replayClient = connectClientWithRetries(
                         () -> new ReplayWebSocketClient(wsUri, CHAOS_WORKER_ID),
@@ -133,10 +131,10 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
                 assertEquals(STEADY_WORKER_ID, message.get("latestAttemptWorkerId"));
                 assertEquals(originalResult, message.get("result"));
 
-                List<SdkTaskMessageAttemptView> attemptsAfterReplay = app.getTaskMessageAttemptViews(taskId, messageId);
+                var attemptsAfterReplay = fetchTaskMessageAttempts(taskId, messageId);
                 assertEquals(2, attemptsAfterReplay.size(), "stale replay must not create a new attempt");
-                assertEquals("EXPIRED", attemptsAfterReplay.get(0).status());
-                assertEquals("SUCCEEDED", attemptsAfterReplay.get(1).status());
+                assertEquals("EXPIRED", attemptsAfterReplay.get(0).get("status"));
+                assertEquals("SUCCEEDED", attemptsAfterReplay.get(1).get("status"));
             } finally {
                 steadyClient.disconnect();
             }

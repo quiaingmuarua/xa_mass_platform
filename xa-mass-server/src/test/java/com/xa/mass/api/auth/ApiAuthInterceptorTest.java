@@ -166,15 +166,6 @@ class ApiAuthInterceptorTest {
                 .andExpect(jsonPath("$.ok").value(true));
     }
 
-    @Test
-    void sdkCredentialAttemptCanReachTaskItemsWithoutOperatorPermission() throws Exception {
-        mockMvc.perform(get("/api/v1/tasks/task-001/items")
-                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
-                        .header("X-Mass-Api-Key", "sdk-key"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true));
-    }
-
     @Controller
     static class ProtectedApiController {
         @GetMapping("/api/v1/tasks")
@@ -192,12 +183,6 @@ class ApiAuthInterceptorTest {
         @GetMapping("/api/v1/tasks/{taskId}")
         @ResponseBody
         public Map<String, Object> taskDetail(@PathVariable String taskId) {
-            return Map.of("ok", true, "taskId", taskId);
-        }
-
-        @GetMapping("/api/v1/tasks/{taskId}/items")
-        @ResponseBody
-        public Map<String, Object> taskItems(@PathVariable String taskId) {
             return Map.of("ok", true, "taskId", taskId);
         }
 

@@ -104,19 +104,18 @@ Approve it:
 curl -i -X POST "http://127.0.0.1:8088/api/v1/tasks/{taskId}:approve"
 ```
 
-Inspect task and messages:
+Inspect task:
 
 ```bash
 curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
-curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}/items
 ```
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
-- task detail response returns shell/state data and `stateValidation`; item snapshots are explicit on `/api/v1/tasks/{taskId}/items`
-- message read model is a bounded compatibility summary; it exposes logical status and latest-attempt summary fields without materializing full `input`/`output`
+- task detail response returns shell/state data and `stateValidation`
+- public API no longer exposes task-item snapshot, task-item detail, or attempt-detail query routes
 
 ## 4. Runtime Facts To Trust
 

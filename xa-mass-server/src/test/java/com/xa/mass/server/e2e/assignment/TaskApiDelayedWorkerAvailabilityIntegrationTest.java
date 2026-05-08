@@ -47,7 +47,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
         String taskId = createTaskId("delayed-worker", "delayed worker availability integration", "target-a");
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=delayed-worker",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );

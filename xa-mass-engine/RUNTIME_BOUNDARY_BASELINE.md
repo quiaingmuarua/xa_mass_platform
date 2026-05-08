@@ -61,10 +61,14 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - active lease truth must carry the minimal message reference needed for bounded
   compatibility recovery, especially `payloadRef`; runtime repair must not fall
   back to persisted `TaskMsg.input` just to rediscover the queued work identity
-- when `TaskMsg.latestAttemptId` is missing during runtime result convergence,
-  engine may reuse the latest bounded compatibility attempt id only as a local
-  fallback to close the right audit row; runtime acceptance still comes from the
-  active lease, not from an active-attempt projection read
+- active-lease-backed attempt identity should be derived from runtime lease
+  ownership first; bounded compatibility `latestAttemptId` residue may help
+  close or display the same logical attempt, but it must not outrank the
+  runtime-derived attempt id while the lease is still active
+- explicit compatibility reads for the current active attempt may synthesize
+  that attempt directly from runtime lease truth when attempt projection rows
+  are missing; stored `TaskMsgAttempt` residue is history/audit material, not
+  the only source allowed to reveal current attempt ownership
 - callback duplicate, late, and no-active-lease trace emission must use bounded
   runtime-synchronized message fields first; trace must not force
   `TaskMsg` materialization or a hot-path latest-attempt projection lookup
@@ -163,6 +167,9 @@ Current bounded residue that remains acceptable:
   ingest arrives after projection loss
 - read-time compatibility overlay that projects terminal task closure onto a
   non-final `TaskMsg` view without rewriting every queued message row
+- single-message compatibility views for non-final tasks may use stored residue
+  only as fallback; when runtime work or an active lease still exists, the
+  visible message/attempt identity should be rebuilt from runtime truth first
 - bounded debug reads exposed by shell-facing query services
 
 These are current compatibility facts, not target runtime truth.

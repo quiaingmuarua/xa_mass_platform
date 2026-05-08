@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -43,6 +44,7 @@ public class TaskQueryService {
         return taskQueries.validateTaskState(taskId);
     }
 
+    @CompatibilityProjectionOnly
     public TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return taskQueries.auditTaskProjectionState(taskId);
     }

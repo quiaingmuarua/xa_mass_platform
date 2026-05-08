@@ -57,12 +57,12 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("inputs", List.of(Map.of("target", "target-a")));
             createBody.put("batchSize", 1);
 
-            Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+            Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
             Map<String, Object> auditResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=worker-without-context",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );

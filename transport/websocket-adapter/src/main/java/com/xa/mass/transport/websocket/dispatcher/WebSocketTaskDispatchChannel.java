@@ -4,7 +4,6 @@ import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,13 +62,6 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
     }
 
     private String adapterId() {
-        if (context == null) {
-            return WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
-        }
-        String adapterId = context.getAdapterId();
-        if (adapterId == null || adapterId.isBlank()) {
-            return WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
-        }
-        return adapterId;
+        return context != null ? context.getAdapterId() : null;
     }
 }

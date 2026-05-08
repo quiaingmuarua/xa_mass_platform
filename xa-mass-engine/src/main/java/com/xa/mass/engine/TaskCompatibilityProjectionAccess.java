@@ -85,8 +85,19 @@ final class TaskCompatibilityProjectionAccess {
         if (visitor == null) {
             return;
         }
-        for (CompatibilityAttemptProjection projection : readStoredAttemptProjections(taskId, messageId)) {
+        List<CompatibilityAttemptProjection> storedAttempts = readStoredAttemptProjections(taskId, messageId);
+        RuntimeActiveAttemptView activeAttempt = materializeRuntimeActiveAttemptView(taskId, messageId);
+        boolean emittedActiveAttempt = false;
+        for (CompatibilityAttemptProjection projection : storedAttempts) {
+            if (activeAttempt != null && activeAttempt.attemptId().equals(projection.attemptId())) {
+                emitRuntimeActiveAttempt(activeAttempt, visitor);
+                emittedActiveAttempt = true;
+                continue;
+            }
             emitAttemptProjection(projection, visitor);
+        }
+        if (activeAttempt != null && !emittedActiveAttempt) {
+            emitRuntimeActiveAttempt(activeAttempt, visitor);
         }
     }
 
@@ -97,56 +108,11 @@ final class TaskCompatibilityProjectionAccess {
         if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
             return false;
         }
-        ActiveLeaseRecord activeLease = activeLeaseLookup.apply(taskId, messageId).orElse(null);
-        if (activeLease == null) {
+        RuntimeActiveAttemptView activeAttempt = materializeRuntimeActiveAttemptView(taskId, messageId);
+        if (activeAttempt == null) {
             return false;
         }
-        CompatibilityMessageProjection storedProjection = getStoredCompatibilityMessageProjection(taskId, messageId);
-        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.status() : TaskMsgStatus.ASSIGNED;
-        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
-        String attemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
-        if (attemptId == null || attemptId.isBlank()) {
-            attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
-        }
-        java.time.LocalDateTime leaseExpireTime = activeLease.leaseExpireAt() != null
-                ? java.time.LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault())
-                : null;
-        java.time.LocalDateTime dispatchTime = activeLease.leasedAt() != null
-                ? java.time.LocalDateTime.ofInstant(activeLease.leasedAt(), java.time.ZoneId.systemDefault())
-                : null;
-        String status = com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED.name();
-        java.time.LocalDateTime ackTime = null;
-        java.time.LocalDateTime startTime = null;
-        if (messageStatus == TaskMsgStatus.RUNNING) {
-            ackTime = storedProjection != null ? storedProjection.assignedTime() : dispatchTime;
-            startTime = storedProjection != null ? storedProjection.startTime() : dispatchTime;
-            status = com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING.name();
-        }
-        java.time.LocalDateTime createTime = dispatchTime;
-        java.time.LocalDateTime updateTime = startTime != null ? startTime : ackTime != null ? ackTime : dispatchTime;
-        if (visitor != null) {
-            visitor.onAttempt(
-                    attemptId,
-                    taskId,
-                    messageId,
-                    attemptNo,
-                    activeLease.workerId(),
-                    activeLease.workerContextId(),
-                    activeLease.batchId(),
-                    status,
-                    leaseExpireTime,
-                    dispatchTime,
-                    ackTime,
-                    startTime,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    createTime,
-                    updateTime
-            );
-        }
+        emitRuntimeActiveAttempt(activeAttempt, visitor);
         return true;
     }
 
@@ -304,11 +270,16 @@ final class TaskCompatibilityProjectionAccess {
 
     CompatibilityMessageProjection getVisibleCompatibilityMessageProjection(String taskId, String messageId) {
         Task task = taskLookup.apply(taskId);
-        CompatibilityMessageProjection projection = getStoredCompatibilityMessageProjection(taskId, messageId);
+        TaskWorkEnvelope runtimeWork = runtimeWorkLookup.apply(taskId, messageId).orElse(null);
+        CompatibilityMessageProjection projection = null;
+        if (task == null || task.getStatus() == null || !task.getStatus().isFinal()) {
+            projection = CompatibilityMessageProjection.fromRuntimeWork(runtimeWork);
+        }
         if (projection == null) {
-            projection = CompatibilityMessageProjection.fromRuntimeWork(
-                    runtimeWorkLookup.apply(taskId, messageId).orElse(null)
-            );
+            projection = getStoredCompatibilityMessageProjection(taskId, messageId);
+        }
+        if (projection == null) {
+            projection = CompatibilityMessageProjection.fromRuntimeWork(runtimeWork);
         }
         if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
             projection = CompatibilityProjectionSupport.overlayActiveLeaseProjection(
@@ -378,6 +349,91 @@ final class TaskCompatibilityProjectionAccess {
         );
     }
 
+    private RuntimeActiveAttemptView materializeRuntimeActiveAttemptView(String taskId, String messageId) {
+        Task task = taskLookup.apply(taskId);
+        if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
+            return null;
+        }
+        ActiveLeaseRecord activeLease = activeLeaseLookup.apply(taskId, messageId).orElse(null);
+        if (activeLease == null) {
+            return null;
+        }
+        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
+        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
+        CompatibilityMessageProjection storedProjection = getStoredCompatibilityMessageProjection(taskId, messageId);
+        boolean runningAttempt = isProjectedRunningAttempt(storedProjection, attemptId);
+        java.time.LocalDateTime leaseExpireTime = activeLease.leaseExpireAt() != null
+                ? java.time.LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault())
+                : null;
+        java.time.LocalDateTime dispatchTime = activeLease.leasedAt() != null
+                ? java.time.LocalDateTime.ofInstant(activeLease.leasedAt(), java.time.ZoneId.systemDefault())
+                : null;
+        java.time.LocalDateTime ackTime = runningAttempt
+                ? storedProjection != null ? storedProjection.assignedTime() : dispatchTime
+                : null;
+        java.time.LocalDateTime startTime = runningAttempt
+                ? storedProjection != null ? storedProjection.startTime() : dispatchTime
+                : null;
+        java.time.LocalDateTime createTime = dispatchTime;
+        java.time.LocalDateTime updateTime = startTime != null ? startTime : ackTime != null ? ackTime : dispatchTime;
+        return new RuntimeActiveAttemptView(
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId(),
+                runningAttempt
+                        ? com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING.name()
+                        : com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED.name(),
+                leaseExpireTime,
+                dispatchTime,
+                ackTime,
+                startTime,
+                createTime,
+                updateTime
+        );
+    }
+
+    private void emitRuntimeActiveAttempt(RuntimeActiveAttemptView activeAttempt,
+                                          TaskCompatibilityMessageAttemptVisitor visitor) {
+        if (activeAttempt == null || visitor == null) {
+            return;
+        }
+        visitor.onAttempt(
+                activeAttempt.attemptId(),
+                activeAttempt.taskId(),
+                activeAttempt.messageId(),
+                activeAttempt.attemptNo(),
+                activeAttempt.workerId(),
+                activeAttempt.workerContextId(),
+                activeAttempt.batchId(),
+                activeAttempt.status(),
+                activeAttempt.leaseExpireTime(),
+                activeAttempt.dispatchTime(),
+                activeAttempt.ackTime(),
+                activeAttempt.startTime(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                activeAttempt.createTime(),
+                activeAttempt.updateTime()
+        );
+    }
+
+    private boolean isProjectedRunningAttempt(CompatibilityMessageProjection storedProjection, String runtimeAttemptId) {
+        if (storedProjection == null || storedProjection.status() != TaskMsgStatus.RUNNING) {
+            return false;
+        }
+        if (runtimeAttemptId == null || runtimeAttemptId.isBlank()) {
+            return false;
+        }
+        return runtimeAttemptId.equals(storedProjection.latestAttemptId());
+    }
+
     private String enumName(Enum<?> value) {
         return value == null ? null : value.name();
     }
@@ -401,6 +457,22 @@ final class TaskCompatibilityProjectionAccess {
                 .map(CompatibilityAttemptProjection::fromStorage)
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private record RuntimeActiveAttemptView(String attemptId,
+                                            String taskId,
+                                            String messageId,
+                                            int attemptNo,
+                                            String workerId,
+                                            String workerContextId,
+                                            String batchId,
+                                            String status,
+                                            java.time.LocalDateTime leaseExpireTime,
+                                            java.time.LocalDateTime dispatchTime,
+                                            java.time.LocalDateTime ackTime,
+                                            java.time.LocalDateTime startTime,
+                                            java.time.LocalDateTime createTime,
+                                            java.time.LocalDateTime updateTime) {
     }
 
 }

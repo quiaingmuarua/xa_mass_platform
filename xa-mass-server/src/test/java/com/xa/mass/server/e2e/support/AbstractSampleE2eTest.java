@@ -3,6 +3,8 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TaskCompatibilityQueryService;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -47,6 +49,9 @@ public abstract class AbstractSampleE2eTest {
 
     @Autowired(required = false)
     protected MassSdkApplication app;
+
+    @Autowired(required = false)
+    protected TaskManager taskManager;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -312,12 +317,77 @@ public abstract class AbstractSampleE2eTest {
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
         Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        Map<String, Object> messagesResponse = exchange(
-                "/api/v1/tasks/" + taskId + "/items",
-                HttpMethod.GET,
-                null
-        );
-        return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
+        return new TaskSnapshot(task(detailResponse), fetchCompatibilityMessages(taskId, 500));
+    }
+
+    protected List<Map<String, Object>> fetchTaskMessageAttempts(String taskId, String messageId) {
+        if (taskManager == null) {
+            throw new IllegalStateException("TaskManager test dependency is not available");
+        }
+        List<Map<String, Object>> attempts = new java.util.ArrayList<>();
+        new TaskCompatibilityQueryService(taskManager).visitTaskMessageAttemptViews(taskId, messageId,
+                (attemptId, ignoredTaskId, ignoredMessageId, attemptNo, workerId, workerContextId, batchId, status,
+                 leaseExpireTime, dispatchTime, ackTime, startTime, finishTime, finalReason, errorMessage, errorCode,
+                 output, createTime, updateTime) -> {
+                    Map<String, Object> attempt = new LinkedHashMap<>();
+                    attempt.put("attemptId", attemptId);
+                    attempt.put("taskId", ignoredTaskId);
+                    attempt.put("messageId", ignoredMessageId);
+                    attempt.put("attemptNo", attemptNo);
+                    attempt.put("workerId", workerId);
+                    attempt.put("workerContextId", workerContextId);
+                    attempt.put("batchId", batchId);
+                    attempt.put("status", status);
+                    attempt.put("leaseExpireTime", leaseExpireTime);
+                    attempt.put("dispatchTime", dispatchTime);
+                    attempt.put("ackTime", ackTime);
+                    attempt.put("startTime", startTime);
+                    attempt.put("finishTime", finishTime);
+                    attempt.put("finalReason", finalReason);
+                    attempt.put("errorMessage", errorMessage);
+                    attempt.put("errorCode", errorCode);
+                    attempt.put("output", output == null ? null : new LinkedHashMap<>(output));
+                    attempt.put("createTime", createTime);
+                    attempt.put("updateTime", updateTime);
+                    attempts.add(attempt);
+                });
+        return attempts;
+    }
+
+    private List<Map<String, Object>> fetchCompatibilityMessages(String taskId, int limit) {
+        if (taskManager == null) {
+            throw new IllegalStateException("TaskManager test dependency is not available");
+        }
+        List<Map<String, Object>> messages = new java.util.ArrayList<>();
+        new TaskCompatibilityQueryService(taskManager).visitTaskMessageSnapshot(taskId, limit,
+                (messageId, ignoredTaskId, status, latestAttemptId, latestAttemptWorkerId, latestAttemptWorkerContextId,
+                 latestAttemptBatchId, retryCount, maxRetryCount, errorMessage, errorCode, finalReason, payloadRef,
+                 input, output, assignedTime, createTime, updateTime, startTime, completeTime) -> {
+                    Map<String, Object> message = new LinkedHashMap<>();
+                    message.put("messageId", messageId);
+                    message.put("taskId", ignoredTaskId);
+                    message.put("status", status);
+                    message.put("latestAttemptId", latestAttemptId);
+                    message.put("latestAttemptWorkerId", latestAttemptWorkerId);
+                    message.put("latestAttemptWorkerContextId", latestAttemptWorkerContextId);
+                    message.put("latestAttemptBatchId", latestAttemptBatchId);
+                    message.put("retryCount", retryCount);
+                    message.put("maxRetryCount", maxRetryCount);
+                    message.put("errorMessage", errorMessage);
+                    message.put("errorCode", errorCode);
+                    message.put("finalReason", finalReason);
+                    message.put("payloadRef", payloadRef);
+                    message.put("input", input == null ? null : new LinkedHashMap<>(input));
+                    message.put("output", output == null ? null : new LinkedHashMap<>(output));
+                    message.put("result", output == null ? null : new LinkedHashMap<>(output));
+                    message.put("assignedTime", assignedTime);
+                    message.put("createTime", createTime);
+                    message.put("updateTime", updateTime);
+                    message.put("startTime", startTime);
+                    message.put("completeTime", completeTime);
+                    messages.add(message);
+                });
+        return messages;
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {

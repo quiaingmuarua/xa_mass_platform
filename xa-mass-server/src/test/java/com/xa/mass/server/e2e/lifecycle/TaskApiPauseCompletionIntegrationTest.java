@@ -62,7 +62,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
             String taskId = createTaskId("pause-completion", "pause completion integration", List.of("target-a", "target-b"), 1);
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -79,7 +79,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(secondDispatch);
 
             Map<String, Object> pauseResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/pause",
+                    "/api/v1/tasks/" + taskId + ":pause",
                     HttpMethod.POST,
                     null
             );

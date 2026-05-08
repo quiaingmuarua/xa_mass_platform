@@ -387,59 +387,15 @@ Behavior:
 - closes the task intake window
 - once sealed, later append is rejected
 
-### 4.8 List Task Item Snapshot
+### 4.8 Task Detail Boundaries
 
-- Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/items`
-- Status: `Implemented`
+- `GET /api/v1/tasks/{taskId}` returns task shell, aggregate state, security view,
+  and `stateValidation`
+- public task API does not expose task-item snapshot, per-item detail, attempt
+  audit, or projection-audit routes
+- residue or projection diagnostics are not part of the public v1 task surface
 
-Query params:
-
-- optional `limit`, default `100`, hard-capped at `500`
-
-Response notes:
-
-- returns a bounded compatibility summary snapshot
-- this is the supported explicit item summary read path
-- `returned` reports the bounded snapshot size
-- `truncated=true` means the controller fetched one extra row and omitted the
-  tail without scanning total count
-
-### 4.9 Get One Task Item Compatibility View
-
-- Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/items/{messageId}`
-- Status: `Implemented`
-
-Response notes:
-
-- returns one explicit item compatibility view
-- intended for item-level inspection, not for bulk scans
-
-### 4.10 Get One Task Attempt Audit
-
-- Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/attempts/{messageId}`
-- Status: `Implemented`
-
-Response notes:
-
-- returns attempt audit for one message
-- `TaskMsgAttempt` remains the concrete attempt-level callback snapshot truth
-
-### 4.11 Projection Audit
-
-- Method: `GET`
-- Path: `/api/v1/tasks/{taskId}:projection-audit`
-- Status: `Implemented`
-
-Response notes:
-
-- diagnostic-only compatibility/projection audit
-- separate from `stateValidation`
-- intended for explicit residue/projection inspection
-
-### 4.12 Approve Task
+### 4.9 Approve Task
 
 - Method: `POST`
 - Path: `/api/v1/tasks/{taskId}:approve`

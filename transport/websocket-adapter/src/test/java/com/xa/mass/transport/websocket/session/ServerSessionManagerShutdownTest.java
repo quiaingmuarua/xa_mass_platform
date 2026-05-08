@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -19,7 +20,7 @@ class ServerSessionManagerShutdownTest {
 
     @BeforeEach
     void setUp() {
-        manager = new ServerSessionManager();
+        manager = new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
     }
 
     @Test

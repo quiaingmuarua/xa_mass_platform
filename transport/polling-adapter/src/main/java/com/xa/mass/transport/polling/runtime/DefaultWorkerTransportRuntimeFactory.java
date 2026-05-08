@@ -6,6 +6,7 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -50,8 +51,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                                    TransportDeliveryService deliveryService) {
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(systemEventChannel, deliveryService);
         return TransportBinding.builder(pollingAdapter)
-                .routeKeyResolver((dispatchBinding, routeContext) ->
-                        routeContext != null ? routeContext.workerId() : null)
+                .routeKeyResolver(TransportRouteKeyResolvers.workerId())
                 .taskPullChannel(pollingAdapter)
                 .build();
     }

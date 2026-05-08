@@ -81,7 +81,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(SOCKET_WORKER_ID), "control-plane registration must not mark socket worker online");
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
                 "taskName", "cross-language-node-socket-worker",
                 "userId", "crawler-agent",
@@ -94,7 +94,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
         assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=node-socket-black-box",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         ));
@@ -232,7 +232,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     }
 
     private String createAndApproveTask(String project, String eventCode, Map<String, Object> input) {
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", project,
                 "taskName", "task-" + eventCode,
                 "userId", "integration-agent",
@@ -243,7 +243,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=adapter-coexist",
+        assertApiOk(exchange("/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null));
         return taskId;

@@ -108,10 +108,11 @@ Rules:
   `getLatestActiveTaskMessageAttemptProjection(...)`; transport result ingest
   no longer requires an active compatibility attempt row for envelope identity
   validation
-- runtime result convergence should prefer `TaskMsg.latestAttemptId`; when that
-  field is missing, a bounded latest-attempt audit read may be used only to
-  reuse the final audit row id, not to decide whether the runtime lease is
-  valid
+- runtime result convergence and active-attempt visibility should prefer the
+  runtime-derived attempt id while a lease is active; bounded
+  `TaskMsg.latestAttemptId` residue or latest-attempt audit reads may help
+  reuse the same compatibility row id, but they must not decide whether the
+  runtime lease or current attempt identity is valid
 - `addTaskMessageAttempt(...)` and `updateTaskMessageAttempt(...)` are bounded
   compatibility writes only; dispatch, result convergence, and retry scheduling
   must continue from runtime truth even when these writes are missing or fail
@@ -126,6 +127,13 @@ Rules:
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
   final summary write
+- single-message compatibility reads for non-final tasks should prefer runtime
+  work-envelope / active-lease metadata first and use stored `TaskMsg`
+  projection only as fallback residue
+- compatibility reads for the current active attempt should also prefer
+  runtime active-lease reconstruction first; stored `TaskMsgAttempt`
+  projections remain the bounded history/audit residue for prior or finalized
+  attempts
 - result/expiry/retry compatibility rewrites should preserve only bounded
   residue such as `payloadRef`, logical status, retry summary, output/error
   summary, and latest-attempt linkage; they should not keep full input payload

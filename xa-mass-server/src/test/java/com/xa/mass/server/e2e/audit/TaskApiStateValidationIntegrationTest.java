@@ -49,14 +49,14 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
     void getTaskExposesValidTerminalStateValidationOverRealRuntime() throws Exception {
         String taskId = createTask("state-validation-terminal");
 
-        Map<String, Object> created = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> created = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(created);
         assertEquals(Boolean.TRUE, stateValidation(created).get("valid"));
         assertEquals(Boolean.FALSE, stateValidation(created).get("needsResolution"));
         assertEquals("NEW", stateValidation(created).get("status"));
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=state-validation",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );
@@ -79,7 +79,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTask("state-validation-needs-resolution");
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=state-validation-reopen",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );
@@ -92,7 +92,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         task.setTerminalReason(null);
         assertTrue(updateStoredTask(task));
 
-        Map<String, Object> reopened = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> reopened = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(reopened);
 
         assertApiOk(reopened);
@@ -110,7 +110,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTask("state-validation-missing-terminal-reason");
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=state-validation-missing-reason",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );
@@ -122,7 +122,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         task.setTerminalReason(null);
         assertTrue(updateStoredTask(task));
 
-        Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
 
         assertApiOk(response);
@@ -137,7 +137,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTask("state-validation-terminal-reason-mismatch");
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=state-validation-reason-mismatch",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );
@@ -149,7 +149,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         task.setTerminalReason(TaskTerminalReason.ALL_MESSAGES_FAILED);
         assertTrue(updateStoredTask(task));
 
-        Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
 
         assertApiOk(response);

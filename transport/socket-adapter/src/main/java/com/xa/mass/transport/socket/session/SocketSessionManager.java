@@ -25,10 +25,6 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private volatile WorkerSystemEventChannel systemEventChannel;
 
-    public SocketSessionManager(WorkerSystemEventChannel systemEventChannel) {
-        this(com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, systemEventChannel);
-    }
-
     public SocketSessionManager(String adapterId, WorkerSystemEventChannel systemEventChannel) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");

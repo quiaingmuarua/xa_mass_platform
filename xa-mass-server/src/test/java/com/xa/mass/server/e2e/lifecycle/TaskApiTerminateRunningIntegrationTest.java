@@ -66,7 +66,7 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             );
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -82,7 +82,7 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(secondClient.awaitTask(3, TimeUnit.SECONDS), "Second worker did not receive a task dispatch");
 
             Map<String, Object> terminateResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/terminate",
+                    "/api/v1/tasks/" + taskId + ":terminate",
                     HttpMethod.POST,
                     null
             );
@@ -95,14 +95,14 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "EXPIRED".equals(message.get("status"))));
 
             Map<String, Object> deleteResponse = exchange(
-                    "/status/api/tasks/" + taskId,
+                    "/api/v1/tasks/" + taskId,
                     HttpMethod.DELETE,
                     null
             );
             assertApiOk(deleteResponse);
 
             ResponseEntity<Map> deletedTaskResponse = restTemplate.exchange(
-                    "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                    "http://127.0.0.1:" + port + "/api/v1/tasks/" + taskId,
                     HttpMethod.GET,
                     org.springframework.http.HttpEntity.EMPTY,
                     Map.class

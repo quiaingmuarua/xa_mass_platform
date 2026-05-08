@@ -119,6 +119,13 @@ final class CompatibilityProjectionSupport {
         if (isCompleted(base)) {
             return base;
         }
+        int runtimeAttemptNo = Math.max(1, activeLease.retryCount() + 1);
+        String runtimeAttemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+                messageId,
+                runtimeAttemptNo,
+                activeLease
+        );
+        boolean needsAttemptIdProjection = !java.util.Objects.equals(base.latestAttemptId(), runtimeAttemptId);
         boolean attemptProjectionDiffers = !java.util.Objects.equals(base.latestAttemptWorkerId(), activeLease.workerId())
                 || !java.util.Objects.equals(base.latestAttemptWorkerContextId(), activeLease.workerContextId())
                 || !java.util.Objects.equals(base.latestAttemptBatchId(), activeLease.batchId());
@@ -129,6 +136,7 @@ final class CompatibilityProjectionSupport {
                 && activeLease.payloadRef() != null
                 && !activeLease.payloadRef().isBlank();
         if (!attemptProjectionDiffers
+                && !needsAttemptIdProjection
                 && !needsAssignedStatus
                 && !needsRetryProjection
                 && !needsAssignedTime
@@ -156,7 +164,7 @@ final class CompatibilityProjectionSupport {
                 base.errorCode(),
                 base.finalReason(),
                 base.output(),
-                base.latestAttemptId(),
+                runtimeAttemptId,
                 activeLease.workerId(),
                 activeLease.workerContextId(),
                 activeLease.batchId()

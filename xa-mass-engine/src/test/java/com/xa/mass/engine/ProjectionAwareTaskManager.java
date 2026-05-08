@@ -169,6 +169,35 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return holder[0];
     }
 
+    public List<TaskDetailStore.TaskMessageAttemptProjection> getVisibleAttemptProjectionRecords(String taskId,
+                                                                                                 String messageId) {
+        java.util.List<TaskDetailStore.TaskMessageAttemptProjection> attempts = new java.util.ArrayList<>();
+        compatibilityProjectionAccess.visitTaskMessageAttemptViews(
+                taskId,
+                messageId,
+                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
+                 batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
+                 finalReason, errorMessage, errorCode, output, createTime, updateTime) -> attempts.add(
+                        new TaskDetailStore.TaskMessageAttemptProjection(
+                                attemptId,
+                                projectedTaskId,
+                                projectedMessageId,
+                                attemptNo,
+                                workerId,
+                                workerContextId,
+                                batchId,
+                                status != null ? TaskMsgAttemptStatus.valueOf(status) : TaskMsgAttemptStatus.DISPATCHED,
+                                finalReason != null
+                                        ? com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason.valueOf(finalReason)
+                                        : null,
+                                errorMessage,
+                                errorCode,
+                                output
+                        ))
+        );
+        return List.copyOf(attempts);
+    }
+
     private TaskMsg toCompatibilityTaskMessage(String messageId,
                                                String taskId,
                                                String status,

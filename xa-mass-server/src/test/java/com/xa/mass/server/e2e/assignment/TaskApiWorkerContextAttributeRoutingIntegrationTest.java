@@ -63,7 +63,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
 
             String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
             Map<String, Object> auditResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=worker-context-attribute-routing",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );

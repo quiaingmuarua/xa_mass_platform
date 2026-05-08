@@ -29,6 +29,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -2922,7 +2923,6 @@ class MassSdkTest {
                 () -> app.cancelTask("task-1"),
                 () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
                 () -> app.appendTaskItems("task-1", MassTaskItemBatchAppendRequest.builder().items(List.of()).build()),
-                () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
                 () -> app.resolveTaskState("task-1"),
                 () -> app.validateTaskState("task-1"),

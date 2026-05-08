@@ -3,7 +3,6 @@ package com.xa.mass.api.internal;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,16 +27,13 @@ class TaskApiListControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
-    private TaskMessageQueryOperations taskMessageQueries;
-
-    @Mock
     private TaskAdminOperations taskAdmin;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskMessageQueries, taskAdmin)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin)).build();
     }
 
     @Test
@@ -64,7 +60,7 @@ class TaskApiListControllerTest {
 
         when(taskQueries.getTasksByStatus(TaskStatus.RUNNING)).thenReturn(List.of(runningTask));
 
-        mockMvc.perform(get("/status/api/tasks")
+        mockMvc.perform(get("/api/v1/tasks")
                         .param("keyword", "warm")
                         .param("status", "RUNNING"))
                 .andExpect(status().isOk())

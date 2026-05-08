@@ -48,7 +48,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertMinOnlineWorkers(2);
         String taskId = createTaskId("integration-task", "integration smoke", List.of("target-a", "target-b"), 1);
 
-        Map<String, Object> beforeAudit = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> beforeAudit = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(beforeAudit);
         Map<String, Object> createdTask = task(beforeAudit);
         assertEquals("NEW", createdTask.get("status"));
@@ -56,7 +56,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(Boolean.FALSE, createdTask.get("openEnded"));
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );

@@ -85,11 +85,11 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
         )));
         createBody.put("batchSize", 1);
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=dev-sample-launcher",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         ));
@@ -137,7 +137,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
     private void waitForSeedTask(String taskName, String expectedStatus) throws InterruptedException {
         Map<String, Object> matched = null;
         for (int attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
-            Map<String, Object> response = exchange("/status/api/tasks", HttpMethod.GET, null);
+            Map<String, Object> response = exchange("/api/v1/tasks", HttpMethod.GET, null);
             assertApiOk(response);
             List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(response).get("items");
             matched = items.stream()

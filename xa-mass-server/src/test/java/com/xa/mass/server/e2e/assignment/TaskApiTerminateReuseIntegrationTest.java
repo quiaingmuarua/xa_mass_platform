@@ -66,7 +66,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
             assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
 
             Map<String, Object> firstTerminate = exchange(
-                    "/status/api/tasks/" + firstTaskId + "/terminate",
+                    "/api/v1/tasks/" + firstTaskId + ":terminate",
                     HttpMethod.POST,
                     null
             );
@@ -86,7 +86,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
             assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
 
             Map<String, Object> secondTerminate = exchange(
-                    "/status/api/tasks/" + secondTaskId + "/terminate",
+                    "/api/v1/tasks/" + secondTaskId + ":terminate",
                     HttpMethod.POST,
                     null
             );

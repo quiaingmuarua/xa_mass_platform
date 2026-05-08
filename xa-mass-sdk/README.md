@@ -182,8 +182,7 @@ The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
 - mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
-- audit and compatibility diagnostics after `start()`: bounded `getTaskMessageSnapshot(..., limit)`, `resolveTaskState(...)`, and `validateTaskState(...)`
-- explicit compatibility detail after `start()`: `getTaskMessageView(...)`, `getTaskMessageAttemptViews(...)`, `getLatestActiveTaskMessageAttemptView(...)`; these are SDK-owned residue views bridged from internal compatibility projections rather than public engine/base models
+- runtime diagnostics after `start()`: `resolveTaskState(...)` and `validateTaskState(...)`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
@@ -199,7 +198,7 @@ Current SDK contracts:
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
-| diagnostics/detail | `validateTaskState(...)` and `resolveTaskState(...)` stay on bounded runtime validation/resolution, `getTaskMessageSnapshot(..., limit)` is bounded compatibility/demo detail, and `getTaskMessageView(...)` / `getTaskMessageAttemptViews(...)` / `getLatestActiveTaskMessageAttemptView(...)` are explicit SDK-owned residue views bridged from internal compatibility projections; production detail belongs in logs, trace, audit sinks, or async persistence |
+| diagnostics/detail | `validateTaskState(...)` and `resolveTaskState(...)` stay on bounded runtime validation/resolution. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 

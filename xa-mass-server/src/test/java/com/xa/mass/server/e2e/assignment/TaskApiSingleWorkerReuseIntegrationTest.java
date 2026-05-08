@@ -52,7 +52,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
 
             String firstTaskId = createTaskId("reuse-first", "single worker reuse first", "target-a");
             Map<String, Object> firstApprove = exchange(
-                    "/status/api/tasks/" + firstTaskId + "/audit?approved=true&comment=single-worker-reuse-1",
+                    "/api/v1/tasks/" + firstTaskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -62,7 +62,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
 
             String secondTaskId = createTaskId("reuse-second", "single worker reuse second", "target-b");
             Map<String, Object> secondApprove = exchange(
-                    "/status/api/tasks/" + secondTaskId + "/audit?approved=true&comment=single-worker-reuse-2",
+                    "/api/v1/tasks/" + secondTaskId + ":approve",
                     HttpMethod.POST,
                     null
             );

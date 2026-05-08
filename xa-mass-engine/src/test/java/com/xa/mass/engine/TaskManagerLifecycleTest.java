@@ -1273,6 +1273,44 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void activeAttemptCompatibilityAuditViewRecoversRuntimeAttemptWhenAttemptProjectionIsMissing() {
+        taskStorage = new InMemoryTaskStorage();
+        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-attempt-audit-runtime-recovery", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-audit-view", "worker-context-audit-view", "batch-audit-view", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        assertTrue(taskStorage.getTaskMessageAttemptProjections(task.getTid(), message.messageId()).isEmpty());
+
+        List<TaskDetailStore.TaskMessageAttemptProjection> visibleAttempts =
+                taskManager.getVisibleAttemptProjectionRecords(task.getTid(), message.messageId());
+
+        assertEquals(1, visibleAttempts.size());
+        TaskDetailStore.TaskMessageAttemptProjection activeAttempt = visibleAttempts.getFirst();
+        assertEquals(TaskMessageAttemptSupport.runtimeAttemptId(
+                message.messageId(),
+                1,
+                "worker-audit-view",
+                "worker-context-audit-view",
+                "batch-audit-view"
+        ), activeAttempt.attemptId());
+        assertEquals(TaskMsgAttemptStatus.DISPATCHED, activeAttempt.status());
+        assertEquals("worker-audit-view", activeAttempt.workerId());
+        assertEquals("worker-context-audit-view", activeAttempt.workerContextId());
+        assertEquals("batch-audit-view", activeAttempt.batchId());
+    }
+
+    @Test
     void expiryWithRuntimeLeaseDoesNotReadTaskMsgProjectionOnHotPath() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;

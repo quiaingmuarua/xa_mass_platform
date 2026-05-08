@@ -5,11 +5,8 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -56,9 +53,6 @@ class TaskApiControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
-    private TaskMessageQueryOperations taskMessageQueries;
-
-    @Mock
     private TaskAdminOperations taskAdmin;
 
     @Mock
@@ -69,7 +63,7 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskMessageQueries, taskAdmin, createTaskCatalog(), authProvider)
+                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), authProvider)
         ).build();
     }
 
@@ -230,35 +224,6 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/{taskId}:seal", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.message").value("Task sealed"));
-    }
-
-    @Test
-    void getTaskItemsReturnsBoundedSnapshot() throws Exception {
-        when(taskMessageQueries.getTaskMessageSnapshot(TASK_ID, 100))
-                .thenReturn(new SdkTaskMessageSnapshot(List.of(
-                        new SdkTaskMessageView(
-                                "msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3,
-                                null, null, null, null, Map.of("target", "alpha"), Map.of("result", "ok"),
-                                null, null, null, null, null
-                        )
-                ), 100, false));
-
-        mockMvc.perform(get("/api/v1/tasks/{taskId}/items", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.limit").value(100))
-                .andExpect(jsonPath("$.data.returned").value(1))
-                .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
-                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
-    }
-
-    @Test
-    void projectionAuditUsesExplicitRoute() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskQueries.auditTaskProjectionState(TASK_ID)).thenReturn(Map.of("projectionHealthy", true));
-
-        mockMvc.perform(get("/api/v1/tasks/{taskId}:projection-audit", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.projectionAudit.projectionHealthy").value(true));
     }
 
     @Test

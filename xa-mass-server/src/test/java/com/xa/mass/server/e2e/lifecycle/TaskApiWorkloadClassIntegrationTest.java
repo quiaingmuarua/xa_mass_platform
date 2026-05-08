@@ -66,7 +66,7 @@ class TaskApiWorkloadClassIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("SUCCESS", snapshot.messages().get(0).get("status"));
         assertNotNull(snapshot.messages().get(0).get("latestAttemptWorkerId"));
 
-        Map<String, Object> detail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detail);
         assertEquals("INTERACTIVE", task(detail).get("workloadClass"));
     }
@@ -95,7 +95,7 @@ class TaskApiWorkloadClassIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(message.get("latestAttemptBatchId"));
         }
 
-        Map<String, Object> detail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detail);
         assertEquals("BULK", task(detail).get("workloadClass"));
     }

@@ -50,7 +50,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTaskId("integration-task-failure", "integration failure smoke", List.of("target-a", "target-b"), 1);
 
         Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration-failure",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );

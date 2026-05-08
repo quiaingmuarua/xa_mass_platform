@@ -80,7 +80,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
                 "taskName", "cross-language-java-worker",
                 "userId", "crawler-agent",
@@ -93,7 +93,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
         Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=java-realtime-black-box",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );

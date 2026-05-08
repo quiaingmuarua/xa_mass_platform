@@ -82,7 +82,7 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
 
         // Create + approve a task so the runtime dispatches via TaskDispatchChannel.
         String taskId = createTaskId("channel-wire-task", "channel wiring", "target-wire-001");
-        exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=wire", HttpMethod.POST, null);
+        exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
 
         // Poll confirms TaskDispatchChannel.dispatchTaskItems was called.
         var items = List.<com.xa.mass.transport.model.TaskDispatchItem>of();

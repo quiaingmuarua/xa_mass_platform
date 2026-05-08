@@ -78,12 +78,12 @@ class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             ));
             createBody.put("batchSize", 1);
             createBody.put("defaultMsgMaxRetryCount", 0);
-            Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+            Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=mixed-results",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );

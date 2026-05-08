@@ -87,7 +87,7 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("batchSize", 1);
 
             Map<String, Object> createResponse = exchange(
-                    "/status/api/tasks",
+                    "/api/v1/tasks",
                     HttpMethod.POST,
                     createBody,
                     sdkCredentialHeaders(SUBMITTER_KEY)
@@ -96,7 +96,7 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=java-polling-black-box",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );

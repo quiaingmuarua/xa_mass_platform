@@ -70,7 +70,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
             );
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=multi-round",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -114,7 +114,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
             );
 
             Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=multi-round-batch-two",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );

@@ -5,6 +5,8 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
+import java.util.Objects;
+
 /**
  * WebSocket adapter-owned dispatch runtime context.
  */
@@ -16,11 +18,11 @@ public final class WebSocketDispatcherContext {
     private final WorkerSystemEventChannel systemEventChannel;
 
     public WebSocketDispatcherContext(String adapterId,
-                             WorkerEndpointRegistry endpointRegistry,
-                             WebSocketTransportFrameCodec frameCodec,
-                             TaskResultIngestChannel taskResultIngestChannel,
-                             WorkerSystemEventChannel systemEventChannel) {
-        this.adapterId = adapterId;
+                                      WorkerEndpointRegistry endpointRegistry,
+                                      WebSocketTransportFrameCodec frameCodec,
+                                      TaskResultIngestChannel taskResultIngestChannel,
+                                      WorkerSystemEventChannel systemEventChannel) {
+        this.adapterId = requireAdapterId(adapterId);
         this.endpointRegistry = endpointRegistry;
         this.frameCodec = frameCodec;
         this.taskResultIngestChannel = taskResultIngestChannel;
@@ -45,5 +47,13 @@ public final class WebSocketDispatcherContext {
 
     public WorkerSystemEventChannel getSystemEventChannel() {
         return systemEventChannel;
+    }
+
+    private static String requireAdapterId(String adapterId) {
+        Objects.requireNonNull(adapterId, "adapterId");
+        if (adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        return adapterId.trim();
     }
 }

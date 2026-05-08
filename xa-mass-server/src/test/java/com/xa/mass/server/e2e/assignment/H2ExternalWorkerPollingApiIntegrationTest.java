@@ -119,17 +119,17 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
         createBody.put("inputs", List.of(Map.of("url", "https://example.test/h2-page")));
         createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
-        Map<String, Object> createdDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(createdDetail);
         assertEquals("NEW", task(createdDetail).get("status"));
         assertEquals(Boolean.TRUE, stateValidation(createdDetail).get("valid"));
 
         assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=h2-jdbc-e2e",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         ));
@@ -169,7 +169,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("SUCCESS", terminal.messages().getFirst().get("status"));
         assertEquals(workerId, terminal.messages().getFirst().get("latestAttemptWorkerId"));
 
-        Map<String, Object> terminalDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> terminalDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(terminalDetail);
         assertEquals(Boolean.TRUE, stateValidation(terminalDetail).get("valid"));
         assertEquals(Boolean.FALSE, stateValidation(terminalDetail).get("needsResolution"));

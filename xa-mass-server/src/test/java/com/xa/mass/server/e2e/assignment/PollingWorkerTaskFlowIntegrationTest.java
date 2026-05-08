@@ -66,7 +66,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
             String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
 
             Map<String, Object> auditResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=polling-e2e",
+                    "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
                     null
             );
@@ -112,7 +112,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
         session.connect();
         try {
             String taskId = createTaskId("polling-drain-task", "drain test", "target-drain-001");
-            exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=drain", HttpMethod.POST, null);
+            exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
 
             // Drain until we receive the message.
             List<TaskDispatchItem> items = List.of();

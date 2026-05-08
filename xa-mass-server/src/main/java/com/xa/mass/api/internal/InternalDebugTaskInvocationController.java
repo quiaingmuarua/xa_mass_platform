@@ -13,9 +13,7 @@ import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
@@ -52,7 +50,6 @@ public class InternalDebugTaskInvocationController {
     private static final int MAX_INGEST_TOTAL_BYTES = Integer.getInteger("xa.mass.api.maxIngestTotalBytes", 1024 * 1024);
     private static final ObjectMapper SIZE_OBJECT_MAPPER = new ObjectMapper();
 
-    private final TaskMessageQueryOperations taskMessageQueries;
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final ApiAuthService apiAuthService;
@@ -61,14 +58,12 @@ public class InternalDebugTaskInvocationController {
     private final SyncTaskResultBridge syncBridge;
 
     @Autowired
-    public InternalDebugTaskInvocationController(TaskMessageQueryOperations taskMessageQueries,
-                                                 TaskAdminOperations taskAdmin,
+    public InternalDebugTaskInvocationController(TaskAdminOperations taskAdmin,
                                                  SdkMetadataCatalog metadataCatalog,
                                                  ApiAuthService apiAuthService,
                                                  ApiAuthorizationService apiAuthorizationService,
                                                  TaskSecurityViewSupport taskSecurityViewSupport,
                                                  SyncTaskResultBridge syncBridge) {
-        this.taskMessageQueries = taskMessageQueries;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : metadataCatalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
@@ -120,16 +115,14 @@ public class InternalDebugTaskInvocationController {
             taskAdmin.approveTask(task.getTid());
 
             String taskId = task.getTid();
-            SdkTaskMessageSnapshot messageSnapshot = taskMessageQueries.getTaskMessageSnapshot(taskId, 1);
-            String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).messageId();
             Optional<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> result =
                     syncBridge.await(correlationId, future, resolvedTimeoutMs);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("taskId", taskId);
-            data.put("messageId", messageId);
             if (result.isPresent()) {
                 com.xa.mass.engine.TaskMessageLogicallyFinalEvent msg = result.get();
+                data.put("messageId", msg.messageId() != null ? msg.messageId() : "");
                 data.put("synced", true);
                 data.put("timedOut", false);
                 data.put("status", msg.status() != null ? msg.status().name() : "UNKNOWN");
@@ -137,6 +130,7 @@ public class InternalDebugTaskInvocationController {
                 data.put("errorCode", msg.errorCode() != null ? msg.errorCode() : "");
                 data.put("errorMessage", msg.errorMessage() != null ? msg.errorMessage() : "");
             } else {
+                data.put("messageId", "");
                 data.put("synced", false);
                 data.put("timedOut", true);
                 data.put("timeoutMs", resolvedTimeoutMs);

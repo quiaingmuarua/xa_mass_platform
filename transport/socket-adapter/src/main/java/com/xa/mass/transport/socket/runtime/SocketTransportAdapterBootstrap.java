@@ -5,6 +5,7 @@ import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -44,12 +45,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             frameCodec,
                             context.getDeliveryService()
                     ))
-            ).routeKeyResolver((dispatchBinding, routeContext) -> {
-                if (routeContext != null && routeContext.workerId() != null && !routeContext.workerId().isBlank()) {
-                    return routeContext.workerId();
-                }
-                return dispatchBinding != null ? dispatchBinding.workerId() : null;
-            }).build());
+            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
             context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {

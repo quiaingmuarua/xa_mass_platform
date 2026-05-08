@@ -62,7 +62,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=resume-and-complete",
+                "/api/v1/tasks/" + taskId + ":approve",
                 HttpMethod.POST,
                 null
         );
@@ -76,7 +76,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
 
         // 3. Pause the READY task.
         Map<String, Object> pauseResponse = exchange(
-                "/status/api/tasks/" + taskId + "/pause",
+                "/api/v1/tasks/" + taskId + ":pause",
                 HttpMethod.POST,
                 null
         );
@@ -98,7 +98,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
 
             // 5. Resume the task: PAUSED 鈫?READY 鈫?assign worker picks it up 鈫?RUNNING 鈫?TERMINAL.
             Map<String, Object> resumeResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/resume",
+                    "/api/v1/tasks/" + taskId + ":resume",
                     HttpMethod.POST,
                     null
             );

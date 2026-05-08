@@ -127,7 +127,7 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("inputs", List.of(input));
         createBody.put("batchSize", 1);
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
         assertApiOk(createResponse);
         return String.valueOf(responseData(createResponse).get("taskId"));
     }
