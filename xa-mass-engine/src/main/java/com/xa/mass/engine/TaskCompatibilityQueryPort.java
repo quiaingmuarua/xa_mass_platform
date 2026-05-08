@@ -13,7 +13,7 @@ import java.util.List;
  * bounded compatibility projection without treating it as the default engine
  * query model.</p>
  */
-public interface TaskCompatibilityQueryPort {
+interface TaskCompatibilityQueryPort {
 
     TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 

@@ -38,7 +38,7 @@ public class TaskCompatibilityQueryService {
         ));
     }
 
-    public TaskCompatibilityQueryService(TaskCompatibilityQueryPort compatibilityQueries) {
+    TaskCompatibilityQueryService(TaskCompatibilityQueryPort compatibilityQueries) {
         this.compatibilityQueries = Objects.requireNonNull(compatibilityQueries, "compatibilityQueries");
     }
 
