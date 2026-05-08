@@ -53,7 +53,7 @@ Keep these facts fixed unless the owning global baselines change:
 
 - `Task.workloadClass` is the explicit workload input; scheduling semantics must
   not drift back into free-form `sharedConfig`
-- worker matching is task-level orchestration; do not fall back to per-`TaskMsg`
+- worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
 - `TaskManager` is the engine orchestration entry, not the place to keep raw
   lock bookkeeping or compatibility CRUD owner behavior
@@ -75,10 +75,10 @@ Keep these facts fixed unless the owning global baselines change:
   silently dropping `READY` / redispatch signals
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
-- `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
-  not the hot-path runtime owner
+- bounded message/attempt compatibility residue is not the hot-path runtime
+  owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
-  grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
+  grow message/attempt residue reads back into it
 - `TaskCompatibilityProjectionAccess` is the engine-internal residue owner for
   bounded compatibility reads and explicit projection-audit support
 - `TaskDetailStore.TaskMessageProjection` and
@@ -86,9 +86,9 @@ Keep these facts fixed unless the owning global baselines change:
   shapes; production engine services should translate them inside the
   compatibility owner path instead of returning them as engine-facing API
   results
-- runtime ingest must stay correct when compatibility `TaskMsg` projection writes
-  fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
-  best-effort residue
+- runtime ingest must stay correct when compatibility message-projection writes
+  fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes
+  are best-effort residue
 - assignment diagnostics are append-only bounded residue; matching and dispatch
   mainline should depend on a write-only recorder, not on report/history APIs
 - dispatch submit failure after claim/attempt creation must compensate inline
@@ -96,7 +96,7 @@ Keep these facts fixed unless the owning global baselines change:
   fallback, not the mainline
 - engine-provided message reads are compatibility helpers, not the future
   business-detail query model
-- cross-module `TaskMsg` reads should stay explicit about intent:
+- cross-module message reads should stay explicit about intent:
   projection-style reads for bounded logical message views and audit-style
   reads for attempt timelines
 - cross-module callers that only need worker registration lookup should depend

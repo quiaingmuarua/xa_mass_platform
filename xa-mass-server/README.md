@@ -206,7 +206,7 @@ Example request body:
 Observability:
 
 - debug submissions return `taskId`
-- targeted debug tasks can be inspected through normal task detail and message views
+- targeted debug tasks can be inspected through normal task detail plus internal or test-only compatibility views when deeper residue inspection is needed
 - `mock.disconnect` is designed to close the worker after its task result is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
 
@@ -308,7 +308,7 @@ Covered areas:
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
-- `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
+- `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
 - `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution

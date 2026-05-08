@@ -1,10 +1,10 @@
 # High-Volume Model Baseline
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
-Status: design/refactor reference, not current runtime truth.
+Status: current convergence baseline for high-volume runtime direction.
 
-Trust: code and verified behavior override this design/refactor reference.
+Trust: code and verified behavior override this baseline.
 
 - [../AGENTS.md](../AGENTS.md)
 - [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
@@ -17,30 +17,31 @@ Trust: code and verified behavior override this design/refactor reference.
 Already true in current code:
 
 - the first `TaskWorkRuntime` slice is landed, and its shared runtime contract now lives in `platform_infra/mass-runtime-api`
-- `TaskManager` still writes `Task`, while `TaskMsg` compatibility projections are
-  best-effort residue written after runtime enqueue instead of the ingest truth
+- `TaskManager` still writes `Task`, while compatibility message projections
+  are best-effort residue written after runtime enqueue instead of the ingest
+  truth
 - initial or appended work is also written into `TaskWorkRuntime`
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
 - engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone
 - runtime owns active lease and expiry indexes
-- task progress and terminal policy already read runtime counters instead of aggregate `TaskMsg` scans
-- task terminal cleanup no longer needs to scan queued/non-final `TaskMsg`
+- task progress and terminal policy already read runtime counters instead of aggregate message scans
+- task terminal cleanup no longer needs to scan queued/non-final message
   projections; runtime active leases are the only terminal-drain ownership
 - task cancellation no longer synchronously rewrites every queued compatibility
-  `TaskMsg` row; terminal task/message reads overlay the bounded final view
+  message row; terminal task/message reads overlay the bounded final view
   instead of turning cancel into a per-message CRUD sweep
-- bounded `validateTaskState(...)` no longer needs full `TaskMsg` scans; deep projection checks are now an explicit audit path instead of the default validation meaning
+- bounded `validateTaskState(...)` no longer needs full message scans; deep projection checks are now an explicit audit path instead of the default validation meaning
 - engine -> transport dispatch now carries a runtime-native binding built from
-  claimed runtime work instead of transporting persisted `TaskMsg.input` as the
+  claimed runtime work instead of transporting persisted message-projection input as the
   mainline dispatch carrier
-- result ingest can recover a bounded compatibility `TaskMsg` projection from
+- result ingest can recover a bounded compatibility message projection from
   runtime lease truth when the projection is missing, rather than treating the
   missing projection as callback truth
-- compatibility `TaskMsgAttempt` writes are no longer allowed to gate dispatch
+- compatibility attempt writes are no longer allowed to gate dispatch
   or callback convergence; at very high message volume they are trace residue,
   not queue truth
 - result-side compatibility rewrites no longer need to preserve full
-  `TaskMsg.input`; bounded residue should converge toward `payloadRef` plus
+  message input payload; bounded residue should converge toward `payloadRef` plus
   logical status/output/error summary instead of replaying large inline payloads
 - duplicate, late, and no-active-lease callback trace paths must not re-read
   attempt projections just to decorate events; bounded message projection plus
@@ -53,9 +54,9 @@ Still too heavy on the hot path:
 - read models still assume one task can cheaply expose all messages
 - full attempt history is still too expensive as default hot-path truth
 - some persistence surfaces still expose full-message reads that are acceptable for audit only, not runtime readiness truth
-- `TaskMsg` remains too available as a compatibility model; query-time residue
-  is still present even though task-stop mainline no longer restamps every
-  queued message row
+- compatibility message residue is still too available in some query-time
+  flows even though task-stop mainline no longer restamps every queued message
+  row
 - task orchestration is not fully separated from downstream detail-analysis needs yet
 
 ## 2. Frozen Design
@@ -65,8 +66,8 @@ Keep these decisions stable:
 - `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, ingest state, aggregate counters, terminal reason
 - runtime queue/lease/counter ownership should stay behind shared runtime modules instead of being re-embedded back into engine-local packages
 - runtime workload selection should resolve once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
-- task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-`TaskMsg` rule matching as a scaling fallback
-- the default runnable unit is a queue-native envelope, not a full `TaskMsg` object graph
+- task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-message rule matching as a scaling fallback
+- the default runnable unit is a queue-native envelope, not a thick compatibility object graph
 - convergence is counter-driven, not full-message-scan-driven
 - attempt truth splits into active hot-path lease truth and optional off-path audit history
 - `batch`, `stream`, and `file` source modes may differ at ingest, but converge after ingest into one runnable-unit shape

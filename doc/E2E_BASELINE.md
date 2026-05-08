@@ -48,7 +48,7 @@ Robustness:
 - duplicate callback replay is idempotent
 - late callback after manual terminal closure is ignored
 - mixed results close with `MIXED_MESSAGE_RESULTS`
-- task detail and message detail expose `intakeStatus` and item-level `finalReason`
+- task detail exposes shell aggregate fields such as `intakeStatus`, while item-level `finalReason` remains available only through bounded compatibility/test views
 
 Assignment and capacity:
 
@@ -80,8 +80,8 @@ Control console:
 
 Audit:
 
-- `GET /api/v1/tasks/{taskId}` exposes valid state-audit output
-- `needsResolution=true` is visible when task/message state diverges
+- public `GET /api/v1/tasks/{taskId}` stays shell/aggregate-only
+- task-state validation and `needsResolution=true` assertions run through explicit diagnostic surfaces, not public task detail payload
 
 ## 3. Change Rule
 

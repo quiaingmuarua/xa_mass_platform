@@ -46,38 +46,42 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - `discardTask(...)` removes runtime residue without redefining storage truth
 - engine -> transport handoff now carries runtime-native dispatch bindings built
   from claimed runtime work plus active attempt ownership; transport must not
-  need persisted `TaskMsg.input` to reconstruct the worker payload
-- assignment-side compatibility `TaskMsg` sync must happen after runtime claim
+  need persisted message-projection input fields to reconstruct the worker
+  payload
+- assignment-side compatibility message-projection sync must happen after
+  runtime claim
   and must not require `TaskDetailStore.getTaskMessage(...)` as a dispatch gate;
   preserving or repairing the projection is residue, not the condition that
   makes a claimed work item dispatchable
-- compatibility `TaskMsgAttempt` writes are best-effort residue only; runtime
+- compatibility attempt-projection writes are best-effort residue only; runtime
   dispatch ownership, retry truth, and callback acceptance must remain correct
   when those writes lag or are absent
 - runtime lease repair on callback, expiry, or dispatch-submit compensation may
-  rebuild a bounded in-memory `TaskMsg` compatibility view, but it must not
+  rebuild a bounded in-memory message compatibility view, but it must not
   require persisting intermediate `ASSIGNED` or transient failure states before
   runtime result convergence can finish
 - active lease truth must carry the minimal message reference needed for bounded
   compatibility recovery, especially `payloadRef`; runtime repair must not fall
-  back to persisted `TaskMsg.input` just to rediscover the queued work identity
+  back to persisted message-projection input just to rediscover the queued work
+  identity
 - active-lease-backed attempt identity should be derived from runtime lease
   ownership first; bounded compatibility `latestAttemptId` residue may help
   close or display the same logical attempt, but it must not outrank the
   runtime-derived attempt id while the lease is still active
 - explicit compatibility reads for the current active attempt may synthesize
   that attempt directly from runtime lease truth when attempt projection rows
-  are missing; stored `TaskMsgAttempt` residue is history/audit material, not
+  are missing; stored attempt-projection residue is history/audit material, not
   the only source allowed to reveal current attempt ownership
 - callback duplicate, late, and no-active-lease trace emission must use bounded
   runtime-synchronized message fields first; trace must not force
-  `TaskMsg` materialization or a hot-path latest-attempt projection lookup
+  compatibility-model materialization or a hot-path latest-attempt projection
+  lookup
 - result-side active-lease repair may derive an in-memory runtime message view
   directly from runtime lease truth plus bounded projection residue; it must
-  not require routing back through `TaskMsg` compatibility overlay helpers just
-  to recover current dispatch ownership
+  not require routing back through legacy compatibility overlay helpers just to
+  recover current dispatch ownership
 - task termination / cancellation must drain runtime active leases only; queued
-  or merely projected `TaskMsg` rows must not be scanned just to stamp terminal
+  or merely projected message rows must not be scanned just to stamp terminal
   status into compatibility residue
 
 ## Storage And Projection Non-Truth
@@ -142,7 +146,7 @@ Startup or replay recovery must trust runtime truth first:
 
 Recovery must not rely on:
 
-- scanning full `TaskMsg` projections to reconstruct queue truth
+- scanning full message projections to reconstruct queue truth
 - inferring ready work from `TaskStatus.READY` alone
 - replaying projection history into runtime on every startup
 
@@ -160,13 +164,13 @@ Do not add these regressions:
 
 Current bounded residue that remains acceptable:
 
-- `TaskMsg` and `TaskMsgAttempt` compatibility projection
+- message and attempt compatibility projection
 - active-attempt projection repair when runtime lease exists but projection is
   missing
-- bounded compatibility `TaskMsg` recovery from runtime lease truth when result
+- bounded compatibility message recovery from runtime lease truth when result
   ingest arrives after projection loss
 - read-time compatibility overlay that projects terminal task closure onto a
-  non-final `TaskMsg` view without rewriting every queued message row
+  non-final message view without rewriting every queued message row
 - single-message compatibility views for non-final tasks may use stored residue
   only as fallback; when runtime work or an active lease still exists, the
   visible message/attempt identity should be rebuilt from runtime truth first

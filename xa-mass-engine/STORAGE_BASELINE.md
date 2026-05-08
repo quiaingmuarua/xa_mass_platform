@@ -4,9 +4,8 @@ Status: current engine storage/runtime boundary.
 
 This file records the engine-facing split only. Keep it short and current:
 storage owns durable control-plane truth, runtime owns hot-path
-queue/lease/retry/backpressure truth, and bounded `TaskMsg` /
-`TaskMsgAttempt` projections remain temporary compatibility residue rather
-than a growth surface.
+queue/lease/retry/backpressure truth, and bounded message/attempt projections
+remain temporary compatibility residue rather than a growth surface.
 
 ## Boundary
 
@@ -33,14 +32,13 @@ What the engine assumes today:
   indexes, and backpressure come from runtime
 - result/expiry recovery should prefer runtime work-envelope metadata
   (`payloadRef`, retry counters, create time) before falling back to
-  compatibility `TaskMsg` residue
-- `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility projections used
-  by result repair, attempt identity validation, focused tests, and explicit
-  projection audit
+  compatibility message-projection residue
+- bounded message/attempt projections are still used by result repair, attempt
+  identity validation, focused tests, and explicit projection audit
 - ingest enqueue must not roll back or fail runtime admission just because the
-  compatibility `TaskMsg` row could not be written in the same turn
-- dispatch handoff no longer requires `TaskMsg.input` or a persisted
-  `TaskMsgAttempt` object graph as the transport payload; runtime-native
+  compatibility message row could not be written in the same turn
+- dispatch handoff no longer requires message-projection input or a persisted
+  attempt object graph as the transport payload; runtime-native
   dispatch binding now carries message payload, retry summary, and
   attempt/lease ownership directly
 - engine assembly wires `TaskStorage` and `TaskDetailStore` explicitly; there
@@ -64,39 +62,21 @@ Current runtime-essential helpers:
 - `getTaskMessageStats(...)`
 - `getTaskMessageAttemptStats(...)`
 
-Low-level compatibility primitives that should stay behind those upsert helpers:
-
-- `addTaskMessage(...)`
-- `updateTaskMessage(...)`
-- `addTaskMessageAttempt(...)`
-- `updateTaskMessageAttempt(...)`
-
-Current shell/debug compatibility reads:
-
-- `getTaskMessages(...)`
-- `getTaskMessage(...)`
-- `getTaskMessageAttempts(...)`
-- `countTaskMessages(...)`
-
 Rules:
 
 - do not expand shell/debug reads into pagination, analytics, or a product
   detail-query model
 - engine hot-path code should prefer `TaskDetailStore.TaskMessageProjection`
-  and `TaskDetailStore.TaskMessageAttemptProjection` over direct `TaskMsg` /
-  `TaskMsgAttempt` store interaction
+  and `TaskDetailStore.TaskMessageAttemptProjection` over any legacy
+  compatibility materialization path
 - those projection records are storage-edge materialization only; production
   engine services should translate them inside the compatibility owner path
   instead of returning them as engine-facing results
-- `TaskDetailStore` now treats projection methods as the primary owner
-  surface; deprecated `TaskMsg` / `TaskMsgAttempt` CRUD methods are boundary
-  materialization helpers only and must not regain implementation ownership
-- engine query seams that still return `TaskMsg`, `TaskMsgAttempt`, or
-  `TaskMessageSnapshot` should be explicitly marked compatibility-only and must
-  not be treated as the default external read API going forward
+- `TaskDetailStore` is now a neutral projection seam only; do not add message
+  CRUD owners back into this boundary
 - runtime mainline must not depend on full-message scans
 - bounded projection reads must be explicit about their `limit`
-- full `TaskMsg` scans are allowed only in explicit projection-audit paths, and
+- full message scans are allowed only in explicit projection-audit paths, and
   those callers should derive a bounded limit from stats instead of depending on
   an unbounded storage helper
 - engine mainline should treat `TaskDetailStore` as a bounded projection sink;
@@ -104,21 +84,13 @@ Rules:
   CRUD flow in engine services
 - in-memory and JDBC compatibility stores should keep neutral
   `TaskMessageProjection` / `TaskMessageAttemptProjection` as their internal
-  residue unit where possible; `TaskMsg` / `TaskMsgAttempt` materialization
-  belongs at compatibility boundaries, not as the store's internal owner shape
-- `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
-  for runtime-to-projection convergence, but its owner path is now
-  `getLatestActiveTaskMessageAttemptProjection(...)`; transport result ingest
-  no longer requires an active compatibility attempt row for envelope identity
-  validation
+  residue unit where possible; compatibility materialization belongs at
+  engine-internal boundaries, not as the store's internal owner shape
 - runtime result convergence and active-attempt visibility should prefer the
   runtime-derived attempt id while a lease is active; bounded
-  `TaskMsg.latestAttemptId` residue or latest-attempt audit reads may help
-  reuse the same compatibility row id, but they must not decide whether the
-  runtime lease or current attempt identity is valid
-- `addTaskMessageAttempt(...)` and `updateTaskMessageAttempt(...)` are bounded
-  compatibility writes only; dispatch, result convergence, and retry scheduling
-  must continue from runtime truth even when these writes are missing or fail
+  `latestAttemptId` residue or latest-attempt audit reads may help reuse the
+  same compatibility row id, but they must not decide whether the runtime
+  lease or current attempt identity is valid
 - result/expiry/retry paths should upsert only the bounded final/latest attempt
   audit view rather than persisting intermediate recovered `DISPATCHED` or
   transient `RUNNING` rows just to keep the engine mainline moving
@@ -126,30 +98,25 @@ Rules:
   level: attempt identity, worker binding, logical status/final reason, and
   bounded error/output summary; dispatch/ack/start/finish timelines belong to
   trace or explicit audit paths, not runtime result convergence
-- callback/expiry/retry compensation may repair a bounded `TaskMsg` view in
+- callback/expiry/retry compensation may repair a bounded message view in
   memory from runtime lease truth, but must not depend on persisting
   intermediate `ASSIGNED` or transient `FAILED` projection rows before the
   final summary write
 - single-message compatibility reads for non-final tasks should prefer runtime
-  work-envelope / active-lease metadata first and use stored `TaskMsg`
+  work-envelope / active-lease metadata first and use stored message
   projection only as fallback residue
 - compatibility reads for the current active attempt should also prefer
-  runtime active-lease reconstruction first; stored `TaskMsgAttempt`
-  projections remain the bounded history/audit residue for prior or finalized
-  attempts
+  runtime active-lease reconstruction first; stored attempt projections remain
+  the bounded history/audit residue for prior or finalized attempts
 - result/expiry/retry compatibility rewrites should preserve only bounded
   residue such as `payloadRef`, logical status, retry summary, output/error
   summary, and latest-attempt linkage; they should not keep full input payload
   materialized as a hot-path persistence requirement
 - result/expiry trace emission must consume runtime-native message snapshots;
-  `TaskMsg` remains a bounded compatibility write/read shape, not the
+  message projection remains a bounded compatibility write/read shape, not the
   mandatory event input model for hot-path convergence
 - `getTaskMessageProjection(...)` is the engine-facing bounded read seam;
-  direct `getTaskMessage(...)` reads should stay in compatibility audit or
-  shell/debug code
-- `getNonFinalTaskMessages(...)` is no longer allowed in engine task-terminal
-  mainline cleanup; keep it only for explicit compatibility audit/testing until
-  the remaining residue is removed
+  do not reintroduce wider message-read helpers as default engine API
 
 ## Wiring Reality
 
@@ -161,7 +128,7 @@ Current mainline implementations:
   - `InMemoryRuleStorage`
 - `platform_infra/mass-storage-jdbc`
   - JDBC control-plane storage adapter for task/worker/rule truth
-  - process-local compatibility projection for `TaskMsg` / `TaskMsgAttempt`
+  - process-local compatibility projection for neutral message/attempt records
 
 Current implementation facts that matter architecturally:
 
@@ -170,7 +137,7 @@ Current implementation facts that matter architecturally:
 - engine mainline now reaches `TaskDetailStore` directly from the owning
   engine services that still need bounded projection residue, instead of
   routing those reads and writes back through `TaskManager`
-- the JDBC path is a control-plane adapter, not a `TaskMsg` analytics backend
+- the JDBC path is a control-plane adapter, not a message analytics backend
 - in-memory helper indexes are allowed when they protect hot paths from full
   scans, but they remain helper indexes rather than second lifecycle truth
 

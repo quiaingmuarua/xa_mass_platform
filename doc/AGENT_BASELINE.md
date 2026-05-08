@@ -18,7 +18,7 @@ flows, commands, and module-local inventories.
 - XA Mass Platform is a general distributed task scheduling platform
 - the kernel problem is: match structured work items to heterogeneous,
   stateful executors, track per-item result, and converge task-level state
-- stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`
+- stable kernel: `Task / assignment / result / audit / terminal policy`
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
@@ -29,9 +29,9 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and result application
-- `TaskMsg` / `TaskMsgAttempt` remain stable kernel vocabulary plus bounded
-  compatibility/audit vocabulary; do not assume they are still the runtime
-  owner shape
+- current bounded compatibility residue lives behind engine-internal owners plus
+  neutral storage-edge projection records; legacy message-model naming is
+  intentionally not part of the active public/kernel vocabulary
 - `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
   storage-edge compatibility residue shapes
 
@@ -40,8 +40,8 @@ Stable kernel slots:
 - worker: `Worker`
 - optional worker context: `WorkerContext`
 - task-level workload boundary: `Task.workloadClass`
-- work item: `TaskMsg`
-- per-item payload: `TaskMsg.input/output`
+- runtime work item identity: `taskId + messageId`
+- per-item runtime payload boundary: runtime ingress payload or `payloadRef`
 - task-level dispatch config: `Task.sharedConfig`
 
 ## 3. Model Boundaries
@@ -50,7 +50,8 @@ Keep one canonical truth per layer:
 
 - HTTP API: typed controller-edge DTOs plus `ApiResponse<T>`
 - SDK API: `MassTaskShellCreateRequest`, `MassTaskItemBatchAppendRequest`, `EventDefinition`
-- engine/core: `Task` aggregate truth plus matching, lifecycle, terminal semantics, and bounded `TaskMsg` / `TaskMsgAttempt` compatibility vocabulary
+- engine/core: `Task` aggregate truth plus matching, lifecycle, terminal
+  semantics, and engine-internal bounded compatibility projection handling
 - transport runtime: transport-neutral dispatch/result/system-event seams
 - adapter layer: protocol-specific frame I/O and adapter-local codec only
 
@@ -59,8 +60,9 @@ Boundary rules:
 - do not let protocol fields become business or lifecycle truth
 - `EventDefinition.code` is globally unique capability identity
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
-- task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-`TaskMsg` rule matching on the hot path
-- `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the production business-detail query model
+- task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
+- message/attempt read surfaces are bounded compatibility or audit helpers, not
+  the production business-detail query model
 
 ## 4. Mainline Reality
 
@@ -75,8 +77,9 @@ Boundary rules:
   - `platform_infra/mass-storage-api` owns task/worker/rule storage contracts
 - current engine truth:
   - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and backpressure truth
-  - `TaskMsg` remains the bounded logical compatibility projection
-  - `TaskMsgAttempt` remains the auditable attempt history
+  - bounded message/attempt compatibility state is carried through
+    `TaskMessageProjection` / `TaskMessageAttemptProjection` plus
+    engine-internal projection access
   - `TaskManager` remains the engine-internal orchestration facade; cross-module
     callers should prefer `TaskCommandService`, `TaskQueryService`,
     `TaskResultIngestFacade`, `TaskEventService`, and runtime ports
@@ -111,10 +114,12 @@ Read them to verify three things quickly:
 - work-item materialization is explicit through `POST /api/v1/tasks/{taskId}/items`
 - `workloadClass` is explicit at create time and defaults to `BULK`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
-- per-item truth stays on `TaskMsg.input/output`
+- per-item runtime truth stays on the runtime ingress item and dispatch/result
+  flow; bounded compatibility projection may retain payload summary or
+  `payloadRef`
 - `Task.intakeStatus` is the append-window truth; `openEnded` is compatibility projection only
 - public contracts do not define a dedicated routing-code field
-- engine-provided `TaskMsg` reads remain bounded compatibility helpers
+- engine-provided message/attempt reads remain bounded compatibility helpers
 
 Lifecycle and trace detail live in:
 
@@ -125,7 +130,8 @@ Lifecycle and trace detail live in:
 ## 6. Hard Guardrails
 
 - prefer transport-neutral names and contracts for new cross-adapter boundaries
-- `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries
+- `Task.sharedConfig` plus runtime item payload / `payloadRef` are the main
+  payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
 - `WorkerContext.workerId` is the single owner truth
 - `WorkerMatchContext` plus rule evaluation is the matching truth

@@ -37,16 +37,16 @@ more implemented than another.
 | active lease ownership / expiry | runtime state | hot-path callback and expiry truth | bounded mirrors for debug only | JDBC durable truth |
 | worker lock / occupancy / online churn | runtime state | volatile worker execution state | bounded in-process residue | JDBC durable truth |
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
-| task-message detail (`TaskMsg`) at scale | trace / audit stream | high-volume item history and reconstruction | bounded compatibility projection | JDBC durable event history |
-| task-message-attempt timelines (`TaskMsgAttempt`) at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
+| per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded compatibility projection | JDBC durable event history |
+| per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
 | engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded compatibility synthesis for tests only | JDBC/message projection truth |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
 Current engine convergence rule: callback/expiry acceptance comes from runtime
-lease truth first. Compatibility `TaskMsg` / `TaskMsgAttempt` rows may be
-reconstructed or upserted afterward as bounded residue, but they do not decide
-whether a leased work item is valid.
+lease truth first. Compatibility message/attempt rows may be reconstructed or
+upserted afterward as bounded residue, but they do not decide whether a leased
+work item is valid.
 Result-side trace emission follows the same rule: emit from runtime-owned
 message/lease state first, then repair bounded projection residue if needed.
 
@@ -55,12 +55,12 @@ message/lease state first, then repair bounded projection residue if needed.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task/worker/rule/principal truth | correct control-plane role |
-| JDBC-local `TaskMsg` / `TaskMsgAttempt` projections | process-local compatibility residue | not a storage expansion license |
+| JDBC-local message/attempt projections | process-local compatibility residue | not a storage expansion license |
 | JDBC-local worker/context/lock residue | process-local runtime residue | not durable worker-runtime truth |
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
-| memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let `TaskMsg` become the internal owner shape again |
+| memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
-| `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads; deprecated `TaskMsg` / `TaskMsgAttempt` methods materialize only at the boundary | not message CRUD ownership and not runtime truth |
+| `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads through neutral records only | not message CRUD ownership and not runtime truth |
 | engine assembly | wires `TaskStorage` and `TaskDetailStore` separately | prevents storage-shell truth from silently redefining detail/projection ownership |
 | `doc/TRACE_CONTRACT.md` | required trace semantics | contract exists before full sink/module convergence |
 
