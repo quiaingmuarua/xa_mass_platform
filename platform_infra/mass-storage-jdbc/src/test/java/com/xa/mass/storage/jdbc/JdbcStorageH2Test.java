@@ -6,11 +6,10 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import org.flywaydb.core.Flyway;
@@ -37,27 +36,36 @@ class JdbcStorageH2Test {
 
             storage.saveTask(task);
 
-            TaskMsg msg = new TaskMsg("msg-1", "task-1", Map.of("target", "x"));
-            storage.addTaskMessage("task-1", msg);
-
-            TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-1", "task-1", "msg-1", 1);
-            storage.addTaskMessageAttempt("task-1", "msg-1", attempt);
+            storage.upsertTaskMessageProjection("task-1", new TaskDetailStore.TaskMessageProjection(
+                    "msg-1", "task-1", Map.of("target", "x"), null,
+                    com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT,
+                    null, null, null, null, null,
+                    0, 0, null, null, null, null,
+                    null, null, null, null
+            ));
+            storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", new TaskDetailStore.TaskMessageAttemptProjection(
+                    "attempt-1", "task-1", "msg-1", 1,
+                    null, null, null,
+                    com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED,
+                    null, null, null, null
+            ));
 
             assertThat(storage.getTask("task-1")).isPresent();
             assertThat(storage.getTasksByStatus(TaskStatus.READY)).hasSize(1);
             assertThat(storage.getTasksByProject("demoApp")).hasSize(1);
             assertThat(storage.getSchedulableTasks()).hasSize(1);
             assertThat(storage.pollExpiredMaxRuntimeTasks(LocalDateTime.now(), 10)).hasSize(1);
-            assertThat(storage.countTaskMessages("task-1")).isEqualTo(1);
-            assertThat(storage.getTaskMessages("task-1", 1)).hasSize(1);
-            assertThat(storage.getNonFinalTaskMessages("task-1")).hasSize(1);
-            assertThat(storage.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).isPresent();
+            assertThat(storage.getTaskMessageStats("task-1").getTotal()).isEqualTo(1);
+            assertThat(storage.getTaskMessageProjections("task-1", 1)).hasSize(1);
+            assertThat(storage.getTaskMessageProjections("task-1"))
+                    .allMatch(projection -> projection.status() == null || !projection.status().isFinal());
+            assertThat(storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1")).isPresent();
 
             JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new H2JdbcDialect());
             assertThat(restartedStorage.getTask("task-1")).isPresent();
-            assertThat(restartedStorage.countTaskMessages("task-1")).isZero();
-            assertThat(restartedStorage.getTaskMessages("task-1")).isEmpty();
-            assertThat(restartedStorage.getTaskMessageAttempts("task-1", "msg-1")).isEmpty();
+            assertThat(restartedStorage.getTaskMessageStats("task-1").getTotal()).isZero();
+            assertThat(restartedStorage.getTaskMessageProjections("task-1")).isEmpty();
+            assertThat(restartedStorage.getTaskMessageAttemptProjections("task-1", "msg-1")).isEmpty();
 
             assertThat(storage.deleteTask("task-1")).isTrue();
         }

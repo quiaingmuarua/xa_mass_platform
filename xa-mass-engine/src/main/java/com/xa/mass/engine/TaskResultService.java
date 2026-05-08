@@ -58,10 +58,11 @@ class TaskResultService {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
             return TaskMessageMutationOutcome.rejected();
         }
+        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                null,
+                storedProjection,
                 activeLease,
                 "EXPIRE_TASK_MESSAGE",
                 "runtime active lease defines expiry admissibility"
@@ -102,7 +103,6 @@ class TaskResultService {
         persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
                 "mark attempt expired");
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
-        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
@@ -240,10 +240,11 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
+        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                null,
+                storedProjection,
                 activeLease,
                 "HANDLE_TASK_MESSAGE_RESULT",
                 "runtime active lease defines callback admissibility"
@@ -278,7 +279,6 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
@@ -321,10 +321,11 @@ class TaskResultService {
                     messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
+        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
-                null,
+                storedProjection,
                 activeLease,
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
                 "runtime active lease defines dispatch compensation admissibility"
@@ -352,7 +353,6 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
         activeProjection = buildActiveRuntimeProjection(
                 taskId,
                 messageId,
