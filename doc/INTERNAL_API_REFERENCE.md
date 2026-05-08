@@ -39,9 +39,9 @@ For verified startup and validation flows, use
   - `/worker-api/v1/**` for repo-external worker data-plane APIs
   - `/internal/v1/**` for debug and test-only surfaces
 - Historical unversioned public routes are removed from the active runtime.
-- `Task.sharedConfig` and `TaskMsg.input/output` remain the generic payload
-  boundaries.
-- `target` is only a conventional key inside `TaskMsg.input`.
+- `Task.sharedConfig` plus per-item runtime payload / `payloadRef` remain the
+  generic payload boundaries.
+- `target` is only a conventional key inside the per-item input payload.
 - `eventCode` is the global event/capability identity.
 - `Task.project` and `Task.user` remain first-class core bindings even though
   some API shapes use `project` and `userId`.

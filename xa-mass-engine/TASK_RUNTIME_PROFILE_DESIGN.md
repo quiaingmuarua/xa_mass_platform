@@ -20,7 +20,7 @@ The shared kernel remains:
 
 - `Task` as orchestration shell
 - `TaskWorkRuntime` as ready/lease/retry/expiry owner
-- `TaskMsgAttempt` as attempt audit truth
+- bounded attempt projection as attempt audit truth
 
 ## Current Implemented Slice
 
@@ -64,7 +64,7 @@ reintroduce ad hoc scheduler semantics on `Task.sharedConfig`.
 
 This design does not authorize:
 
-- per-`TaskMsg` rule matching
+- per-message rule matching
 - engine-owned full-message analytics queries
 - separate interactive and bulk kernels
 - broad public API redesign in the same refactor slice

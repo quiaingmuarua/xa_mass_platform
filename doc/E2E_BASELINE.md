@@ -57,7 +57,7 @@ Assignment and capacity:
 - `batchSize=1` multi-round dispatch completes across rounds
 - assignment skips dispatch if the task left `READY` during matching
 - each dispatch creates attempt state that remains consistent with message projection
-- retry creates a new attempt and re-queues the logical message without duplicating the `TaskMsg` row
+- retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
 
 Worker and context:
 

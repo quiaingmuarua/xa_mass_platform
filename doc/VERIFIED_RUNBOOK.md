@@ -111,8 +111,8 @@ curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
 ```
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`
-- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
-- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
+- message projection: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
+- message projection: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
 - task detail response returns shell and aggregate state only
 - public API no longer exposes task-item snapshot, task-item detail, or attempt-detail query routes
@@ -136,13 +136,13 @@ Assignment and dispatch:
 - `batchSize` is a per-worker cap for each dispatch round.
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate.
 - unmatched `READY` tasks and refill `RUNNING` tasks are delayed-retried instead of being orphaned.
-- persisted `TaskMsg` rows are reused; dispatch creates `TaskMsgAttempt` history and updates compatibility latest-attempt projections.
+- persisted compatibility message rows are reused; dispatch creates attempt history and updates compatibility latest-attempt projections.
 
 Result write-back and closure:
 
 - Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
 - `RuntimeTaskResultIngestChannel` writes results through the engine result-ingest facade (`TaskResultIngestFacade` / `TaskManagerResultIngestFacade`).
-- callbacks must resolve a unique active `TaskMsgAttempt`.
+- callbacks must resolve a unique active attempt projection.
 - retryable failure closes the attempt, resets the logical message to `INIT`, and does not publish logical-final semantics.
 - success, retry exhaustion, expiry, and manual terminal drain close the logical message.
 - once all engine runtime work items are final, the engine's internal task-progress convergence path closes any non-final task to `TERMINAL`.

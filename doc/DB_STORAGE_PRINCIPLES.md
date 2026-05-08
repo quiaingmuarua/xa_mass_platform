@@ -69,8 +69,8 @@ This is the intended long-term role for PostgreSQL as well.
 
 Do not use the control-plane DB for:
 
-- `TaskMsg` hot-path persistence
-- `TaskMsgAttempt` hot-path persistence
+- message-projection hot-path persistence
+- attempt-projection hot-path persistence
 - ready queue membership
 - delayed/retry scheduling indexes
 - active lease ownership or lease-token truth

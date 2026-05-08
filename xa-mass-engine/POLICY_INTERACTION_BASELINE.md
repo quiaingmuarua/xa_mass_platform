@@ -45,8 +45,8 @@ Any change to this precedence must update state machine, trace contract, and E2E
 
 ## 3. Hard Invariants
 
-- a `TaskMsg` has at most one active `TaskMsgAttempt`
-- a stable-final `TaskMsg` must not have an active attempt
+- a logical message has at most one active attempt
+- a stable-final logical message must not have an active attempt
 - retryable failure closes the attempt but does not publish logical-final semantics
 - no-active-attempt callbacks are rejected or ignored explicitly; they must not synthesize attempt history
 - task terminal closure is `TERMINAL + terminalReason`, not a split terminal enum

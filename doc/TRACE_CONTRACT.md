@@ -216,8 +216,8 @@ The canonical model must be able to represent these flows:
 
 - `Task`: `NEW -> READY`, `READY -> RUNNING`, `RUNNING/PAUSED/BLOCKED -> TERMINAL`
 - task progress reconciliation snapshots
-- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
-- `TaskMsgAttempt`: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
+- message projection: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
+- attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
 - worker-context reservation / occupation / release transitions
 - worker lock acquire / release
