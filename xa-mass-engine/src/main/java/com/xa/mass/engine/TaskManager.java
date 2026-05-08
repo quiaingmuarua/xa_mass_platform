@@ -370,6 +370,25 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         ));
     }
 
+    void addRuntimeIngressItems(Task task, List<RuntimeTaskIngressItem> ingressItems) {
+        if (task == null) {
+            throw new IllegalArgumentException("task is required");
+        }
+        if (ingressItems == null || ingressItems.isEmpty()) {
+            throw new IllegalArgumentException("ingressItems must be a non-empty list");
+        }
+        for (RuntimeTaskIngressItem ingressItem : ingressItems) {
+            if (ingressItem == null) {
+                throw new IllegalArgumentException("ingressItems must not contain null");
+            }
+            if (!task.getTid().equals(ingressItem.taskId())) {
+                throw new IllegalArgumentException("ingress item taskId mismatch: expected "
+                        + task.getTid() + " but was " + ingressItem.taskId());
+            }
+            addRuntimeIngressItem(ingressItem);
+        }
+    }
+
     private void addRuntimeIngressItem(RuntimeTaskIngressItem ingressItem) {
         String taskId = ingressItem.taskId();
         String messageId = ingressItem.messageId();

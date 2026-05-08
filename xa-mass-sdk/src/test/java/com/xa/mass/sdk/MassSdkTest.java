@@ -52,9 +52,7 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -850,7 +848,7 @@ class MassSdkTest {
                 .build();
 
         Assertions.assertThrows(IllegalStateException.class,
-                () -> createTask(app, MassTaskCreateRequest.builder().build()));
+                () -> createTask(app, MassTaskShellCreateRequest.builder().build(), List.of(), 3, false));
         assertEngineOperationsFailFast(app);
     }
 
@@ -1168,22 +1166,21 @@ class MassSdkTest {
         when(taskQueryService.getTask("task-001")).thenReturn(hydratedTask);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
-        MassTaskCreateRequest request = MassTaskCreateRequest.builder()
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
                 .taskName("sdk-task")
+                .mode(TaskMode.STREAMING)
+                .payloadType(PayloadType.JSON)
                 .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
-                .inputs(List.of(
-                        Map.of("target", "target-a"),
-                        Map.of("target", "target-b")
-                ))
                 .batchSize(2)
-                .defaultMsgMaxRetryCount(5)
-                .openEnded(true)
                 .maxRuntimeSeconds(600)
                 .build();
 
-        Task result = createTask(app, request);
+        Task result = createTask(app, request, List.of(
+                Map.of("target", "target-a"),
+                Map.of("target", "target-b")
+        ), 5, true);
 
         assertSame(hydratedTask, result);
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
@@ -1198,7 +1195,7 @@ class MassSdkTest {
                                 "textContent", "hello",
                                 "routingCode", "us",
                                 "_sdk", Map.of(
-                                        "taskMode", "SINGLE_RUN",
+                                        "taskMode", "STREAMING",
                                         "payloadType", "JSON"
                                 )
                         ),
@@ -1212,7 +1209,7 @@ class MassSdkTest {
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), 5);
-        verify(taskQueryService).getTask("task-001");
+        verify(taskQueryService, times(2)).getTask("task-001");
     }
 
     @Test
@@ -1486,20 +1483,22 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
-        MassTaskRequest request = MassTaskRequest.streaming("demoApp", "crawler-stream")
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
+                .project("demoApp")
+                .taskName("crawler-stream")
+                .eventCode("crawler.fetch-page")
+                .mode(TaskMode.STREAMING)
                 .payloadType(PayloadType.JSON)
                 .sharedConfig(Map.of("routingCode", "us"))
-                .jsonInputs(List.of(
-                        Map.of("url", "https://example.test/page-1"),
-                        Map.of("url", "https://example.test/page-2")
-                ))
                 .batchSize(1)
-                .defaultMsgMaxRetryCount(2)
                 .maxRuntimeSeconds(60)
                 .build();
 
-        Task result = createTask(app, request);
+        Task result = createTask(app, request, List.of(
+                Map.of("url", "https://example.test/page-1"),
+                Map.of("url", "https://example.test/page-2")
+        ), 2, true);
 
         assertSame(hydratedTask, result);
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
@@ -1513,7 +1512,8 @@ class MassSdkTest {
                         Map.of(
                                 "routingCode", "us",
                                 "_sdk", Map.of(
-                                        "taskMode", "SINGLE_RUN",
+                                        "eventCode", "crawler.fetch-page",
+                                        "taskMode", "STREAMING",
                                         "payloadType", "JSON"
                                 )
                         ),
@@ -1522,10 +1522,10 @@ class MassSdkTest {
                 dto.getSharedConfig()
         );
         verify(taskCommandService).appendTaskItems("task-stream-001", List.of(
-                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
-                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
+                Map.of("url", "https://example.test/page-1"),
+                Map.of("url", "https://example.test/page-2")
         ), 2);
-        verify(taskQueryService).getTask("task-stream-001");
+        verify(taskQueryService, times(2)).getTask("task-stream-001");
     }
 
     @Test
@@ -1855,7 +1855,7 @@ class MassSdkTest {
     }
 
     @Test
-    void dispatchEventCanCreateCatalogTaskThroughEventEntry() {
+    void dispatchEventRejectsTaskBackedCatalogTaskEntry() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
@@ -1879,17 +1879,9 @@ class MassSdkTest {
                     eventPrincipal("client-a", "user-a", "crawlerApp", "crawler.fetch-page")
             );
 
-            assertTrue(response.isSuccess());
+            assertFalse(response.isSuccess());
+            Assertions.assertEquals("TASK_BACKED_EVENT_REQUIRES_TASK_API", response.getCode());
             Assertions.assertEquals("req-catalog-create", response.getRequestId());
-            Assertions.assertInstanceOf(Task.class, response.getData());
-            Task task = (Task) response.getData();
-            Assertions.assertEquals("crawlerApp", task.getProject());
-            Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            TaskMsg storedMessage = requireDelegate(app).getEngine().getConfig()
-                    .getTaskDetailStore()
-                    .getTaskMessages(task.getTid(), 1)
-                    .get(0);
-            Assertions.assertEquals("json", storedMessage.getInput().get("type"));
         } finally {
             app.stop();
         }
@@ -1924,7 +1916,7 @@ class MassSdkTest {
     }
 
     @Test
-    void createTaskRejectsUnsupportedSdkProjectAndEventContract() {
+    void dispatchEventRejectsTaskBackedCatalogEventContract() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
@@ -1934,23 +1926,18 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> createTask(app, MassTaskRequest.singleRun("missingApp", "unknown-task")
-                        .jsonInputs(List.of(Map.of("target", "value")))
-                        .build()));
+        EventResponse response = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("crawler.fetch-page")
+                        .project("crawlerApp")
+                        .payload(Map.of("url", "https://example.test"))
+                        .requestId("req-task-backed-reject")
+                        .build(),
+                eventPrincipal("client-a", "user-a", "crawlerApp", "crawler.fetch-page")
+        );
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> createTask(app, MassTaskRequest.singleRun("telegramApp", "crawler-task")
-                        .eventCode("crawler.fetch-page")
-                        .jsonInputs(List.of(Map.of("url", "https://example.test")))
-                        .build()));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> createTask(app, MassTaskRequest.singleRun("rcsApp", "sms-task")
-                        .eventCode("sms.acquire-number")
-                        .payloadType(PayloadType.TEXT)
-                        .textInputs(List.of("hello"))
-                        .build()));
+        assertFalse(response.isSuccess());
+        assertEquals("TASK_BACKED_EVENT_REQUIRES_TASK_API", response.getCode());
     }
 
     @Test
@@ -1973,13 +1960,12 @@ class MassSdkTest {
                     .eventCodes(List.of("chatbot.reply"))
                     .build());
 
-            Task task = createTask(app, MassTaskCreateRequest.builder()
+            Task task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
                     .taskName("custom-project-task")
-                    .inputs(List.of(Map.of("target", "chat-1")))
                     .batchSize(1)
-                    .build());
+                    .build(), List.of(Map.of("target", "chat-1")), 3, false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppExecutableTest", task.getProject());
@@ -1989,7 +1975,7 @@ class MassSdkTest {
     }
 
     @Test
-    void createTaskSupportsCustomRegisteredProjectAndEventCatalog() {
+    void createTaskShellSupportsCustomRegisteredProjectAndEventCatalog() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
@@ -2015,11 +2001,14 @@ class MassSdkTest {
                     .eventCodes(List.of("bot.command"))
                     .build());
 
-            Task task = createTask(app, MassTaskRequest.singleRun("botAppCatalogTest", "bot-command-task")
+            Task task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
+                    .project("botAppCatalogTest")
+                    .taskName("bot-command-task")
                     .eventCode("bot.command")
-                    .textInputs(List.of("/start"))
-                    .build());
+                    .payloadType(PayloadType.TEXT)
+                    .batchSize(1)
+                    .build(), List.of("/start"), 3, false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppCatalogTest", task.getProject());
@@ -2685,14 +2674,13 @@ class MassSdkTest {
             PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
 
-            Task task = createTask(app, MassTaskCreateRequest.builder()
+            Task task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
                     .project("demoApp")
                     .taskName("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
-                    .inputs(List.of(Map.of("url", "https://example.test/page-1")))
                     .batchSize(1)
-                    .build());
+                    .build(), List.of(Map.of("url", "https://example.test/page-1")), 3, false);
 
             assertTrue(app.approveTask(task.getTid()));
 
@@ -2738,30 +2726,46 @@ class MassSdkTest {
     }
 
     @Test
-    void massTaskRequestConvenienceBuildersExposeExpectedModeAndInputShape() {
-        MassTaskRequest textRequest = MassTaskRequest.singleRun("demoApp", "chatbot")
-                .userId("agent")
-                .payloadType(PayloadType.TEXT)
-                .textInputs(List.of("hello", "world"))
-                .build();
-        MassTaskRequest jsonRequest = MassTaskRequest.streaming("demoApp", "crawler")
-                .userId("agent")
-                .payloadType(PayloadType.JSON)
-                .jsonInputs(List.of(Map.of("target", "https://example.test")))
-                .build();
+    void appendTaskItemsConvertsPayloadAgainstShellMetadata() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
+        Task textTask = new Task();
+        textTask.setTid("task-text-002");
+        textTask.setSharedConfig(Map.of("_sdk", Map.of("payloadType", "TEXT")));
+        Task jsonTask = new Task();
+        jsonTask.setTid("task-json-002");
+        jsonTask.setSharedConfig(Map.of("_sdk", Map.of("payloadType", "JSON")));
 
-        Assertions.assertEquals(TaskMode.SINGLE_RUN, textRequest.getMode());
-        Assertions.assertFalse(textRequest.isStreaming());
-        Assertions.assertEquals(List.of(
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(taskQueryService.getTask("task-text-002")).thenReturn(textTask);
+        when(taskQueryService.getTask("task-json-002")).thenReturn(jsonTask);
+        when(taskCommandService.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        app.appendTaskItems("task-text-002", MassTaskItemBatchAppendRequest.builder()
+                .items(List.of("hello", "world"))
+                .defaultMsgMaxRetryCount(4)
+                .build());
+        app.appendTaskItems("task-json-002", MassTaskItemBatchAppendRequest.builder()
+                .items(List.of(Map.of("target", "https://example.test")))
+                .defaultMsgMaxRetryCount(2)
+                .build());
+
+        verify(taskCommandService).appendTaskItems("task-text-002", List.of(
                 Map.of("type", "text", "text", "hello"),
                 Map.of("type", "text", "text", "world")
-        ), textRequest.toEngineInputs());
-
-        Assertions.assertEquals(TaskMode.STREAMING, jsonRequest.getMode());
-        Assertions.assertTrue(jsonRequest.isStreaming());
-        Assertions.assertEquals(List.of(
-                Map.of("type", "json", "data", Map.of("target", "https://example.test"))
-        ), jsonRequest.toEngineInputs());
+        ), 4);
+        verify(taskCommandService).appendTaskItems("task-json-002", List.of(
+                Map.of("target", "https://example.test")
+        ), 2);
     }
 
     @Test
@@ -3052,56 +3056,24 @@ class MassSdkTest {
                 ));
     }
 
-    private static Task createTask(MassSdkApplication app, MassTaskCreateRequest request) {
+    private static Task createTask(MassSdkApplication app,
+                                   MassTaskShellCreateRequest request,
+                                   List<Object> items,
+                                   int defaultMsgMaxRetryCount,
+                                   boolean keepIntakeOpen) {
         Objects.requireNonNull(app, "app");
         Objects.requireNonNull(request, "request");
-        Task task = app.createTaskShell(MassTaskShellCreateRequest.builder()
-                .userId(request.getUserId())
-                .project(request.getProject())
-                .taskName(request.getTaskName())
-                .mode(request.isOpenEnded() ? TaskMode.STREAMING : TaskMode.SINGLE_RUN)
-                .payloadType(PayloadType.JSON)
-                .sharedConfig(withSdkMetadata(request))
-                .batchSize(request.getBatchSize())
-                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                .sourceType(request.getSourceType())
-                .workloadClass(request.getWorkloadClass())
-                .sourceRef(request.getSourceRef())
-                .build());
-        if (request.getInputs() != null && !request.getInputs().isEmpty()) {
+        Task task = app.createTaskShell(request);
+        if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
-                    .items(new ArrayList<>(request.getInputs()))
-                    .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
+                    .items(items)
+                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
         }
-        if (!request.isOpenEnded()) {
+        if (!keepIntakeOpen) {
             assertTrue(app.sealTask(task.getTid()));
         }
         return app.getTask(task.getTid());
-    }
-
-    private static Task createTask(MassSdkApplication app, MassTaskRequest request) {
-        Objects.requireNonNull(app, "app");
-        Objects.requireNonNull(request, "request");
-        EventResponse response = app.dispatchEvent(EventRequest.builder()
-                .event(request.getEventCode())
-                .project(request.getProject())
-                .payload(Map.of("request", request))
-                .requestId(UUID.randomUUID().toString())
-                .build(), null);
-        if (!response.isSuccess()) {
-            throw new IllegalArgumentException(response.getMessage());
-        }
-        return (Task) response.getData();
-    }
-
-    private static Map<String, Object> withSdkMetadata(MassTaskCreateRequest request) {
-        Map<String, Object> merged = new LinkedHashMap<>(request.getSharedConfig());
-        merged.put("_sdk", Map.of(
-                "taskMode", request.isOpenEnded() ? TaskMode.STREAMING.name() : TaskMode.SINGLE_RUN.name(),
-                "payloadType", PayloadType.JSON.name()
-        ));
-        return merged;
     }
 
     @FunctionalInterface

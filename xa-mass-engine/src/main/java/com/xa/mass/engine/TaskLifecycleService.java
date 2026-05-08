@@ -263,12 +263,17 @@ class TaskLifecycleService {
             throw new IllegalStateException(describeInputAppendRejection(task, taskId));
         }
 
-        int added = 0;
+        List<RuntimeTaskIngressItem> ingressItems = new java.util.ArrayList<>(inputs.size());
         for (java.util.Map<String, Object> input : inputs) {
-            String messageId = java.util.UUID.randomUUID().toString();
-            taskManager.addTaskInput(taskId, messageId, input, defaultMsgMaxRetryCount);
-            added++;
+            ingressItems.add(RuntimeTaskIngressItem.fromInput(
+                    taskId,
+                    java.util.UUID.randomUUID().toString(),
+                    input,
+                    defaultMsgMaxRetryCount
+            ));
         }
+        taskManager.addRuntimeIngressItems(task, ingressItems);
+        int added = ingressItems.size();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
         task.setIngestStatus(resolvePostAppendIngestStatus(task));

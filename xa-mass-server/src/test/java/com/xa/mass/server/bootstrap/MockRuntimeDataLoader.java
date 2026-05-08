@@ -12,7 +12,6 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;

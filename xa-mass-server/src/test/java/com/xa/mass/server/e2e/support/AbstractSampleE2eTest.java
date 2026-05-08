@@ -150,20 +150,31 @@ public abstract class AbstractSampleE2eTest {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
+        createBody.put("payloadType", "JSON");
         createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
         createBody.put("userId", "itest");
         if (workloadClass != null) {
             createBody.put("workloadClass", workloadClass.name());
         }
-        createBody.put("inputs", targets.stream()
-                .map(target -> Map.<String, Object>of("target", target))
-                .toList());
         createBody.put("batchSize", batchSize);
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
+        Map<String, Object> ingestResponse = exchange(
+                "/api/v1/tasks/" + taskId + "/items",
+                HttpMethod.POST,
+                Map.of(
+                        "items", targets.stream()
+                                .map(target -> Map.<String, Object>of("target", target))
+                                .toList(),
+                        "defaultMsgMaxRetryCount", 3
+                )
+        );
+        assertApiOk(ingestResponse);
+        Map<String, Object> sealResponse = exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null);
+        assertApiOk(sealResponse);
         return taskId;
     }
 
@@ -176,7 +187,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected Map<String, Object> audit(String taskId, String comment) {
-        return exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=" + comment, HttpMethod.POST, null);
+        return exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -253,16 +264,16 @@ public abstract class AbstractSampleE2eTest {
                 "Task " + taskId + " did not reach " + expectedStatus + " within timeout",
                 maxAttempts,
                 sleepMillis,
-                () -> exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null),
+                () -> exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null),
                 detailResponse -> expectedStatus.equals(task(detailResponse).get("status")),
                 detailResponse -> "status=" + task(detailResponse).get("status")
         );
     }
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
-        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> messagesResponse = exchange(
-                "/status/api/tasks/" + taskId + "/messages",
+                "/api/v1/tasks/" + taskId + "/items",
                 HttpMethod.GET,
                 null
         );
