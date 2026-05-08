@@ -572,7 +572,7 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     private ActiveLeaseRecord activeLease(String taskId, String messageId) {
-        return taskManager.getTaskWorkRuntime().getActiveLease(taskId, messageId).orElse(null);
+        return taskManager.getActiveLeaseRecord(taskId, messageId);
     }
 
     private Worker worker(String id) {

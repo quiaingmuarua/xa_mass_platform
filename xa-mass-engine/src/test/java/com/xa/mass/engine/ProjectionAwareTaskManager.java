@@ -5,7 +5,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMessageSnapshot;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -70,6 +69,10 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
     }
 
+    public ActiveLeaseRecord getActiveLeaseRecord(String taskId, String messageId) {
+        return getActiveLease(taskId, messageId).orElse(null);
+    }
+
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         int boundedLimit = Math.max(0, limit);
         List<TaskDetailStore.TaskMessageProjection> stored = boundedLimit == 0
@@ -113,11 +116,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
 
     public TaskDetailStore.TaskMessageAttemptProjection getLatestActiveAttemptProjectionRecord(String taskId,
                                                                                                String messageId) {
-        TaskMsgAttempt attempt = getLatestActiveAttemptProjection(taskId, messageId);
-        return attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null;
-    }
-
-    public TaskMsgAttempt getLatestActiveAttemptProjection(String taskId, String messageId) {
         Task task = getTask(taskId);
         if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
             return null;
@@ -138,29 +136,24 @@ public class ProjectionAwareTaskManager extends TaskManager {
         if (attemptId == null || attemptId.isBlank()) {
             attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
         }
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
-        attempt.setWorkerId(activeLease.workerId());
-        attempt.setWorkerContextId(activeLease.workerContextId());
-        attempt.setBatchId(activeLease.batchId());
-        if (activeLease.leaseExpireAt() != null) {
-            attempt.setLeaseExpireTime(java.time.LocalDateTime.ofInstant(
-                    activeLease.leaseExpireAt(),
-                    java.time.ZoneId.systemDefault()
-            ));
-        }
-        if (activeLease.leasedAt() != null) {
-            attempt.setDispatchTime(java.time.LocalDateTime.ofInstant(
-                    activeLease.leasedAt(),
-                    java.time.ZoneId.systemDefault()
-            ));
-        }
-        attempt.setStatus(TaskMsgAttemptStatus.DISPATCHED);
+        TaskMsgAttemptStatus attemptStatus = TaskMsgAttemptStatus.DISPATCHED;
         if (messageStatus == TaskMsgStatus.RUNNING) {
-            attempt.setAckTime(java.time.LocalDateTime.now());
-            attempt.setStartTime(java.time.LocalDateTime.now());
-            attempt.setStatus(TaskMsgAttemptStatus.RUNNING);
+            attemptStatus = TaskMsgAttemptStatus.RUNNING;
         }
-        return attempt;
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId(),
+                attemptStatus,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private boolean matchesRuntimeLease(TaskDetailStore.TaskMessageAttemptProjection attempt,
