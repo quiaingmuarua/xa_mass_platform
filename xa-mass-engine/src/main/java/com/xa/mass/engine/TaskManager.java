@@ -7,10 +7,12 @@ import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -56,7 +58,7 @@ import java.util.function.Supplier;
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort {
+public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort, TaskResultIngestPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
@@ -123,6 +125,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 requiredTaskDetailStore,
                 this::getTask,
                 this::getActiveLease,
+                this::getTaskWork,
                 this::getActiveLeases
         );
         this.stateValidator = new TaskStateValidator(
@@ -144,7 +147,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.lifecycleService = new TaskLifecycleService(
                 this,
-                compatibilityProjectionAccess,
                 stateResolver,
                 traceEventLogger
         );
@@ -157,67 +159,58 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Creates the task shell, initializes intake/source/runtime truth, ingests
-     * initial inputs, enqueues runtime work, and best-effort writes bounded
-     * compatibility {@link TaskMsg} projection rows.
+     * Compatibility-only aggregate create entry.
      *
-     * <p>This path is intentionally kept stable in this round. It is the next
-     * internal split candidate, but should not accumulate more unrelated
-     * responsibilities.
+     * <p>Runtime mainline should compose shell create, explicit item ingest,
+     * and optional seal as separate steps. This method remains only so current
+     * in-repo callers can converge without growing new aggregate-create logic.
      */
     @Override
+    @Deprecated(forRemoval = true)
     public Task createTask(TaskCreateRequestDto dto) {
         validateCreateRequest(dto);
+        List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
+        TaskSourceType sourceType = resolveSourceType(dto);
+        Task task = createTaskRecord(
+                fromLegacyCreateRequest(dto, sourceType),
+                sourceType,
+                resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), inputs.size()),
+                resolveInitialIntakeStatus(sourceType, dto.isOpenEnded())
+        );
+        if (inputs.isEmpty()) {
+            return task;
+        }
+
+        for (Map<String, Object> input : inputs) {
+            String messageId = java.util.UUID.randomUUID().toString();
+            addTaskInput(task.getTid(), messageId, input, dto.getDefaultMsgMaxRetryCount());
+        }
+        task.setTaskTargetNumber(inputs.size());
+        task.setTaskEligibleNumber(inputs.size());
+        updateTask(task);
+        return task;
+    }
+
+    @Override
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        validateTaskShellCreateRequest(dto);
         long startTime = System.currentTimeMillis();
-        LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
+        LogUtils.logOperationStart("CREATE_TASK_SHELL", "TaskManager",
                 "taskName", dto.getTaskName(),
                 "project", dto.getProject(),
                 "routingCode", TaskSharedConfig.stringValue(dto.getSharedConfig(), TaskSharedConfig.ROUTING_CODE));
 
         try {
-            String tid = java.util.UUID.randomUUID().toString();
-            LogUtils.setTaskId(tid);
-
-            UserRef user = UserRef.of(dto.getUserId());
-            LogUtils.setUserId(dto.getUserId());
-
-            List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-            TaskSourceType sourceType = resolveSourceType(dto);
-            if (inputs.isEmpty() && !sourceType.allowsEmptyInitialInputs()) {
-                throw new IllegalArgumentException("inputs must contain at least one work item");
-            }
-            int initNumber = inputs.size();
-
-            Task task = new Task(
-                    tid,
-                    dto.getTaskName(),
-                    dto.getProject(),
-                    initNumber,
-                    dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
-                    user
-            );
-            task.setSourceType(sourceType);
-            task.setWorkloadClass(dto.getWorkloadClass());
-            task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
-            task.setIngestStatus(resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), initNumber));
-            task.setBatchSize(dto.getBatchSize());
-            // intakeStatus is the runtime truth; openEnded remains a compatibility projection.
-            task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
-            task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
-            taskStorage.saveTask(task);
-            ingestInitialInputs(tid, dto, inputs);
-
-            eventPublisher.publishTaskCreated(task);
+            Task task = createTaskShellInternal(dto);
             long duration = System.currentTimeMillis() - startTime;
-            LogUtils.logOperationSuccess("task created: taskId=" + tid
-                    + ", sourceType=" + sourceType
-                    + ", initialMessageCount=" + initNumber
+            LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
+                    + ", sourceType=" + task.getSourceType()
                     + ", ingestStatus=" + task.getIngestStatus(), duration);
             return task;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationFailure("TASK_CREATE_ERROR", e.getMessage(), duration);
-            logger.error("Failed to create task", e);
+            logger.error("Failed to create task shell", e);
             throw e;
         }
     }
@@ -366,6 +359,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     @Override
     public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
         return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
+    }
+
+    @Override
+    public int appendTaskItems(String taskId,
+                               List<Map<String, Object>> inputs,
+                               int defaultMsgMaxRetryCount) {
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs, defaultMsgMaxRetryCount));
     }
 
     /**
@@ -525,8 +525,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * aggregates. This is diagnostic-only and may require a full task-message
      * snapshot.
      */
+    @Override
     @CompatibilityProjectionOnly
-    TaskStateValidationResult auditTaskProjectionState(String taskId) {
+    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
     }
 
@@ -567,18 +568,29 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return outcome.accepted();
     }
 
-    boolean handleTaskMessageResult(String taskId,
-                                    String messageId,
-                                    boolean success,
-                                    String detail,
-                                    String errorCode,
-                                    Map<String, Object> output) {
+    @Override
+    public boolean handleTaskMessageResult(String taskId,
+                                           String messageId,
+                                           boolean success,
+                                           String detail,
+                                           String errorCode,
+                                           Map<String, Object> output) {
         TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
                 () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
         }
         return outcome.accepted();
+    }
+
+    @Override
+    public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        return TaskResultCorrelationSupport.fromRuntimeState(
+                taskId,
+                messageId,
+                null,
+                getActiveLease(taskId, messageId).orElse(null)
+        );
     }
 
     <T> T withTaskLock(String taskId, Supplier<T> action) {
@@ -604,13 +616,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (dto == null) {
             throw new IllegalArgumentException("task request body is required");
         }
-        ProjectRef.require(dto.getProject());
-        UserRef.requireUserId(dto.getUserId());
         TaskSourceType sourceType = resolveSourceType(dto);
+        validateTaskShellCreateRequest(fromLegacyCreateRequest(dto, sourceType));
         List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
         if (sourceType == TaskSourceType.FILE
                 && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
             throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        }
+        if (sourceType == TaskSourceType.BATCH && inputs.isEmpty()) {
+            throw new IllegalArgumentException("inputs must be a non-empty list");
         }
         if (sourceType == TaskSourceType.FILE && !inputs.isEmpty()) {
             throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
@@ -625,11 +639,40 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         }
     }
 
+    private void validateTaskShellCreateRequest(TaskShellCreateRequestDto dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        ProjectRef.require(dto.getProject());
+        UserRef.requireUserId(dto.getUserId());
+        TaskSourceType sourceType = resolveShellSourceType(dto);
+        if (sourceType == TaskSourceType.FILE
+                && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
+            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        }
+    }
+
     private TaskSourceType resolveSourceType(TaskCreateRequestDto dto) {
         if (dto.getSourceType() != null) {
             return dto.getSourceType();
         }
         return dto.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+    }
+
+    private TaskSourceType resolveShellSourceType(TaskShellCreateRequestDto dto) {
+        if (dto.getSourceType() != null) {
+            return dto.getSourceType();
+        }
+        return TaskSourceType.STREAM;
+    }
+
+    private TaskIntakeStatus resolveInitialIntakeStatus(TaskSourceType sourceType, boolean openEnded) {
+        if (sourceType == TaskSourceType.FILE) {
+            return TaskIntakeStatus.SEALED;
+        }
+        return (openEnded || sourceType == TaskSourceType.STREAM)
+                ? TaskIntakeStatus.OPEN
+                : TaskIntakeStatus.SEALED;
     }
 
     private TaskIngestStatus resolveInitialIngestStatus(TaskSourceType sourceType,
@@ -687,6 +730,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
         return taskWorkRuntime.getActiveLease(taskId, messageId);
+    }
+
+    java.util.Optional<TaskWorkEnvelope> getTaskWork(String taskId, String messageId) {
+        return taskWorkRuntime.getWork(taskId, messageId);
     }
 
     @Override
@@ -766,6 +813,62 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 java.time.Instant.now()
         );
         return taskWorkRuntime.enqueue(item, enqueueOptionsResolver.resolve(task));
+    }
+
+    private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
+        TaskSourceType sourceType = resolveShellSourceType(dto);
+        return createTaskRecord(
+                dto,
+                sourceType,
+                sourceType == TaskSourceType.FILE ? TaskIngestStatus.PENDING : TaskIngestStatus.READY,
+                sourceType == TaskSourceType.FILE ? TaskIntakeStatus.SEALED : TaskIntakeStatus.OPEN
+        );
+    }
+
+    private Task createTaskRecord(TaskShellCreateRequestDto dto,
+                                  TaskSourceType sourceType,
+                                  TaskIngestStatus ingestStatus,
+                                  TaskIntakeStatus intakeStatus) {
+        String tid = java.util.UUID.randomUUID().toString();
+        LogUtils.setTaskId(tid);
+        UserRef user = UserRef.of(dto.getUserId());
+        LogUtils.setUserId(dto.getUserId());
+
+        Task task = new Task(
+                tid,
+                dto.getTaskName(),
+                dto.getProject(),
+                0,
+                dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
+                user
+        );
+        task.setSourceType(sourceType);
+        task.setWorkloadClass(dto.getWorkloadClass());
+        task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
+        task.setBatchSize(dto.getBatchSize());
+        task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
+        task.setIngestStatus(ingestStatus);
+        task.setIntakeStatus(intakeStatus);
+        taskStorage.saveTask(task);
+        eventPublisher.publishTaskCreated(task);
+        return task;
+    }
+
+    private TaskShellCreateRequestDto fromLegacyCreateRequest(TaskCreateRequestDto dto, TaskSourceType sourceType) {
+        if (dto == null) {
+            return null;
+        }
+        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+        shell.setUserId(dto.getUserId());
+        shell.setProject(dto.getProject());
+        shell.setTaskName(dto.getTaskName());
+        shell.setSharedConfig(dto.getSharedConfig());
+        shell.setBatchSize(dto.getBatchSize());
+        shell.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
+        shell.setSourceType(sourceType);
+        shell.setWorkloadClass(dto.getWorkloadClass());
+        shell.setSourceRef(dto.getSourceRef());
+        return shell;
     }
 }
 

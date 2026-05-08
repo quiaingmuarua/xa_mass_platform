@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
@@ -24,8 +25,17 @@ public class TaskCommandService {
         this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
     }
 
+    /**
+     * Compatibility-only aggregate create entry. Prefer explicit shell create
+     * plus item ingest in new runtime flows.
+     */
+    @Deprecated(forRemoval = true)
     public Task createTask(TaskCreateRequestDto dto) {
         return taskCommands.createTask(dto);
+    }
+
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        return taskCommands.createTaskShell(dto);
     }
 
     public boolean updateTask(Task task) {
@@ -70,6 +80,10 @@ public class TaskCommandService {
 
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
         return taskCommands.appendTaskItems(taskId, inputs);
+    }
+
+    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount) {
+        return taskCommands.appendTaskItems(taskId, inputs, defaultMsgMaxRetryCount);
     }
 
     public boolean sealTask(String taskId) {

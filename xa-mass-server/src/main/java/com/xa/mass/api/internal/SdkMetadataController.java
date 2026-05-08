@@ -25,7 +25,7 @@ import java.util.Objects;
  * Read-only SDK/platform metadata endpoints.
  */
 @RestController
-@RequestMapping("/sdk/meta")
+@RequestMapping("/api/v1/meta")
 public class SdkMetadataController {
 
     private final SdkMetadataCatalog metadataCatalog;

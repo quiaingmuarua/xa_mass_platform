@@ -42,5 +42,9 @@ public class TaskQueryService {
     public TaskStateValidationResult validateTaskState(String taskId) {
         return taskQueries.validateTaskState(taskId);
     }
+
+    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return taskQueries.auditTaskProjectionState(taskId);
+    }
 }
 

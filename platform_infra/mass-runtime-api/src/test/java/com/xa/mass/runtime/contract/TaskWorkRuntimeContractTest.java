@@ -166,6 +166,25 @@ public abstract class TaskWorkRuntimeContractTest {
     }
 
     @Test
+    void getWork_returnsRuntimeEnvelopeWhileMessageIsManagedByRuntime() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+
+        assertThat(runtime.getWork("t1", "m1"))
+                .get()
+                .extracting(TaskWorkEnvelope::messageId, TaskWorkEnvelope::maxRetryCount)
+                .containsExactly("m1", 3);
+
+        ClaimedTaskWork claimed = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+        assertThat(runtime.getWork("t1", "m1"))
+                .get()
+                .extracting(TaskWorkEnvelope::messageId, TaskWorkEnvelope::retryCount)
+                .containsExactly("m1", 0);
+
+        runtime.applyResult(TaskWorkResult.success("t1", "m1", claimed.leaseToken(), "done", Map.of()));
+        assertThat(runtime.getWork("t1", "m1")).isEmpty();
+    }
+
+    @Test
     void applyResult_withStaleToken_returnsStaleLeaseNotException() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("t1", targets("w1"), 1, 30);

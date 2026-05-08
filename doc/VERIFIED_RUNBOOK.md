@@ -84,42 +84,48 @@ nc -zv 127.0.0.1 18088
 - If the transport server is enabled, the current WebSocket adapter port is open.
 - Sample workers appear online when auto-start is enabled.
 
-Create a sealed task:
+Create a task shell, append items, then seal:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
+curl -s -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","sharedConfig":{"textContent":"smoke"},"userId":"agent","inputs":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
+  -d '{"taskName":"smoke-lifecycle","project":"demoApp","sharedConfig":{"textContent":"smoke"},"userId":"agent","batchSize":1,"maxRuntimeSeconds":0}'
+
+curl -s -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
+  -H 'Content-Type: application/json' \
+  -d '{"items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"defaultMsgMaxRetryCount":3}'
+
+curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}:seal
 ```
 
 Approve it:
 
 ```bash
-curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
+curl -i -X POST "http://127.0.0.1:8088/api/v1/tasks/{taskId}:approve"
 ```
 
 Inspect task and messages:
 
 ```bash
-curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}
-curl -s http://127.0.0.1:8088/status/api/tasks/{taskId}/messages
+curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
+curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}/items
 ```
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
-- task detail response includes a bounded `items` snapshot plus `itemsReturned`, `itemsLimit`, `itemsTruncated`, and `stateValidation`
+- task detail response returns shell/state data and `stateValidation`; item snapshots are explicit on `/api/v1/tasks/{taskId}/items`
 - message read model is a bounded compatibility summary; it exposes logical status and latest-attempt summary fields without materializing full `input`/`output`
 
 ## 4. Runtime Facts To Trust
 
 Task create/update:
 
-- Create supports `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`.
-- `/status/api/tasks` is the single HTTP task-create route; when `eventCode` is present it uses the SDK mode/payload-aware create path.
+- Shell create supports `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `batchSize`, and `maxRuntimeSeconds`.
+- `POST /api/v1/tasks` is the public shell-create route.
 - The public task API and control-console read models do not define a dedicated routing-code field.
-- `inputs` must be non-empty and materializes persisted `TaskMsg.input` rows.
+- Work items are appended explicitly through `POST /api/v1/tasks/{taskId}/items`.
 - Unknown or retired create fields fail fast.
 - Update is metadata-only and supports `userId`, `project`, `taskName`, `sharedConfig`, and `batchSize`.
 - Updates are allowed only while the task is `NEW` or `BLOCKED`.
@@ -154,9 +160,9 @@ Worker and worker-context truth:
 Open-ended and targeted worker debug:
 
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
-- `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
-- `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- worker debug from the control console creates a normal task through `POST /status/api/tasks`, with fixed-worker routing carried by `Task.sharedConfig.targetWorkerId`.
+- `POST /api/v1/tasks/{taskId}/items` appends inputs only while intake is open.
+- `POST /api/v1/tasks/{taskId}:seal` closes intake and resumes normal terminal convergence.
+- worker debug/test flows use `/internal/v1/debug/task-invocations:sync` for one-item sync execution, or the normal shell-create + append flow for standard task runs.
 
 ## 5. Core Acceptance Commands
 

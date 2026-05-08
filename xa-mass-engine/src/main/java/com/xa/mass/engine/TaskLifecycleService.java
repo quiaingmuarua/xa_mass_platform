@@ -25,16 +25,13 @@ class TaskLifecycleService {
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
 
     private final TaskManager taskManager;
-    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskStateResolver stateResolver;
     private final TraceEventLogger traceEventLogger;
 
     TaskLifecycleService(TaskManager taskManager,
-                         TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
                          TaskStateResolver stateResolver,
                          TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
-        this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.stateResolver = stateResolver;
         this.traceEventLogger = traceEventLogger;
     }
@@ -245,6 +242,12 @@ class TaskLifecycleService {
     }
 
     int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
+        return appendTaskItems(taskId, inputs, 3);
+    }
+
+    int appendTaskItems(String taskId,
+                        List<java.util.Map<String, Object>> inputs,
+                        int defaultMsgMaxRetryCount) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
@@ -263,7 +266,7 @@ class TaskLifecycleService {
         int added = 0;
         for (java.util.Map<String, Object> input : inputs) {
             String messageId = java.util.UUID.randomUUID().toString();
-            taskManager.addTaskInput(taskId, messageId, input, 3);
+            taskManager.addTaskInput(taskId, messageId, input, defaultMsgMaxRetryCount);
             added++;
         }
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
@@ -308,8 +311,7 @@ class TaskLifecycleService {
             return task.getIngestStatus() != TaskIngestStatus.SEALED
                     && task.getIngestStatus() != TaskIngestStatus.FAILED;
         }
-        return task.getIntakeStatus() == TaskIntakeStatus.OPEN
-                && (task.getStatus().isActive() || task.getStatus() == TaskStatus.PAUSED);
+        return task.getIntakeStatus() == TaskIntakeStatus.OPEN;
     }
 
     private String describeInputAppendRejection(Task task, String taskId) {
@@ -325,7 +327,7 @@ class TaskLifecycleService {
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return "Task is not open-ended: " + taskId;
         }
-        return "Task not active: " + task.getStatus();
+        return "Task intake is closed or task is terminal: " + task.getStatus();
     }
 
     private TaskIngestStatus resolvePostAppendIngestStatus(Task task) {
@@ -382,7 +384,6 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     taskManager.getScheduler().cancelTask(taskId);
-                    compatibilityProjectionAccess.persistActiveLeaseProjectionResidue(taskId);
                     taskManager.publishTaskTerminal(task);
                     taskManager.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;

@@ -21,4 +21,6 @@ public interface TaskQueryPort {
     TaskStateResolutionResult resolveTaskState(String taskId);
 
     TaskStateValidationResult validateTaskState(String taskId);
+
+    TaskStateValidationResult auditTaskProjectionState(String taskId);
 }

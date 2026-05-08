@@ -85,7 +85,7 @@ Minimal target shape:
 
 Compression work must preserve these unless explicitly approved otherwise:
 
-- `POST /status/api/tasks`
+- `POST /api/v1/tasks` followed by `POST /api/v1/tasks/{taskId}/items`
 - append + seal semantics for open intake
 - polling worker contract around `TaskDispatchItem`
 - result submission contract around `TaskResultReport`

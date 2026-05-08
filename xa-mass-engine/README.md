@@ -80,8 +80,13 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
 - `TaskCompatibilityQueryService` is the explicit bounded residue-read surface;
-  it returns engine-owned compatibility view snapshots instead of exporting
-  `TaskMsg` / `TaskMsgAttempt` directly to cross-module callers
+  it exposes a visitor-style compatibility read seam so outer modules assemble
+  their own DTOs instead of importing engine-owned message/attempt view models
+- `TaskDetailStore.TaskMessageProjection` and
+  `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
+  shapes; production engine services should translate them inside the
+  compatibility owner path instead of returning them as engine-facing API
+  results
 - runtime ingest must stay correct when compatibility `TaskMsg` projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
   best-effort residue

@@ -451,6 +451,46 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void runtimeCompatibilitySingleMessageViewRetainsRetryBudgetWhenTaskMsgProjectionIsMissing() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("retry-budget-best-effort-overlay");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+
+        Task task = manager.createTask(dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        String messageId = java.util.UUID.randomUUID().toString();
+        String payloadRef = "s3://bucket/payloads/demo-retry-budget-overlay.json";
+        failingStorage.failNextTaskMessageAdd();
+
+        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 7);
+
+        TaskDetailStore.TaskMessageProjection visible =
+                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
+
+        assertNotNull(visible);
+        assertEquals(TaskMsgStatus.INIT, visible.status());
+        assertEquals(0, visible.retryCount());
+        assertEquals(7, visible.maxRetryCount());
+        assertEquals(payloadRef, visible.payloadRef());
+        assertNotNull(visible.createTime());
+    }
+
+    @Test
     void createBatchTaskRejectsOversizedInlineInputs() {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("oversized-inline");
@@ -652,6 +692,42 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void runtimeSuccessStillConvergesWhenFinalTaskMsgProjectionWriteFails() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        Task task = manager.createTask(buildRequest("task-result-success-best-effort", List.of("alpha")));
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+        assignMessage(manager, task, message, "worker-best-effort-success", "worker-context-best-effort-success", "batch-best-effort-success");
+
+        failingStorage.failNextTaskMessageProjectionUpsert();
+
+        assertTrue(manager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done"));
+
+        Task updatedTask = manager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
+        assertEquals(1, updatedTask.getTaskSuccessNumber());
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).finalCount());
+        assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).processingCount());
+
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
+                manager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+        assertNotNull(latestAttempt);
+        assertEquals(TaskMsgAttemptStatus.SUCCEEDED, latestAttempt.status());
+    }
+
+    @Test
     void handleTaskMessageResultEmitsRunningSuccessAndTerminalTrace() {
         Task task = taskManager.createTask(buildRequest("task-result-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -762,6 +838,42 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
+    }
+
+    @Test
+    void runtimeRetryStillConvergesWhenRetryResetProjectionWriteFails() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        Task task = manager.createTask(buildRequest("task-result-retry-best-effort", List.of("alpha")));
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+        assignMessage(manager, task, message, "worker-best-effort-retry-1", "worker-context-best-effort-retry-1", "batch-best-effort-retry-1");
+
+        failingStorage.failNextTaskMessageProjectionUpsert();
+
+        assertTrue(manager.handleTaskMessageResult(task.getTid(), message.messageId(), false, "boom-once"));
+        assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).finalCount());
+
+        List<ClaimedTaskWork> retried = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-best-effort-retry-2", "worker-context-best-effort-retry-2", "batch-best-effort-retry-2", 1)),
+                1,
+                manager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, retried.size());
+        assertEquals(message.messageId(), retried.get(0).messageId());
+        assertEquals(1, retried.get(0).retryCount());
     }
 
     @Test
@@ -2109,6 +2221,37 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void cancelTaskDoesNotRestampTaskMsgProjectionFromRuntimeLeaseOnly() {
+        Task task = taskManager.createTask(buildRequest("cancel-no-runtime-lease-restamp", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-cancel-runtime-only", "worker-context-cancel-runtime-only", "batch-cancel-runtime-only", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        assertEquals(storedMessage.messageId(), claimed.get(0).messageId());
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        TaskDetailStore.TaskMessageProjection stored =
+                taskManager.getStoredTaskMessageRecord(task.getTid(), storedMessage.messageId());
+        TaskDetailStore.TaskMessageProjection cancelled =
+                taskManager.getVisibleTaskMessageProjection(task.getTid(), storedMessage.messageId());
+
+        assertEquals(TaskMsgStatus.INIT, stored.status());
+        assertNull(stored.latestAttemptWorkerId());
+        assertEquals(TaskMsgStatus.FAILED, cancelled.status());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, cancelled.finalReason());
+        assertNull(cancelled.latestAttemptWorkerId());
+    }
+
+    @Test
     void terminalTaskMessageSnapshotOverlaysCompatibilityViewWithoutMutatingStoredRows() {
         Task task = taskManager.createTask(buildRequest("cancel-snapshot-overlay", List.of("a", "b")));
         taskManager.approveTask(task.getTid());
@@ -2488,6 +2631,7 @@ class TaskManagerLifecycleTest {
 
     private static final class ProjectionWriteFailingTaskStorage extends InMemoryTaskStorage {
         private volatile boolean failNextTaskMessageAdd;
+        private volatile boolean failNextTaskMessageProjectionUpsert;
 
         @Override
         public boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
@@ -2495,11 +2639,19 @@ class TaskManagerLifecycleTest {
                 failNextTaskMessageAdd = false;
                 throw new IllegalStateException("simulated projection add failure");
             }
+            if (failNextTaskMessageProjectionUpsert) {
+                failNextTaskMessageProjectionUpsert = false;
+                throw new IllegalStateException("simulated projection upsert failure");
+            }
             return super.upsertTaskMessageProjection(taskId, projection);
         }
 
         private void failNextTaskMessageAdd() {
             failNextTaskMessageAdd = true;
+        }
+
+        private void failNextTaskMessageProjectionUpsert() {
+            failNextTaskMessageProjectionUpsert = true;
         }
     }
 }

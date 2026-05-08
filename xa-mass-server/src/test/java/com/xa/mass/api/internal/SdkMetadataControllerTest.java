@@ -96,7 +96,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void listProjectsReturnsProjectMetadata() throws Exception {
-        mockMvc.perform(get("/sdk/meta/projects"))
+        mockMvc.perform(get("/api/v1/meta/projects"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='demoApp')]").exists())
@@ -105,7 +105,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void projectEventsReturnResolvedEventDefinitions() throws Exception {
-        mockMvc.perform(get("/sdk/meta/projects/demoApp/events"))
+        mockMvc.perform(get("/api/v1/meta/projects/demoApp/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page')]").exists())
@@ -114,7 +114,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void listEventsReturnsEventDefinitions() throws Exception {
-        mockMvc.perform(get("/sdk/meta/events"))
+        mockMvc.perform(get("/api/v1/meta/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='sms.wait-code')]").exists());
@@ -122,7 +122,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void eventCapabilitiesReturnInvocationModelAndLiveWorkerCoverage() throws Exception {
-        mockMvc.perform(get("/sdk/meta/event-capabilities"))
+        mockMvc.perform(get("/api/v1/meta/event-capabilities"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.invocationModel=='TASK_BACKED')]").exists())
@@ -137,7 +137,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void workerCapabilitiesJoinCatalogWorkerAndTransportFacts() throws Exception {
-        mockMvc.perform(get("/sdk/meta/worker-capabilities"))
+        mockMvc.perform(get("/api/v1/meta/worker-capabilities"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.supportedEventCodes[0]=='crawler.fetch-page')]").exists())
@@ -153,11 +153,11 @@ class SdkMetadataControllerTest {
 
     @Test
     void missingProjectOrEventReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/sdk/meta/projects/missing"))
+        mockMvc.perform(get("/api/v1/meta/projects/missing"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404));
 
-        mockMvc.perform(get("/sdk/meta/events/missing"))
+        mockMvc.perform(get("/api/v1/meta/events/missing"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404));
     }

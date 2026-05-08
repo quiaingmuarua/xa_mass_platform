@@ -207,6 +207,18 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     @Override
+    public Optional<TaskWorkEnvelope> getWork(String taskId, String messageId) {
+        if (isBlank(taskId) || isBlank(messageId)) {
+            return Optional.empty();
+        }
+        try {
+            return withRuntimeLock(() -> Optional.ofNullable(loadWork(taskId, messageId)));
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public boolean hasReadyWork(String taskId) {
         if (isBlank(taskId) || !running.get()) {
             return false;

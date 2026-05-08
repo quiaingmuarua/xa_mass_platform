@@ -84,8 +84,8 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
     private boolean requiresAuthenticationOnly(HttpServletRequest request) {
         String uri = request.getRequestURI();
         String method = request.getMethod();
-        return ("GET".equalsIgnoreCase(method) && "/api/auth/me".equals(uri))
-                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri));
+        return ("GET".equalsIgnoreCase(method) && "/api/v1/auth/me".equals(uri))
+                || ("POST".equalsIgnoreCase(method) && "/api/v1/auth/logout".equals(uri));
     }
 
     private boolean hasSdkCredentialAttempt(HttpServletRequest request) {

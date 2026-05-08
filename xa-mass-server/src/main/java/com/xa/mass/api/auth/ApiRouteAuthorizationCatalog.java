@@ -12,7 +12,7 @@ public class ApiRouteAuthorizationCatalog {
         String uri = request.getRequestURI();
         String method = request.getMethod().toUpperCase();
 
-        if (uri.equals("/status/api/tasks")) {
+        if (uri.equals("/api/v1/tasks")) {
             return switch (method) {
                 case "GET" -> sdkCredentialAttempt
                         ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
@@ -23,69 +23,85 @@ public class ApiRouteAuthorizationCatalog {
                 default -> null;
             };
         }
-        if (uri.equals("/status/api/tasks/sync") && "POST".equals(method)) {
+        if (uri.equals("/internal/v1/debug/task-invocations:sync") && "POST".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiPermissionNames.TASK_CREATE);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+$")) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+$")) {
             return switch (method) {
                 case "GET" -> sdkCredentialAttempt
                         ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                         : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
-                case "PUT" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                case "PATCH" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
                 case "DELETE" -> route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
                 default -> null;
             };
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/status$") && "PUT".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                case "POST" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                default -> null;
+            };
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/messages$") && "GET".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items/[^/]+$") && "GET".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/audit$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+/attempts/[^/]+$") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+:projection-audit$") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+:approve$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/pause$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+:reject$") && "POST".equals(method)) {
+            return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+:pause$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.PAUSE, ApiPermissionNames.TASK_PAUSE);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/resume$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+:resume$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.RESUME, ApiPermissionNames.TASK_RESUME);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/terminate$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+:terminate$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/block$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+:block$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/items$") && "POST".equals(method)) {
+        if (uri.matches("^/api/v1/tasks/[^/:]+:seal$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
-        if (uri.matches("^/status/api/tasks/[^/]+/seal$") && "PUT".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
-        }
-        if (uri.startsWith("/api/queue/") && "GET".equals(method)) {
+        if (uri.startsWith("/api/v1/runtime/queues") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.startsWith("/api/session/") && "GET".equals(method)) {
+        if (uri.startsWith("/api/v1/runtime/sessions") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.equals("/api/config/projects") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/runtime/config/projects") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.equals("/status/api/workers") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/runtime/workers") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.equals("/status/api/worker-contexts") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/runtime/worker-contexts") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER_CONTEXT, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.equals("/status/api/rules") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/runtime/rules") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
-        if (uri.equals("/status/api/rules/meta") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/runtime/rules/meta") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
         return null;

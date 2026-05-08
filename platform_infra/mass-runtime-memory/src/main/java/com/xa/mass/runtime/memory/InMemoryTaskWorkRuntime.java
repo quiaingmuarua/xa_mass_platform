@@ -350,6 +350,14 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     @Override
+    public synchronized Optional<TaskWorkEnvelope> getWork(String taskId, String messageId) {
+        if (isBlank(taskId) || isBlank(messageId)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(workByKey.get(new WorkKey(taskId, messageId)));
+    }
+
+    @Override
     public synchronized boolean hasReadyWork(String taskId) {
         if (isBlank(taskId)) {
             return false;

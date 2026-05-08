@@ -26,6 +26,7 @@ import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
@@ -1148,11 +1149,21 @@ class MassSdkTest {
     void createTaskUsesSdkRequestAsPrimaryContract() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
         Task createdTask = new Task();
+        createdTask.setTid("task-001");
+        Task hydratedTask = new Task();
+        hydratedTask.setTid("task-001");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskQueryService.getTask("task-001")).thenReturn(hydratedTask);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         MassTaskCreateRequest request = MassTaskCreateRequest.builder()
@@ -1172,28 +1183,34 @@ class MassSdkTest {
 
         Task result = app.createTask(request);
 
-        assertSame(createdTask, result);
-        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
-        verify(engine).createTask(captor.capture());
-        TaskCreateRequestDto dto = captor.getValue();
+        assertSame(hydratedTask, result);
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
+        verify(engine).createTaskShell(captor.capture());
+        TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
         Assertions.assertEquals("sdk-task", dto.getTaskName());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of("textContent", "hello", "routingCode", "us"),
+                        Map.of(
+                                "textContent", "hello",
+                                "routingCode", "us",
+                                "_sdk", Map.of(
+                                        "taskMode", "SINGLE_RUN",
+                                        "payloadType", "JSON"
+                                )
+                        ),
                         new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
                 ),
                 dto.getSharedConfig()
         );
-        Assertions.assertEquals(List.of(
+        Assertions.assertEquals(2, dto.getBatchSize());
+        Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
+        verify(taskCommandService).appendTaskItems("task-001", List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
-        ), dto.getInputs());
-        Assertions.assertEquals(2, dto.getBatchSize());
-        Assertions.assertEquals(5, dto.getDefaultMsgMaxRetryCount());
-        Assertions.assertTrue(dto.isOpenEnded());
-        Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
+        ), 5);
+        verify(taskQueryService).getTask("task-001");
     }
 
     @Test
@@ -1447,17 +1464,26 @@ class MassSdkTest {
     void createTaskSupportsModeAwareSdkRequest() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
         Task createdTask = new Task();
+        createdTask.setTid("task-stream-001");
+        Task hydratedTask = new Task();
+        hydratedTask.setTid("task-stream-001");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskQueryService.getTask("task-stream-001")).thenReturn(hydratedTask);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
         MassTaskRequest request = MassTaskRequest.streaming("demoApp", "crawler-stream")
                 .userId("agent")
-                .eventCode("crawler.fetch-page")
                 .payloadType(PayloadType.JSON)
                 .sharedConfig(Map.of("routingCode", "us"))
                 .jsonInputs(List.of(
@@ -1471,32 +1497,31 @@ class MassSdkTest {
 
         Task result = app.createTask(request);
 
-        assertSame(createdTask, result);
-        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
-        verify(engine).createTask(captor.capture());
-        TaskCreateRequestDto dto = captor.getValue();
+        assertSame(hydratedTask, result);
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
+        verify(engine).createTaskShell(captor.capture());
+        TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
         Assertions.assertEquals("crawler-stream", dto.getTaskName());
-        Assertions.assertTrue(dto.isOpenEnded());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
                         Map.of(
                                 "routingCode", "us",
                                 "_sdk", Map.of(
-                                        "eventCode", "crawler.fetch-page",
-                                        "payloadType", "JSON",
-                                        "taskMode", "STREAMING"
+                                        "taskMode", "SINGLE_RUN",
+                                        "payloadType", "JSON"
                                 )
                         ),
                         new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
                 ),
                 dto.getSharedConfig()
         );
-        Assertions.assertEquals(List.of(
+        verify(taskCommandService).appendTaskItems("task-stream-001", List.of(
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
-        ), dto.getInputs());
+        ), 2);
+        verify(taskQueryService).getTask("task-stream-001");
     }
 
     @Test

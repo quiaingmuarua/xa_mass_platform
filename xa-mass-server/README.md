@@ -177,7 +177,7 @@ Current command groups:
 
 Transport facts:
 
-- worker debug requests are submitted through `POST /status/api/tasks`
+- worker debug requests are submitted through `POST /internal/v1/debug/task-invocations:sync` for one-item debug runs, or `POST /api/v1/tasks` + `POST /api/v1/tasks/{taskId}/items` for normal task-backed flows
 - fix the selected worker with `sharedConfig.targetWorkerId`
 - command execution stays on normal task lifecycle and does not use a dedicated worker-control side-channel
 

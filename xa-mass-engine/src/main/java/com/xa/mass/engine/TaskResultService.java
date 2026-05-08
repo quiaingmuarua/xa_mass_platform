@@ -15,8 +15,8 @@ import com.xa.mass.engine.util.TraceEventLogger.TaskMessageTraceView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
-import com.xa.mass.storage.api.TaskDetailStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +54,7 @@ class TaskResultService {
 
         Task task = taskManager.getTask(taskId);
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
             return TaskMessageMutationOutcome.rejected();
@@ -64,6 +65,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "EXPIRE_TASK_MESSAGE",
                 "runtime active lease defines expiry admissibility"
         );
@@ -108,6 +110,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "EXPIRE_TASK_MESSAGE",
                 "runtime lease accepted expiry before compatibility projection convergence"
         );
@@ -139,12 +142,8 @@ class TaskResultService {
                 "TaskManager",
                 expiryDetail
         );
-        boolean stored = persistTaskMessageProjection(taskId, expiredSummary,
+        persistTaskMessageProjection(taskId, expiredSummary,
                 "persist expiry compatibility summary");
-        if (!stored) {
-            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message persistence failed", 0);
-            return TaskMessageMutationOutcome.rejected();
-        }
         Task freshTask = taskManager.getTask(taskId);
         RuntimeMessageView currentSummary = expiredSummary;
         if (retryScheduled) {
@@ -156,11 +155,8 @@ class TaskResultService {
                     activeAttempt.batchId(),
                     workRetryDelayMillis,
                     "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
-            if (!persistTaskMessageProjection(taskId, retrySummary,
-                    "persist expiry retry-reset compatibility summary")) {
-                LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message retry reset persistence failed", 0);
-                return TaskMessageMutationOutcome.rejected();
-            }
+            persistTaskMessageProjection(taskId, retrySummary,
+                    "persist expiry retry-reset compatibility summary");
             currentSummary = retrySummary;
         }
         if (freshTask != null && activeAttempt != null) {
@@ -222,6 +218,7 @@ class TaskResultService {
         }
 
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
             RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
             if (storedProjection != null && storedProjection.isCompleted()) {
@@ -246,6 +243,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "HANDLE_TASK_MESSAGE_RESULT",
                 "runtime active lease defines callback admissibility"
         );
@@ -284,6 +282,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "HANDLE_TASK_MESSAGE_RESULT",
                 "runtime lease accepted callback before compatibility projection convergence"
         );
@@ -316,6 +315,7 @@ class TaskResultService {
         String taskId = task.getTid();
         String messageId = dispatchBinding.messageId();
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no active runtime lease",
                     messageId, taskId);
@@ -327,6 +327,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
                 "runtime active lease defines dispatch compensation admissibility"
         );
@@ -358,6 +359,7 @@ class TaskResultService {
                 messageId,
                 storedProjection,
                 activeLease,
+                runtimeWork,
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
                 "runtime lease accepted dispatch compensation before compatibility projection convergence"
         );
@@ -395,7 +397,13 @@ class TaskResultService {
         if (storedProjection != null) {
             return storedProjection.toTraceView();
         }
-        RuntimeMessageView recovered = materializeRuntimeMessageView(taskId, messageId, storedProjection, activeLease);
+        RuntimeMessageView recovered = materializeRuntimeMessageView(
+                taskId,
+                messageId,
+                storedProjection,
+                activeLease,
+                taskManager.getTaskWork(taskId, messageId).orElse(null)
+        );
         return recovered != null
                 ? recovered.toTraceView()
                 : new TaskMessageTraceView(taskId, messageId, null, null, null, null, TaskMsgStatus.INIT, null, 0, null);
@@ -405,9 +413,10 @@ class TaskResultService {
                                                                  String messageId,
                                                                  RuntimeMessageView storedProjection,
                                                                  ActiveLeaseRecord activeLease,
+                                                                 TaskWorkEnvelope runtimeWork,
                                                                  String trigger,
                                                                  String reason) {
-        RuntimeMessageView activeView = materializeRuntimeMessageView(taskId, messageId, storedProjection, activeLease);
+        RuntimeMessageView activeView = materializeRuntimeMessageView(taskId, messageId, storedProjection, activeLease, runtimeWork);
         if (activeView == null) {
             return null;
         }
@@ -444,12 +453,15 @@ class TaskResultService {
     private RuntimeMessageView materializeRuntimeMessageView(String taskId,
                                                              String messageId,
                                                              RuntimeMessageView storedProjection,
-                                                             ActiveLeaseRecord activeLease) {
-        if (storedProjection == null && activeLease == null) {
+                                                             ActiveLeaseRecord activeLease,
+                                                             TaskWorkEnvelope runtimeWork) {
+        if (storedProjection == null && activeLease == null && runtimeWork == null) {
             return null;
         }
         RuntimeMessageView baseView = storedProjection != null
                 ? storedProjection
+                : runtimeWork != null
+                ? RuntimeMessageView.fromRuntimeWorkEnvelope(runtimeWork)
                 : RuntimeMessageView.synthetic(taskId, messageId, activeLease != null ? activeLease.payloadRef() : null);
         if (baseView != null && activeLease != null && baseView.isCompleted()) {
             baseView = baseView.reopenForActiveLease(activeLease);
@@ -536,11 +548,8 @@ class TaskResultService {
         );
         persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
                 "mark attempt success");
-        if (!persistTaskMessageProjection(taskId, successSummary,
-                "persist success compatibility summary")) {
-            logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
-            return TaskMessageMutationOutcome.rejected();
-        }
+        persistTaskMessageProjection(taskId, successSummary,
+                "persist success compatibility summary");
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, successSummary, activeAttempt,
@@ -645,11 +654,8 @@ class TaskResultService {
                 trigger,
                 "TaskManager",
                 resetReason);
-        if (!persistTaskMessageProjection(taskId, retrySummary,
-                "persist retry-reset compatibility summary")) {
-            logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
-            return null;
-        }
+        persistTaskMessageProjection(taskId, retrySummary,
+                "persist retry-reset compatibility summary");
         return retrySummary;
     }
 
@@ -700,11 +706,8 @@ class TaskResultService {
                 "task message marked failure"
         );
 
-        if (!persistTaskMessageProjection(taskId, failureSummary,
-                "persist exhausted-failure compatibility summary")) {
-            logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
-            return TaskMessageMutationOutcome.rejected();
-        }
+        persistTaskMessageProjection(taskId, failureSummary,
+                "persist exhausted-failure compatibility summary");
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, failureSummary, activeAttempt,
@@ -746,20 +749,20 @@ class TaskResultService {
         return base.completeFailure(TaskMsgFinalReason.RETRY_EXHAUSTED, detail, errorCode, output);
     }
 
-    private boolean persistTaskMessageProjection(String taskId,
-                                                 RuntimeMessageView taskMsg,
-                                                 String action) {
-        if (taskMsg == null) {
-            return false;
+    /**
+     * Compatibility projection persistence is best-effort only.
+     *
+     * <p>Runtime {@code applyResult(...)} has already decided execution truth
+     * before this write runs, so projection failure must not redefine callback,
+     * expiry, or retry convergence.</p>
+     */
+    private void persistTaskMessageProjection(String taskId,
+                                              RuntimeMessageView taskMsg,
+                                              String action) {
+        if (!compatibilityProjectionAccess.upsertTaskMessageProjection(taskId, taskMsg, action)) {
+            logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
+                    taskId, taskMsg != null ? taskMsg.messageId() : null, action);
         }
-        return persistTaskMessageProjectionRecord(taskId, taskMsg.toProjectionRecord(), action);
-    }
-
-    @CompatibilityProjectionOnly
-    private boolean persistTaskMessageProjectionRecord(String taskId,
-                                                       TaskDetailStore.TaskMessageProjection projection,
-                                                       String action) {
-        return compatibilityProjectionAccess.upsertTaskMessageProjection(taskId, projection, action);
     }
 
     @CompatibilityProjectionOnly
@@ -773,7 +776,7 @@ class TaskResultService {
         compatibilityProjectionAccess.upsertTaskMessageAttemptProjectionBestEffort(
                 taskId,
                 messageId,
-                attempt.toProjectionRecord(),
+                attempt,
                 action
         );
     }
@@ -825,7 +828,7 @@ class TaskResultService {
 
     @CompatibilityProjectionOnly
     private RuntimeMessageView getStoredTaskMessageProjectionView(String taskId, String messageId) {
-        return RuntimeMessageView.from(compatibilityProjectionAccess.getStoredTaskMessageRecord(taskId, messageId));
+        return compatibilityProjectionAccess.getStoredRuntimeMessageProjectionView(taskId, messageId);
     }
 
     private String normalizeDispatchSubmitFailureDetail(String detail) {
@@ -943,7 +946,7 @@ class TaskResultService {
     private record ActiveRuntimeProjection(RuntimeMessageView messageState, AttemptProjectionView activeAttempt) {
     }
 
-    private static final class AttemptProjectionView {
+    static final class AttemptProjectionView {
         private final String attemptId;
         private final String taskId;
         private final String messageId;
@@ -998,6 +1001,14 @@ class TaskResultService {
             return attemptId;
         }
 
+        String taskId() {
+            return taskId;
+        }
+
+        String messageId() {
+            return messageId;
+        }
+
         int attemptNo() {
             return attemptNo;
         }
@@ -1020,6 +1031,18 @@ class TaskResultService {
 
         TaskMsgAttemptFinalReason finalReason() {
             return finalReason;
+        }
+
+        String errorMessage() {
+            return errorMessage;
+        }
+
+        String errorCode() {
+            return errorCode;
+        }
+
+        Map<String, Object> output() {
+            return output;
         }
 
         boolean projectCallbackAccepted() {
@@ -1080,48 +1103,30 @@ class TaskResultService {
             return true;
         }
 
-        @CompatibilityProjectionOnly
-        TaskDetailStore.TaskMessageAttemptProjection toProjectionRecord() {
-            return new TaskDetailStore.TaskMessageAttemptProjection(
-                    attemptId,
-                    taskId,
-                    messageId,
-                    attemptNo,
-                    workerId,
-                    workerContextId,
-                    batchId,
-                    status,
-                    finalReason,
-                    errorMessage,
-                    errorCode,
-                    output
-            );
-        }
-
         private Map<String, Object> copyMap(Map<String, Object> values) {
             return values == null ? null : new java.util.LinkedHashMap<>(values);
         }
     }
 
-    private record RuntimeMessageView(String messageId,
-                                      String taskId,
-                                      String latestAttemptId,
-                                      String latestAttemptWorkerId,
-                                      String latestAttemptWorkerContextId,
-                                      String latestAttemptBatchId,
-                                      TaskMsgStatus status,
-                                      LocalDateTime assignedTime,
-                                      LocalDateTime createTime,
-                                      LocalDateTime updateTime,
-                                      LocalDateTime startTime,
-                                      LocalDateTime completeTime,
-                                      int retryCount,
-                                      int maxRetryCount,
-                                      String errorMessage,
-                                      String errorCode,
-                                      TaskMsgFinalReason finalReason,
-                                      String payloadRef,
-                                      Map<String, Object> output) {
+    record RuntimeMessageView(String messageId,
+                              String taskId,
+                              String latestAttemptId,
+                              String latestAttemptWorkerId,
+                              String latestAttemptWorkerContextId,
+                              String latestAttemptBatchId,
+                              TaskMsgStatus status,
+                              LocalDateTime assignedTime,
+                              LocalDateTime createTime,
+                              LocalDateTime updateTime,
+                              LocalDateTime startTime,
+                              LocalDateTime completeTime,
+                              int retryCount,
+                              int maxRetryCount,
+                              String errorMessage,
+                              String errorCode,
+                              TaskMsgFinalReason finalReason,
+                              String payloadRef,
+                              Map<String, Object> output) {
 
         private static RuntimeMessageView synthetic(String taskId, String messageId, String payloadRef) {
             LocalDateTime now = LocalDateTime.now();
@@ -1148,8 +1153,38 @@ class TaskResultService {
             );
         }
 
+        private static RuntimeMessageView fromRuntimeWorkEnvelope(TaskWorkEnvelope runtimeWork) {
+            if (runtimeWork == null) {
+                return null;
+            }
+            LocalDateTime createdAt = runtimeWork.createdAt() == null
+                    ? LocalDateTime.now()
+                    : LocalDateTime.ofInstant(runtimeWork.createdAt(), java.time.ZoneId.systemDefault());
+            return new RuntimeMessageView(
+                    runtimeWork.messageId(),
+                    runtimeWork.taskId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    TaskMsgStatus.INIT,
+                    null,
+                    createdAt,
+                    createdAt,
+                    null,
+                    null,
+                    Math.max(0, runtimeWork.retryCount()),
+                    Math.max(0, runtimeWork.maxRetryCount()),
+                    null,
+                    null,
+                    null,
+                    runtimeWork.payloadRef(),
+                    null
+            );
+        }
+
         @CompatibilityProjectionOnly
-        private static RuntimeMessageView from(TaskDetailStore.TaskMessageProjection projection) {
+        static RuntimeMessageView from(CompatibilityMessageProjection projection) {
             if (projection == null) {
                 return null;
             }
@@ -1454,32 +1489,6 @@ class TaskResultService {
                     finalReason,
                     retryCount,
                     errorCode
-            );
-        }
-
-        @CompatibilityProjectionOnly
-        private TaskDetailStore.TaskMessageProjection toProjectionRecord() {
-            return new TaskDetailStore.TaskMessageProjection(
-                    messageId,
-                    taskId,
-                    null,
-                    payloadRef,
-                    status,
-                    assignedTime,
-                    createTime,
-                    updateTime,
-                    startTime,
-                    completeTime,
-                    retryCount,
-                    maxRetryCount,
-                    errorMessage,
-                    errorCode,
-                    finalReason,
-                    output,
-                    latestAttemptId,
-                    latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
-                    latestAttemptBatchId
             );
         }
     }

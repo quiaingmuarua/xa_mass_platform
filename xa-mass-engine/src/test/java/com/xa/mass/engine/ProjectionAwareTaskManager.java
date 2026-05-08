@@ -36,6 +36,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
                 taskDetailStore,
                 this::getTask,
                 this::getActiveLease,
+                this::getTaskWork,
                 this::getActiveLeases
         );
     }
@@ -51,6 +52,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
                 taskDetailStore,
                 this::getTask,
                 this::getActiveLease,
+                this::getTaskWork,
                 this::getActiveLeases
         );
     }
@@ -64,11 +66,15 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
-        return compatibilityProjectionAccess.getStoredTaskMessageRecord(taskId, messageId);
+        CompatibilityMessageProjection projection =
+                compatibilityProjectionAccess.getStoredCompatibilityMessageProjection(taskId, messageId);
+        return projection != null ? projection.toStorageProjection() : null;
     }
 
     public TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
-        return compatibilityProjectionAccess.getVisibleTaskMessageProjection(taskId, messageId);
+        CompatibilityMessageProjection projection =
+                compatibilityProjectionAccess.getVisibleCompatibilityMessageProjection(taskId, messageId);
+        return projection != null ? projection.toStorageProjection() : null;
     }
 
     public ActiveLeaseRecord getActiveLeaseRecord(String taskId, String messageId) {
@@ -76,10 +82,37 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        CompatibilityTaskMessageSnapshot snapshot = compatibilityProjectionAccess.getTaskMessageSnapshot(taskId, limit);
-        List<TaskMsg> messages = snapshot.messages().stream()
-                .map(this::toCompatibilityTaskMessage)
-                .toList();
+        java.util.List<TaskMsg> messages = new java.util.ArrayList<>();
+        TaskCompatibilitySnapshotPage snapshot = compatibilityProjectionAccess.visitTaskMessageSnapshot(
+                taskId,
+                limit,
+                (messageId, projectedTaskId, status, latestAttemptId, latestAttemptWorkerId,
+                 latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount,
+                 errorMessage, errorCode, finalReason, payloadRef, input, output,
+                 assignedTime, createTime, updateTime, startTime, completeTime) ->
+                        messages.add(toCompatibilityTaskMessage(
+                                messageId,
+                                projectedTaskId,
+                                status,
+                                latestAttemptId,
+                                latestAttemptWorkerId,
+                                latestAttemptWorkerContextId,
+                                latestAttemptBatchId,
+                                retryCount,
+                                maxRetryCount,
+                                errorMessage,
+                                errorCode,
+                                finalReason,
+                                payloadRef,
+                                input,
+                                output,
+                                assignedTime,
+                                createTime,
+                                updateTime,
+                                startTime,
+                                completeTime
+                        ))
+        );
         return new TaskMessageSnapshot(messages, snapshot.limit(), snapshot.truncated());
     }
 
@@ -108,54 +141,77 @@ public class ProjectionAwareTaskManager extends TaskManager {
 
     public TaskDetailStore.TaskMessageAttemptProjection getLatestActiveAttemptProjectionRecord(String taskId,
                                                                                                String messageId) {
-        CompatibilityTaskMessageAttemptView attempt = compatibilityProjectionAccess.getLatestActiveTaskMessageAttemptView(taskId, messageId);
-        if (attempt == null) {
+        TaskDetailStore.TaskMessageAttemptProjection[] holder = new TaskDetailStore.TaskMessageAttemptProjection[1];
+        boolean found = compatibilityProjectionAccess.visitLatestActiveTaskMessageAttempt(
+                taskId,
+                messageId,
+                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
+                 batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
+                 finalReason, errorMessage, errorCode, output, createTime, updateTime) -> holder[0] =
+                        new TaskDetailStore.TaskMessageAttemptProjection(
+                                attemptId,
+                                projectedTaskId,
+                                projectedMessageId,
+                                attemptNo,
+                                workerId,
+                                workerContextId,
+                                batchId,
+                                status != null ? TaskMsgAttemptStatus.valueOf(status) : TaskMsgAttemptStatus.DISPATCHED,
+                                null,
+                                null,
+                                null,
+                                null
+                        )
+        );
+        if (!found) {
             return null;
         }
-        TaskDetailStore.TaskMessageAttemptProjection latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-        TaskMsgAttemptStatus attemptStatus = attempt.status() != null
-                ? TaskMsgAttemptStatus.valueOf(attempt.status())
-                : TaskMsgAttemptStatus.DISPATCHED;
-        return new TaskDetailStore.TaskMessageAttemptProjection(
-                attempt.attemptId(),
-                attempt.taskId(),
-                attempt.messageId(),
-                attempt.attemptNo(),
-                attempt.workerId(),
-                attempt.workerContextId(),
-                attempt.batchId(),
-                attemptStatus,
-                null,
-                null,
-                null,
-                null
-        );
+        return holder[0];
     }
 
-    private TaskMsg toCompatibilityTaskMessage(CompatibilityTaskMessageView message) {
-        TaskMsg taskMsg = message.payloadRef() == null || message.payloadRef().isBlank()
-                ? new TaskMsg(message.messageId(), message.taskId(), message.input())
-                : new TaskMsg(message.messageId(), message.taskId(), message.input(), message.payloadRef());
-        taskMsg.setStatus(message.status() != null ? com.xa.mass.base.enums.taskmsg.TaskMsgStatus.valueOf(message.status()) : null);
+    private TaskMsg toCompatibilityTaskMessage(String messageId,
+                                               String taskId,
+                                               String status,
+                                               String latestAttemptId,
+                                               String latestAttemptWorkerId,
+                                               String latestAttemptWorkerContextId,
+                                               String latestAttemptBatchId,
+                                               int retryCount,
+                                               int maxRetryCount,
+                                               String errorMessage,
+                                               String errorCode,
+                                               String finalReason,
+                                               String payloadRef,
+                                               java.util.Map<String, Object> input,
+                                               java.util.Map<String, Object> output,
+                                               java.time.LocalDateTime assignedTime,
+                                               java.time.LocalDateTime createTime,
+                                               java.time.LocalDateTime updateTime,
+                                               java.time.LocalDateTime startTime,
+                                               java.time.LocalDateTime completeTime) {
+        TaskMsg taskMsg = payloadRef == null || payloadRef.isBlank()
+                ? new TaskMsg(messageId, taskId, input)
+                : new TaskMsg(messageId, taskId, input, payloadRef);
+        taskMsg.setStatus(status != null ? com.xa.mass.base.enums.taskmsg.TaskMsgStatus.valueOf(status) : null);
         taskMsg.applyLatestAttemptProjection(
-                message.latestAttemptId(),
-                message.latestAttemptWorkerId(),
-                message.latestAttemptWorkerContextId(),
-                message.latestAttemptBatchId()
+                latestAttemptId,
+                latestAttemptWorkerId,
+                latestAttemptWorkerContextId,
+                latestAttemptBatchId
         );
-        taskMsg.setRetryCount(message.retryCount());
-        taskMsg.setMaxRetryCount(message.maxRetryCount());
-        taskMsg.setErrorMessage(message.errorMessage());
-        taskMsg.setErrorCode(message.errorCode());
-        taskMsg.setFinalReason(message.finalReason() != null
-                ? com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason.valueOf(message.finalReason())
+        taskMsg.setRetryCount(retryCount);
+        taskMsg.setMaxRetryCount(maxRetryCount);
+        taskMsg.setErrorMessage(errorMessage);
+        taskMsg.setErrorCode(errorCode);
+        taskMsg.setFinalReason(finalReason != null
+                ? com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason.valueOf(finalReason)
                 : null);
-        taskMsg.setOutput(message.output());
-        taskMsg.setAssignedTime(message.assignedTime());
-        taskMsg.setCreateTime(message.createTime());
-        taskMsg.setUpdateTime(message.updateTime());
-        taskMsg.setStartTime(message.startTime());
-        taskMsg.setCompleteTime(message.completeTime());
+        taskMsg.setOutput(output);
+        taskMsg.setAssignedTime(assignedTime);
+        taskMsg.setCreateTime(createTime);
+        taskMsg.setUpdateTime(updateTime);
+        taskMsg.setStartTime(startTime);
+        taskMsg.setCompleteTime(completeTime);
         return taskMsg;
     }
 }

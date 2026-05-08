@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/queue")
+@RequestMapping("/api/v1/runtime/queues")
 @Tag(name = "Queue Status")
 public class QueueController {
 
@@ -24,24 +24,10 @@ public class QueueController {
         this.transportOperations = transportOperations;
     }
 
-    @GetMapping("/status")
-    @Operation(summary = "Get the current input/output queue sizes")
-    public ApiResponse<Map<String, Object>> getQueueStatus() {
-        log.info("[QueueController] /api/queue/status requested");
-        Map<String, Object> detail = transportOperations.getQueueDetail();
-        Object inputSize = detail.getOrDefault("inputQueueSize", -1);
-        Object outputSize = detail.getOrDefault("outputQueueSize", -1);
-        Map<String, Object> map = Map.of(
-                "inputQueueSize", inputSize,
-                "outputQueueSize", outputSize
-        );
-        log.info("[QueueController] inputQueueSize={}, outputQueueSize={}", inputSize, outputSize);
-        return ApiResponse.success(map);
-    }
-
-    @GetMapping("/detail")
+    @GetMapping("")
     @Operation(summary = "Get detailed queue availability data")
     public ApiResponse<Map<String, Object>> getQueueDetail() {
+        log.info("[QueueController] /api/v1/runtime/queues requested");
         return ApiResponse.success(transportOperations.getQueueDetail());
     }
 

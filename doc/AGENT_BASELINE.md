@@ -74,9 +74,9 @@ Boundary rules:
 
 ## 5. Current Contract Summary
 
-- task creation route: `POST /status/api/tasks`
+- task shell creation route: `POST /api/v1/tasks`
 - `project` and `userId` are required business bindings on create
-- `inputs` is the supported create shape for work-item materialization
+- work-item materialization is explicit through `POST /api/v1/tasks/{taskId}/items`
 - `workloadClass` is explicit at create time and defaults to `BULK`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item truth stays on `TaskMsg.input/output`

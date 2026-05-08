@@ -11,6 +11,7 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -381,6 +382,11 @@ class MockRuntimeDataLoaderTest {
             workerContext.setRoutingTags(request.getRoutingTags());
             workerContext.setAttributes(request.getAttributes());
             workerContexts.add(workerContext);
+        }
+
+        @Override
+        public Task createTaskShell(MassTaskShellCreateRequest request) {
+            return new Task();
         }
 
         @Override

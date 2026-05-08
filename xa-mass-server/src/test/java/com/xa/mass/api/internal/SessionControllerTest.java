@@ -42,7 +42,7 @@ class SessionControllerTest {
                 ))
         )));
 
-        mockMvc.perform(get("/api/session/list"))
+        mockMvc.perform(get("/api/v1/runtime/sessions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[0].workerId").value("worker-1"))
@@ -60,7 +60,7 @@ class SessionControllerTest {
                 "activeConnectionsByAdapter", Map.of("ws-public", 1L, "socket-edge", 1L)
         ));
 
-        mockMvc.perform(get("/api/session/stats"))
+        mockMvc.perform(get("/api/v1/runtime/sessions:stats"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.activeConnections").value(2))

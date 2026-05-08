@@ -17,4 +17,6 @@ public interface TaskQueryOperations {
     Object validateTaskState(String taskId);
 
     Object resolveTaskState(String taskId);
+
+    Object auditTaskProjectionState(String taskId);
 }

@@ -62,7 +62,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void registerWorkerDefaultsToPollingAndUsesEventBindings() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/register")
+        mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -100,7 +100,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void registerWorkerRejectsMissingEventBindings() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/register")
+        mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -115,7 +115,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void registerWorkerRejectsTransportHintCompatibilityAlias() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/register")
+        mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -137,7 +137,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void workerApiRequiresCredential() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -151,7 +151,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void workerApiRejectsWorkerIdBindingMismatch() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "other-worker")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "other-worker")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -166,7 +166,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void workerApiRejectsEventScopeMismatchOnRegister() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/register")
+        mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -196,7 +196,7 @@ class ExternalWorkerApiControllerTest {
                 Map.of("workerId", "node-worker-1")
         ));
 
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "task-only-key")
                         .content("""
@@ -228,7 +228,7 @@ class ExternalWorkerApiControllerTest {
                 )
         ));
 
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -246,7 +246,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollTasksRejectsNegativeTimeout() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -262,7 +262,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollTasksRejectsTimeoutAboveLimit() throws Exception {
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -286,7 +286,7 @@ class ExternalWorkerApiControllerTest {
                         && Map.of("title", "Example").equals(report.getOutput())
         ))).thenReturn(true);
 
-        mockMvc.perform(post("/worker-api/workers/{workerId}/results", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:submit-result", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -319,7 +319,7 @@ class ExternalWorkerApiControllerTest {
         when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.REALTIME);
 
-        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""

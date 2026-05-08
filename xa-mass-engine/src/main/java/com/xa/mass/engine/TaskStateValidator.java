@@ -170,7 +170,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
+        for (CompatibilityMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
             if (taskMsg == null) {
                 continue;
             }
@@ -242,7 +242,7 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private java.util.List<com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
+    private java.util.List<CompatibilityMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
         return compatibilityProjectionAccess.getTaskMessageProjectionsForAudit(taskId);
     }
 
@@ -250,8 +250,8 @@ class TaskStateValidator {
         return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private boolean isCompleted(com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection taskMsg) {
-        return taskMsg != null && taskMsg.status() != null && taskMsg.status().isFinal();
+    private boolean isCompleted(CompatibilityMessageProjection taskMsg) {
+        return taskMsg != null && taskMsg.isCompleted();
     }
 
 }

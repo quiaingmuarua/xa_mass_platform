@@ -62,6 +62,18 @@ public interface TaskWorkRuntime {
 
     Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId);
 
+    /**
+     * Returns the runtime-owned work envelope when the message is still under
+     * queue/lease ownership.
+     *
+     * <p>This is a bounded runtime recovery read used to reconstruct hot-path
+     * message metadata without falling back to compatibility projection
+     * storage.</p>
+     */
+    default Optional<TaskWorkEnvelope> getWork(String taskId, String messageId) {
+        return Optional.empty();
+    }
+
     boolean hasReadyWork(String taskId);
 
     boolean hasActiveLeaseForWorker(String taskId, String workerId);

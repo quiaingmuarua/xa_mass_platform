@@ -66,7 +66,7 @@ Worker and context:
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal`
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
 - external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
-- the runnable Node polling worker example can join through `/worker-api`, surface capability in `/sdk/meta/*`, complete task work, and exit cleanly
+- the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/meta/*`, complete task work, and exit cleanly
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
 - same worker can own multiple contexts without overwrite
 - releasing one context does not release sibling contexts
@@ -80,7 +80,7 @@ Control console:
 
 Audit:
 
-- `GET /status/api/tasks/{taskId}` exposes valid state-audit output
+- `GET /api/v1/tasks/{taskId}` exposes valid state-audit output
 - `needsResolution=true` is visible when task/message state diverges
 
 ## 3. Change Rule

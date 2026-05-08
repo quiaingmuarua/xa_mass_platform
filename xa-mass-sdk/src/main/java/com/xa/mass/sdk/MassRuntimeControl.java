@@ -6,6 +6,7 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -36,6 +37,11 @@ public interface MassRuntimeControl {
 
     /**
      * Create a task through the stable SDK request contract.
+     */
+    Task createTaskShell(MassTaskShellCreateRequest request);
+
+    /**
+     * Legacy aggregate task creation contract kept for compatibility callers.
      */
     Task createTask(MassTaskCreateRequest request);
 

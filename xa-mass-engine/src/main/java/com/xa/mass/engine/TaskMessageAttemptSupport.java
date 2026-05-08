@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.storage.api.TaskDetailStore;
 
 /**
  * Narrow helper for runtime attempt correlation and compatibility validation.
@@ -44,7 +43,7 @@ public final class TaskMessageAttemptSupport {
     }
 
     @CompatibilityProjectionOnly
-    static boolean isTaskMessageFinalReasonCompatible(TaskDetailStore.TaskMessageProjection taskMsg) {
+    static boolean isTaskMessageFinalReasonCompatible(CompatibilityMessageProjection taskMsg) {
         if (taskMsg == null || taskMsg.status() == null || !taskMsg.status().isFinal() || taskMsg.finalReason() == null) {
             return false;
         }

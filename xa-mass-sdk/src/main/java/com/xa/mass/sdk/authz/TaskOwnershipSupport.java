@@ -3,6 +3,7 @@ package com.xa.mass.sdk.authz;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 
 import java.util.Map;
 import java.util.Objects;
@@ -27,6 +28,25 @@ public final class TaskOwnershipSupport {
                 .batchSize(request.getBatchSize())
                 .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
                 .openEnded(request.isOpenEnded())
+                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
+                .sourceType(request.getSourceType())
+                .workloadClass(request.getWorkloadClass())
+                .sourceRef(request.getSourceRef())
+                .build();
+    }
+
+    public static MassTaskShellCreateRequest stamp(MassTaskShellCreateRequest request, PrincipalContext principal) {
+        Objects.requireNonNull(request, "request");
+        TaskOwnershipStamp stamp = TaskOwnershipStamp.fromPrincipal(Objects.requireNonNull(principal, "principal"));
+        return MassTaskShellCreateRequest.builder()
+                .userId(request.getUserId())
+                .project(request.getProject())
+                .taskName(request.getTaskName())
+                .eventCode(request.getEventCode())
+                .mode(request.getMode())
+                .payloadType(request.getPayloadType())
+                .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
+                .batchSize(request.getBatchSize())
                 .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
                 .sourceType(request.getSourceType())
                 .workloadClass(request.getWorkloadClass())

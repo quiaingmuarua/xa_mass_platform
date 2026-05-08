@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
-@RequestMapping("/status/api")
+@RequestMapping("/api/v1/runtime")
 public class WorkerApiController {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =

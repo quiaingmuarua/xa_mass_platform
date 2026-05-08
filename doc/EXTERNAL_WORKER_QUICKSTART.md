@@ -7,12 +7,12 @@ Keep per-language startup and env details in `samples/*/README.md`.
 
 ## 1. Current Contract Split
 
-- Public repo-external worker data-plane contract: polling HTTP under `/worker-api/*`.
-- Shared repo-external control-plane registration: `POST /worker-api/workers/register`.
+- Public repo-external worker data-plane contract: versioned HTTP under `/worker-api/v1/**`.
+- Shared repo-external control-plane registration: `POST /worker-api/v1/workers`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
 - `adapterId` is concrete routing truth. `transportHint` is only the coarse family hint.
 - `eventCode` is the global capability identity.
-- Task creation still enters through `POST /status/api/tasks`.
+- Task shell creation enters through `POST /api/v1/tasks`, then work items are appended through `POST /api/v1/tasks/{taskId}/items`.
 
 ## 2. Scheduling Truth
 
@@ -34,13 +34,13 @@ Keep these rules:
 
 The stable third-party worker protocol today is the polling surface:
 
-- `POST /worker-api/workers/register`
-- optional `POST /worker-api/worker-contexts/register`
-- `POST /worker-api/workers/{workerId}/online`
-- `POST /worker-api/workers/{workerId}/heartbeat`
-- `POST /worker-api/workers/{workerId}/poll`
-- `POST /worker-api/workers/{workerId}/results`
-- `POST /worker-api/workers/{workerId}/offline`
+- `POST /worker-api/v1/workers`
+- optional `POST /worker-api/v1/workers/{workerId}/contexts`
+- `POST /worker-api/v1/workers/{workerId}:online`
+- `POST /worker-api/v1/workers/{workerId}:heartbeat`
+- `POST /worker-api/v1/workers/{workerId}:poll`
+- `POST /worker-api/v1/workers/{workerId}:submit-result`
+- `POST /worker-api/v1/workers/{workerId}:offline`
 
 Polling workers receive `TaskDispatchItem`, execute by `eventCode`, and submit
 `TaskResultReport`.
@@ -75,7 +75,7 @@ today and Boot-shell E2E proves them:
 
 For realtime paths:
 
-- use `/worker-api/workers/register` for worker capability registration
+- use `/worker-api/v1/workers` for worker capability registration
 - online presence comes from the transport connection, not the register call
 - keep local handler resolution keyed by `eventCode`
 - do not treat adapter frame fields as a second business capability model
@@ -88,10 +88,10 @@ Use the real Boot shell plus the sample READMEs:
 - sample matrix and black-box role: [../samples/README.md](../samples/README.md)
 - per-sample commands: `samples/*/README.md`
 
-Producer traffic still uses the normal task API:
+Producer traffic uses shell create plus explicit ingest:
 
 ```bash
-curl -X POST http://127.0.0.1:8088/status/api/tasks \
+curl -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
   -H 'X-Mass-Api-Key: crawler-submitter-key' \
   -d '{
@@ -102,12 +102,18 @@ curl -X POST http://127.0.0.1:8088/status/api/tasks \
     "sharedConfig": {
       "routingCode": "us"
     },
-    "inputs": [
+    "batchSize": 1
+  }'
+
+curl -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
+  -H 'Content-Type: application/json' \
+  -H 'X-Mass-Api-Key: crawler-submitter-key' \
+  -d '{
+    "items": [
       {
         "url": "https://example.com"
       }
-    ],
-    "batchSize": 1
+    ]
   }'
 ```
 

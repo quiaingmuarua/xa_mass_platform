@@ -31,6 +31,9 @@ What the engine assumes today:
   definitions come from storage
 - ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime
+- result/expiry recovery should prefer runtime work-envelope metadata
+  (`payloadRef`, retry counters, create time) before falling back to
+  compatibility `TaskMsg` residue
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility projections used
   by result repair, attempt identity validation, focused tests, and explicit
   projection audit
@@ -82,6 +85,9 @@ Rules:
 - engine hot-path code should prefer `TaskDetailStore.TaskMessageProjection`
   and `TaskDetailStore.TaskMessageAttemptProjection` over direct `TaskMsg` /
   `TaskMsgAttempt` store interaction
+- those projection records are storage-edge materialization only; production
+  engine services should translate them inside the compatibility owner path
+  instead of returning them as engine-facing results
 - `TaskDetailStore` now treats projection methods as the primary owner
   surface; deprecated `TaskMsg` / `TaskMsgAttempt` CRUD methods are boundary
   materialization helpers only and must not regain implementation ownership

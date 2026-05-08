@@ -13,7 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/sdk/submitters")
+@RequestMapping("/api/v1/submitters")
 public class SdkSubmitterController {
 
     private final AuthProvider authProvider;

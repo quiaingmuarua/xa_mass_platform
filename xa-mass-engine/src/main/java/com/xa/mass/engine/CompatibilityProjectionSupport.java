@@ -6,7 +6,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.storage.api.TaskDetailStore;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -29,8 +28,8 @@ final class CompatibilityProjectionSupport {
     private CompatibilityProjectionSupport() {
     }
 
-    static TaskDetailStore.TaskMessageProjection overlayTerminalTaskProjection(Task task,
-                                                                               TaskDetailStore.TaskMessageProjection storedProjection) {
+    static CompatibilityMessageProjection overlayTerminalTaskProjection(Task task,
+                                                                        CompatibilityMessageProjection storedProjection) {
         if (task == null || storedProjection == null || isCompleted(storedProjection)) {
             return storedProjection;
         }
@@ -47,7 +46,7 @@ final class CompatibilityProjectionSupport {
         TaskMsgStatus finalStatus = storedProjection.status() != null && storedProjection.status().isProcessing()
                 ? TaskMsgStatus.EXPIRED
                 : TaskMsgStatus.FAILED;
-        return new TaskDetailStore.TaskMessageProjection(
+        return new CompatibilityMessageProjection(
                 storedProjection.messageId(),
                 storedProjection.taskId(),
                 storedProjection.input(),
@@ -71,31 +70,31 @@ final class CompatibilityProjectionSupport {
         );
     }
 
-    static List<TaskDetailStore.TaskMessageProjection> overlayTerminalTaskProjection(Task task,
-                                                                                     List<TaskDetailStore.TaskMessageProjection> storedProjections) {
+    static List<CompatibilityMessageProjection> overlayTerminalTaskProjection(Task task,
+                                                                              List<CompatibilityMessageProjection> storedProjections) {
         if (storedProjections == null || storedProjections.isEmpty()) {
             return List.of();
         }
         if (task == null || task.getStatus() == null || !task.getStatus().isFinal()) {
             return List.copyOf(storedProjections);
         }
-        List<TaskDetailStore.TaskMessageProjection> projected = new ArrayList<>(storedProjections.size());
-        for (TaskDetailStore.TaskMessageProjection storedProjection : storedProjections) {
+        List<CompatibilityMessageProjection> projected = new ArrayList<>(storedProjections.size());
+        for (CompatibilityMessageProjection storedProjection : storedProjections) {
             projected.add(overlayTerminalTaskProjection(task, storedProjection));
         }
         return List.copyOf(projected);
     }
 
-    static TaskDetailStore.TaskMessageProjection overlayActiveLeaseProjection(TaskDetailStore.TaskMessageProjection storedProjection,
-                                                                              ActiveLeaseRecord activeLease,
-                                                                              String taskId,
-                                                                              String messageId) {
+    static CompatibilityMessageProjection overlayActiveLeaseProjection(CompatibilityMessageProjection storedProjection,
+                                                                       ActiveLeaseRecord activeLease,
+                                                                       String taskId,
+                                                                       String messageId) {
         if (activeLease == null) {
             return storedProjection;
         }
-        TaskDetailStore.TaskMessageProjection base = storedProjection != null
+        CompatibilityMessageProjection base = storedProjection != null
                 ? storedProjection
-                : new TaskDetailStore.TaskMessageProjection(
+                : new CompatibilityMessageProjection(
                 messageId,
                 taskId,
                 Map.of(),
@@ -140,7 +139,7 @@ final class CompatibilityProjectionSupport {
         if (assignedTime == null && activeLease.leasedAt() != null) {
             assignedTime = LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault());
         }
-        return new TaskDetailStore.TaskMessageProjection(
+        return new CompatibilityMessageProjection(
                 base.messageId(),
                 base.taskId(),
                 base.input(),
@@ -164,9 +163,9 @@ final class CompatibilityProjectionSupport {
         );
     }
 
-    static List<TaskDetailStore.TaskMessageProjection> overlayActiveLeaseProjection(List<TaskDetailStore.TaskMessageProjection> storedProjections,
-                                                                                    List<ActiveLeaseRecord> activeLeases,
-                                                                                    String taskId) {
+    static List<CompatibilityMessageProjection> overlayActiveLeaseProjection(List<CompatibilityMessageProjection> storedProjections,
+                                                                             List<ActiveLeaseRecord> activeLeases,
+                                                                             String taskId) {
         if ((storedProjections == null || storedProjections.isEmpty())
                 && (activeLeases == null || activeLeases.isEmpty())) {
             return List.of();
@@ -183,11 +182,11 @@ final class CompatibilityProjectionSupport {
         if ((storedProjections == null || storedProjections.isEmpty()) && leaseByMessageId.isEmpty()) {
             return List.of();
         }
-        List<TaskDetailStore.TaskMessageProjection> projected =
+        List<CompatibilityMessageProjection> projected =
                 new ArrayList<>(storedProjections != null ? storedProjections.size() : 0);
         java.util.Set<String> projectedMessageIds = new java.util.LinkedHashSet<>();
         if (storedProjections != null) {
-            for (TaskDetailStore.TaskMessageProjection storedProjection : storedProjections) {
+            for (CompatibilityMessageProjection storedProjection : storedProjections) {
                 if (storedProjection == null) {
                     continue;
                 }
@@ -217,25 +216,8 @@ final class CompatibilityProjectionSupport {
         return List.copyOf(projected);
     }
 
-    private static boolean isCompleted(TaskDetailStore.TaskMessageProjection projection) {
+    private static boolean isCompleted(CompatibilityMessageProjection projection) {
         return projection != null && projection.status() != null && projection.status().isFinal();
-    }
-
-    private static Map<String, Object> copyMap(Map<String, Object> source) {
-        if (source == null) {
-            return null;
-        }
-        if (source.isEmpty()) {
-            return Map.of();
-        }
-        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : source.entrySet()) {
-            if (entry.getKey() == null) {
-                throw new NullPointerException("map key");
-            }
-            copy.put(entry.getKey(), entry.getValue());
-        }
-        return Collections.unmodifiableMap(copy);
     }
 
     private static TaskMsgFinalReason toMessageFinalReason(TaskTerminalReason terminalReason) {

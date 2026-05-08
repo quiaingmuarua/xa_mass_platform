@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/session")
+@RequestMapping("/api/v1/runtime")
 @Tag(name = "Session Status")
 public class SessionController {
 
@@ -22,13 +22,13 @@ public class SessionController {
         this.transportOperations = transportOperations;
     }
 
-    @GetMapping("/list")
+    @GetMapping("/sessions")
     @Operation(summary = "List all active worker sessions")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
         return ApiResponse.success(transportOperations.listSessions());
     }
 
-    @GetMapping("/stats")
+    @GetMapping("/sessions:stats")
     @Operation(summary = "Get aggregate session statistics")
     public ApiResponse<Map<String, Object>> sessionStats() {
         return ApiResponse.success(transportOperations.getSessionStats());

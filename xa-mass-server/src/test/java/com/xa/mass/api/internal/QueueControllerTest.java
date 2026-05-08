@@ -37,7 +37,7 @@ class QueueControllerTest {
                 "transporterAvailable", true
         ));
 
-        mockMvc.perform(get("/api/queue/status"))
+        mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.inputQueueSize").value(3))
@@ -97,7 +97,7 @@ class QueueControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/queue/detail"))
+        mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.inputQueueSize").value(-1))

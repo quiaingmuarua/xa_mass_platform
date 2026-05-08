@@ -13,7 +13,7 @@ import java.util.List;
  * Exposes small global-configuration endpoints used by demo pages.
  */
 @RestController
-@RequestMapping("/api/config")
+@RequestMapping("/api/v1/runtime/config")
 public class GlobalConfigController {
 
     @Autowired

@@ -1,8 +1,9 @@
 package com.xa.mass.sdk.model;
 
+import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -31,6 +32,10 @@ public final class SdkResourceMapper {
         dto.setWorkloadClass(request.getWorkloadClass());
         dto.setSourceRef(request.getSourceRef());
         return dto;
+    }
+
+    public static TaskShellCreateRequestDto toEngineRequest(MassTaskShellCreateRequest request) {
+        return MassTaskShellCreateRequestMapper.toEngineRequest(request);
     }
 
     public static Worker toWorker(WorkerRegistration request) {

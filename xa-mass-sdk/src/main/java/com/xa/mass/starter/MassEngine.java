@@ -3,6 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
@@ -193,6 +194,13 @@ public class MassEngine {
             throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
         }
         return taskCommands.createTask(dto);
+    }
+
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        if (taskCommands == null) {
+            throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
+        }
+        return taskCommands.createTaskShell(dto);
     }
 
     public boolean isRunning() {

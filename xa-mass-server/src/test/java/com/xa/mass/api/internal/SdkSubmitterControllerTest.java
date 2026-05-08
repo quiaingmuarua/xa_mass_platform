@@ -43,7 +43,7 @@ class SdkSubmitterControllerTest {
                 Map.of("channel", "telegram")
         ));
 
-        mockMvc.perform(get("/sdk/submitters/me")
+        mockMvc.perform(get("/api/v1/submitters/me")
                         .header("X-Mass-Api-Key", "dev-api-key"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -66,7 +66,7 @@ class SdkSubmitterControllerTest {
                 Map.of()
         ));
 
-        mockMvc.perform(get("/sdk/submitters/me")
+        mockMvc.perform(get("/api/v1/submitters/me")
                         .header("Authorization", "Bearer bearer-key"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("crawler-agent"))
@@ -75,7 +75,7 @@ class SdkSubmitterControllerTest {
 
     @Test
     void currentSubmitterRejectsMissingCredential() throws Exception {
-        mockMvc.perform(get("/sdk/submitters/me"))
+        mockMvc.perform(get("/api/v1/submitters/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.msg").value("Invalid or missing SDK credential"));

@@ -91,7 +91,7 @@ class WorkerApiControllerTest {
                 ))
         )));
 
-        mockMvc.perform(get("/status/api/workers"))
+        mockMvc.perform(get("/api/v1/runtime/workers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
@@ -124,7 +124,7 @@ class WorkerApiControllerTest {
 
         when(workerQueries.getAllWorkerContexts()).thenReturn(List.of(workerContext));
 
-        mockMvc.perform(get("/status/api/worker-contexts"))
+        mockMvc.perform(get("/api/v1/runtime/worker-contexts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))

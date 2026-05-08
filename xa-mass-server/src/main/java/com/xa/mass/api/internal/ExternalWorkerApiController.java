@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/worker-api")
+@RequestMapping("/worker-api/v1")
 public class ExternalWorkerApiController {
     private static final long MAX_WORKER_POLL_TIMEOUT_MS = 30_000L;
 
@@ -41,7 +41,7 @@ public class ExternalWorkerApiController {
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
     }
 
-    @PostMapping("/workers/register")
+    @PostMapping("/workers")
     public ApiResponse<Map<String, Object>> registerWorker(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -75,24 +75,25 @@ public class ExternalWorkerApiController {
         ));
     }
 
-    @PostMapping("/worker-contexts/register")
+    @PostMapping("/workers/{workerId}/contexts")
     public ApiResponse<Map<String, Object>> registerWorkerContext(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String workerId,
             @RequestBody ExternalWorkerContextRegisterApiRequest requestBody) {
         validateContextRequest(requestBody);
         PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_CONTEXT_REGISTER,
-                requestBody.getWorkerId(),
+                workerId,
                 blankToNull(requestBody.getProject()),
                 null
         );
-        String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
+        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         WorkerContextRegistration request = WorkerContextRegistration.builder()
                 .workerContextId(requireNonBlank(requestBody.getWorkerContextId(), "workerContextId"))
-                .workerId(workerId)
+                .workerId(boundWorkerId)
                 .project(blankToNull(requestBody.getProject()))
                 .routingTags(requestBody.getRoutingTags() == null ? Set.of() : requestBody.getRoutingTags())
                 .attributes(requestBody.getAttributes())
@@ -104,7 +105,7 @@ public class ExternalWorkerApiController {
         ));
     }
 
-    @PostMapping("/workers/{workerId}/online")
+    @PostMapping("/workers/{workerId}:online")
     public ApiResponse<Map<String, Object>> workerOnline(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                          @PathVariable String workerId,
@@ -122,7 +123,7 @@ public class ExternalWorkerApiController {
                 WorkerTransportHints.POLLING));
     }
 
-    @PostMapping("/workers/{workerId}/heartbeat")
+    @PostMapping("/workers/{workerId}:heartbeat")
     public ApiResponse<Map<String, Object>> workerHeartbeat(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                             @PathVariable String workerId,
@@ -140,7 +141,7 @@ public class ExternalWorkerApiController {
                 WorkerTransportHints.POLLING));
     }
 
-    @PostMapping("/workers/{workerId}/offline")
+    @PostMapping("/workers/{workerId}:offline")
     public ApiResponse<Map<String, Object>> workerOffline(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                           @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                           @PathVariable String workerId,
@@ -158,7 +159,7 @@ public class ExternalWorkerApiController {
                 WorkerTransportHints.POLLING));
     }
 
-    @PostMapping("/workers/{workerId}/poll")
+    @PostMapping("/workers/{workerId}:poll")
     public ApiResponse<Map<String, Object>> pollTasks(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                       @PathVariable String workerId,
@@ -178,7 +179,7 @@ public class ExternalWorkerApiController {
         ));
     }
 
-    @PostMapping("/workers/{workerId}/results")
+    @PostMapping("/workers/{workerId}:submit-result")
     public ApiResponse<Map<String, Object>> submitResult(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                          @PathVariable String workerId,
