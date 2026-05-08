@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,7 +23,11 @@ class TaskStateValidatorBoundaryTest {
     void runtimeValidationDoesNotTouchProjectionAuditReadSurface() {
         CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY);
         TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
-        TaskStateValidator validator = new TaskStateValidator(runtime, detailStore, new com.xa.mass.engine.util.TraceEventLogger(null));
+        TaskStateValidator validator = new TaskStateValidator(
+                runtime,
+                projectionAccess(detailStore, runtime),
+                new com.xa.mass.engine.util.TraceEventLogger(null)
+        );
 
         TaskStateValidationResult result = validator.validateTaskState("task-1");
 
@@ -60,13 +65,27 @@ class TaskStateValidatorBoundaryTest {
                         null
                 )
         );
-        TaskStateValidator validator = new TaskStateValidator(runtime, detailStore, new com.xa.mass.engine.util.TraceEventLogger(null));
+        TaskStateValidator validator = new TaskStateValidator(
+                runtime,
+                projectionAccess(detailStore, runtime),
+                new com.xa.mass.engine.util.TraceEventLogger(null)
+        );
 
         TaskStateValidationResult result = validator.auditTaskProjectionState("task-1");
 
         assertTrue(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertEquals(1, detailStore.projectionAuditReads.get());
+    }
+
+    private static TaskCompatibilityProjectionAccess projectionAccess(TrackingTaskDetailStore detailStore,
+                                                                      CountingStateRuntimePort runtime) {
+        return new TaskCompatibilityProjectionAccess(
+                detailStore,
+                runtime::getTask,
+                (taskId, messageId) -> Optional.empty(),
+                taskId -> List.of()
+        );
     }
 
     private static Task sampleTask() {
