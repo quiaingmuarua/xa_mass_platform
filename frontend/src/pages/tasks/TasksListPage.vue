@@ -116,7 +116,7 @@
         type="info"
         :closable="false"
         :title="`Metadata starter context: ${starterEventCode}`"
-        description="Task create API does not have a first-class event field. Keep project as the business binding and map any event-specific contract through sharedConfig or inputs only when your backend/runtime expects it."
+        description="Task shell create accepts eventCode directly. Keep sharedConfig and item inputs payload-opaque, and only provide fields your runtime contract actually consumes."
       />
 
       <el-alert
@@ -264,12 +264,16 @@ import {ElMessage} from 'element-plus'
 import {computed, onActivated, onMounted, reactive, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {listProjectCodes} from '@/api/configs'
-import {createTask, listTasks} from '@/api/tasks'
+import {appendTaskItems, createTaskShell, listTasks, sealTask} from '@/api/tasks'
 import {useAuth} from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {TaskCreateRequest, TaskListItem} from '@/types/tasks'
+import type {
+  TaskItemBatchAppendRequest,
+  TaskListItem,
+  TaskShellCreateRequest,
+} from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
 import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
@@ -451,9 +455,14 @@ function applyCreateDraftFromQuery(): void {
 async function handleCreate(): Promise<void> {
   createErrorMessage.value = ''
 
-  let payload: TaskCreateRequest
+  let shellRequest: TaskShellCreateRequest
+  let appendRequest: TaskItemBatchAppendRequest
+  let openEnded: boolean
   try {
-    payload = buildCreateRequest()
+    const draft = buildCreateDraft()
+    shellRequest = draft.shellRequest
+    appendRequest = draft.appendRequest
+    openEnded = draft.openEnded
   } catch (error) {
     createErrorMessage.value = toErrorMessage(error, 'Task request is invalid.')
     return
@@ -461,7 +470,11 @@ async function handleCreate(): Promise<void> {
 
   creatingTask.value = true
   try {
-    const result = await createTask(payload)
+    const result = await createTaskShell(shellRequest)
+    await appendTaskItems(result.taskId, appendRequest)
+    if (!openEnded) {
+      await sealTask(result.taskId)
+    }
     ElMessage.success(result.message)
     createDialogVisible.value = false
     await loadTasks()
@@ -476,7 +489,11 @@ async function handleCreate(): Promise<void> {
   }
 }
 
-function buildCreateRequest(): TaskCreateRequest {
+function buildCreateDraft(): {
+  shellRequest: TaskShellCreateRequest
+  appendRequest: TaskItemBatchAppendRequest
+  openEnded: boolean
+} {
   const taskName = createForm.taskName.trim()
   const project = createForm.project.trim()
 
@@ -493,25 +510,29 @@ function buildCreateRequest(): TaskCreateRequest {
     'Shared config',
   )
   return {
-    userId: currentOperatorId.value,
-    project,
-    taskName,
-    eventCode: starterEventCode.value || undefined,
-    mode: starterEventCode.value
-      ? createForm.openEnded
-        ? 'STREAMING'
-        : 'SINGLE_RUN'
-      : undefined,
-    payloadType: starterEventCode.value ? 'JSON' : undefined,
-    sharedConfig,
-    inputs,
-    batchSize: Math.max(1, Number(createForm.batchSize) || 1),
-    defaultMsgMaxRetryCount: Math.max(
-      0,
-      Number(createForm.defaultMsgMaxRetryCount) || 0,
-    ),
+    shellRequest: {
+      userId: currentOperatorId.value,
+      project,
+      taskName,
+      eventCode: starterEventCode.value || undefined,
+      mode: starterEventCode.value
+        ? createForm.openEnded
+          ? 'STREAMING'
+          : 'SINGLE_RUN'
+        : undefined,
+      payloadType: starterEventCode.value ? 'JSON' : undefined,
+      sharedConfig,
+      batchSize: Math.max(1, Number(createForm.batchSize) || 1),
+      maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+    },
+    appendRequest: {
+      items: inputs,
+      defaultMsgMaxRetryCount: Math.max(
+        0,
+        Number(createForm.defaultMsgMaxRetryCount) || 0,
+      ),
+    },
     openEnded: createForm.openEnded,
-    maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
   }
 }
 

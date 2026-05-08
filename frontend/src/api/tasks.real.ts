@@ -1,14 +1,15 @@
 import {requestApiData} from '@/api/http'
 import type {
     TaskActionResult,
-    TaskCreateRequest,
-    TaskCreateResult,
     TaskDebugSyncRequest,
     TaskDebugSyncResult,
     TaskDetailRecord,
     TaskDetailResponse,
+    TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskShellCreateRequest,
+    TaskShellCreateResult,
     TaskValidationSummary,
 } from '@/types/tasks'
 
@@ -34,10 +35,10 @@ export async function listTasksReal(
     return requestApiData<TaskListResponse>(`/api/v1/tasks${suffix}`)
 }
 
-export async function createTaskReal(
-    request: TaskCreateRequest,
-): Promise<TaskCreateResult> {
-    const shellResult = await requestApiData<TaskCreateResult>('/api/v1/tasks', {
+export async function createTaskShellReal(
+    request: TaskShellCreateRequest,
+): Promise<TaskShellCreateResult> {
+    return requestApiData<TaskShellCreateResult>('/api/v1/tasks', {
         method: 'POST',
         body: JSON.stringify({
             userId: request.userId,
@@ -51,22 +52,25 @@ export async function createTaskReal(
             maxRuntimeSeconds: request.maxRuntimeSeconds,
         }),
     })
+}
 
-    await requestApiData<{ added: number }>(`/api/v1/tasks/${shellResult.taskId}/items`, {
+export async function appendTaskItemsReal(
+    taskId: string,
+    request: TaskItemBatchAppendRequest,
+): Promise<{ added: number }> {
+    return requestApiData<{ added: number }>(`/api/v1/tasks/${taskId}/items`, {
         method: 'POST',
         body: JSON.stringify({
-            items: request.inputs,
+            items: request.items,
             defaultMsgMaxRetryCount: request.defaultMsgMaxRetryCount,
         }),
     })
+}
 
-    if (!request.openEnded) {
-        await requestApiData<TaskActionResult>(`/api/v1/tasks/${shellResult.taskId}:seal`, {
-            method: 'POST',
-        })
-    }
-
-    return shellResult
+export async function sealTaskReal(taskId: string): Promise<TaskActionResult> {
+    return requestApiData<TaskActionResult>(`/api/v1/tasks/${taskId}:seal`, {
+        method: 'POST',
+    })
 }
 
 export async function invokeSyncTaskDebugReal(

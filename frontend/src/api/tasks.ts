@@ -1,35 +1,40 @@
 import {getAppConfig} from '@/app/config'
 import {
     auditTaskMock,
+    appendTaskItemsMock,
     blockTaskMock,
-    createTaskMock,
+    createTaskShellMock,
     getTaskDetailMock,
     invokeSyncTaskDebugMock,
     listTasksMock,
     pauseTaskMock,
     resumeTaskMock,
+    sealTaskMock,
     terminateTaskMock,
 } from '@/api/tasks.mock'
 import {
     auditTaskReal,
+    appendTaskItemsReal,
     blockTaskReal,
-    createTaskReal,
+    createTaskShellReal,
     getTaskDetailReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
     pauseTaskReal,
     resumeTaskReal,
+    sealTaskReal,
     terminateTaskReal,
 } from '@/api/tasks.real'
 import type {
     TaskActionResult,
-    TaskCreateRequest,
-    TaskCreateResult,
     TaskDebugSyncRequest,
     TaskDebugSyncResult,
     TaskDetailResponse,
+    TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskShellCreateRequest,
+    TaskShellCreateResult,
 } from '@/types/tasks'
 
 export async function listTasks(
@@ -52,14 +57,35 @@ export async function getTaskDetail(
     return getTaskDetailReal(taskId)
 }
 
-export async function createTask(
-    request: TaskCreateRequest,
-): Promise<TaskCreateResult> {
+export async function createTaskShell(
+    request: TaskShellCreateRequest,
+): Promise<TaskShellCreateResult> {
     if (getAppConfig().useMockApi) {
-        return createTaskMock(request)
+        return createTaskShellMock(request)
     }
 
-    return createTaskReal(request)
+    return createTaskShellReal(request)
+}
+
+export async function appendTaskItems(
+    taskId: string,
+    request: TaskItemBatchAppendRequest,
+): Promise<{ added: number }> {
+    if (getAppConfig().useMockApi) {
+        return appendTaskItemsMock(taskId, request)
+    }
+
+    return appendTaskItemsReal(taskId, request)
+}
+
+export async function sealTask(
+    taskId: string,
+): Promise<TaskActionResult> {
+    if (getAppConfig().useMockApi) {
+        return sealTaskMock(taskId)
+    }
+
+    return sealTaskReal(taskId)
 }
 
 export async function invokeSyncTaskDebug(

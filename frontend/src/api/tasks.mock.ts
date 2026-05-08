@@ -1,13 +1,14 @@
 import type {
     TaskActionResult,
-    TaskCreateRequest,
-    TaskCreateResult,
     TaskDebugSyncRequest,
     TaskDebugSyncResult,
     TaskDetailResponse,
+    TaskItemBatchAppendRequest,
     TaskListItem,
     TaskListQuery,
     TaskListResponse,
+    TaskShellCreateRequest,
+    TaskShellCreateResult,
 } from '@/types/tasks'
 
 const mockTaskList: TaskListItem[] = [
@@ -186,17 +187,12 @@ export async function getTaskDetailMock(
     return delay(detail)
 }
 
-export async function createTaskMock(
-    request: TaskCreateRequest,
-): Promise<TaskCreateResult> {
+export async function createTaskShellMock(
+    request: TaskShellCreateRequest,
+): Promise<TaskShellCreateResult> {
     const taskId = `task-${String(mockTaskList.length + 1).padStart(3, '0')}`
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
     const normalizedSharedConfig = request.sharedConfig ?? {}
-    const normalizedInputs = request.inputs ?? []
-
-    if (normalizedInputs.length === 0) {
-        throw new Error('inputs must contain at least one work item')
-    }
 
     const listItem: TaskListItem = {
         id: taskId,
@@ -205,7 +201,7 @@ export async function createTaskMock(
         status: 'NEW',
         terminalReason: null,
         successCount: 0,
-        eligibleCount: normalizedInputs.length,
+        eligibleCount: 0,
         batchSize: request.batchSize,
         updatedAt: createdAt,
     }
@@ -223,10 +219,10 @@ export async function createTaskMock(
             user: {
                 name: request.userId,
             },
-            taskTargetNumber: normalizedInputs.length,
-            taskEligibleNumber: normalizedInputs.length,
+            taskTargetNumber: 0,
+            taskEligibleNumber: 0,
             taskSuccessNumber: 0,
-            taskNonSuccessNumber: normalizedInputs.length,
+            taskNonSuccessNumber: 0,
             peakAssignedWorkerCount: 0,
             createTime: createdAt,
             updateTime: createdAt,
@@ -234,7 +230,7 @@ export async function createTaskMock(
         stateValidation: {
             valid: true,
             needsResolution: false,
-            totalMessages: normalizedInputs.length,
+            totalMessages: 0,
             successMessages: 0,
             failedMessages: 0,
             processingMessages: 0,
@@ -244,14 +240,50 @@ export async function createTaskMock(
 
     return delay({
         taskId,
-        message: 'Task created',
+        message: 'Task shell created',
+    })
+}
+
+export async function appendTaskItemsMock(
+    taskId: string,
+    request: TaskItemBatchAppendRequest,
+): Promise<{ added: number }> {
+    const detail = mockTaskDetails[taskId]
+    const listItem = mockTaskList.find((task) => task.id === taskId)
+    const normalizedItems = request.items ?? []
+
+    if (!detail || !listItem) {
+        throw new Error(`Task not found for ${taskId}`)
+    }
+    if (normalizedItems.length === 0) {
+        throw new Error('items must contain at least one work item')
+    }
+
+    detail.task.taskTargetNumber += normalizedItems.length
+    detail.task.taskEligibleNumber += normalizedItems.length
+    detail.task.taskNonSuccessNumber += normalizedItems.length
+    detail.stateValidation.totalMessages += normalizedItems.length
+    listItem.eligibleCount += normalizedItems.length
+
+    return delay({
+        added: normalizedItems.length,
+    })
+}
+
+export async function sealTaskMock(taskId: string): Promise<TaskActionResult> {
+    const detail = mockTaskDetails[taskId]
+    if (!detail) {
+        throw new Error(`Task not found for ${taskId}`)
+    }
+    return delay({
+        message: 'Task sealed',
     })
 }
 
 export async function invokeSyncTaskDebugMock(
     request: TaskDebugSyncRequest,
 ): Promise<TaskDebugSyncResult> {
-    const created = await createTaskMock({
+    const created = await createTaskShellMock({
         userId: request.userId,
         project: request.project,
         taskName: request.taskName,
@@ -259,12 +291,14 @@ export async function invokeSyncTaskDebugMock(
         mode: 'SINGLE_RUN',
         payloadType: request.payloadType ?? 'JSON',
         sharedConfig: request.sharedConfig,
-        inputs: request.inputs,
         batchSize: 1,
-        defaultMsgMaxRetryCount: 0,
-        openEnded: false,
         maxRuntimeSeconds: request.maxRuntimeSeconds,
     })
+    await appendTaskItemsMock(created.taskId, {
+        items: request.inputs,
+        defaultMsgMaxRetryCount: 0,
+    })
+    await sealTaskMock(created.taskId)
 
     return delay({
         taskId: created.taskId,

@@ -1,22 +1,33 @@
-import {createTask, getTaskDetail, invokeSyncTaskDebug, listTasks} from '@/api/tasks'
+import {
+    appendTaskItems,
+    createTaskShell,
+    getTaskDetail,
+    invokeSyncTaskDebug,
+    listTasks,
+    sealTask,
+} from '@/api/tasks'
 
 describe('tasks API facade', () => {
-    it('creates a task through the mock adapter and exposes it in list and detail reads', async () => {
-        const result = await createTask({
+    it('creates a task through atomic mock adapters and exposes it in list and detail reads', async () => {
+        const result = await createTaskShell({
             userId: 'ops-admin',
             project: 'demoApp',
             taskName: 'Create from console test',
+            eventCode: 'mock.state.get',
+            payloadType: 'JSON',
             sharedConfig: {
                 textContent: 'hello',
             },
-            inputs: [{ target: 'alpha' }, { target: 'beta' }],
             batchSize: 2,
-            defaultMsgMaxRetryCount: 3,
-            openEnded: false,
             maxRuntimeSeconds: 0,
         })
+        await appendTaskItems(result.taskId, {
+            items: [{ target: 'alpha' }, { target: 'beta' }],
+            defaultMsgMaxRetryCount: 3,
+        })
+        await sealTask(result.taskId)
 
-        expect(result.message).toBe('Task created')
+        expect(result.message).toBe('Task shell created')
 
         const list = await listTasks({ keyword: 'Create from console test' })
         expect(list.items).toHaveLength(1)

@@ -7,9 +7,7 @@ import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -55,25 +53,21 @@ class ModelMutationGuardTest {
     }
 
     @Test
-    void latestAttemptProjectionMustNotUseIndividualTaskMsgProjectionSettersDirectly() {
+    void mainlineCodeMustNotDependOnLegacyTaskMessageModelsOrEnums() {
         noClasses()
-                .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setStatus", TaskMsgStatus.class)
+                .should().dependOnClassesThat().resideInAnyPackage("com.xa.mass.base.enums.taskmsg..")
                 .check(MAIN_CLASSES);
 
         noClasses()
-                .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setLatestAttemptWorkerId", String.class)
+                .should().dependOnClassesThat().haveFullyQualifiedName("com.xa.mass.base.model.TaskMsg")
                 .check(MAIN_CLASSES);
 
         noClasses()
-                .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setLatestAttemptWorkerContextId", String.class)
+                .should().dependOnClassesThat().haveFullyQualifiedName("com.xa.mass.base.model.TaskMsgAttempt")
                 .check(MAIN_CLASSES);
 
         noClasses()
-                .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setLatestAttemptBatchId", String.class)
+                .should().dependOnClassesThat().haveFullyQualifiedName("com.xa.mass.base.model.TaskMessageSnapshot")
                 .check(MAIN_CLASSES);
     }
 }

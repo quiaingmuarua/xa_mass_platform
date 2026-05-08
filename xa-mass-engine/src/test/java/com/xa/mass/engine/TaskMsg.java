@@ -1,5 +1,9 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
+
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -202,6 +206,61 @@ public class TaskMsg {
         if (finalStatus == TaskMsgStatus.RUNNING && startTime == null) {
             startTime = updateTime;
         }
+    }
+
+    public static TaskMsg fromStorageProjection(TaskDetailStore.TaskMessageProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        TaskMsg taskMsg = projection.payloadRef() == null || projection.payloadRef().isBlank()
+                ? new TaskMsg(projection.messageId(), projection.taskId(), projection.input())
+                : new TaskMsg(projection.messageId(), projection.taskId(), projection.input(), projection.payloadRef());
+        taskMsg.setStatus(projection.status() != null ? TaskMsgStatus.valueOf(projection.status().name()) : null);
+        taskMsg.applyLatestAttemptProjection(
+                projection.latestAttemptId(),
+                projection.latestAttemptWorkerId(),
+                projection.latestAttemptWorkerContextId(),
+                projection.latestAttemptBatchId()
+        );
+        taskMsg.setAssignedTime(projection.assignedTime());
+        taskMsg.setCreateTime(projection.createTime());
+        taskMsg.setUpdateTime(projection.updateTime());
+        taskMsg.setStartTime(projection.startTime());
+        taskMsg.setCompleteTime(projection.completeTime());
+        taskMsg.setRetryCount(projection.retryCount());
+        taskMsg.setMaxRetryCount(projection.maxRetryCount());
+        taskMsg.setErrorMessage(projection.errorMessage());
+        taskMsg.setErrorCode(projection.errorCode());
+        taskMsg.setFinalReason(projection.finalReason() != null
+                ? TaskMsgFinalReason.valueOf(projection.finalReason().name())
+                : null);
+        taskMsg.setOutput(projection.output());
+        return taskMsg;
+    }
+
+    public TaskDetailStore.TaskMessageProjection toStorageProjection() {
+        return new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                taskId,
+                input,
+                payloadRef,
+                status != null ? TaskMessageProjectionStatus.valueOf(status.name()) : null,
+                assignedTime,
+                createTime,
+                updateTime,
+                startTime,
+                completeTime,
+                retryCount,
+                maxRetryCount,
+                errorMessage,
+                errorCode,
+                finalReason != null ? TaskMessageProjectionFinalReason.valueOf(finalReason.name()) : null,
+                output,
+                latestAttemptId,
+                latestAttemptWorkerId,
+                latestAttemptWorkerContextId,
+                latestAttemptBatchId
+        );
     }
 
     private Map<String, Object> copyNullableMap(Map<String, Object> source) {

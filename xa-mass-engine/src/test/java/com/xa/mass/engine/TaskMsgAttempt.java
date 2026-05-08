@@ -1,5 +1,9 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -153,5 +157,47 @@ public class TaskMsgAttempt {
         this.errorMessage = errorMessage;
         this.errorCode = errorCode;
         return true;
+    }
+
+    public static TaskMsgAttempt fromStorageProjection(TaskDetailStore.TaskMessageAttemptProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        TaskMsgAttempt attempt = new TaskMsgAttempt(
+                projection.attemptId(),
+                projection.taskId(),
+                projection.messageId(),
+                projection.attemptNo()
+        );
+        attempt.setWorkerId(projection.workerId());
+        attempt.setWorkerContextId(projection.workerContextId());
+        attempt.setBatchId(projection.batchId());
+        attempt.setStatus(projection.status() != null
+                ? TaskMsgAttemptStatus.valueOf(projection.status().name())
+                : TaskMsgAttemptStatus.CREATED);
+        attempt.setFinalReason(projection.finalReason() != null
+                ? TaskMsgAttemptFinalReason.valueOf(projection.finalReason().name())
+                : null);
+        attempt.setErrorMessage(projection.errorMessage());
+        attempt.setErrorCode(projection.errorCode());
+        attempt.setOutput(projection.output());
+        return attempt;
+    }
+
+    public TaskDetailStore.TaskMessageAttemptProjection toStorageProjection() {
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                workerId,
+                workerContextId,
+                batchId,
+                status != null ? TaskMessageAttemptProjectionStatus.valueOf(status.name()) : null,
+                finalReason != null ? TaskMessageAttemptProjectionFinalReason.valueOf(finalReason.name()) : null,
+                errorMessage,
+                errorCode,
+                output
+        );
     }
 }

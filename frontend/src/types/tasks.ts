@@ -61,7 +61,7 @@ export interface TaskActionResult {
     terminalReason?: string
 }
 
-export interface TaskCreateRequest {
+export interface TaskShellCreateRequest {
     userId: string
     project: string
     taskName: string
@@ -69,16 +69,18 @@ export interface TaskCreateRequest {
     mode?: 'SINGLE_RUN' | 'STREAMING'
     payloadType?: 'TEXT' | 'JSON'
     sharedConfig: Record<string, unknown>
-    inputs: Array<Record<string, unknown>>
     batchSize: number
-    defaultMsgMaxRetryCount: number
-    openEnded: boolean
     maxRuntimeSeconds: number
 }
 
-export interface TaskCreateResult {
+export interface TaskShellCreateResult {
     taskId: string
     message: string
+}
+
+export interface TaskItemBatchAppendRequest {
+    items: Array<Record<string, unknown>>
+    defaultMsgMaxRetryCount: number
 }
 
 export interface TaskDebugSyncRequest {

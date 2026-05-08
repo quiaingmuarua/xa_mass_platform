@@ -1,9 +1,11 @@
 import {setRuntimeConfigOverrides} from '@/app/config'
 import {
-    createTaskReal,
+    appendTaskItemsReal,
+    createTaskShellReal,
     getTaskDetailReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
+    sealTaskReal,
     terminateTaskReal,
 } from '@/api/tasks.real'
 
@@ -128,66 +130,81 @@ describe('tasks.real', () => {
         expect(response.message).toBe('Task terminated')
     })
 
-    it('creates a task by orchestrating shell create, append, and seal', async () => {
-        const fetchMock = vi.fn()
-            .mockResolvedValueOnce(
-                jsonResponse({
-                    code: 0,
-                    msg: 'ok',
-                    data: {
-                        taskId: 'task-101',
-                        message: 'Task shell created',
-                    },
-                }),
-            )
-            .mockResolvedValueOnce(
-                jsonResponse({
-                    code: 0,
-                    msg: 'ok',
-                    data: {
-                        added: 2,
-                    },
-                }),
-            )
-            .mockResolvedValueOnce(
-                jsonResponse({
-                    code: 0,
-                    msg: 'ok',
-                    data: {
-                        message: 'Task sealed',
-                    },
-                }),
-            )
+    it('creates a task shell through the v1 shell endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    taskId: 'task-101',
+                    message: 'Task shell created',
+                },
+            }),
+        )
         vi.stubGlobal('fetch', fetchMock)
 
-        const result = await createTaskReal({
+        const result = await createTaskShellReal({
             userId: 'agent',
             project: 'demoApp',
             taskName: 'demo-task',
+            eventCode: 'mock.state.get',
+            mode: 'SINGLE_RUN',
+            payloadType: 'JSON',
             sharedConfig: { textContent: 'hello' },
-            inputs: [{ target: 'alpha' }, { target: 'beta' }],
             batchSize: 2,
-            defaultMsgMaxRetryCount: 3,
-            openEnded: false,
             maxRuntimeSeconds: 0,
         })
 
-        expect(fetchMock).toHaveBeenNthCalledWith(
-            1,
+        expect(fetchMock).toHaveBeenCalledWith(
             '/api/v1/tasks',
             expect.objectContaining({ method: 'POST' }),
         )
-        expect(fetchMock).toHaveBeenNthCalledWith(
-            2,
+        expect(result.taskId).toBe('task-101')
+    })
+
+    it('appends items through the v1 item ingest endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    added: 2,
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await appendTaskItemsReal('task-101', {
+            items: [{ target: 'alpha' }, { target: 'beta' }],
+            defaultMsgMaxRetryCount: 3,
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
             '/api/v1/tasks/task-101/items',
             expect.objectContaining({ method: 'POST' }),
         )
-        expect(fetchMock).toHaveBeenNthCalledWith(
-            3,
+        expect(result.added).toBe(2)
+    })
+
+    it('seals tasks through the v1 seal endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    message: 'Task sealed',
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await sealTaskReal('task-101')
+
+        expect(fetchMock).toHaveBeenCalledWith(
             '/api/v1/tasks/task-101:seal',
             expect.objectContaining({ method: 'POST' }),
         )
-        expect(result.taskId).toBe('task-101')
+        expect(result.message).toBe('Task sealed')
     })
 
     it('posts worker debug sync invocations to the internal v1 endpoint', async () => {

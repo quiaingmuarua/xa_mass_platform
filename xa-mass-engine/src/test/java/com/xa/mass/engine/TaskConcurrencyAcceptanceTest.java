@@ -2,12 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -542,7 +537,7 @@ class TaskConcurrencyAcceptanceTest {
                     manager.getTaskMessageLeaseSeconds()
             );
         }
-        TaskMsg compatibilityMessage = message.toCompatibilityProjection();
+        TaskMsg compatibilityMessage = TaskMsg.fromStorageProjection(message);
         compatibilityMessage.applyLatestAttemptProjection(
                 "worker-" + suffix,
                 "worker-context-" + suffix,
@@ -552,7 +547,7 @@ class TaskConcurrencyAcceptanceTest {
             assertTrue(compatibilityMessage.markAsAssigned());
         }
         TaskDetailStore.TaskMessageProjection assignedProjection =
-                TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(compatibilityMessage);
+                compatibilityMessage.toStorageProjection();
         assertTrue(manager.upsertTaskMessageProjectionRecord(task.getTid(), assignedProjection));
 
         int attemptNo = compatibilityMessage.getRetryCount() + 1;
@@ -570,7 +565,7 @@ class TaskConcurrencyAcceptanceTest {
         manager.upsertTaskMessageAttemptAuditProjectionRecord(
                 task.getTid(),
                 compatibilityMessage.getMessageId(),
-                TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(compatibilityAttempt)
+                compatibilityAttempt.toStorageProjection()
         );
         return assignedProjection;
     }
@@ -578,22 +573,22 @@ class TaskConcurrencyAcceptanceTest {
     private TaskDetailStore.TaskMessageProjection assignRunningMessage(Task task,
                                                                        TaskDetailStore.TaskMessageProjection message) {
         TaskDetailStore.TaskMessageProjection assigned = assignMessage(task, message);
-        TaskMsg compatibilityAssigned = assigned.toCompatibilityProjection();
+        TaskMsg compatibilityAssigned = TaskMsg.fromStorageProjection(assigned);
         assertTrue(compatibilityAssigned.markAsRunning());
         TaskDetailStore.TaskMessageProjection runningProjection =
-                TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(compatibilityAssigned);
+                compatibilityAssigned.toStorageProjection();
         assertTrue(taskManager.upsertTaskMessageProjectionRecord(task.getTid(), runningProjection));
         TaskDetailStore.TaskMessageAttemptProjection activeAttemptRecord =
                 taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), assigned.messageId());
         assertNotNull(activeAttemptRecord);
-        TaskMsgAttempt activeAttempt = activeAttemptRecord.toCompatibilityProjection();
+        TaskMsgAttempt activeAttempt = TaskMsgAttempt.fromStorageProjection(activeAttemptRecord);
         if (activeAttempt.getStatus() != TaskMsgAttemptStatus.RUNNING) {
             assertTrue(activeAttempt.markRunning());
         }
         assertTrue(taskManager.upsertTaskMessageAttemptAuditProjectionRecord(
                 task.getTid(),
                 assigned.messageId(),
-                TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(activeAttempt)
+                activeAttempt.toStorageProjection()
         ));
         return runningProjection;
     }
