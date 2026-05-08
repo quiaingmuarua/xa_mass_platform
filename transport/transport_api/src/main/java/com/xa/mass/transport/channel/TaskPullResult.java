@@ -8,17 +8,17 @@ import java.util.Objects;
 public final class TaskPullResult {
 
     private final TaskPullStatus status;
-    private final List<TaskDispatchItem> items;
+    private final List<TaskDispatchItem> dispatchViews;
 
-    private TaskPullResult(TaskPullStatus status, List<TaskDispatchItem> items) {
+    private TaskPullResult(TaskPullStatus status, List<TaskDispatchItem> dispatchViews) {
         this.status = Objects.requireNonNull(status, "status");
-        this.items = items == null || items.isEmpty() ? List.of() : List.copyOf(items);
+        this.dispatchViews = dispatchViews == null || dispatchViews.isEmpty() ? List.of() : List.copyOf(dispatchViews);
     }
 
-    public static TaskPullResult of(TaskPullStatus status, List<TaskDispatchItem> items) {
+    public static TaskPullResult of(TaskPullStatus status, List<TaskDispatchItem> dispatchViews) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
-            case DELIVERED -> delivered(items);
+            case DELIVERED -> delivered(dispatchViews);
             case EMPTY -> empty();
             case INVALID_REQUEST -> invalidRequest();
             case UNAVAILABLE -> unavailable();
@@ -26,11 +26,11 @@ public final class TaskPullResult {
         };
     }
 
-    public static TaskPullResult delivered(List<TaskDispatchItem> items) {
-        if (items == null || items.isEmpty()) {
+    public static TaskPullResult delivered(List<TaskDispatchItem> dispatchViews) {
+        if (dispatchViews == null || dispatchViews.isEmpty()) {
             throw new IllegalArgumentException("delivered pull result must include at least one item");
         }
-        return new TaskPullResult(TaskPullStatus.DELIVERED, items);
+        return new TaskPullResult(TaskPullStatus.DELIVERED, dispatchViews);
     }
 
     public static TaskPullResult empty() {
@@ -57,7 +57,7 @@ public final class TaskPullResult {
      * Worker-facing dispatch views reconstructed from transport packets when
      * delivery succeeds.
      */
-    public List<TaskDispatchItem> getItems() {
-        return items;
+    public List<TaskDispatchItem> getDispatchViews() {
+        return dispatchViews;
     }
 }

@@ -42,7 +42,7 @@ public interface ExternalWorkerOperations {
     }
 
     default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
     }
 
     boolean submitResult(String workerId, TaskResultReport report);

@@ -17,7 +17,7 @@ public interface TaskPullChannel {
     }
 
     default List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTaskMessagesResult(workerId, maxMessages, timeoutMillis).getItems();
+        return pollTaskMessagesResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
     }
 
     default TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages) {

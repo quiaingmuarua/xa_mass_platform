@@ -87,7 +87,7 @@ public class PullWorkerSession {
     }
 
     public List<TaskDispatchItem> poll(int maxMessages, long timeoutMillis) {
-        return pollResult(maxMessages, timeoutMillis).getItems();
+        return pollResult(maxMessages, timeoutMillis).getDispatchViews();
     }
 
     public TaskPullResult pollResult(int maxMessages) {

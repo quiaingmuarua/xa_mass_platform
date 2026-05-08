@@ -26,7 +26,7 @@ class TaskPullResultTest {
         TaskPullResult result = TaskPullResult.of(TaskPullStatus.UNAVAILABLE, List.of(item("msg-1")));
 
         assertEquals(TaskPullStatus.UNAVAILABLE, result.getStatus());
-        assertEquals(List.of(), result.getItems());
+        assertEquals(List.of(), result.getDispatchViews());
     }
 
     private static TaskDispatchItem item(String messageId) {

@@ -111,7 +111,7 @@ public final class TaskDispatchItem {
                              Map<String, Object> transportPayload) {
         this.taskId = requireText(taskId, "taskId");
         this.messageId = requireText(messageId, "messageId");
-        this.eventCode = requireText(eventCode, "eventCode");
+        this.eventCode = optionalText(eventCode);
         this.taskName = taskName;
         this.project = project;
         this.userId = userId;
@@ -374,6 +374,14 @@ public final class TaskDispatchItem {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String optionalText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
 }

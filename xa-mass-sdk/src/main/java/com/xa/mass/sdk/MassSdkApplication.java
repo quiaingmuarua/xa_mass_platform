@@ -409,7 +409,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
     }
 
     @Override

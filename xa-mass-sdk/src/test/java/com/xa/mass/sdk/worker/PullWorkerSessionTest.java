@@ -38,7 +38,7 @@ class PullWorkerSessionTest {
         TaskPullResult result = session.pollResult(5, 250L);
 
         assertEquals(TaskPullStatus.DELIVERED, result.getStatus());
-        assertEquals(List.of("msg-1"), result.getItems().stream().map(TaskDispatchItem::getMessageId).toList());
+        assertEquals(List.of("msg-1"), result.getDispatchViews().stream().map(TaskDispatchItem::getMessageId).toList());
     }
 
     @Test
