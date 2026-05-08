@@ -24,10 +24,10 @@ function jsonResponseWithStatus(body: unknown, status: number): Response {
 
 function discoveryFetch(submitterResponse: Response): (input: string) => Promise<Response> {
     return (input: string) => {
-        if (input.includes('/sdk/submitters/me')) {
+        if (input.includes('/api/v1/submitters/me')) {
             return Promise.resolve(submitterResponse)
         }
-        if (input.includes('/sdk/meta/event-capabilities')) {
+        if (input.includes('/api/v1/meta/event-capabilities')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -73,7 +73,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                 }),
             )
         }
-        if (input.includes('/sdk/meta/projects')) {
+        if (input.includes('/api/v1/meta/projects')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -97,7 +97,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                 }),
             )
         }
-        if (input.includes('/sdk/meta/events')) {
+        if (input.includes('/api/v1/meta/events')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -262,7 +262,7 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain('crawler-agent')
         expect(wrapper.text()).toContain('task:create')
         expect(wrapper.text()).toContain('crawler.fetch-page')
-        expect(wrapper.text()).toContain('POST /status/api/tasks')
+        expect(wrapper.text()).toContain('POST /api/v1/tasks')
 
         const inspectButtons = wrapper
             .findAll('button')
@@ -346,7 +346,7 @@ describe('RuntimeMetadataPage', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
-                if (input.includes('/sdk/submitters/me')) {
+                if (input.includes('/api/v1/submitters/me')) {
                     return Promise.resolve(
                         jsonResponseWithStatus(
                             {
@@ -358,7 +358,7 @@ describe('RuntimeMetadataPage', () => {
                         ),
                     )
                 }
-                if (input.includes('/sdk/meta/projects')) {
+                if (input.includes('/api/v1/meta/projects')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -367,7 +367,7 @@ describe('RuntimeMetadataPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/sdk/meta/event-capabilities')) {
+                if (input.includes('/api/v1/meta/event-capabilities')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -389,7 +389,7 @@ describe('RuntimeMetadataPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/sdk/meta/events')) {
+                if (input.includes('/api/v1/meta/events')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,

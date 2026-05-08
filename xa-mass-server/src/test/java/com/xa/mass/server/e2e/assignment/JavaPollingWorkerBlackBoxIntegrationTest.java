@@ -83,23 +83,15 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("userId", "java-crawler-agent");
             createBody.put("eventCode", "crawler.fetch-page");
             createBody.put("sharedConfig", Map.of("routingCode", "us"));
-            createBody.put("inputs", List.of(Map.of("url", baseUrl + "/sdk/meta/events/crawler.fetch-page")));
             createBody.put("batchSize", 1);
 
-            Map<String, Object> createResponse = exchange(
-                    "/api/v1/tasks",
-                    HttpMethod.POST,
-                    createBody,
-                    sdkCredentialHeaders(SUBMITTER_KEY)
-            );
+            Map<String, Object> createResponse = createTaskShell(createBody, sdkCredentialHeaders(SUBMITTER_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+            assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page")), 3));
+            assertApiOk(sealTask(taskId));
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             TaskSnapshot terminal = waitForTerminalTask(taskId);
@@ -147,8 +139,8 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     }
 
     private void assertSdkMetadataProjection(String workerId) {
-        Map<String, Object> workerCapabilityResponse = exchange("/sdk/meta/worker-capabilities", HttpMethod.GET, null);
-        Map<String, Object> eventCapabilityResponse = exchange("/sdk/meta/event-capabilities", HttpMethod.GET, null);
+        Map<String, Object> workerCapabilityResponse = exchange("/api/v1/meta/worker-capabilities", HttpMethod.GET, null);
+        Map<String, Object> eventCapabilityResponse = exchange("/api/v1/meta/event-capabilities", HttpMethod.GET, null);
         assertApiOk(workerCapabilityResponse);
         assertApiOk(eventCapabilityResponse);
         @SuppressWarnings("unchecked")

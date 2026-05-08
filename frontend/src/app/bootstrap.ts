@@ -45,7 +45,7 @@ function renderStartupError(error: unknown): void {
                 <h1>Console startup failed</h1>
                 <p class="startup-error-message">${escapeHtml(message)}</p>
                 <p class="startup-error-hint">
-                    Check backend availability, /api/auth/me, and browser console logs.
+                    Check backend availability, /api/v1/auth/me, and browser console logs.
                 </p>
             </section>
         </main>

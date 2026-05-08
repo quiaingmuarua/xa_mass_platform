@@ -124,12 +124,14 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("payloadType", "JSON");
         createBody.put("userId", "itest");
         createBody.put("sharedConfig", Map.of(TaskSharedConfig.TARGET_WORKER_ID, workerId));
-        createBody.put("inputs", List.of(input));
         createBody.put("batchSize", 1);
 
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
-        return String.valueOf(responseData(createResponse).get("taskId"));
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(input), 3));
+        assertApiOk(sealTask(taskId));
+        return taskId;
     }
 
     @SuppressWarnings("unchecked")

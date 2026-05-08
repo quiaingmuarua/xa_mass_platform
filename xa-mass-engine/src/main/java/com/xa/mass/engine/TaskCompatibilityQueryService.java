@@ -1,7 +1,10 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.engine.model.TaskStateValidationResult;
+
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Explicit compatibility query facade for bounded TaskMsg / TaskMsgAttempt
@@ -16,13 +19,22 @@ import java.util.Objects;
 public class TaskCompatibilityQueryService {
 
     private final TaskCompatibilityProjectionAccess compatibilityQueries;
+    private final Function<String, TaskStateValidationResult> projectionAudit;
 
     public TaskCompatibilityQueryService(TaskManager taskManager) {
-        this(taskManager.compatibilityProjectionAccess());
+        this(taskManager.compatibilityProjectionAccess(), taskManager::auditTaskProjectionState);
     }
 
     TaskCompatibilityQueryService(TaskCompatibilityProjectionAccess compatibilityQueries) {
+        this(compatibilityQueries, taskId -> {
+            throw new UnsupportedOperationException("projection audit is unavailable for this compatibility query service");
+        });
+    }
+
+    TaskCompatibilityQueryService(TaskCompatibilityProjectionAccess compatibilityQueries,
+                                  Function<String, TaskStateValidationResult> projectionAudit) {
         this.compatibilityQueries = Objects.requireNonNull(compatibilityQueries, "compatibilityQueries");
+        this.projectionAudit = Objects.requireNonNull(projectionAudit, "projectionAudit");
     }
 
     /**
@@ -77,5 +89,16 @@ public class TaskCompatibilityQueryService {
                                                        String messageId,
                                                        TaskCompatibilityMessageAttemptVisitor visitor) {
         return compatibilityQueries.visitLatestActiveTaskMessageAttempt(taskId, messageId, visitor);
+    }
+
+    /**
+     * Explicit deep projection audit over compatibility residue.
+     *
+     * <p>This is diagnostic-only and remains outside the default task query
+     * surface so projection residue is not mistaken for runtime truth.</p>
+     */
+    @CompatibilityProjectionOnly
+    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
+        return projectionAudit.apply(taskId);
     }
 }

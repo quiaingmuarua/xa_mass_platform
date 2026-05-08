@@ -62,7 +62,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 .attributes(Map.of("workerId", WORKER_ID))
                 .build());
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "transportHint", "realtime",
                 "eventBindings", List.of(Map.of(

@@ -10,20 +10,6 @@ export interface TaskListItem {
     updatedAt: string
 }
 
-export interface TaskMessageView {
-    messageId: string
-    status: 'INIT' | 'ASSIGNED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'EXPIRED'
-    latestAttemptWorkerId: string | null
-    latestAttemptWorkerContextId: string | null
-    latestAttemptBatchId: string | null
-    retryCount: number
-    maxRetryCount: number
-    finalReason: string | null
-    input: Record<string, unknown>
-    output: Record<string, unknown>
-    errorMessage: string | null
-}
-
 export interface TaskValidationSummary {
     valid: boolean
     needsResolution: boolean
@@ -56,9 +42,7 @@ export interface TaskDetailRecord {
 
 export interface TaskDetailResponse {
     task: TaskDetailRecord
-    items: Array<Record<string, unknown>>
     stateValidation: TaskValidationSummary
-    messages: TaskMessageView[]
 }
 
 export interface TaskListResponse {

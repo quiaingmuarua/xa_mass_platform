@@ -81,7 +81,8 @@ Keep these facts fixed unless the owning global baselines change:
   grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
 - `TaskCompatibilityQueryService` is the explicit bounded residue-read surface;
   it exposes a visitor-style compatibility read seam so outer modules assemble
-  their own DTOs instead of importing engine-owned message/attempt view models
+  their own DTOs instead of importing engine-owned message/attempt view models,
+  and it also owns explicit projection-audit entry
 - `TaskDetailStore.TaskMessageProjection` and
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the

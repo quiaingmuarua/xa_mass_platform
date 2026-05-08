@@ -2454,6 +2454,92 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.INIT, storedQueued.status());
     }
 
+    @Test
+    void compatibilitySnapshotRemainsBoundedWhenRuntimeOverlayAddsMissingProjectionMessages() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateSpec dto = new TaskCreateSpec();
+        dto.setTaskName("snapshot-bounded-runtime-overlay");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "stored")));
+
+        Task task = createTask(manager, dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        String payloadRef = "s3://bucket/payloads/snapshot-bounded-runtime-overlay.json";
+        failingStorage.failNextTaskMessageAdd();
+        manager.addTaskPayloadRef(task.getTid(), java.util.UUID.randomUUID().toString(), payloadRef, 1);
+
+        List<ClaimedTaskWork> claimed = manager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-snapshot-bound", "worker-context-snapshot-bound", "batch-snapshot-bound", 2)),
+                2,
+                manager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(2, claimed.size());
+
+        TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
+        TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
+
+        assertEquals(1, limitOneSnapshot.returned());
+        assertTrue(limitOneSnapshot.truncated());
+        assertEquals(0, zeroSnapshot.returned());
+        assertTrue(zeroSnapshot.truncated());
+    }
+
+    @Test
+    void compatibilitySnapshotTruncationUsesRuntimeTotalWhenProjectionResidueIsMissing() {
+        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                failingStorage,
+                failingStorage,
+                new InMemoryTaskWorkRuntime()
+        );
+
+        TaskCreateSpec dto = new TaskCreateSpec();
+        dto.setTaskName("snapshot-runtime-total-truncation");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "stored")));
+
+        Task task = createTask(manager, dto);
+        manager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        manager.updateTask(task);
+
+        failingStorage.failNextTaskMessageAdd();
+        manager.addTaskPayloadRef(
+                task.getTid(),
+                java.util.UUID.randomUUID().toString(),
+                "s3://bucket/payloads/runtime-total-only.json",
+                1
+        );
+
+        TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
+        TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
+
+        assertEquals(1, limitOneSnapshot.returned());
+        assertTrue(limitOneSnapshot.truncated(),
+                "snapshot truncation should follow runtime total work count even when one compatibility row is missing");
+        assertEquals(0, zeroSnapshot.returned());
+        assertTrue(zeroSnapshot.truncated(),
+                "zero-limit compatibility snapshot should still report truncation from runtime total work count");
+    }
+
     // ---- Bug4: Task.isCompleted() only returns true when status is final ----
 
     @Test

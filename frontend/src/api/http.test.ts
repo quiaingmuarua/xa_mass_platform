@@ -27,7 +27,7 @@ describe('http API helpers', () => {
             ),
         )
 
-        await expect(requestJson('/status/api/tasks')).rejects.toMatchObject({
+        await expect(requestJson('/api/v1/tasks')).rejects.toMatchObject({
             name: 'Error',
             message:
                 'Task create failed: Unsupported event code: demo.missing',
@@ -48,7 +48,7 @@ describe('http API helpers', () => {
             ),
         )
 
-        await expect(requestJson('/status/api/tasks')).rejects.toMatchObject({
+        await expect(requestJson('/api/v1/tasks')).rejects.toMatchObject({
             message: 'Plain backend failure',
             status: 400,
         } satisfies Partial<ApiError>)
@@ -66,7 +66,7 @@ describe('http API helpers', () => {
             ),
         )
 
-        await expect(requestApiData('/api/auth/me')).rejects.toMatchObject({
+        await expect(requestApiData('/api/v1/auth/me')).rejects.toMatchObject({
             message: 'Permission denied',
             status: 403,
         } satisfies Partial<ApiError>)

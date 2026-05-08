@@ -37,7 +37,8 @@ public class ProjectionAwareTaskManager extends TaskManager {
                 this::getTask,
                 this::getActiveLease,
                 this::getTaskWork,
-                this::getActiveLeases
+                this::getActiveLeases,
+                this::getTaskWorkStats
         );
     }
 
@@ -53,7 +54,8 @@ public class ProjectionAwareTaskManager extends TaskManager {
                 this::getTask,
                 this::getActiveLease,
                 this::getTaskWork,
-                this::getActiveLeases
+                this::getActiveLeases,
+                this::getTaskWorkStats
         );
     }
 

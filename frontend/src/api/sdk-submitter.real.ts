@@ -3,7 +3,7 @@ import type {SdkSubmitterProfile, SdkSubmitterSnapshot,} from '@/types/sdk-submi
 
 export async function getCurrentSdkSubmitterReal(): Promise<SdkSubmitterSnapshot> {
     try {
-        const profile = await requestApiData<SdkSubmitterProfile>('/sdk/submitters/me')
+        const profile = await requestApiData<SdkSubmitterProfile>('/api/v1/submitters/me')
         return {
             state: 'available',
             profile,

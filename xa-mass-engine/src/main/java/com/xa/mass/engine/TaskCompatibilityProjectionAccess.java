@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.storage.api.TaskDetailStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,17 +30,20 @@ final class TaskCompatibilityProjectionAccess {
     private final BiFunction<String, String, Optional<ActiveLeaseRecord>> activeLeaseLookup;
     private final BiFunction<String, String, Optional<TaskWorkEnvelope>> runtimeWorkLookup;
     private final Function<String, List<ActiveLeaseRecord>> activeLeasesLookup;
+    private final Function<String, TaskWorkStats> runtimeStatsLookup;
 
     TaskCompatibilityProjectionAccess(TaskDetailStore taskDetailStore,
                                       Function<String, Task> taskLookup,
                                       BiFunction<String, String, Optional<ActiveLeaseRecord>> activeLeaseLookup,
                                       BiFunction<String, String, Optional<TaskWorkEnvelope>> runtimeWorkLookup,
-                                      Function<String, List<ActiveLeaseRecord>> activeLeasesLookup) {
+                                      Function<String, List<ActiveLeaseRecord>> activeLeasesLookup,
+                                      Function<String, TaskWorkStats> runtimeStatsLookup) {
         this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         this.taskLookup = Objects.requireNonNull(taskLookup, "taskLookup");
         this.activeLeaseLookup = Objects.requireNonNull(activeLeaseLookup, "activeLeaseLookup");
         this.runtimeWorkLookup = Objects.requireNonNull(runtimeWorkLookup, "runtimeWorkLookup");
         this.activeLeasesLookup = Objects.requireNonNull(activeLeasesLookup, "activeLeasesLookup");
+        this.runtimeStatsLookup = Objects.requireNonNull(runtimeStatsLookup, "runtimeStatsLookup");
     }
 
     public TaskCompatibilitySnapshotPage visitTaskMessageSnapshot(String taskId,
@@ -57,13 +61,20 @@ final class TaskCompatibilityProjectionAccess {
                 );
         List<CompatibilityMessageProjection> projected =
                 CompatibilityProjectionSupport.overlayTerminalTaskProjection(taskLookup.apply(taskId), withActiveLeaseOverlay);
+        long compatibilityProjectionTotal = taskDetailStore.getTaskMessageStats(taskId).getTotal();
+        TaskWorkStats runtimeStats = runtimeStatsLookup.apply(taskId);
+        long runtimeTotal = runtimeStats != null ? runtimeStats.totalCount() : 0L;
+        boolean truncated = projected.size() > boundedLimit
+                || Math.max(compatibilityProjectionTotal, runtimeTotal) > boundedLimit;
+        List<CompatibilityMessageProjection> boundedProjected = boundedLimit == 0
+                ? List.of()
+                : projected.stream().limit(boundedLimit).toList();
         if (visitor != null) {
-            for (CompatibilityMessageProjection projection : projected) {
+            for (CompatibilityMessageProjection projection : boundedProjected) {
                 emitMessageProjection(projection, visitor);
             }
         }
-        boolean truncated = boundedLimit > 0 && taskDetailStore.getTaskMessageStats(taskId).getTotal() > boundedLimit;
-        return new TaskCompatibilitySnapshotPage(boundedLimit, truncated, projected.size());
+        return new TaskCompatibilitySnapshotPage(boundedLimit, truncated, boundedProjected.size());
     }
 
     public boolean visitTaskMessage(String taskId,

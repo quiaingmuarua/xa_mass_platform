@@ -30,12 +30,12 @@ async function main() {
   if (registerContext) {
     await registerWorkerContext();
   }
-  await post(`/worker-api/workers/${encodeURIComponent(workerId)}/online`, {
+  await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:online`, {
     reason: "node-worker-online",
   });
 
   heartbeatTimer = setInterval(() => {
-    post(`/worker-api/workers/${encodeURIComponent(workerId)}/heartbeat`, {
+    post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:heartbeat`, {
       reason: "node-worker-heartbeat",
     }).catch((error) => {
       console.error("[worker] heartbeat failed:", error.message);
@@ -55,7 +55,7 @@ async function main() {
 }
 
 async function registerWorker() {
-  const response = await post("/worker-api/workers/register", {
+  const response = await post("/worker-api/v1/workers", {
     workerId,
     workerGroupId,
     transportHint: "polling",
@@ -75,7 +75,7 @@ async function registerWorker() {
 }
 
 async function registerWorkerContext() {
-  const response = await post("/worker-api/worker-contexts/register", {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}/contexts`, {
     workerContextId,
     workerId,
     project,
@@ -89,7 +89,7 @@ async function registerWorkerContext() {
 }
 
 async function pollOnce() {
-  const response = await post(`/worker-api/workers/${encodeURIComponent(workerId)}/poll`, {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:poll`, {
     maxMessages: 10,
   });
   const items = response?.data?.items ?? [];
@@ -120,7 +120,7 @@ async function handleDispatch(item) {
     };
   }
 
-  const response = await post(`/worker-api/workers/${encodeURIComponent(workerId)}/results`, {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:submit-result`, {
     taskId,
     messageId,
     success: result.success,
@@ -266,7 +266,7 @@ async function shutdown(signal) {
 
 async function safeOffline(reason) {
   try {
-    await post(`/worker-api/workers/${encodeURIComponent(workerId)}/offline`, { reason });
+    await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:offline`, { reason });
   } catch (error) {
     console.error("[worker] offline failed:", error.message);
   }

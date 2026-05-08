@@ -44,7 +44,7 @@
         class="metadata-note"
         type="info"
         :closable="false"
-        title="Project and event entries come from SDK registration. Event capability comes from /sdk/meta/event-capabilities: direct runtime handlers are explicit, and task-backed worker coverage comes from supportedEventCodes."
+        title="Project and event entries come from SDK registration. Event capability comes from /api/v1/meta/event-capabilities: direct runtime handlers are explicit, and task-backed worker coverage comes from supportedEventCodes."
       />
 
       <section class="metric-grid">
@@ -134,11 +134,11 @@
           <template #header>
             <strong>SDK submitter access</strong>
           </template>
-          <el-alert
+            <el-alert
             class="sdk-submit-note"
             type="info"
             :closable="false"
-            title="SDK submitter identity is only for credential-backed task submission through POST /status/api/tasks. It is not the control-console login state and does not affect menu permissions."
+            title="SDK submitter identity is only for credential-backed task submission through POST /api/v1/tasks. It is not the control-console login state and does not affect menu permissions."
           />
           <el-descriptions :column="1" border>
             <el-descriptions-item label="Introspection">
@@ -169,7 +169,7 @@
             </el-descriptions-item>
             <el-descriptions-item label="Create route">
               Use the same task create route:
-              <span class="mono">POST /status/api/tasks</span>
+              <span class="mono">POST /api/v1/tasks</span>
             </el-descriptions-item>
           </el-descriptions>
         </el-card>

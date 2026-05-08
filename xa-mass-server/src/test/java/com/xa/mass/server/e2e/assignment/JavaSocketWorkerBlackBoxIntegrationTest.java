@@ -62,7 +62,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
         HttpHeaders workerHeaders = sdkCredentialHeaders(SOCKET_WORKER_KEY);
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "adapterId", "socket",
                 "transportHint", "realtime",
@@ -83,17 +83,14 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 "userId", "crawler-agent",
                 "eventCode", "crawler.fetch-page",
                 "payloadType", "JSON",
-                "inputs", List.of(Map.of("url", "https://example.test/socket-java")),
                 "batchSize", 1
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/socket-java")), 3));
+        assertApiOk(sealTask(taskId));
 
-        assertApiOk(exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
         assertEquals("READY", readyWhileOffline.task().get("status"));
@@ -142,7 +139,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         registerExternalWorkerSubmitter(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
-        assertApiOk(exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -153,7 +150,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 ))
         ), sdkCredentialHeaders(WEBSOCKET_WORKER_KEY)));
 
-        assertApiOk(exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "adapterId", "socket",
                 "transportHint", "realtime",
@@ -234,14 +231,13 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 "userId", "integration-agent",
                 "eventCode", eventCode,
                 "payloadType", "JSON",
-                "inputs", List.of(input),
                 "batchSize", 1
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(exchange("/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null));
+        assertApiOk(appendTaskItems(taskId, List.of(input), 3));
+        assertApiOk(sealTask(taskId));
+        assertApiOk(approveTask(taskId));
         return taskId;
     }
 

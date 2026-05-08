@@ -48,10 +48,10 @@ class SdkMetadataApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     @SuppressWarnings("unchecked")
     void sdkMetadataApisExposeSdkRegisteredProjectsAndEvents() {
-        Map<String, Object> projectResponse = exchange("/sdk/meta/projects", HttpMethod.GET, null);
-        Map<String, Object> projectEventsResponse = exchange("/sdk/meta/projects/demoApp/events", HttpMethod.GET, null);
-        Map<String, Object> eventResponse = exchange("/sdk/meta/events/crawler.fetch-page", HttpMethod.GET, null);
-        Map<String, Object> capabilityResponse = exchange("/sdk/meta/event-capabilities", HttpMethod.GET, null);
+        Map<String, Object> projectResponse = exchange("/api/v1/meta/projects", HttpMethod.GET, null);
+        Map<String, Object> projectEventsResponse = exchange("/api/v1/meta/projects/demoApp/events", HttpMethod.GET, null);
+        Map<String, Object> eventResponse = exchange("/api/v1/meta/events/crawler.fetch-page", HttpMethod.GET, null);
+        Map<String, Object> capabilityResponse = exchange("/api/v1/meta/event-capabilities", HttpMethod.GET, null);
 
         assertApiOk(projectResponse);
         assertApiOk(projectEventsResponse);
@@ -85,8 +85,8 @@ class SdkMetadataApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     @SuppressWarnings("unchecked")
     void sdkMetadataApisAlsoExposeHandlerBackedUtilityEvents() {
-        Map<String, Object> eventsResponse = exchange("/sdk/meta/events", HttpMethod.GET, null);
-        Map<String, Object> eventResponse = exchange("/sdk/meta/events/tool.country.capital.lookup", HttpMethod.GET, null);
+        Map<String, Object> eventsResponse = exchange("/api/v1/meta/events", HttpMethod.GET, null);
+        Map<String, Object> eventResponse = exchange("/api/v1/meta/events/tool.country.capital.lookup", HttpMethod.GET, null);
 
         assertApiOk(eventsResponse);
         assertApiOk(eventResponse);

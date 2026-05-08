@@ -87,7 +87,7 @@ function startWorker(spec) {
 }
 
 async function registerWorker(spec) {
-  const response = await post("/worker-api/workers/register", spec.workerKey, {
+  const response = await post("/worker-api/v1/workers", spec.workerKey, {
     workerId: spec.workerId,
     workerGroupId: spec.workerGroupId,
     adapterId: spec.adapterId ?? "websocket",
@@ -99,7 +99,7 @@ async function registerWorker(spec) {
 }
 
 async function registerWorkerContext(spec) {
-  const response = await post("/worker-api/worker-contexts/register", spec.workerKey, {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}/contexts`, spec.workerKey, {
     workerContextId: spec.context.workerContextId,
     workerId: spec.workerId,
     project: spec.context.project,
@@ -119,11 +119,25 @@ async function seedTasks(taskSpecs) {
       MASS_BASE_URL: baseUrl,
       MASS_WS_URL: wsUrl,
     });
-    const createResponse = await post("/status/api/tasks", taskSubmitterKey, requestBody);
+    const createResponse = await post("/api/v1/tasks", taskSubmitterKey, {
+      ...requestBody,
+      inputs: undefined,
+      defaultMsgMaxRetryCount: undefined,
+      openEnded: undefined,
+    });
     const taskId = String(createResponse.data?.taskId ?? "");
     console.log(`[sample-launcher] created seed task ${requestBody.taskName}: ${taskId}`);
+    if (Array.isArray(requestBody.inputs) && requestBody.inputs.length > 0) {
+      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskSubmitterKey, {
+        items: requestBody.inputs,
+        defaultMsgMaxRetryCount: requestBody.defaultMsgMaxRetryCount ?? 0,
+      });
+    }
+    if (!requestBody.openEnded) {
+      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:seal`, taskSubmitterKey, null);
+    }
     if (taskSpec.approve && taskId) {
-      await post(`/status/api/tasks/${encodeURIComponent(taskId)}/audit?approved=true&comment=sample-launcher`, taskSubmitterKey, null);
+      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:approve?comment=sample-launcher`, taskSubmitterKey, null);
       console.log(`[sample-launcher] approved seed task ${requestBody.taskName}: ${taskId}`);
     }
   }
@@ -147,9 +161,9 @@ async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
 
 async function waitForWorkerOnline(workerId) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const response = await fetch(`${baseUrl}/status/api/workers`);
+    const response = await fetch(`${baseUrl}/api/v1/meta/worker-capabilities`);
     const json = await response.json().catch(() => ({}));
-    const items = json?.data?.items;
+    const items = json?.data;
     if (Array.isArray(items)) {
       const worker = items.find((item) => item?.workerId === workerId);
       if (worker?.status === "ONLINE") {

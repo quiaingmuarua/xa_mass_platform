@@ -43,7 +43,7 @@ describe('metadata.real', () => {
     it('calls backend SDK metadata endpoints', async () => {
         setRuntimeConfigOverrides({ apiBaseUrl: '/backend' })
         const fetchMock = vi.fn((input: string) => {
-            if (input.endsWith('/sdk/meta/event-capabilities')) {
+            if (input.endsWith('/api/v1/meta/event-capabilities')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
@@ -65,7 +65,7 @@ describe('metadata.real', () => {
                     }),
                 )
             }
-            if (input.endsWith('/sdk/meta/events')) {
+            if (input.endsWith('/api/v1/meta/events')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
@@ -107,15 +107,15 @@ describe('metadata.real', () => {
         const capabilities = await listEventCapabilitiesReal()
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/sdk/meta/projects',
+            '/backend/api/v1/meta/projects',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/sdk/meta/events',
+            '/backend/api/v1/meta/events',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/sdk/meta/event-capabilities',
+            '/backend/api/v1/meta/event-capabilities',
             expect.any(Object),
         )
         expect(projects[0].code).toBe('demoApp')

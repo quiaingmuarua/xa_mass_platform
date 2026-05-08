@@ -65,7 +65,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 .build());
 
         HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -86,17 +86,14 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 "userId", "crawler-agent",
                 "eventCode", "crawler.fetch-page",
                 "payloadType", "JSON",
-                "inputs", List.of(Map.of("url", "https://example.test/realtime-java")),
                 "batchSize", 1
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/realtime-java")), 3));
+        assertApiOk(sealTask(taskId));
 
-        Map<String, Object> approveResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
 
         TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);

@@ -74,14 +74,14 @@ public final class PollingWorkerMain {
         if (registerContext) {
             registerWorkerContext();
         }
-        post("/worker-api/workers/" + encoded(workerId) + "/online",
+        post("/worker-api/v1/workers/" + encoded(workerId) + ":online",
                 jsonObject("reason", "java-worker-online"));
 
         long lastHeartbeatAt = 0L;
         while (!shuttingDown.get()) {
             long now = System.currentTimeMillis();
             if (now - lastHeartbeatAt >= heartbeatIntervalMs) {
-                post("/worker-api/workers/" + encoded(workerId) + "/heartbeat",
+                post("/worker-api/v1/workers/" + encoded(workerId) + ":heartbeat",
                         jsonObject("reason", "java-worker-heartbeat"));
                 lastHeartbeatAt = now;
             }
@@ -111,7 +111,7 @@ public final class PollingWorkerMain {
         eventBindings.add(binding);
         body.add("eventBindings", eventBindings);
 
-        JsonObject response = post("/worker-api/workers/register", body);
+        JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));
     }
 
@@ -130,14 +130,14 @@ public final class PollingWorkerMain {
         attributes.addProperty("runtime", "java");
         body.add("attributes", attributes);
 
-        JsonObject response = post("/worker-api/worker-contexts/register", body);
+        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + "/contexts", body);
         log("registered worker context: " + response.get("data"));
     }
 
     private void pollOnce() throws Exception {
         JsonObject request = new JsonObject();
         request.addProperty("maxMessages", 10);
-        JsonObject response = post("/worker-api/workers/" + encoded(workerId) + "/poll", request);
+        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":poll", request);
         JsonObject data = objectMember(response, "data");
         JsonArray items = arrayMember(data, "items");
         for (JsonElement element : items) {
@@ -172,7 +172,7 @@ public final class PollingWorkerMain {
             submitBody.addProperty("errorCode", errorCodeElement.getAsString());
         }
         submitBody.add("output", objectMember(result, "output"));
-        JsonObject response = post("/worker-api/workers/" + encoded(workerId) + "/results", submitBody);
+        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":submit-result", submitBody);
         log("submitted result: " + response.get("data"));
     }
 
@@ -306,7 +306,7 @@ public final class PollingWorkerMain {
         }
         log("shutting down: " + reason);
         try {
-            post("/worker-api/workers/" + encoded(workerId) + "/offline", jsonObject("reason", reason));
+            post("/worker-api/v1/workers/" + encoded(workerId) + ":offline", jsonObject("reason", reason));
         } catch (Exception error) {
             log("offline failed: " + error.getMessage());
         }

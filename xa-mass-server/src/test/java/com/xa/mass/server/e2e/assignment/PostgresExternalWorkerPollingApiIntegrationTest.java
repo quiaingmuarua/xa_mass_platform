@@ -97,7 +97,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
                 "workerGroupId", "polling-postgres",
                 "attributes", Map.of("runtime", "postgres-e2e"),
@@ -109,7 +109,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
+        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + workerId + "/contexts", HttpMethod.POST, Map.of(
                 "workerContextId", "ctx-" + workerId,
                 "workerId", workerId,
                 "project", "crawlerApp",
@@ -118,7 +118,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         ), workerHeaders);
         assertApiOk(contextResponse);
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/online", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-online"
         ), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
@@ -129,21 +129,18 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         createBody.put("userId", "crawler-agent");
         createBody.put("eventCode", "crawler.fetch-page");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("inputs", List.of(Map.of("url", "https://example.test/postgres-page")));
         createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/postgres-page")), 3));
+        assertApiOk(sealTask(taskId));
 
-        assertApiOk(exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         List<Map<String, Object>> items = List.of();
         for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            Map<String, Object> pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
                     "timeoutMs", 1000
             ), workerHeaders);
@@ -153,7 +150,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertFalse(items.isEmpty(), "expected polling worker to receive a task item");
 
         Map<String, Object> item = items.getFirst();
-        Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
+        Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
                 "messageId", item.get("messageId"),
                 "success", true,
@@ -171,7 +168,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/offline", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-offline"
         ), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");

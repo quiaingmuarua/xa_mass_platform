@@ -453,11 +453,8 @@ Behavior:
 The following historical task route shapes are no longer part of the active
 public API:
 
-- unversioned `/status/api/tasks`
 - create-with-inputs on public create
-- `/status/api/tasks/{taskId}/audit`
-- `/status/api/tasks/{taskId}/status`
-- `PUT /.../seal`
+- non-`POST` task command routes
 - `/messages` as the main item list route
 
 ## 5. Runtime Diagnostics API

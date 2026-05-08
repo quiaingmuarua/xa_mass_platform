@@ -68,12 +68,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             createTime: '2026-04-20 08:30:00',
             updateTime: '2026-04-20 11:24:00',
         },
-        items: [
-            { target: 'worker-us-01' },
-            { target: 'worker-us-02' },
-            { target: 'worker-us-03' },
-            { target: 'worker-us-04' },
-        ],
         stateValidation: {
             valid: true,
             needsResolution: false,
@@ -83,34 +77,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             processingMessages: 4,
             violations: [],
         },
-        messages: [
-            {
-                messageId: 'msg-001',
-                status: 'SUCCESS',
-                latestAttemptWorkerId: 'worker-us-01',
-                latestAttemptWorkerContextId: 'ctx-us-01',
-                latestAttemptBatchId: 'batch-01',
-                retryCount: 0,
-                maxRetryCount: 3,
-                finalReason: 'BUSINESS_SUCCESS',
-                input: { target: 'worker-us-01' },
-                output: { result: 'ready' },
-                errorMessage: null,
-            },
-            {
-                messageId: 'msg-004',
-                status: 'RUNNING',
-                latestAttemptWorkerId: 'worker-us-04',
-                latestAttemptWorkerContextId: 'ctx-us-04',
-                latestAttemptBatchId: 'batch-02',
-                retryCount: 1,
-                maxRetryCount: 3,
-                finalReason: null,
-                input: { target: 'worker-us-04' },
-                output: {},
-                errorMessage: null,
-            },
-        ],
     },
     'task-002': {
         task: {
@@ -134,7 +100,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             createTime: '2026-04-19 23:10:00',
             updateTime: '2026-04-20 10:51:00',
         },
-        items: [{ target: 'delivery-01' }, { target: 'delivery-02' }],
         stateValidation: {
             valid: true,
             needsResolution: false,
@@ -144,7 +109,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             processingMessages: 0,
             violations: [],
         },
-        messages: [],
     },
     'task-003': {
         task: {
@@ -168,7 +132,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             createTime: '2026-04-20 05:00:00',
             updateTime: '2026-04-20 09:18:00',
         },
-        items: [{ target: 'session-01' }],
         stateValidation: {
             valid: true,
             needsResolution: false,
@@ -178,7 +141,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             processingMessages: 0,
             violations: [],
         },
-        messages: [],
     },
 }
 
@@ -267,7 +229,6 @@ export async function createTaskMock(
             createTime: createdAt,
             updateTime: createdAt,
         },
-        items: normalizedInputs,
         stateValidation: {
             valid: true,
             needsResolution: false,
@@ -277,19 +238,6 @@ export async function createTaskMock(
             processingMessages: 0,
             violations: [],
         },
-        messages: normalizedInputs.map((input, index) => ({
-            messageId: `${taskId}-msg-${index + 1}`,
-            status: 'INIT',
-            latestAttemptWorkerId: null,
-            latestAttemptWorkerContextId: null,
-            latestAttemptBatchId: null,
-            retryCount: 0,
-            maxRetryCount: request.defaultMsgMaxRetryCount,
-            finalReason: null,
-            input,
-            output: {},
-            errorMessage: null,
-        })),
     }
 
     return delay({

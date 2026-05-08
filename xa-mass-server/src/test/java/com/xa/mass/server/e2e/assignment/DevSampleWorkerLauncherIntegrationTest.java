@@ -67,7 +67,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
         waitForSeedTask("sample-stock-quote-stream", "RUNNING");
 
         String requestId = "launcher-stock-req-0001";
-        String sourceUrl = "http://127.0.0.1:" + port + "/sdk/meta/events/stock.quote.fetch";
+        String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/meta/events/stock.quote.fetch";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
         createBody.put("taskName", "launcher-stock-quote");
@@ -78,21 +78,18 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
                 "routingCode", "us",
                 "sourceUrl", sourceUrl
         ));
-        createBody.put("inputs", List.of(Map.of(
+        createBody.put("batchSize", 1);
+
+        Map<String, Object> createResponse = createTaskShell(createBody);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of(
                 "requestId", requestId,
                 "symbol", "NVDA",
                 "market", "NASDAQ"
-        )));
-        createBody.put("batchSize", 1);
-
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
-        assertApiOk(createResponse);
-        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        ));
+        )), 3));
+        assertApiOk(sealTask(taskId));
+        assertApiOk(approveTask(taskId));
 
         TaskSnapshot terminal = waitForTerminalTask(taskId);
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));

@@ -72,21 +72,17 @@ class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test", "routingCode", "us"));
             createBody.put("userId", "itest");
-            createBody.put("inputs", List.of(
-                    Map.of("target", "target-a"),
-                    Map.of("target", "target-b")
-            ));
             createBody.put("batchSize", 1);
-            createBody.put("defaultMsgMaxRetryCount", 0);
-            Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
+            Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+            assertApiOk(appendTaskItems(taskId, List.of(
+                    Map.of("target", "target-a"),
+                    Map.of("target", "target-b")
+            ), 0));
+            assertApiOk(sealTask(taskId));
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");

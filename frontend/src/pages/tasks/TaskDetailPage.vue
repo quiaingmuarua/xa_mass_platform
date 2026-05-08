@@ -4,8 +4,8 @@
       <div>
         <h2 class="page-title">Task Detail</h2>
         <p class="page-subtitle">
-          Runtime-centric detail page shaped around task aggregate, validation
-          state, and logical message execution.
+          Runtime-centric detail page shaped around task aggregate and validation
+          state.
         </p>
       </div>
       <div class="actions">
@@ -173,46 +173,6 @@
           <strong>Shared config</strong>
         </template>
         <pre class="json-block">{{ formatJson(detail.task.sharedConfig) }}</pre>
-      </el-card>
-
-      <el-card class="page-card">
-        <template #header>
-          <strong>Task messages</strong>
-        </template>
-        <PageEmptyState
-          v-if="detail.messages.length === 0"
-          description="This task does not currently have message records to display."
-        />
-
-        <el-table v-else :data="detail.messages" row-key="messageId">
-          <el-table-column prop="messageId" label="Message" min-width="160" />
-          <el-table-column prop="status" label="Status" min-width="120" />
-          <el-table-column
-            prop="latestAttemptWorkerId"
-            label="Worker"
-            min-width="150"
-          />
-          <el-table-column prop="retryCount" label="Retry" min-width="100">
-            <template #default="{ row }">
-              {{ row.retryCount }} / {{ row.maxRetryCount }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="finalReason"
-            label="Final Reason"
-            min-width="160"
-          />
-          <el-table-column label="Input" min-width="200">
-            <template #default="{ row }">
-              <pre class="json-inline">{{ formatJson(row.input) }}</pre>
-            </template>
-          </el-table-column>
-          <el-table-column label="Output" min-width="200">
-            <template #default="{ row }">
-              <pre class="json-inline">{{ formatJson(row.output) }}</pre>
-            </template>
-          </el-table-column>
-        </el-table>
       </el-card>
     </template>
   </section>

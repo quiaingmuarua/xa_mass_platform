@@ -7,18 +7,12 @@ import type {
     TaskDetailResponse,
     TaskListQuery,
     TaskListResponse,
-    TaskMessageView,
     TaskValidationSummary,
 } from '@/types/tasks'
 
 interface TaskDetailEnvelope {
     task: TaskDetailRecord
-    items: Array<Record<string, unknown>>
     stateValidation: TaskValidationSummary
-}
-
-interface TaskMessagesEnvelope {
-    messages: TaskMessageView[]
 }
 
 export async function listTasksReal(
@@ -35,33 +29,52 @@ export async function listTasksReal(
     }
 
     const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : ''
-    return requestApiData<TaskListResponse>(`/status/api/tasks${suffix}`)
+    return requestApiData<TaskListResponse>(`/api/v1/tasks${suffix}`)
 }
 
 export async function createTaskReal(
     request: TaskCreateRequest,
 ): Promise<TaskCreateResult> {
-    return requestApiData<TaskCreateResult>('/status/api/tasks', {
+    const shellResult = await requestApiData<TaskCreateResult>('/api/v1/tasks', {
         method: 'POST',
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+            userId: request.userId,
+            project: request.project,
+            taskName: request.taskName,
+            eventCode: request.eventCode,
+            mode: request.mode,
+            payloadType: request.payloadType,
+            sharedConfig: request.sharedConfig,
+            batchSize: request.batchSize,
+            maxRuntimeSeconds: request.maxRuntimeSeconds,
+        }),
     })
+
+    await requestApiData<{ added: number }>(`/api/v1/tasks/${shellResult.taskId}/items`, {
+        method: 'POST',
+        body: JSON.stringify({
+            items: request.inputs,
+            defaultMsgMaxRetryCount: request.defaultMsgMaxRetryCount,
+        }),
+    })
+
+    if (!request.openEnded) {
+        await requestApiData<TaskActionResult>(`/api/v1/tasks/${shellResult.taskId}:seal`, {
+            method: 'POST',
+        })
+    }
+
+    return shellResult
 }
 
 export async function getTaskDetailReal(
     taskId: string,
 ): Promise<TaskDetailResponse> {
-    const [detail, messages] = await Promise.all([
-        requestApiData<TaskDetailEnvelope>(`/status/api/tasks/${taskId}`),
-        requestApiData<TaskMessagesEnvelope>(
-            `/status/api/tasks/${taskId}/messages?page=1&size=200`,
-        ),
-    ])
+    const detail = await requestApiData<TaskDetailEnvelope>(`/api/v1/tasks/${taskId}`)
 
     return {
         task: normalizeTaskRecord(detail.task),
-        items: detail.items ?? [],
         stateValidation: detail.stateValidation,
-        messages: messages.messages ?? [],
     }
 }
 
@@ -78,7 +91,9 @@ export async function auditTaskReal(
     }
 
     return requestApiData<TaskActionResult>(
-        `/status/api/tasks/${taskId}/audit?${params.toString()}`,
+        approved
+            ? `/api/v1/tasks/${taskId}:approve?${params.toString()}`
+            : `/api/v1/tasks/${taskId}:reject?${params.toString()}`,
         {
             method: 'POST',
         },
@@ -110,7 +125,7 @@ async function invokeTaskActionReal(
     action: 'pause' | 'resume' | 'block' | 'terminate',
 ): Promise<TaskActionResult> {
     return requestApiData<TaskActionResult>(
-        `/status/api/tasks/${taskId}/${action}`,
+        `/api/v1/tasks/${taskId}:${action}`,
         {
             method: 'POST',
         },

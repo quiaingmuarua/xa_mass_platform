@@ -125,7 +125,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 this::getTask,
                 this::getActiveLease,
                 this::getTaskWork,
-                this::getActiveLeases
+                this::getActiveLeases,
+                this::getTaskWorkStats
         );
         this.stateValidator = new TaskStateValidator(
                 this,
@@ -516,9 +517,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * aggregates. This is diagnostic-only and may require a full task-message
      * snapshot.
      */
-    @Override
     @CompatibilityProjectionOnly
-    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
+    TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
     }
 

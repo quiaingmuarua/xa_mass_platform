@@ -84,7 +84,9 @@ class TaskStateValidatorBoundaryTest {
                 detailStore,
                 runtime::getTask,
                 (taskId, messageId) -> Optional.empty(),
-                taskId -> List.of()
+                (taskId, messageId) -> Optional.empty(),
+                taskId -> List.of(),
+                taskId -> TaskWorkStats.EMPTY
         );
     }
 

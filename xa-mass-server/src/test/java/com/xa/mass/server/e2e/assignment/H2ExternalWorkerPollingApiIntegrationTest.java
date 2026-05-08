@@ -85,7 +85,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
                 "workerGroupId", "polling-jdbc",
                 "attributes", Map.of("runtime", "jdbc-e2e"),
@@ -97,7 +97,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
+        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + workerId + "/contexts", HttpMethod.POST, Map.of(
                 "workerContextId", "ctx-" + workerId,
                 "workerId", workerId,
                 "project", "crawlerApp",
@@ -106,7 +106,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders);
         assertApiOk(contextResponse);
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/online", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-online"
         ), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
@@ -117,26 +117,23 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("userId", "crawler-agent");
         createBody.put("eventCode", "crawler.fetch-page");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("inputs", List.of(Map.of("url", "https://example.test/h2-page")));
         createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/h2-page")), 3));
+        assertApiOk(sealTask(taskId));
 
         Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(createdDetail);
         assertEquals("NEW", task(createdDetail).get("status"));
         assertEquals(Boolean.TRUE, stateValidation(createdDetail).get("valid"));
 
-        assertApiOk(exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         List<Map<String, Object>> items = List.of();
         for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            Map<String, Object> pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
                     "timeoutMs", 1000
             ), workerHeaders);
@@ -149,7 +146,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(taskId, item.get("taskId"));
         assertEquals(workerId, item.get("workerId"));
 
-        Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
+        Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
                 "messageId", item.get("messageId"),
                 "success", true,
@@ -174,7 +171,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(Boolean.TRUE, stateValidation(terminalDetail).get("valid"));
         assertEquals(Boolean.FALSE, stateValidation(terminalDetail).get("needsResolution"));
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/offline", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-offline"
         ), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");

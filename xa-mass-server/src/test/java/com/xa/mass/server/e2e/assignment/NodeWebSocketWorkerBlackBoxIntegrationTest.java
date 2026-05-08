@@ -67,7 +67,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
         HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -90,17 +90,14 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 "userId", "crawler-agent",
                 "eventCode", "crawler.fetch-page",
                 "payloadType", "JSON",
-                "inputs", List.of(Map.of("url", "https://example.test/realtime-node")),
                 "batchSize", 1
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/realtime-node")), 3));
+        assertApiOk(sealTask(taskId));
 
-        Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
 
         TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
@@ -145,7 +142,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
         HttpHeaders workerHeaders = sdkCredentialHeaders(STOCK_WORKER_KEY);
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -162,7 +159,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not mark realtime worker online");
 
-        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
+        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + STOCK_WORKER_ID + "/contexts", HttpMethod.POST, Map.of(
                 "workerContextId", "ctx-" + STOCK_WORKER_ID,
                 "workerId", STOCK_WORKER_ID,
                 "project", "crawlerApp",
@@ -171,7 +168,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders);
         assertApiOk(contextResponse);
 
-        String sourceUrl = "http://127.0.0.1:" + port + "/sdk/meta/events/stock.quote.fetch";
+        String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/meta/events/stock.quote.fetch";
         String initialRequestId = "stockreq-init-0001";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
@@ -180,25 +177,19 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("eventCode", "stock.quote.fetch");
         createBody.put("mode", "STREAMING");
         createBody.put("payloadType", "JSON");
-        createBody.put("openEnded", true);
         createBody.put("workloadClass", "INTERACTIVE");
         createBody.put("sharedConfig", Map.of("routingCode", "us", "sourceUrl", sourceUrl));
-        createBody.put("defaultMsgMaxRetryCount", 0);
-        createBody.put("inputs", List.of(Map.of(
+        createBody.put("batchSize", 1);
+        Map<String, Object> createResponse = createTaskShell(createBody);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, List.of(Map.of(
                 "requestId", initialRequestId,
                 "symbol", "AAPL",
                 "market", "NASDAQ"
-        )));
-        createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
-        assertApiOk(createResponse);
-        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        )), 0));
 
-        assertApiOk(exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(STOCK_WORKER_ID, wsUri)) {
@@ -213,21 +204,23 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
             String successRequestId = "stockreq-async-0002";
             assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
-                    "inputs", List.of(Map.of(
+                    "items", List.of(Map.of(
                             "requestId", successRequestId,
                             "symbol", "MSFT",
                             "market", "NASDAQ",
                             "sourceUrl", sourceUrl
-                    ))
+                    )),
+                    "defaultMsgMaxRetryCount", 0
             )));
 
             String invalidRequestId = "stockreq-invalid-0003";
             assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
-                    "inputs", List.of(Map.of(
+                    "items", List.of(Map.of(
                             "requestId", invalidRequestId,
                             "market", "NASDAQ",
                             "sourceUrl", sourceUrl
-                    ))
+                    )),
+                    "defaultMsgMaxRetryCount", 0
             )));
 
             TaskSnapshot stockResults = waitForTaskSnapshot(
@@ -263,7 +256,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             Map<String, Object> failedOutput = (Map<String, Object>) failedMessage.get("output");
             assertEquals(invalidRequestId, failedOutput.get("requestId"));
 
-            assertApiOk(exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.PUT, null));
+            assertApiOk(sealTask(taskId));
             TaskSnapshot sealedTerminal = waitForTaskSnapshot(taskId, "TERMINAL", 30, 250L);
             assertEquals("TERMINAL", sealedTerminal.task().get("status"));
             assertTrue(List.of("MIXED_MESSAGE_RESULTS", "ALL_MESSAGES_FAILED", "ALL_MESSAGES_SUCCEEDED")

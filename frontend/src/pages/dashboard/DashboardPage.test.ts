@@ -25,7 +25,7 @@ describe('DashboardPage', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
-                if (input.includes('/status/api/tasks')) {
+                if (input.includes('/api/v1/tasks')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -49,7 +49,7 @@ describe('DashboardPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/status/api/worker-contexts')) {
+                if (input.includes('/api/v1/runtime/worker-contexts')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -73,7 +73,7 @@ describe('DashboardPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/status/api/workers')) {
+                if (input.includes('/api/v1/runtime/workers')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,

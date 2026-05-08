@@ -192,7 +192,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                                           String workerKey) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(normalizeBaseUrl(baseUrl)
-                        + "/worker-api/workers/" + workerId + "/offline"))
+                        + "/worker-api/v1/workers/" + workerId + ":offline"))
                 .header("Content-Type", "application/json")
                 .header("X-Mass-Api-Key", workerKey)
                 .POST(HttpRequest.BodyPublishers.ofString("{\"reason\":\"external-node-process-close\"}"))

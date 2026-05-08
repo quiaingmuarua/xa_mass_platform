@@ -25,7 +25,6 @@ describe('tasks API facade', () => {
 
         const detail = await getTaskDetail(result.taskId)
         expect(detail.task.taskName).toBe('Create from console test')
-        expect(detail.items).toEqual([{ target: 'alpha' }, { target: 'beta' }])
-        expect(detail.messages).toHaveLength(2)
+        expect(detail.stateValidation.totalMessages).toBe(2)
     })
 })

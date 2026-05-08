@@ -11,6 +11,8 @@ import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.starter.MassApplication;
+import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.EngineConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -321,11 +323,8 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected List<Map<String, Object>> fetchTaskMessageAttempts(String taskId, String messageId) {
-        if (taskManager == null) {
-            throw new IllegalStateException("TaskManager test dependency is not available");
-        }
         List<Map<String, Object>> attempts = new java.util.ArrayList<>();
-        new TaskCompatibilityQueryService(taskManager).visitTaskMessageAttemptViews(taskId, messageId,
+        resolveTaskCompatibilityQueries().visitTaskMessageAttemptViews(taskId, messageId,
                 (attemptId, ignoredTaskId, ignoredMessageId, attemptNo, workerId, workerContextId, batchId, status,
                  leaseExpireTime, dispatchTime, ackTime, startTime, finishTime, finalReason, errorMessage, errorCode,
                  output, createTime, updateTime) -> {
@@ -355,11 +354,8 @@ public abstract class AbstractSampleE2eTest {
     }
 
     private List<Map<String, Object>> fetchCompatibilityMessages(String taskId, int limit) {
-        if (taskManager == null) {
-            throw new IllegalStateException("TaskManager test dependency is not available");
-        }
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
-        new TaskCompatibilityQueryService(taskManager).visitTaskMessageSnapshot(taskId, limit,
+        resolveTaskCompatibilityQueries().visitTaskMessageSnapshot(taskId, limit,
                 (messageId, ignoredTaskId, status, latestAttemptId, latestAttemptWorkerId, latestAttemptWorkerContextId,
                  latestAttemptBatchId, retryCount, maxRetryCount, errorMessage, errorCode, finalReason, payloadRef,
                  input, output, assignedTime, createTime, updateTime, startTime, completeTime) -> {
@@ -388,6 +384,30 @@ public abstract class AbstractSampleE2eTest {
                     messages.add(message);
                 });
         return messages;
+    }
+
+    private TaskCompatibilityQueryService resolveTaskCompatibilityQueries() {
+        if (taskManager != null) {
+            return new TaskCompatibilityQueryService(taskManager);
+        }
+        if (app == null) {
+            throw new IllegalStateException("TaskManager test dependency is not available");
+        }
+        try {
+            java.lang.reflect.Field delegateField = MassSdkApplication.class.getDeclaredField("delegate");
+            delegateField.setAccessible(true);
+            MassApplication delegate = (MassApplication) delegateField.get(app);
+            MassEngine engine = delegate.getEngine();
+            if (engine == null) {
+                throw new IllegalStateException("Mass engine is unavailable for test compatibility queries");
+            }
+            java.lang.reflect.Field configField = MassEngine.class.getDeclaredField("config");
+            configField.setAccessible(true);
+            EngineConfig config = (EngineConfig) configField.get(engine);
+            return config.getTaskCompatibilityQueryService();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Task compatibility queries are unavailable for tests", e);
+        }
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {

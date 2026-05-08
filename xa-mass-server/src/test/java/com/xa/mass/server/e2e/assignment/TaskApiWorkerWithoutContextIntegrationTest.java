@@ -54,18 +54,15 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "stateless dispatch integration"));
             createBody.put("userId", "itest");
-            createBody.put("inputs", List.of(Map.of("target", "target-a")));
             createBody.put("batchSize", 1);
 
-            Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, createBody);
+            Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+            assertApiOk(appendTaskItems(taskId, List.of(Map.of("target", "target-a")), 3));
+            assertApiOk(sealTask(taskId));
 
-            Map<String, Object> auditResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> auditResponse = approveTask(taskId);
             assertApiOk(auditResponse);
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);

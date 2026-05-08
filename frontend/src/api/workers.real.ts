@@ -5,11 +5,11 @@ import type {
 } from '@/types/workers'
 
 export async function listWorkersReal(): Promise<WorkerListResponse> {
-    return requestApiData<WorkerListResponse>('/status/api/workers')
+    return requestApiData<WorkerListResponse>('/api/v1/runtime/workers')
 }
 
 export async function listWorkerContextsReal(): Promise<WorkerContextListResponse> {
     return requestApiData<WorkerContextListResponse>(
-        '/status/api/worker-contexts',
+        '/api/v1/runtime/worker-contexts',
     )
 }

@@ -65,6 +65,14 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.matches("^/api/v1/tasks/[^/:]+:seal$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
         }
+        if (uri.startsWith("/api/v1/meta/") && "GET".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS);
+        }
+        if (uri.equals("/api/v1/submitters/me") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+        }
         if (uri.startsWith("/api/v1/runtime/queues") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
