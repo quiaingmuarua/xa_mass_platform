@@ -35,8 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Key distinction from {@link TaskApiFailureResultIntegrationTest}: that test configures
  * {@code sample.client.retry-attempts=1}, so messages exhaust retries and close with
  * {@code finalReason=RETRY_EXHAUSTED}. Here {@code maxRetryCount=0} so each message gets
- * exactly one attempt; a direct FAILED submission closes with {@code finalReason=BUSINESS_FAILED}
- * and the task closes with {@code terminalReason=ALL_MESSAGES_FAILED}.
+ * exactly one attempt; the first FAILED submission immediately exhausts the retry budget,
+ * so the message still closes with {@code finalReason=RETRY_EXHAUSTED} while the task closes
+ * with {@code terminalReason=ALL_MESSAGES_FAILED}.
  */
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -120,8 +121,8 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
             for (Map<String, Object> msg : terminalSnapshot.messages()) {
                 assertEquals("FAILED", msg.get("status"),
                         "each message should be FAILED");
-                assertEquals("BUSINESS_FAILED", msg.get("finalReason"),
-                        "with maxRetryCount=0, finalReason should be BUSINESS_FAILED (not RETRY_EXHAUSTED)");
+                assertEquals("RETRY_EXHAUSTED", msg.get("finalReason"),
+                        "with maxRetryCount=0, the first FAILED result exhausts the retry budget immediately");
                 assertNotNull(msg.get("latestAttemptWorkerId"));
                 assertNotNull(msg.get("latestAttemptWorkerContextId"));
                 assertNotNull(msg.get("latestAttemptBatchId"));
