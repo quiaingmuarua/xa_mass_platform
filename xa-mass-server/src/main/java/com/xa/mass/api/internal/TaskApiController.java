@@ -529,7 +529,6 @@ public class TaskApiController {
         view.put("messageId", taskMsg.messageId());
         view.put("taskId", taskMsg.taskId());
         view.put("status", taskMsg.status());
-        view.put("latestAttemptId", taskMsg.latestAttemptId());
         view.put("latestAttemptWorkerId", taskMsg.latestAttemptWorkerId());
         view.put("latestAttemptWorkerContextId", taskMsg.latestAttemptWorkerContextId());
         view.put("latestAttemptBatchId", taskMsg.latestAttemptBatchId());

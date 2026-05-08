@@ -2,6 +2,9 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMessageSnapshot;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -17,37 +20,46 @@ import java.util.Objects;
  */
 public class TaskQueryService {
 
-    private final TaskManager taskManager;
     private final TaskQueryPort taskQueries;
 
-    public TaskQueryService(TaskManager taskManager) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
-        this.taskQueries = null;
-    }
-
     public TaskQueryService(TaskQueryPort taskQueries) {
-        this.taskManager = null;
         this.taskQueries = Objects.requireNonNull(taskQueries, "taskQueries");
     }
 
     public Task getTask(String taskId) {
-        return taskManager != null ? taskManager.getTask(taskId) : taskQueries.getTask(taskId);
+        return taskQueries.getTask(taskId);
     }
 
     public List<Task> listTasksPaged(int offset, int limit) {
-        return taskManager != null ? taskManager.listTasksPaged(offset, limit) : taskQueries.listTasksPaged(offset, limit);
+        return taskQueries.listTasksPaged(offset, limit);
     }
 
     public List<Task> getTasksByStatus(TaskStatus status) {
-        return taskManager != null ? taskManager.getTasksByStatus(status) : taskQueries.getTasksByStatus(status);
+        return taskQueries.getTasksByStatus(status);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return taskManager != null ? taskManager.resolveTaskState(taskId) : taskQueries.resolveTaskState(taskId);
+        return taskQueries.resolveTaskState(taskId);
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return taskManager != null ? taskManager.validateTaskState(taskId) : taskQueries.validateTaskState(taskId);
+        return taskQueries.validateTaskState(taskId);
+    }
+
+    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
+        return taskQueries.getTaskMessageSnapshot(taskId, limit);
+    }
+
+    public TaskMsg getTaskMessageView(String taskId, String messageId) {
+        return taskQueries.getTaskMessageView(taskId, messageId);
+    }
+
+    public List<TaskMsgAttempt> getTaskMessageAttemptViews(String taskId, String messageId) {
+        return taskQueries.getTaskMessageAttemptViews(taskId, messageId);
+    }
+
+    public TaskMsgAttempt getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
+        return taskQueries.getLatestActiveTaskMessageAttemptView(taskId, messageId);
     }
 
 }

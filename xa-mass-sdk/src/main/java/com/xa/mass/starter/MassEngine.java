@@ -11,7 +11,7 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
@@ -96,7 +96,7 @@ public class MassEngine {
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
-            var msgAssignListener = new SimpleTaskMsgAssignListener(
+            var dispatchBinder = new SimpleTaskDispatchBinder(
                     assignmentRuntimePort,
                     workerManager,
                     recordService,
@@ -104,8 +104,8 @@ public class MassEngine {
                     traceEventLogger);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, assignmentRuntimePort, taskEvents, traceEventLogger)
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntimePort, taskEvents, traceEventLogger);
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, dispatchBinder, assignmentRuntimePort, taskEvents, traceEventLogger)
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntimePort, taskEvents, traceEventLogger);
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
 
@@ -215,4 +215,5 @@ public class MassEngine {
         }
     }
 }
+
 

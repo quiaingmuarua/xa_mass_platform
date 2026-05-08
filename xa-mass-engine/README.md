@@ -64,7 +64,7 @@ Keep these facts fixed unless the owning global baselines change:
   bridge unless a real protocol boundary appears
 - `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
   shell-facing command/query services; keep those services off raw
-  `TaskManager` growth even when compatibility constructors remain
+  `TaskManager` growth
 - `TaskResultIngestPort` is the narrow backing seam for transport-facing
   result ingress; keep callback acceptance off the raw `TaskManager` facade
 - `TaskAssignWorker` owns lane-local assignment signal admission; queue-full

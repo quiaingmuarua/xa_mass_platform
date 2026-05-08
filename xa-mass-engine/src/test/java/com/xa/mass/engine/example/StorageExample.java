@@ -8,7 +8,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
@@ -139,11 +139,11 @@ public class StorageExample {
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
         TaskAssignmentRuntimePort assignmentRuntimePort = taskManager;
-        var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
+        var dispatchBinder = new SimpleTaskDispatchBinder(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,
                 workerManager,
-                msgAssignListener,
+                dispatchBinder,
                 recordService,
                 assignmentRuntimePort,
                 taskManager.events()
@@ -262,11 +262,11 @@ public class StorageExample {
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
         TaskAssignmentRuntimePort assignmentRuntimePort = taskManager;
-        var msgAssignListener = new SimpleTaskMsgAssignListener(assignmentRuntimePort, workerManager, recordService);
+        var dispatchBinder = new SimpleTaskDispatchBinder(assignmentRuntimePort, workerManager, recordService);
         var workerAssignListener = new TaskWorkerAssignListener(
                 ruleManager,
                 workerManager,
-                msgAssignListener,
+                dispatchBinder,
                 recordService,
                 assignmentRuntimePort,
                 taskManager.events()
@@ -350,4 +350,5 @@ public class StorageExample {
         );
     }
 }
+
 

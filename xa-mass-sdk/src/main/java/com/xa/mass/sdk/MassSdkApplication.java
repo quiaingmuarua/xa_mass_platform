@@ -241,26 +241,27 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         String normalizedTaskId = requireTaskId(taskId);
         int boundedLimit = Math.max(0, limit);
-        TaskDetailStore taskDetailStore = requireStartedTaskDetailStore();
-        List<SdkTaskMessageView> messages = taskDetailStore.getTaskMessages(normalizedTaskId, boundedLimit).stream()
+        com.xa.mass.base.model.TaskMessageSnapshot snapshot = requireStartedTaskQueries()
+                .getTaskMessageSnapshot(normalizedTaskId, boundedLimit);
+        List<SdkTaskMessageView> messages = snapshot
+                .messages()
+                .stream()
                 .map(this::toSdkTaskMessageView)
                 .toList();
-        boolean truncated = boundedLimit > 0 && taskDetailStore.countTaskMessages(normalizedTaskId) > messages.size();
-        return new SdkTaskMessageSnapshot(messages, boundedLimit, truncated);
+        return new SdkTaskMessageSnapshot(messages, boundedLimit, snapshot.truncated());
     }
 
     @Override
     public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
-        return requireStartedTaskDetailStore()
-                .getTaskMessage(requireTaskId(taskId), requireMessageId(messageId))
-                .map(this::toSdkTaskMessageView)
-                .orElse(null);
+        TaskMsg messageView = requireStartedTaskQueries()
+                .getTaskMessageView(requireTaskId(taskId), requireMessageId(messageId));
+        return messageView != null ? toSdkTaskMessageView(messageView) : null;
     }
 
     @Override
     public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
-        return requireStartedTaskDetailStore()
-                .getTaskMessageAttempts(requireTaskId(taskId), requireMessageId(messageId))
+        return requireStartedTaskQueries()
+                .getTaskMessageAttemptViews(requireTaskId(taskId), requireMessageId(messageId))
                 .stream()
                 .map(this::toSdkTaskMessageAttemptView)
                 .toList();
@@ -268,10 +269,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        return requireStartedTaskDetailStore()
-                .getLatestActiveTaskMessageAttempt(requireTaskId(taskId), requireMessageId(messageId))
-                .map(this::toSdkTaskMessageAttemptView)
-                .orElse(null);
+        TaskMsgAttempt attemptView = requireStartedTaskQueries()
+                .getLatestActiveTaskMessageAttemptView(requireTaskId(taskId), requireMessageId(messageId));
+        return attemptView != null ? toSdkTaskMessageAttemptView(attemptView) : null;
     }
 
     @Override

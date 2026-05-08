@@ -7,8 +7,9 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import java.util.List;
 
 /**
- * 消息分配监听器接口
+ * 娑堟伅鍒嗛厤鐩戝惉鍣ㄦ帴鍙?
  */
-public interface TaskMsgAssignListener {
-    List<TaskDispatchBinding> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers);
+public interface TaskDispatchBinder {
+    List<TaskDispatchBinding> bindDispatches(Task task, List<MatchedWorkerContext> matchedWorkers);
 }
+

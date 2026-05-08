@@ -16,7 +16,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
@@ -112,8 +112,8 @@ public final class TaskWorkloadMixSmokeRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            SimpleTaskMsgAssignListener msgAssignListener =
-                    new SimpleTaskMsgAssignListener(
+            SimpleTaskDispatchBinder dispatchBinder =
+                    new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
                             workerManager,
                             recordService,
@@ -123,7 +123,7 @@ public final class TaskWorkloadMixSmokeRunner {
                     new TaskWorkerAssignListener(
                             matchingStrategy,
                             workerManager,
-                            msgAssignListener,
+                            dispatchBinder,
                             assignmentRuntimePort,
                             taskEvents
                     );
@@ -673,4 +673,5 @@ public final class TaskWorkloadMixSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
+
 

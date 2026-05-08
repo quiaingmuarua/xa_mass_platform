@@ -2,6 +2,9 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMessageSnapshot;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -21,4 +24,12 @@ public interface TaskQueryPort {
     TaskStateResolutionResult resolveTaskState(String taskId);
 
     TaskStateValidationResult validateTaskState(String taskId);
+
+    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
+
+    TaskMsg getTaskMessageView(String taskId, String messageId);
+
+    List<TaskMsgAttempt> getTaskMessageAttemptViews(String taskId, String messageId);
+
+    TaskMsgAttempt getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
 }

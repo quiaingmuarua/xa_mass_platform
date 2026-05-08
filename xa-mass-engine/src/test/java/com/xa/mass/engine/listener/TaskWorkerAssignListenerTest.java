@@ -32,7 +32,7 @@ class TaskWorkerAssignListenerTest {
 
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager;
-    private TaskMsgAssignListener msgAssignListener;
+    private TaskDispatchBinder dispatchBinder;
     private TaskAssignmentRuntimePort assignmentRuntime;
     private TaskAssignmentEventSink assignmentEventSink;
     private TaskWorkerAssignListener listener;
@@ -41,13 +41,13 @@ class TaskWorkerAssignListenerTest {
     void setUp() {
         matchingStrategy = mock(TaskWorkerMatchingStrategy.class);
         workerManager = mock(WorkerManager.class);
-        msgAssignListener = mock(TaskMsgAssignListener.class);
+        dispatchBinder = mock(TaskDispatchBinder.class);
         assignmentRuntime = mock(TaskAssignmentRuntimePort.class);
         assignmentEventSink = new TaskEventPublisher();
         listener = new TaskWorkerAssignListener(
                 matchingStrategy,
                 workerManager,
-                msgAssignListener,
+                dispatchBinder,
                 assignmentRuntime,
                 assignmentEventSink
         );
@@ -61,7 +61,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -69,7 +69,7 @@ class TaskWorkerAssignListenerTest {
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(assignmentRuntime).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matchedWorker)));
+        verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matchedWorker)));
     }
 
     @Test
@@ -80,7 +80,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -100,7 +100,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -119,7 +119,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(listener.onTaskAssign(task));
@@ -150,7 +150,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(3);
         when(matchingStrategy.matchWorkers(same(task), eq(4))).thenReturn(List.of(matched1, matched2, matched3, matched4));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matched1)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matched1)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -158,7 +158,7 @@ class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(assignmentRuntime).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matched1)));
+        verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matched1)));
         verify(workerManager).unlockWorker("worker-2");
         verify(workerManager).unlockWorker("worker-3");
         verify(workerManager).unlockWorker("worker-4");
@@ -177,7 +177,7 @@ class TaskWorkerAssignListenerTest {
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(assignmentRuntime).countPendingDispatchableMessages(task.getTid());
-        verifyNoInteractions(msgAssignListener);
+        verifyNoInteractions(dispatchBinder);
     }
 
     @Test
@@ -188,7 +188,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(1);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of());
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of());
 
         assertFalse(listener.onTaskAssign(task));
 
@@ -215,7 +215,7 @@ class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(workerManager).unlockWorker("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
-        verifyNoInteractions(msgAssignListener);
+        verifyNoInteractions(dispatchBinder);
     }
 
     @Test
@@ -256,7 +256,7 @@ class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(workerManager).unlockWorker("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
-        verifyNoInteractions(msgAssignListener);
+        verifyNoInteractions(dispatchBinder);
     }
 
     @Test
@@ -285,7 +285,7 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
@@ -299,14 +299,14 @@ class TaskWorkerAssignListenerTest {
 
         when(assignmentRuntime.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(binding("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(assignmentRuntime).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matchedWorker)));
+        verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matchedWorker)));
     }
 
     private Task createTask(int targetNumber, int batchSize, int minWorkerCount, TaskStatus status) {
@@ -352,3 +352,4 @@ class TaskWorkerAssignListenerTest {
         return new MatchedWorkerContext(worker, workerContext);
     }
 }
+

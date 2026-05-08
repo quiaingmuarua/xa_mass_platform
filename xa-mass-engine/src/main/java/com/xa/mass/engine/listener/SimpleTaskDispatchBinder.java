@@ -29,8 +29,8 @@ import java.util.stream.Collectors;
 /**
  * Binds persisted task messages to matched workers and emits the dispatch queue.
  */
-public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
-    private static final Logger log = LoggerFactory.getLogger(SimpleTaskMsgAssignListener.class);
+public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
+    private static final Logger log = LoggerFactory.getLogger(SimpleTaskDispatchBinder.class);
     private static final TaskRuntimeClaimOptionsResolver TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER =
             new TaskRuntimeClaimOptionsResolver();
 
@@ -40,20 +40,20 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
 
-    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
+    public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentDiagnosticRecorder recordService) {
         this(assignmentRuntime, workerManager, recordService, null, TraceEventLogger.noop());
     }
 
-    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
+    public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener) {
         this(assignmentRuntime, workerManager, recordService, dispatchListener, TraceEventLogger.noop());
     }
 
-    public SimpleTaskMsgAssignListener(TaskAssignmentRuntimePort assignmentRuntime,
+    public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
@@ -66,7 +66,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     @Override
-    public List<TaskDispatchBinding> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
+    public List<TaskDispatchBinding> bindDispatches(Task task, List<MatchedWorkerContext> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
             traceEventLogger.dispatchBindingSummary(
@@ -79,7 +79,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                     0,
                     Math.max(task.getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
-                    "SimpleTaskMsgAssignListener",
+                    "SimpleTaskDispatchBinder",
                     "no matched worker-context candidates were provided",
                     "SKIPPED"
             );
@@ -99,7 +99,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                     0,
                     Math.max(task.getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
-                    "SimpleTaskMsgAssignListener",
+                    "SimpleTaskDispatchBinder",
                     "there are no pending task messages to dispatch",
                     "SKIPPED"
             );
@@ -130,7 +130,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         task.getTid());
                 workerManager.unlockWorker(worker.getWorkerId());
                 traceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
-                        "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "workerContext not dispatchable");
+                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
                 continue;
             }
             dispatchSlots.add(new DispatchSlot(worker, workerContext));
@@ -172,7 +172,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             if (slot.assignedCount() == 0) {
                 workerManager.unlockWorker(slot.worker().getWorkerId());
                 traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
-                        "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "matched worker received no messages");
+                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
             }
         }
 
@@ -196,7 +196,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 uniqueWorkerContextCount,
                 perWorkerBatchLimit,
                 "ON_MSG_ASSIGN",
-                "SimpleTaskMsgAssignListener",
+                "SimpleTaskDispatchBinder",
                 dispatchBindings.isEmpty()
                         ? "matched workers produced no dispatchable bindings"
                         : "task messages bound to dispatch slots",
@@ -232,7 +232,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         0,
                         perWorkerBatchLimit,
                         "ON_MSG_ASSIGN",
-                        "SimpleTaskMsgAssignListener",
+                        "SimpleTaskDispatchBinder",
                         "dispatch submit failed and assignment state was compensated for retry",
                         "RETRIED"
                 );
@@ -308,7 +308,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 TaskMsgAttemptStatus.CREATED,
                 TaskMsgAttemptStatus.LEASED,
                 "BIND_TASK_MESSAGE",
-                "SimpleTaskMsgAssignListener",
+                "SimpleTaskDispatchBinder",
                 "attempt leased for dispatch"
         );
         traceEventLogger.taskMsgAttemptStatusTransition(
@@ -323,7 +323,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 TaskMsgAttemptStatus.LEASED,
                 TaskMsgAttemptStatus.DISPATCHED,
                 "BIND_TASK_MESSAGE",
-                "SimpleTaskMsgAssignListener",
+                "SimpleTaskDispatchBinder",
                 "attempt dispatched"
         );
         return new TaskDispatchBinding(
@@ -360,7 +360,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                     fromStatus,
                     workerContext.getStatus(),
                     "PREPARE_FOR_DISPATCH",
-                    "SimpleTaskMsgAssignListener",
+                    "SimpleTaskDispatchBinder",
                     "workerContext reserved for task"
             );
             changed = true;
@@ -377,7 +377,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                     fromStatus,
                     workerContext.getStatus(),
                     "PREPARE_FOR_DISPATCH",
-                    "SimpleTaskMsgAssignListener",
+                    "SimpleTaskDispatchBinder",
                     "workerContext advanced to occupied"
             );
             changed = true;
@@ -428,9 +428,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 fromStatus,
                 workerContext.getStatus(),
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
-                "SimpleTaskMsgAssignListener",
+                "SimpleTaskDispatchBinder",
                 "workerContext released after dispatch submit failure"
         );
     }
 }
+
 

@@ -27,48 +27,48 @@ public class TaskWorkerAssignListener {
 
     private final TaskWorkerMatchingStrategy matchingStrategy;
     private final WorkerManager workerManager;
-    private final TaskMsgAssignListener msgAssignListener;
+    private final TaskDispatchBinder dispatchBinder;
     private final TaskAssignmentRuntimePort assignmentRuntime;
     private final TaskAssignmentEventSink assignmentEventSink;
     private final TraceEventLogger traceEventLogger;
 
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskDispatchBinder dispatchBinder,
                                     AssignmentDiagnosticRecorder recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
-        this(ruleManager, workerManager, msgAssignListener, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+        this(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
     }
 
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskDispatchBinder dispatchBinder,
                                     AssignmentDiagnosticRecorder recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink,
                                     TraceEventLogger traceEventLogger) {
         this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService, traceEventLogger),
-                workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink, traceEventLogger);
+                workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, traceEventLogger);
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskDispatchBinder dispatchBinder,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
-        this(matchingStrategy, workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskDispatchBinder dispatchBinder,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink,
                                     TraceEventLogger traceEventLogger) {
         this.matchingStrategy = matchingStrategy;
         this.workerManager = workerManager;
-        this.msgAssignListener = msgAssignListener;
+        this.dispatchBinder = dispatchBinder;
         this.assignmentRuntime = assignmentRuntime;
         this.assignmentEventSink = assignmentEventSink;
         this.traceEventLogger = traceEventLogger;
@@ -154,7 +154,7 @@ public class TaskWorkerAssignListener {
         }
         unlockWorkers(matched.subList(dispatchCandidates.size(), matched.size()));
 
-        List<TaskDispatchBinding> dispatchedBindings = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
+        List<TaskDispatchBinding> dispatchedBindings = dispatchBinder.bindDispatches(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedBindings.stream()
                 .map(TaskDispatchBinding::workerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
@@ -255,3 +255,4 @@ public class TaskWorkerAssignListener {
         );
     }
 }
+

@@ -379,6 +379,7 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     taskManager.getScheduler().cancelTask(taskId);
+                    taskManager.persistActiveLeaseProjectionResidue(taskId);
                     taskManager.publishTaskTerminal(task);
                     taskManager.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;

@@ -18,69 +18,62 @@ import java.util.Objects;
  */
 public class TaskCommandService {
 
-    private final TaskManager taskManager;
     private final TaskCommandPort taskCommands;
 
-    public TaskCommandService(TaskManager taskManager) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
-        this.taskCommands = null;
-    }
-
     public TaskCommandService(TaskCommandPort taskCommands) {
-        this.taskManager = null;
         this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
     }
 
     public Task createTask(TaskCreateRequestDto dto) {
-        return taskManager != null ? taskManager.createTask(dto) : taskCommands.createTask(dto);
+        return taskCommands.createTask(dto);
     }
 
     public boolean updateTask(Task task) {
-        return taskManager != null ? taskManager.updateTask(task) : taskCommands.updateTask(task);
+        return taskCommands.updateTask(task);
     }
 
     public boolean deleteTask(String taskId) {
-        return taskManager != null ? taskManager.deleteTask(taskId) : taskCommands.deleteTask(taskId);
+        return taskCommands.deleteTask(taskId);
     }
 
     public boolean approveTask(String taskId) {
-        return taskManager != null ? taskManager.approveTask(taskId) : taskCommands.approveTask(taskId);
+        return taskCommands.approveTask(taskId);
     }
 
     public boolean rejectTask(String taskId) {
-        return taskManager != null ? taskManager.rejectTask(taskId) : taskCommands.rejectTask(taskId);
+        return taskCommands.rejectTask(taskId);
     }
 
     public boolean blockTask(String taskId) {
-        return taskManager != null ? taskManager.blockTask(taskId) : taskCommands.blockTask(taskId);
+        return taskCommands.blockTask(taskId);
     }
 
     public boolean pauseTask(String taskId) {
-        return taskManager != null ? taskManager.pauseTask(taskId) : taskCommands.pauseTask(taskId);
+        return taskCommands.pauseTask(taskId);
     }
 
     public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return taskManager != null ? taskManager.resumeTaskDetailed(taskId) : taskCommands.resumeTaskDetailed(taskId);
+        return taskCommands.resumeTaskDetailed(taskId);
     }
 
     public boolean resumeTask(String taskId) {
-        return taskManager != null ? taskManager.resumeTask(taskId) : taskCommands.resumeTask(taskId);
+        return taskCommands.resumeTask(taskId);
     }
 
     public boolean cancelTask(String taskId) {
-        return taskManager != null ? taskManager.cancelTask(taskId) : taskCommands.cancelTask(taskId);
+        return taskCommands.cancelTask(taskId);
     }
 
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return taskManager != null ? taskManager.terminateTask(taskId, reason) : taskCommands.terminateTask(taskId, reason);
+        return taskCommands.terminateTask(taskId, reason);
     }
 
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        return taskManager != null ? taskManager.appendTaskItems(taskId, inputs) : taskCommands.appendTaskItems(taskId, inputs);
+        return taskCommands.appendTaskItems(taskId, inputs);
     }
 
     public boolean sealTask(String taskId) {
-        return taskManager != null ? taskManager.sealTask(taskId) : taskCommands.sealTask(taskId);
+        return taskCommands.sealTask(taskId);
     }
 
 }
