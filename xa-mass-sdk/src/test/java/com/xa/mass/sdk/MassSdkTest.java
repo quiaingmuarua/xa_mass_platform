@@ -729,6 +729,33 @@ class MassSdkTest {
     }
 
     @Test
+    void transportRuntimeCompositionUsesRuntimeFactoryRegistrationMetadataWhenProvided() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
+            @Override
+            public TransportRuntimeRegistry create(WorkerLookupStore workerLookupStore,
+                                                   TaskResultIngestChannel taskResultIngestChannel,
+                                                   WorkerSystemEventChannel systemEventChannel,
+                                                   TransportDeliveryService deliveryService,
+                                                   List<TransportBinding> adapterBindings) {
+                return mock(TransportRuntimeRegistry.class);
+            }
+
+            @Override
+            public List<TransportAdapterDescriptor> registrationDescriptors() {
+                return List.of(new TransportAdapterDescriptor("polling-http-v2", WorkerTransportHints.POLLING));
+            }
+        });
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId("polling-http-v2", "polling"));
+    }
+
+    @Test
     void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
         TransportConfig config = new TransportConfig();
         config.addSupplementalTransportAdapterBootstrap(context -> {

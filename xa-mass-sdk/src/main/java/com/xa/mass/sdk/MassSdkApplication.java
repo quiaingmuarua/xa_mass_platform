@@ -12,8 +12,6 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
-import com.xa.mass.engine.TaskCompatibilitySnapshotPage;
-import com.xa.mass.engine.TaskCompatibilityQueryService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -55,7 +53,7 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskMessageQueryOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
@@ -206,34 +204,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return requireStartedTaskCommands().appendTaskItems(task.getTid(), converted, retrySeed);
     }
 
-    @Override
-    @Deprecated(forRemoval = true)
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.TASK_APPEND_ITEMS)
-                .payload(Map.of("taskId", taskId, "inputs", inputs == null ? List.of() : inputs))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
-        return ((Number) response.getData()).intValue();
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount) {
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.TASK_APPEND_ITEMS)
-                .payload(Map.of(
-                        "taskId", taskId,
-                        "inputs", inputs == null ? List.of() : inputs,
-                        "defaultMsgMaxRetryCount", defaultMsgMaxRetryCount
-                ))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
-        return ((Number) response.getData()).intValue();
-    }
-
     public boolean sealTask(String taskId) {
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
@@ -249,140 +219,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return requireStartedTaskQueries().auditTaskProjectionState(taskId);
-    }
-
-    @Override
-    public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        String normalizedTaskId = requireTaskId(taskId);
-        int boundedLimit = Math.max(0, limit);
-        List<SdkTaskMessageView> messages = new ArrayList<>();
-        TaskCompatibilitySnapshotPage snapshot = requireStartedTaskCompatibilityQueries()
-                .visitTaskMessageSnapshot(normalizedTaskId, boundedLimit,
-                        (messageId, projectedTaskId, status, latestAttemptId, latestAttemptWorkerId,
-                         latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount,
-                         errorMessage, errorCode, finalReason, payloadRef, input, output,
-                         assignedTime, createTime, updateTime, startTime, completeTime) ->
-                                messages.add(new SdkTaskMessageView(
-                                        messageId,
-                                        projectedTaskId,
-                                        status,
-                                        latestAttemptId,
-                                        latestAttemptWorkerId,
-                                        latestAttemptWorkerContextId,
-                                        latestAttemptBatchId,
-                                        retryCount,
-                                        maxRetryCount,
-                                        errorMessage,
-                                        errorCode,
-                                        finalReason,
-                                        payloadRef,
-                                        copyMap(input),
-                                        copyMap(output),
-                                        assignedTime,
-                                        createTime,
-                                        updateTime,
-                                        startTime,
-                                        completeTime
-                                )));
-        return new SdkTaskMessageSnapshot(messages, boundedLimit, snapshot.truncated());
-    }
-
-    @Override
-    public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
-        SdkTaskMessageView[] holder = new SdkTaskMessageView[1];
-        boolean found = requireStartedTaskCompatibilityQueries()
-                .visitTaskMessage(requireTaskId(taskId), requireMessageId(messageId),
-                        (projectedMessageId, projectedTaskId, status, latestAttemptId, latestAttemptWorkerId,
-                         latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount,
-                         errorMessage, errorCode, finalReason, payloadRef, input, output,
-                         assignedTime, createTime, updateTime, startTime, completeTime) ->
-                                holder[0] = new SdkTaskMessageView(
-                                        projectedMessageId,
-                                        projectedTaskId,
-                                        status,
-                                        latestAttemptId,
-                                        latestAttemptWorkerId,
-                                        latestAttemptWorkerContextId,
-                                        latestAttemptBatchId,
-                                        retryCount,
-                                        maxRetryCount,
-                                        errorMessage,
-                                        errorCode,
-                                        finalReason,
-                                        payloadRef,
-                                        copyMap(input),
-                                        copyMap(output),
-                                        assignedTime,
-                                        createTime,
-                                        updateTime,
-                                        startTime,
-                                        completeTime
-                                ));
-        return found ? holder[0] : null;
-    }
-
-    @Override
-    public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
-        List<SdkTaskMessageAttemptView> attempts = new ArrayList<>();
-        requireStartedTaskCompatibilityQueries()
-                .visitTaskMessageAttemptViews(requireTaskId(taskId), requireMessageId(messageId),
-                        (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
-                         batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
-                         finalReason, errorMessage, errorCode, output, createTime, updateTime) ->
-                                attempts.add(new SdkTaskMessageAttemptView(
-                                        attemptId,
-                                        projectedTaskId,
-                                        projectedMessageId,
-                                        attemptNo,
-                                        workerId,
-                                        workerContextId,
-                                        batchId,
-                                        status,
-                                        leaseExpireTime,
-                                        dispatchTime,
-                                        ackTime,
-                                        startTime,
-                                        finishTime,
-                                        finalReason,
-                                        errorMessage,
-                                        errorCode,
-                                        copyMap(output),
-                                        createTime,
-                                        updateTime
-                                )));
-        return attempts;
-    }
-
-    @Override
-    public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        SdkTaskMessageAttemptView[] holder = new SdkTaskMessageAttemptView[1];
-        boolean found = requireStartedTaskCompatibilityQueries()
-                .visitLatestActiveTaskMessageAttempt(requireTaskId(taskId), requireMessageId(messageId),
-                        (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
-                         batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
-                         finalReason, errorMessage, errorCode, output, createTime, updateTime) ->
-                                holder[0] = new SdkTaskMessageAttemptView(
-                                        attemptId,
-                                        projectedTaskId,
-                                        projectedMessageId,
-                                        attemptNo,
-                                        workerId,
-                                        workerContextId,
-                                        batchId,
-                                        status,
-                                        leaseExpireTime,
-                                        dispatchTime,
-                                        ackTime,
-                                        startTime,
-                                        finishTime,
-                                        finalReason,
-                                        errorMessage,
-                                        errorCode,
-                                        copyMap(output),
-                                        createTime,
-                                        updateTime
-                                ));
-        return found ? holder[0] : null;
     }
 
     @Override
@@ -1719,15 +1555,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Task query service is unavailable for this SDK application");
         }
         return taskQueries;
-    }
-
-    private TaskCompatibilityQueryService requireStartedTaskCompatibilityQueries() {
-        TaskCompatibilityQueryService compatibilityQueries =
-                requireStartedEngine().getConfig().getTaskCompatibilityQueryService();
-        if (compatibilityQueries == null) {
-            throw new IllegalStateException("Task compatibility query service is unavailable for this SDK application");
-        }
-        return compatibilityQueries;
     }
 
     private TaskEventService requireStartedTaskEvents() {

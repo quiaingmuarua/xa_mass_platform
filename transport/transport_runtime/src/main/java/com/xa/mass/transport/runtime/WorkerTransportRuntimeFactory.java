@@ -18,4 +18,8 @@ public interface WorkerTransportRuntimeFactory {
                                     WorkerSystemEventChannel systemEventChannel,
                                     TransportDeliveryService deliveryService,
                                     List<TransportBinding> adapterBindings);
+
+    default List<TransportAdapterDescriptor> registrationDescriptors() {
+        return List.of();
+    }
 }

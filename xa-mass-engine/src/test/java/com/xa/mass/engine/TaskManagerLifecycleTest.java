@@ -50,7 +50,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskStartsAsNewAndPreservesInputs() {
+    void createTaskStartsAsNewWithoutPersistingInlineTaskMsgPayloads() {
         Task task = createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
@@ -64,8 +64,8 @@ class TaskManagerLifecycleTest {
 
         List<TaskDetailStore.TaskMessageProjection> messages = taskManager.getTaskMessageRecords(task.getTid());
         assertEquals(2, messages.size());
-        assertEquals("alpha", messages.get(0).input().get("target"));
-        assertEquals("beta", messages.get(1).input().get("target"));
+        assertTrue(messages.get(0).input() == null || messages.get(0).input().isEmpty());
+        assertTrue(messages.get(1).input() == null || messages.get(1).input().isEmpty());
         assertEquals(task.getTid(), messages.get(0).taskId());
         assertEquals(task.getTid(), messages.get(1).taskId());
         assertNotEquals(messages.get(0).messageId(), messages.get(1).messageId());

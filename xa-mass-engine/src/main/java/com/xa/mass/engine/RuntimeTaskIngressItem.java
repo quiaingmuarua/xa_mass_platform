@@ -40,9 +40,6 @@ record RuntimeTaskIngressItem(String taskId,
     }
 
     Map<String, Object> projectedInput() {
-        if (payloadRef == null || payloadRef.isBlank()) {
-            return inlinePayload;
-        }
         return Map.of();
     }
 

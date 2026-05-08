@@ -14,11 +14,8 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -43,8 +40,6 @@ public class TaskApiController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
-    private static final int DEFAULT_TASK_MESSAGE_SNAPSHOT_LIMIT = 100;
-    private static final int MAX_TASK_MESSAGE_SNAPSHOT_LIMIT = 500;
     private static final int MAX_INGEST_ITEM_COUNT = Integer.getInteger("xa.mass.api.maxIngestItemCount", 500);
     private static final int MAX_INGEST_ITEM_BYTES = Integer.getInteger("xa.mass.api.maxIngestItemBytes", 64 * 1024);
     private static final int MAX_INGEST_TOTAL_BYTES = Integer.getInteger("xa.mass.api.maxIngestTotalBytes", 1024 * 1024);
@@ -52,7 +47,6 @@ public class TaskApiController {
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
-    private final TaskMessageQueryOperations taskMessageQueries;
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final ApiAuthService apiAuthService;
@@ -60,39 +54,34 @@ public class TaskApiController {
     private final TaskSecurityViewSupport taskSecurityViewSupport;
 
     public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskMessageQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
                 new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskMessageQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
+        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskMessageQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
+        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
-        this.taskMessageQueries = taskMessageQueries;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
@@ -177,10 +166,8 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(
                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-                                                                    @PathVariable String taskId,
-                                                                    @RequestParam(required = false) Integer limit) {
+                                                                    @PathVariable String taskId) {
         try {
-            int boundedLimit = resolveTaskMessageLimit(limit);
             Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);

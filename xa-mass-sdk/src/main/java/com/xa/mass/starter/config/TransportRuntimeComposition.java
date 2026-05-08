@@ -3,8 +3,7 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.sdk.transport.DefaultWorkerTransportRuntimeFactory;
-import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
+import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -12,7 +11,6 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -256,11 +254,13 @@ public class TransportRuntimeComposition {
 
     private List<TransportAdapterDescriptor> resolveRegistrationDescriptors() {
         List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
-        if (workerTransportRuntimeFactory == null) {
-            descriptors.add(new TransportAdapterDescriptor(
-                    PollingWorkerAdapter.PROTOCOL,
-                    WorkerTransportHints.POLLING
-            ));
+        WorkerTransportRuntimeFactory runtimeFactory = workerTransportRuntimeFactory;
+        if (runtimeFactory == null) {
+            runtimeFactory = resolveWorkerTransportRuntimeFactory();
+        }
+        List<TransportAdapterDescriptor> runtimeDescriptors = runtimeFactory.registrationDescriptors();
+        if (runtimeDescriptors != null && !runtimeDescriptors.isEmpty()) {
+            descriptors.addAll(runtimeDescriptors);
         }
         for (BootstrapCandidate candidate : bootstrapCandidates()) {
             if (!candidate.registrationIncluded()) {

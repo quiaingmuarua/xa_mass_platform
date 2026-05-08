@@ -12,8 +12,6 @@ import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Stable public runtime control surface exposed by the SDK.
@@ -71,13 +69,6 @@ public interface MassRuntimeControl {
      * fixed by the task shell.
      */
     int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request);
-
-    /**
-     * Compatibility-only append surface. Prefer the batch request form in new
-     * callers.
-     */
-    @Deprecated(forRemoval = true)
-    int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
 
     /**
      * Seal an open-ended task so no more items can be appended.

@@ -5,9 +5,6 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * Task mutation/admin surface used by embedded shells and repo-local tooling.
  */
@@ -34,22 +31,6 @@ public interface TaskAdminOperations {
     boolean deleteTask(String taskId);
 
     int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request);
-
-    /**
-     * Compatibility-only append surface. Prefer
-     * {@link #appendTaskItems(String, MassTaskItemBatchAppendRequest)} in new
-     * callers so shell-level payload contract stays outside the caller.
-     */
-    @Deprecated(forRemoval = true)
-    int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
-
-    /**
-     * Compatibility-only append surface. Prefer
-     * {@link #appendTaskItems(String, MassTaskItemBatchAppendRequest)} in new
-     * callers so shell-level payload contract stays outside the caller.
-     */
-    @Deprecated(forRemoval = true)
-    int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount);
 
     boolean sealTask(String taskId);
 }
