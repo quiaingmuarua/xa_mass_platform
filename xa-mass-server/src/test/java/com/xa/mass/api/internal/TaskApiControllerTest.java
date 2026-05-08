@@ -8,6 +8,7 @@ import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -44,6 +45,9 @@ class TaskApiControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
+    private TaskMessageQueryOperations taskMessageQueries;
+
+    @Mock
     private TaskAdminOperations taskAdmin;
 
     @Mock
@@ -54,7 +58,9 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         ProjectEventCatalog catalog = createTaskCatalog();
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin, catalog, authProvider)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new TaskApiController(taskQueries, taskMessageQueries, taskAdmin, catalog, authProvider)
+        ).build();
     }
 
     @Test
@@ -463,7 +469,7 @@ class TaskApiControllerTest {
         ));
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.getTaskMessageSnapshot(eq(TASK_ID), anyInt())).thenReturn(new SdkTaskMessageSnapshot(List.of(
+        when(taskMessageQueries.getTaskMessageSnapshot(eq(TASK_ID), anyInt())).thenReturn(new SdkTaskMessageSnapshot(List.of(
                 new SdkTaskMessageView("msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "alpha"), null, null, null, null, null, null),
                 new SdkTaskMessageView("msg-2", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "beta"), null, null, null, null, null, null)
         ), 100, false));
@@ -661,7 +667,7 @@ class TaskApiControllerTest {
                 null, null, null, null, Map.of("target", "beta"), null,
                 null, null, null, null, null
         );
-        when(taskQueries.getTaskMessageSnapshot(TASK_ID, 100))
+        when(taskMessageQueries.getTaskMessageSnapshot(TASK_ID, 100))
                 .thenReturn(new SdkTaskMessageSnapshot(List.of(first, second), 100, false));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID))
@@ -677,12 +683,12 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.messages[1].output").isEmpty())
                 .andExpect(jsonPath("$.data.messages[1].messageId").value("msg-2"));
 
-        verify(taskQueries).getTaskMessageSnapshot(TASK_ID, 100);
+        verify(taskMessageQueries).getTaskMessageSnapshot(TASK_ID, 100);
     }
 
     @Test
     void getTaskMessagesCapsRequestedLimitWithoutPagination() throws Exception {
-        when(taskQueries.getTaskMessageSnapshot(TASK_ID, 500))
+        when(taskMessageQueries.getTaskMessageSnapshot(TASK_ID, 500))
                 .thenReturn(new SdkTaskMessageSnapshot(List.of(
                         new SdkTaskMessageView("msg-1", TASK_ID, "INIT", null, null, null, null, 0, 3, null, null, null, null, Map.of("target", "alpha"), null, null, null, null, null, null)
                 ), 500, false));
@@ -697,7 +703,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.page").doesNotExist())
                 .andExpect(jsonPath("$.data.size").doesNotExist());
 
-        verify(taskQueries).getTaskMessageSnapshot(TASK_ID, 500);
+        verify(taskMessageQueries).getTaskMessageSnapshot(TASK_ID, 500);
     }
 
     @Test

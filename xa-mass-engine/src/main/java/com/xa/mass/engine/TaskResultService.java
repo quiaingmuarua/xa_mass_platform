@@ -32,16 +32,16 @@ class TaskResultService {
     static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
 
     private final TaskManager taskManager;
-    private final TaskDetailStore taskDetailStore;
+    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
 
     TaskResultService(TaskManager taskManager,
-                      TaskDetailStore taskDetailStore,
+                      TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
                       TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
                       TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
-        this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
     }
@@ -759,16 +759,7 @@ class TaskResultService {
     private boolean persistTaskMessageProjectionRecord(String taskId,
                                                        TaskDetailStore.TaskMessageProjection projection,
                                                        String action) {
-        if (projection == null) {
-            return false;
-        }
-        try {
-            return taskDetailStore.upsertTaskMessageProjection(taskId, projection);
-        } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during {}",
-                    taskId, projection.messageId(), action, e);
-            return false;
-        }
+        return compatibilityProjectionAccess.upsertTaskMessageProjection(taskId, projection, action);
     }
 
     @CompatibilityProjectionOnly
@@ -779,14 +770,12 @@ class TaskResultService {
         if (attempt == null) {
             return;
         }
-        TaskDetailStore.TaskMessageAttemptProjection compatibilityAttempt = attempt.toProjectionRecord();
-        try {
-            taskDetailStore.upsertTaskMessageAttemptProjection(taskId, messageId, compatibilityAttempt);
-            return;
-        } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
-                    taskId, messageId, attempt.attemptId(), action, e);
-        }
+        compatibilityProjectionAccess.upsertTaskMessageAttemptProjectionBestEffort(
+                taskId,
+                messageId,
+                attempt.toProjectionRecord(),
+                action
+        );
     }
 
     private boolean isCallbackAcceptableMessageState(TaskMsgStatus taskMsgStatus) {
@@ -836,9 +825,7 @@ class TaskResultService {
 
     @CompatibilityProjectionOnly
     private RuntimeMessageView getStoredTaskMessageProjectionView(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageProjection(taskId, messageId)
-                .map(RuntimeMessageView::from)
-                .orElse(null);
+        return RuntimeMessageView.from(compatibilityProjectionAccess.getStoredTaskMessageRecord(taskId, messageId));
     }
 
     private String normalizeDispatchSubmitFailureDetail(String detail) {

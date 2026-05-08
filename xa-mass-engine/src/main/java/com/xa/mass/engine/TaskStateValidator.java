@@ -21,14 +21,14 @@ import java.util.List;
 class TaskStateValidator {
 
     private final TaskStateRuntimePort stateRuntime;
-    private final TaskDetailStore taskDetailStore;
+    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TraceEventLogger traceEventLogger;
 
     TaskStateValidator(TaskStateRuntimePort stateRuntime,
-                       TaskDetailStore taskDetailStore,
+                       TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
                        TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
-        this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.traceEventLogger = traceEventLogger;
     }
 
@@ -244,11 +244,11 @@ class TaskStateValidator {
 
     @CompatibilityProjectionOnly
     private List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
-        return taskDetailStore.getTaskMessageProjections(taskId);
+        return compatibilityProjectionAccess.getTaskMessageProjectionsForAudit(taskId);
     }
 
     private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return stateRuntime.getTaskMessageAttemptStats(taskId, messageId);
+        return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     private boolean isCompleted(TaskDetailStore.TaskMessageProjection taskMsg) {

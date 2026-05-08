@@ -24,6 +24,9 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
+- `src/main/java/com/xa/mass/engine/TaskCompatibilityQueryService.java` only when
+  you are intentionally working on bounded compatibility `TaskMsg` /
+  `TaskMsgAttempt` residue reads
 - `src/main/java/com/xa/mass/engine/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
@@ -74,10 +77,11 @@ Keep these facts fixed unless the owning global baselines change:
   queue/backpressure truth
 - `TaskMsg` and `TaskMsgAttempt` remain bounded compatibility/audit projections,
   not the hot-path runtime owner
-- `TaskQueryService` methods that return `TaskMsg`, `TaskMsgAttempt`, or
-  `TaskMessageSnapshot` are migration residue only; new engine-facing callers
-  should treat them as explicit compatibility reads rather than the default
-  kernel query model
+- `TaskQueryService` is the default task aggregate/state query surface; do not
+  grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
+- `TaskCompatibilityQueryService` is the explicit bounded residue-read surface
+  for `TaskMsg`, `TaskMsgAttempt`, and `TaskMessageSnapshot`; new callers must
+  opt into that compatibility path deliberately
 - runtime ingest must stay correct when compatibility `TaskMsg` projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
   best-effort residue
@@ -101,8 +105,10 @@ Repo-level mainline surfaces:
 
 - shell/admin mutation flows use `TaskCommandService`
 - bounded inspection flows use `TaskQueryService`
-- explicit projection audit stays on `TaskQueryService` as a diagnostic-only
-  path
+- bounded compatibility message/attempt reads use
+  `TaskCompatibilityQueryService`
+- explicit projection audit stays on the compatibility query path as a
+  diagnostic-only read
 - transport/runtime result ingress uses `TaskResultIngestFacade`
 - dispatch-ready bindings and result-ingest seams used across engine, SDK,
   transport runtime, and tests now live in shared base runtime contracts rather

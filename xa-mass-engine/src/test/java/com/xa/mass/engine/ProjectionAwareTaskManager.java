@@ -1,10 +1,9 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMessageSnapshot;
-import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -13,7 +12,6 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Test-only compatibility access for bounded TaskMsg / TaskMsgAttempt residue.
@@ -25,6 +23,7 @@ import java.util.Map;
 public class ProjectionAwareTaskManager extends TaskManager {
 
     private final TaskDetailStore taskDetailStore;
+    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
 
     public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
                                       TaskStorage taskStorage,
@@ -32,6 +31,12 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                       TaskWorkRuntime taskWorkRuntime) {
         super(taskScheduler, taskStorage, taskDetailStore, taskWorkRuntime);
         this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
+                taskDetailStore,
+                this::getTask,
+                this::getActiveLease,
+                this::getActiveLeases
+        );
     }
 
     public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
@@ -41,6 +46,12 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                       TaskWorkRuntime taskWorkRuntime) {
         super(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime);
         this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
+                taskDetailStore,
+                this::getTask,
+                this::getActiveLease,
+                this::getActiveLeases
+        );
     }
 
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageRecords(String taskId) {
@@ -52,21 +63,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
+        return compatibilityProjectionAccess.getStoredTaskMessageRecord(taskId, messageId);
     }
 
     public TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
-        Task task = getTask(taskId);
-        TaskDetailStore.TaskMessageProjection projection = getStoredTaskMessageRecord(taskId, messageId);
-        if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
-            projection = CompatibilityProjectionSupport.overlayActiveLeaseProjection(
-                    projection,
-                    getActiveLease(taskId, messageId).orElse(null),
-                    taskId,
-                    messageId
-            );
-        }
-        return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
+        return compatibilityProjectionAccess.getVisibleTaskMessageProjection(taskId, messageId);
     }
 
     public ActiveLeaseRecord getActiveLeaseRecord(String taskId, String messageId) {
@@ -74,21 +75,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        int boundedLimit = Math.max(0, limit);
-        List<TaskDetailStore.TaskMessageProjection> stored = boundedLimit == 0
-                ? List.of()
-                : taskDetailStore.getTaskMessageProjections(taskId, boundedLimit);
-        List<TaskDetailStore.TaskMessageProjection> withActiveLeaseOverlay =
-                CompatibilityProjectionSupport.overlayActiveLeaseProjection(
-                stored,
-                getTaskWorkRuntime().activeLeases(taskId),
-                taskId
-        );
-        List<TaskMsg> projected = materializeCompatibilityTaskMessages(
-                CompatibilityProjectionSupport.overlayTerminalTaskProjection(getTask(taskId), withActiveLeaseOverlay)
-        );
-        boolean truncated = boundedLimit > 0 && taskDetailStore.getTaskMessageStats(taskId).getTotal() > boundedLimit;
-        return new TaskMessageSnapshot(projected, boundedLimit, truncated);
+        return compatibilityProjectionAccess.getTaskMessageSnapshot(taskId, limit);
     }
 
     public boolean upsertTaskMessageProjectionRecord(String taskId,
@@ -116,71 +103,27 @@ public class ProjectionAwareTaskManager extends TaskManager {
 
     public TaskDetailStore.TaskMessageAttemptProjection getLatestActiveAttemptProjectionRecord(String taskId,
                                                                                                String messageId) {
-        Task task = getTask(taskId);
-        if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
+        TaskMsgAttempt attempt = compatibilityProjectionAccess.getLatestActiveTaskMessageAttemptView(taskId, messageId);
+        if (attempt == null) {
             return null;
         }
-        ActiveLeaseRecord activeLease = getActiveLease(taskId, messageId).orElse(null);
-        if (activeLease == null) {
-            return null;
-        }
-        TaskDetailStore.TaskMessageProjection storedProjection = getStoredTaskMessageRecord(taskId, messageId);
         TaskDetailStore.TaskMessageAttemptProjection latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.status() : TaskMsgStatus.ASSIGNED;
-        String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
-        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
-        String attemptId = preferredAttemptId;
-        if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
-            attemptId = latestAuditView.attemptId();
-        }
-        if (attemptId == null || attemptId.isBlank()) {
-            attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
-        }
-        TaskMsgAttemptStatus attemptStatus = TaskMsgAttemptStatus.DISPATCHED;
-        if (messageStatus == TaskMsgStatus.RUNNING) {
-            attemptStatus = TaskMsgAttemptStatus.RUNNING;
-        }
+        TaskMsgAttemptStatus attemptStatus = attempt.getStatus() != null
+                ? attempt.getStatus()
+                : TaskMsgAttemptStatus.DISPATCHED;
         return new TaskDetailStore.TaskMessageAttemptProjection(
-                attemptId,
-                taskId,
-                messageId,
-                attemptNo,
-                activeLease.workerId(),
-                activeLease.workerContextId(),
-                activeLease.batchId(),
+                attempt.getAttemptId(),
+                attempt.getTaskId(),
+                attempt.getMessageId(),
+                attempt.getAttemptNo(),
+                attempt.getWorkerId(),
+                attempt.getWorkerContextId(),
+                attempt.getBatchId(),
                 attemptStatus,
                 null,
                 null,
                 null,
                 null
         );
-    }
-
-    private boolean matchesRuntimeLease(TaskDetailStore.TaskMessageAttemptProjection attempt,
-                                        ActiveLeaseRecord activeLease,
-                                        int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.attemptId() == null || attempt.attemptId().isBlank()) {
-            return false;
-        }
-        if (attempt.attemptNo() != attemptNo) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.workerId(), activeLease.workerId())) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.workerContextId(), activeLease.workerContextId())) {
-            return false;
-        }
-        return java.util.Objects.equals(attempt.batchId(), activeLease.batchId());
-    }
-
-    private List<TaskMsg> materializeCompatibilityTaskMessages(List<TaskDetailStore.TaskMessageProjection> projections) {
-        if (projections == null || projections.isEmpty()) {
-            return List.of();
-        }
-        return projections.stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .filter(java.util.Objects::nonNull)
-                .toList();
     }
 }

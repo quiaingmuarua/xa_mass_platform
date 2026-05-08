@@ -19,6 +19,7 @@ import com.xa.mass.sdk.SdkTaskMessageSnapshot;
 import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskMessageQueryOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -47,6 +48,7 @@ public class TaskApiController {
     private static final int MAX_TASK_MESSAGE_SNAPSHOT_LIMIT = 500;
 
     private final TaskQueryOperations taskQueries;
+    private final TaskMessageQueryOperations taskMessageQueries;
     private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final ApiAuthService apiAuthService;
@@ -56,34 +58,40 @@ public class TaskApiController {
     @Autowired(required = false)
     private SyncTaskResultBridge syncBridge;
 
-    public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskMessageQueryOperations taskMessageQueries,
+                             TaskAdminOperations taskAdmin) {
+        this(taskQueries, taskMessageQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
                 new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
+        this(taskQueries, taskMessageQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
+        this(taskQueries, taskMessageQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskMessageQueryOperations taskMessageQueries,
                              TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
+        this.taskMessageQueries = taskMessageQueries;
         this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
@@ -211,7 +219,7 @@ public class TaskApiController {
             }
 
             String taskId = task.getTid();
-            SdkTaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, 1);
+            SdkTaskMessageSnapshot messageSnapshot = taskMessageQueries.getTaskMessageSnapshot(taskId, 1);
             String messageId = messageSnapshot.messages().isEmpty() ? "" : messageSnapshot.messages().get(0).messageId();
 
             Optional<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> result =
@@ -256,7 +264,7 @@ public class TaskApiController {
                 return notFound("Task not found: " + taskId);
             }
             resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            SdkTaskMessageSnapshot taskItemSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            SdkTaskMessageSnapshot taskItemSnapshot = taskMessageQueries.getTaskMessageSnapshot(taskId, boundedLimit);
             List<Map<String, Object>> items = taskItemSnapshot.messages().stream()
                     .map(SdkTaskMessageView::input)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
@@ -495,7 +503,7 @@ public class TaskApiController {
                 resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
             }
             int boundedLimit = resolveTaskMessageLimit(limit);
-            SdkTaskMessageSnapshot messageSnapshot = taskQueries.getTaskMessageSnapshot(taskId, boundedLimit);
+            SdkTaskMessageSnapshot messageSnapshot = taskMessageQueries.getTaskMessageSnapshot(taskId, boundedLimit);
             List<Map<String, Object>> messages = messageSnapshot.messages().stream()
                     .map(this::toTaskMessageSummaryView)
                     .collect(Collectors.toList());

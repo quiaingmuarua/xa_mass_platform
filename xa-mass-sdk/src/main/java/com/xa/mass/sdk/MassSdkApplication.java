@@ -14,6 +14,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
+import com.xa.mass.engine.TaskCompatibilityQueryService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -22,7 +23,6 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
@@ -56,7 +56,7 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskMessageQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
@@ -241,7 +241,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         String normalizedTaskId = requireTaskId(taskId);
         int boundedLimit = Math.max(0, limit);
-        com.xa.mass.base.model.TaskMessageSnapshot snapshot = requireStartedTaskQueries()
+        com.xa.mass.base.model.TaskMessageSnapshot snapshot = requireStartedTaskCompatibilityQueries()
                 .getTaskMessageSnapshot(normalizedTaskId, boundedLimit);
         List<SdkTaskMessageView> messages = snapshot
                 .messages()
@@ -253,14 +253,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
-        TaskMsg messageView = requireStartedTaskQueries()
+        TaskMsg messageView = requireStartedTaskCompatibilityQueries()
                 .getTaskMessageView(requireTaskId(taskId), requireMessageId(messageId));
         return messageView != null ? toSdkTaskMessageView(messageView) : null;
     }
 
     @Override
     public List<SdkTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId) {
-        return requireStartedTaskQueries()
+        return requireStartedTaskCompatibilityQueries()
                 .getTaskMessageAttemptViews(requireTaskId(taskId), requireMessageId(messageId))
                 .stream()
                 .map(this::toSdkTaskMessageAttemptView)
@@ -269,7 +269,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        TaskMsgAttempt attemptView = requireStartedTaskQueries()
+        TaskMsgAttempt attemptView = requireStartedTaskCompatibilityQueries()
                 .getLatestActiveTaskMessageAttemptView(requireTaskId(taskId), requireMessageId(messageId));
         return attemptView != null ? toSdkTaskMessageAttemptView(attemptView) : null;
     }
@@ -1607,20 +1607,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskQueries;
     }
 
+    private TaskCompatibilityQueryService requireStartedTaskCompatibilityQueries() {
+        TaskCompatibilityQueryService compatibilityQueries =
+                requireStartedEngine().getConfig().getTaskCompatibilityQueryService();
+        if (compatibilityQueries == null) {
+            throw new IllegalStateException("Task compatibility query service is unavailable for this SDK application");
+        }
+        return compatibilityQueries;
+    }
+
     private TaskEventService requireStartedTaskEvents() {
         TaskEventService taskEvents = requireStartedEngine().getConfig().getTaskEventService();
         if (taskEvents == null) {
             throw new IllegalStateException("Task event service is unavailable for this SDK application");
         }
         return taskEvents;
-    }
-
-    private TaskDetailStore requireStartedTaskDetailStore() {
-        TaskDetailStore taskDetailStore = requireStartedEngine().getConfig().getTaskDetailStore();
-        if (taskDetailStore == null) {
-            throw new IllegalStateException("Task detail store is unavailable for this SDK application");
-        }
-        return taskDetailStore;
     }
 
     private WorkerStorage requireStartedWorkerStorage() {

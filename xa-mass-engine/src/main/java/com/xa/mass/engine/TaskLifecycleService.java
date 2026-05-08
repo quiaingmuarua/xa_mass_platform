@@ -25,13 +25,16 @@ class TaskLifecycleService {
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
 
     private final TaskManager taskManager;
+    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskStateResolver stateResolver;
     private final TraceEventLogger traceEventLogger;
 
     TaskLifecycleService(TaskManager taskManager,
+                         TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
                          TaskStateResolver stateResolver,
                          TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
+        this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.stateResolver = stateResolver;
         this.traceEventLogger = traceEventLogger;
     }
@@ -379,7 +382,7 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     taskManager.getScheduler().cancelTask(taskId);
-                    taskManager.persistActiveLeaseProjectionResidue(taskId);
+                    compatibilityProjectionAccess.persistActiveLeaseProjectionResidue(taskId);
                     taskManager.publishTaskTerminal(task);
                     taskManager.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;

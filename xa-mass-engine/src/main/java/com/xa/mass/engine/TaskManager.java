@@ -6,7 +6,6 @@ import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -52,7 +51,8 @@ import java.util.function.Supplier;
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
  * flows. Downstream callers should prefer {@link TaskCommandService},
- * {@link TaskQueryService}, {@link TaskResultIngestFacade},
+ * {@link TaskQueryService}, {@link TaskCompatibilityQueryService},
+ * {@link TaskResultIngestFacade},
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
@@ -63,12 +63,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
-    private final TaskDetailStore taskDetailStore;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
     private final TaskStateValidator stateValidator;
+    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
@@ -110,7 +110,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        ExecutionEventSink executionEventSink) {
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
-        this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
@@ -119,9 +119,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 this,
                 traceEventLogger
         );
+        this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
+                requiredTaskDetailStore,
+                this::getTask,
+                this::getActiveLease,
+                this::getActiveLeases
+        );
         this.stateValidator = new TaskStateValidator(
                 this,
-                taskDetailStore,
+                compatibilityProjectionAccess,
                 traceEventLogger
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;
@@ -138,12 +144,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.lifecycleService = new TaskLifecycleService(
                 this,
+                compatibilityProjectionAccess,
                 stateResolver,
                 traceEventLogger
         );
         this.resultService = new TaskResultService(
                 this,
-                taskDetailStore,
+                compatibilityProjectionAccess,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -410,12 +417,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        try {
-            taskDetailStore.upsertTaskMessageProjection(taskId, ingressItem.toProjectionRecord());
-        } catch (RuntimeException e) {
-            logger.warn("Runtime ingress accepted for taskId={}, messageId={} but compatibility TaskMsg projection write failed",
-                    taskId, messageId, e);
-        }
+        compatibilityProjectionAccess.upsertTaskMessageProjection(
+                taskId,
+                ingressItem.toProjectionRecord(),
+                "runtime ingress accepted"
+        );
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -484,7 +490,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     @Override
     public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+        return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     boolean deleteTaskRecord(String taskId) {
@@ -521,90 +527,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
-    }
-
-    @Override
-    @CompatibilityProjectionOnly
-    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        int boundedLimit = Math.max(0, limit);
-        List<TaskDetailStore.TaskMessageProjection> stored = boundedLimit == 0
-                ? List.of()
-                : taskDetailStore.getTaskMessageProjections(taskId, boundedLimit);
-        List<TaskDetailStore.TaskMessageProjection> withActiveLeaseOverlay =
-                CompatibilityProjectionSupport.overlayActiveLeaseProjection(
-                        stored,
-                        getActiveLeases(taskId),
-                        taskId
-                );
-        List<TaskMsg> projected = materializeCompatibilityTaskMessages(
-                CompatibilityProjectionSupport.overlayTerminalTaskProjection(getTask(taskId), withActiveLeaseOverlay)
-        );
-        boolean truncated = boundedLimit > 0 && taskDetailStore.getTaskMessageStats(taskId).getTotal() > boundedLimit;
-        return new TaskMessageSnapshot(projected, boundedLimit, truncated);
-    }
-
-    @Override
-    @CompatibilityProjectionOnly
-    public TaskMsg getTaskMessageView(String taskId, String messageId) {
-        TaskDetailStore.TaskMessageProjection projection = getVisibleTaskMessageProjection(taskId, messageId);
-        return projection != null ? projection.toCompatibilityProjection() : null;
-    }
-
-    @Override
-    @CompatibilityProjectionOnly
-    public List<TaskMsgAttempt> getTaskMessageAttemptViews(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptProjections(taskId, messageId).stream()
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @Override
-    @CompatibilityProjectionOnly
-    public TaskMsgAttempt getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        Task task = getTask(taskId);
-        if (task != null && task.getStatus() != null && task.getStatus().isFinal()) {
-            return null;
-        }
-        ActiveLeaseRecord activeLease = getActiveLease(taskId, messageId).orElse(null);
-        if (activeLease == null) {
-            return null;
-        }
-        TaskDetailStore.TaskMessageProjection storedProjection = getStoredTaskMessageRecord(taskId, messageId);
-        TaskDetailStore.TaskMessageAttemptProjection latestAuditView =
-                taskDetailStore.getLatestTaskMessageAttemptProjection(taskId, messageId).orElse(null);
-        TaskMsgStatus messageStatus = storedProjection != null ? storedProjection.status() : TaskMsgStatus.ASSIGNED;
-        String preferredAttemptId = storedProjection != null ? storedProjection.latestAttemptId() : null;
-        int attemptNo = Math.max(1, activeLease.retryCount() + 1);
-        String attemptId = preferredAttemptId;
-        if ((attemptId == null || attemptId.isBlank()) && matchesRuntimeLease(latestAuditView, activeLease, attemptNo)) {
-            attemptId = latestAuditView.attemptId();
-        }
-        if (attemptId == null || attemptId.isBlank()) {
-            attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
-        }
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, attemptNo);
-        attempt.setWorkerId(activeLease.workerId());
-        attempt.setWorkerContextId(activeLease.workerContextId());
-        attempt.setBatchId(activeLease.batchId());
-        if (activeLease.leaseExpireAt() != null) {
-            attempt.setLeaseExpireTime(java.time.LocalDateTime.ofInstant(
-                    activeLease.leaseExpireAt(),
-                    java.time.ZoneId.systemDefault()
-            ));
-        }
-        if (activeLease.leasedAt() != null) {
-            attempt.setDispatchTime(java.time.LocalDateTime.ofInstant(
-                    activeLease.leasedAt(),
-                    java.time.ZoneId.systemDefault()
-            ));
-        }
-        attempt.setStatus(com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED);
-        if (messageStatus == TaskMsgStatus.RUNNING) {
-            attempt.setAckTime(java.time.LocalDateTime.now());
-            attempt.setStartTime(java.time.LocalDateTime.now());
-            attempt.setStatus(com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.RUNNING);
-        }
-        return attempt;
     }
 
     /**
@@ -782,38 +704,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskWorkRuntime.pollExpiredLeases(limit, now);
     }
 
-    @CompatibilityProjectionOnly
-    void persistActiveLeaseProjectionResidue(String taskId) {
-        List<ActiveLeaseRecord> activeLeases = getActiveLeases(taskId);
-        if (activeLeases == null || activeLeases.isEmpty()) {
-            return;
-        }
-        for (ActiveLeaseRecord activeLease : activeLeases) {
-            if (activeLease == null || activeLease.messageId() == null || activeLease.messageId().isBlank()) {
-                continue;
-            }
-            String messageId = activeLease.messageId();
-            TaskDetailStore.TaskMessageProjection storedProjection =
-                    taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
-            TaskDetailStore.TaskMessageProjection leasedProjection =
-                    CompatibilityProjectionSupport.overlayActiveLeaseProjection(
-                            storedProjection,
-                            activeLease,
-                            taskId,
-                            messageId
-                    );
-            if (leasedProjection == null || java.util.Objects.equals(storedProjection, leasedProjection)) {
-                continue;
-            }
-            try {
-                taskDetailStore.upsertTaskMessageProjection(taskId, leasedProjection);
-            } catch (RuntimeException e) {
-                logger.warn("Failed to persist terminal lease residue for taskId={}, messageId={}",
-                        taskId, messageId, e);
-            }
-        }
-    }
-
     void discardTaskRuntime(String taskId) {
         taskWorkRuntime.discardTask(taskId);
     }
@@ -861,54 +751,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             String messageId = java.util.UUID.randomUUID().toString();
             addTaskInput(taskId, messageId, input, dto.getDefaultMsgMaxRetryCount());
         }
-    }
-
-    @CompatibilityProjectionOnly
-    TaskDetailStore.TaskMessageProjection getStoredTaskMessageRecord(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
-    }
-
-    @CompatibilityProjectionOnly
-    TaskDetailStore.TaskMessageProjection getVisibleTaskMessageProjection(String taskId, String messageId) {
-        Task task = getTask(taskId);
-        TaskDetailStore.TaskMessageProjection projection = getStoredTaskMessageRecord(taskId, messageId);
-        if (task != null && (task.getStatus() == null || !task.getStatus().isFinal())) {
-            projection = CompatibilityProjectionSupport.overlayActiveLeaseProjection(
-                    projection,
-                    getActiveLease(taskId, messageId).orElse(null),
-                    taskId,
-                    messageId
-            );
-        }
-        return CompatibilityProjectionSupport.overlayTerminalTaskProjection(task, projection);
-    }
-
-    private boolean matchesRuntimeLease(TaskDetailStore.TaskMessageAttemptProjection attempt,
-                                        ActiveLeaseRecord activeLease,
-                                        int attemptNo) {
-        if (attempt == null || activeLease == null || attempt.attemptId() == null || attempt.attemptId().isBlank()) {
-            return false;
-        }
-        if (attempt.attemptNo() != attemptNo) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.workerId(), activeLease.workerId())) {
-            return false;
-        }
-        if (!java.util.Objects.equals(attempt.workerContextId(), activeLease.workerContextId())) {
-            return false;
-        }
-        return java.util.Objects.equals(attempt.batchId(), activeLease.batchId());
-    }
-
-    private List<TaskMsg> materializeCompatibilityTaskMessages(List<TaskDetailStore.TaskMessageProjection> projections) {
-        if (projections == null || projections.isEmpty()) {
-            return List.of();
-        }
-        return projections.stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .filter(java.util.Objects::nonNull)
-                .toList();
     }
 
     private WorkEnqueueOutcome enqueueTaskWork(RuntimeTaskIngressItem ingressItem) {

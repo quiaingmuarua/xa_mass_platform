@@ -2,9 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMessageSnapshot;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
@@ -14,9 +11,9 @@ import java.util.Objects;
 /**
  * Preferred engine bounded-read surface for cross-module task inspection.
  *
- * <p>This surface intentionally stops at task shell / aggregate state. TaskMsg
- * and TaskMsgAttempt compatibility residue must not leak back out as an engine
- * query contract.
+ * <p>This surface intentionally stops at task shell / aggregate state.
+ * TaskMsg and TaskMsgAttempt residue lives behind the explicit compatibility
+ * query surface instead of the default engine query contract.
  */
 public class TaskQueryService {
 
@@ -45,22 +42,5 @@ public class TaskQueryService {
     public TaskStateValidationResult validateTaskState(String taskId) {
         return taskQueries.validateTaskState(taskId);
     }
-
-    public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        return taskQueries.getTaskMessageSnapshot(taskId, limit);
-    }
-
-    public TaskMsg getTaskMessageView(String taskId, String messageId) {
-        return taskQueries.getTaskMessageView(taskId, messageId);
-    }
-
-    public List<TaskMsgAttempt> getTaskMessageAttemptViews(String taskId, String messageId) {
-        return taskQueries.getTaskMessageAttemptViews(taskId, messageId);
-    }
-
-    public TaskMsgAttempt getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        return taskQueries.getLatestActiveTaskMessageAttemptView(taskId, messageId);
-    }
-
 }
 
