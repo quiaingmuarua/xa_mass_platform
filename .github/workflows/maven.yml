@@ -34,6 +34,8 @@ jobs:
           cache: maven
       - name: Build and run core reactor tests
         run: ./mvnw -B -pl xa-mass-worker-pack -am test
+      - name: Compile xa-mass-testing (compilation gate)
+        run: ./mvnw -q -pl xa-mass-testing -DskipTests compile
       - name: Check xa-mass-sdk public API compatibility
         if: ${{ vars.XA_MASS_SDK_API_BASELINE_VERSION != '' }}
         run: >-
@@ -118,7 +120,7 @@ jobs:
       - name: Run canonical server smoke checks
         run: >-
           ./mvnw -q -pl xa-mass-server
-          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest
+          -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
       - name: Upload Maven test reports
@@ -130,4 +132,29 @@ jobs:
             **/target/surefire-reports/**
             **/target/failsafe-reports/**
             logs/**
+          if-no-files-found: warn
+
+  chaos-smokes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+      - name: Run chaos smoke probes
+        env:
+          CHAOS_TIMEOUT_SECONDS: "30"
+          CHAOS_PROCESSING_DELAY: "10"
+        run: xa-mass-testing/scripts/run-chaos-smokes.sh
+      - name: Upload chaos reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-smoke-reports
+          path: |
+            **/target/chaos-reports/**
           if-no-files-found: warn

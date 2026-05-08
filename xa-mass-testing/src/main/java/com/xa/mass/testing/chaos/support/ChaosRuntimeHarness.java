@@ -11,6 +11,7 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 
@@ -34,8 +35,13 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public static ChaosRuntimeHarness createWebSocket(WebSocketRuntimeConfig config) {
+        return createWebSocket(config, null);
+    }
+
+    public static ChaosRuntimeHarness createWebSocket(WebSocketRuntimeConfig config,
+                                                       ExecutionEventSink traceSink) {
         int transportPort = ChaosSupport.findFreePort();
-        MassSdkApplication app = MassSdk.builder()
+        MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(transportPort, config.endpointPath())
@@ -44,30 +50,41 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
                         .queueMode())
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(config.workerThreads())
-                        .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
-                        .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                        .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds()))
-                .build();
-        return new ChaosRuntimeHarness(app, transportPort, config.endpointPath());
+                .engine(engine -> {
+                    engine.enabled(true)
+                            .workerThreads(config.workerThreads())
+                            .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
+                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds());
+                    if (traceSink != null) {
+                        engine.executionEventSink(traceSink);
+                    }
+                });
+        return new ChaosRuntimeHarness(builder.build(), transportPort, config.endpointPath());
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
-        MassSdkApplication app = MassSdk.builder()
+        return createPolling(config, null);
+    }
+
+    public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config,
+                                                     ExecutionEventSink traceSink) {
+        MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
                         .queueMode())
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(config.workerThreads())
-                        .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
-                        .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                        .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds()))
-                .build();
-        return new ChaosRuntimeHarness(app, 0, "");
+                .engine(engine -> {
+                    engine.enabled(true)
+                            .workerThreads(config.workerThreads())
+                            .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
+                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds());
+                    if (traceSink != null) {
+                        engine.executionEventSink(traceSink);
+                    }
+                });
+        return new ChaosRuntimeHarness(builder.build(), 0, "");
     }
 
     public MassSdkApplication app() {
@@ -117,6 +134,32 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public PullWorkerSession pullWorker(String workerId) {
         return app.pullWorker(workerId);
+    }
+
+    public boolean pauseTask(String taskId) {
+        return app.pauseTask(taskId);
+    }
+
+    public boolean resumeTask(String taskId) {
+        return app.resumeTask(taskId);
+    }
+
+    public boolean cancelTask(String taskId) {
+        return app.cancelTask(taskId);
+    }
+
+    public void waitForTaskStatus(String taskId,
+                                   TaskStatus expectedStatus,
+                                   int timeoutSeconds,
+                                   String failureMessage) throws Exception {
+        ChaosSupport.waitForCondition(
+                () -> {
+                    Task current = app.getTask(taskId);
+                    return current != null && current.getStatus() == expectedStatus;
+                },
+                timeoutSeconds,
+                failureMessage
+        );
     }
 
     public Task createApprovedTask(TaskCreateSpec spec) {
@@ -274,6 +317,67 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                  int batchSize,
                                  int defaultMsgMaxRetryCount,
                                  int maxRuntimeSeconds) {
+        public static TaskCreateSpec multiMessage(String userId,
+                                                   String projectCode,
+                                                   String taskName,
+                                                   String routingCode,
+                                                   int messageCount,
+                                                   int batchSize,
+                                                   int defaultMsgMaxRetryCount,
+                                                   int maxRuntimeSeconds) {
+            Map<String, Object> sharedConfig = new LinkedHashMap<>();
+            sharedConfig.put(TaskSharedConfig.ROUTING_CODE, routingCode);
+            List<Map<String, Object>> inputs = new ArrayList<>();
+            for (int i = 0; i < messageCount; i++) {
+                inputs.add(Map.of(
+                        "seq", i,
+                        "taskName", taskName,
+                        "target", taskName + "-target-" + i
+                ));
+            }
+            return new TaskCreateSpec(
+                    userId,
+                    projectCode,
+                    taskName,
+                    Map.copyOf(sharedConfig),
+                    List.copyOf(inputs),
+                    batchSize,
+                    defaultMsgMaxRetryCount,
+                    maxRuntimeSeconds
+            );
+        }
+
+        public static TaskCreateSpec multiMessageWithFailFlags(String userId,
+                                                               String projectCode,
+                                                               String taskName,
+                                                               String routingCode,
+                                                               List<Boolean> failFlags,
+                                                               int batchSize,
+                                                               int defaultMsgMaxRetryCount,
+                                                               int maxRuntimeSeconds) {
+            Map<String, Object> sharedConfig = new LinkedHashMap<>();
+            sharedConfig.put(TaskSharedConfig.ROUTING_CODE, routingCode);
+            List<Map<String, Object>> inputs = new ArrayList<>();
+            for (int i = 0; i < failFlags.size(); i++) {
+                inputs.add(Map.of(
+                        "seq", i,
+                        "taskName", taskName,
+                        "target", taskName + "-target-" + i,
+                        "shouldFail", failFlags.get(i)
+                ));
+            }
+            return new TaskCreateSpec(
+                    userId,
+                    projectCode,
+                    taskName,
+                    Map.copyOf(sharedConfig),
+                    List.copyOf(inputs),
+                    batchSize,
+                    defaultMsgMaxRetryCount,
+                    maxRuntimeSeconds
+            );
+        }
+
         public static TaskCreateSpec singleMessage(String userId,
                                                    String projectCode,
                                                    String taskName,

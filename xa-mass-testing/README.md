@@ -26,6 +26,10 @@ HTTP/API shell behavior or Spring wiring.
 | `chaos: lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another worker | `target/chaos-reports/` |
 | `chaos: late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite the final message/task state | `target/chaos-reports/` |
 | `chaos: polling lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner` | polling worker claims work, stalls without a result, goes offline, watchdog expiry resets the logical message, and another polling worker takes over to finish successfully | `target/chaos-reports/` |
+| `chaos: polling all messages failed` | `com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner` | polling worker always submits failure with no retries; all messages converge to FAILED and the task closes with ALL_MESSAGES_FAILED | `target/chaos-reports/` |
+| `chaos: polling mixed results` | `com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner` | multi-message task where some messages succeed and some fail (driven by per-message `shouldFail` input flag); task closes with MIXED_MESSAGE_RESULTS | `target/chaos-reports/` |
+| `chaos: polling message retry exhausted` ★ | `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_MSG_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
+| `chaos smoke bundle (CI gate)` ★ | `scripts/run-chaos-smokes.sh` | fast CI gate running the three ★-marked probes; exits non-zero if any probe fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
 
 ## Commands
 
@@ -101,11 +105,38 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner
 ```
 
+All messages failed chaos:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner
+```
+
+Mixed results chaos:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner
+```
+
 Polling lease-expiry redispatch chaos:
 
 ```bash
 cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner
+```
+
+Per-message retry exhaustion chaos:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner
+```
+
+Chaos smoke bundle (all three CI-gated probes):
+
+```bash
+xa-mass-testing/scripts/run-chaos-smokes.sh
 ```
 
 ## Reading Rule
@@ -126,11 +157,16 @@ Use repo-level docs only for system-level policy:
 
 ## Current Chaos Focus
 
-Current chaos probes cover four distinct recovery branches:
+Current chaos probes cover seven distinct scenario branches:
 
 - disconnect, reconnect, then submit the delayed result on the original worker
 - disconnect without a result, let lease expiry trigger redispatch, and finish on a different worker
 - disconnect without a result, let lease expiry trigger redispatch and terminal success, then reconnect the original worker and replay a stale late result that must not mutate the already-final logical message
 - polling worker claims work, stalls without a result, goes offline, and a second polling worker takes over after lease expiry
+- all messages fail with no retries; task closes with `ALL_MESSAGES_FAILED`
+- multi-message task with partial success and partial failure; task closes with `MIXED_MESSAGE_RESULTS`
+- per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); messages finalize with `RETRY_EXHAUSTED`; task closes with `ALL_MESSAGES_FAILED`; `TASK_MSG_RETRY_RESET` events verified in trace
+
+The three polling probes (all-messages-failed, mixed-results, retry-exhausted) are wired to the `chaos-smokes` CI job and gate every PR. All seven probes capture `ExecutionEvent` objects via `CapturingExecutionEventSink` and write a `trace.byType` summary in the report JSON.
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.
