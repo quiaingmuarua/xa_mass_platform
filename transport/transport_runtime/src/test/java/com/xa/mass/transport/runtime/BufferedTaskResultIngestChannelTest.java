@@ -127,11 +127,13 @@ class BufferedTaskResultIngestChannelTest {
     @Test
     void fullQueueFallsBackToSynchronousDelegateInsteadOfDropping() throws InterruptedException {
         CountDownLatch blocker = new CountDownLatch(1);
+        CountDownLatch firstDispatchStarted = new CountDownLatch(1);
         CountDownLatch synchronousFallback = new CountDownLatch(1);
         List<String> received = new CopyOnWriteArrayList<>();
         TaskResultIngestChannel delegate = report -> {
             received.add(report.getMessageId());
             if ("msg-0".equals(report.getMessageId())) {
+                firstDispatchStarted.countDown();
                 try {
                     blocker.await();
                 } catch (InterruptedException e) {
@@ -146,6 +148,7 @@ class BufferedTaskResultIngestChannelTest {
 
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 1);
         assertTrue(channel.ingest(report("task", "msg-0")));
+        assertTrue(firstDispatchStarted.await(1, TimeUnit.SECONDS), "drainer must start processing the first item");
         assertTrue(channel.ingest(report("task", "msg-1")));
         assertTrue(channel.ingest(report("task", "msg-overflow")));
 
@@ -179,4 +182,3 @@ class BufferedTaskResultIngestChannelTest {
         return new TaskResultReport(taskId, messageId, true, "ok", null, Map.of());
     }
 }
-

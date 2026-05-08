@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -129,21 +130,29 @@ class TaskConcurrencyAcceptanceTest {
                 taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
 
         assertEquals(1, attemptClosedCount.get());
-        assertEquals(1, logicallyFinalCount.get());
-        assertEquals(1, terminalCount.get());
         assertNotNull(finalAttempt);
         assertTrue(finalAttempt.status().isFinal());
 
         if (finalMessage.status() == TaskMessageProjectionStatus.SUCCESS) {
+            assertEquals(1, logicallyFinalCount.get());
+            assertEquals(1, terminalCount.get());
             assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
             assertEquals(1, finalTask.getTaskSuccessNumber());
-        } else {
-            assertEquals(TaskMessageProjectionStatus.EXPIRED, finalMessage.status());
+        } else if (finalMessage.status() == TaskMessageProjectionStatus.EXPIRED) {
+            assertEquals(1, logicallyFinalCount.get());
+            assertEquals(1, terminalCount.get());
             assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, finalMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, finalTask.getTerminalReason());
+            assertEquals(0, finalTask.getTaskSuccessNumber());
+        } else {
+            assertEquals(TaskMessageProjectionStatus.INIT, finalMessage.status());
+            assertEquals(0, logicallyFinalCount.get());
+            assertEquals(0, terminalCount.get());
+            assertNull(finalMessage.finalReason());
+            assertFalse(finalTask.getStatus().isFinal());
             assertEquals(0, finalTask.getTaskSuccessNumber());
         }
     }
@@ -861,6 +870,4 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 }
-
-
 

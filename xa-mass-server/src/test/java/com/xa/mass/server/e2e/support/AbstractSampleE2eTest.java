@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -27,6 +29,7 @@ import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -315,7 +318,8 @@ public abstract class AbstractSampleE2eTest {
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
         Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        return new TaskSnapshot(task(detailResponse), fetchCompatibilityMessages(taskId, 500));
+        Map<String, Object> task = task(detailResponse);
+        return new TaskSnapshot(task, fetchCompatibilityMessages(taskId, task, 500));
     }
 
     protected List<Map<String, Object>> fetchTaskMessageAttempts(String taskId, String messageId) {
@@ -347,38 +351,153 @@ public abstract class AbstractSampleE2eTest {
         return attempts;
     }
 
-    private List<Map<String, Object>> fetchCompatibilityMessages(String taskId, int limit) {
+    private List<Map<String, Object>> fetchCompatibilityMessages(String taskId,
+                                                                 Map<String, Object> taskView,
+                                                                 int limit) {
+        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new LinkedHashMap<>();
+        for (ActiveLeaseRecord activeLease : resolveTaskWorkRuntime().activeLeases(taskId)) {
+            if (activeLease != null
+                    && activeLease.messageId() != null
+                    && !activeLease.messageId().isBlank()) {
+                activeLeaseByMessageId.put(activeLease.messageId(), activeLease);
+            }
+        }
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
+        Set<String> seenMessageIds = new java.util.LinkedHashSet<>();
         for (TaskDetailStore.TaskMessageProjection projection
                 : resolveTaskDetailStore().getTaskMessageProjections(taskId, limit)) {
+            ActiveLeaseRecord activeLease = activeLeaseByMessageId.get(projection.messageId());
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("messageId", projection.messageId());
             message.put("taskId", projection.taskId());
-            message.put("status", projection.status() != null ? projection.status().name() : null);
-            message.put("latestAttemptId", projection.latestAttemptId());
-            message.put("latestAttemptWorkerId", projection.latestAttemptWorkerId());
-            message.put("latestAttemptWorkerContextId", projection.latestAttemptWorkerContextId());
-            message.put("latestAttemptBatchId", projection.latestAttemptBatchId());
-            message.put("retryCount", projection.retryCount());
+            message.put("status", overlayStatus(taskView, projection, activeLease));
+            message.put("latestAttemptWorkerId", activeLease != null ? activeLease.workerId() : projection.latestAttemptWorkerId());
+            message.put("latestAttemptWorkerContextId", activeLease != null ? activeLease.workerContextId() : projection.latestAttemptWorkerContextId());
+            message.put("latestAttemptBatchId", activeLease != null ? activeLease.batchId() : projection.latestAttemptBatchId());
+            message.put("retryCount", activeLease != null ? Math.max(0, activeLease.retryCount()) : projection.retryCount());
             message.put("maxRetryCount", projection.maxRetryCount());
             message.put("errorMessage", projection.errorMessage());
             message.put("errorCode", projection.errorCode());
-            message.put("finalReason", projection.finalReason() != null ? projection.finalReason().name() : null);
-            message.put("payloadRef", projection.payloadRef());
+            message.put("finalReason", overlayFinalReason(taskView, projection));
+            message.put("payloadRef", activeLease != null && activeLease.payloadRef() != null && !activeLease.payloadRef().isBlank()
+                    ? activeLease.payloadRef()
+                    : projection.payloadRef());
             message.put("input", projection.input() == null ? null : new LinkedHashMap<>(projection.input()));
             message.put("output", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
             message.put("result", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
-            message.put("assignedTime", projection.assignedTime());
+            message.put("assignedTime", projection.assignedTime() != null
+                    ? projection.assignedTime()
+                    : activeLease != null ? activeLease.leasedAt() : null);
             message.put("createTime", projection.createTime());
             message.put("updateTime", projection.updateTime());
             message.put("startTime", projection.startTime());
             message.put("completeTime", projection.completeTime());
             messages.add(message);
+            seenMessageIds.add(projection.messageId());
+        }
+        for (ActiveLeaseRecord activeLease : activeLeaseByMessageId.values()) {
+            if (activeLease == null
+                    || seenMessageIds.contains(activeLease.messageId())) {
+                continue;
+            }
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("messageId", activeLease.messageId());
+            message.put("taskId", activeLease.taskId());
+            message.put("status", "ASSIGNED");
+            message.put("latestAttemptWorkerId", activeLease.workerId());
+            message.put("latestAttemptWorkerContextId", activeLease.workerContextId());
+            message.put("latestAttemptBatchId", activeLease.batchId());
+            message.put("retryCount", Math.max(0, activeLease.retryCount()));
+            message.put("maxRetryCount", 0);
+            message.put("errorMessage", null);
+            message.put("errorCode", null);
+            message.put("finalReason", overlayFinalReason(taskView, null));
+            message.put("payloadRef", activeLease.payloadRef());
+            message.put("input", null);
+            message.put("output", null);
+            message.put("result", null);
+            message.put("assignedTime", activeLease.leasedAt());
+            message.put("createTime", null);
+            message.put("updateTime", null);
+            message.put("startTime", null);
+            message.put("completeTime", null);
+            messages.add(message);
         }
         return messages;
     }
 
+    private static String overlayStatus(Map<String, Object> taskView,
+                                        TaskDetailStore.TaskMessageProjection projection,
+                                        ActiveLeaseRecord activeLease) {
+        String baseStatus = projection != null && projection.status() != null ? projection.status().name() : null;
+        if (projection != null && projection.status() != null && projection.status().isFinal()) {
+            return baseStatus;
+        }
+        if (isTerminalStop(taskView)) {
+            return isProcessingStatus(baseStatus) || activeLease != null ? "EXPIRED" : "FAILED";
+        }
+        if (activeLease != null) {
+            return "ASSIGNED";
+        }
+        return baseStatus;
+    }
+
+    private static String overlayFinalReason(Map<String, Object> taskView,
+                                             TaskDetailStore.TaskMessageProjection projection) {
+        if (!isTerminalStop(taskView)) {
+            return projection != null && projection.finalReason() != null ? projection.finalReason().name() : null;
+        }
+        return "MANUAL_CANCELLED";
+    }
+
+    private static boolean isTerminalStop(Map<String, Object> taskView) {
+        if (taskView == null) {
+            return false;
+        }
+        Object status = taskView.get("status");
+        if (!"TERMINAL".equals(status)) {
+            return false;
+        }
+        Object terminalReason = taskView.get("terminalReason");
+        return "MANUAL_CANCELLED".equals(terminalReason)
+                || "MAX_RUNTIME_REACHED".equals(terminalReason)
+                || "SUCCESS_RATE_REACHED".equals(terminalReason)
+                || "FAILURE_RATE_REACHED".equals(terminalReason);
+    }
+
+    private static boolean isProcessingStatus(String status) {
+        return "ASSIGNED".equals(status) || "RUNNING".equals(status);
+    }
+
     private TaskDetailStore resolveTaskDetailStore() {
+        Object config = resolveEngineConfig();
+        try {
+            java.lang.reflect.Method taskDetailStoreMethod = config.getClass().getMethod("getTaskDetailStore");
+            Object taskDetailStore = taskDetailStoreMethod.invoke(config);
+            if (!(taskDetailStore instanceof TaskDetailStore detailStore)) {
+                throw new IllegalStateException("Task detail store is unavailable for test compatibility residue views");
+            }
+            return detailStore;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Task compatibility residue views are unavailable for tests", e);
+        }
+    }
+
+    private TaskWorkRuntime resolveTaskWorkRuntime() {
+        Object config = resolveEngineConfig();
+        try {
+            java.lang.reflect.Method taskWorkRuntimeMethod = config.getClass().getMethod("getTaskWorkRuntime");
+            Object taskWorkRuntime = taskWorkRuntimeMethod.invoke(config);
+            if (!(taskWorkRuntime instanceof TaskWorkRuntime runtime)) {
+                throw new IllegalStateException("Task work runtime is unavailable for test runtime views");
+            }
+            return runtime;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Task work runtime is unavailable for tests", e);
+        }
+    }
+
+    private Object resolveEngineConfig() {
         if (app == null) {
             throw new IllegalStateException("MassSdkApplication is not available for compatibility residue test views");
         }
@@ -390,13 +509,7 @@ public abstract class AbstractSampleE2eTest {
             if (engine == null) {
                 throw new IllegalStateException("Mass engine is unavailable for test compatibility residue views");
             }
-            Object config = readField(engine, "config", Object.class);
-            java.lang.reflect.Method taskDetailStoreMethod = config.getClass().getMethod("getTaskDetailStore");
-            Object taskDetailStore = taskDetailStoreMethod.invoke(config);
-            if (!(taskDetailStore instanceof TaskDetailStore detailStore)) {
-                throw new IllegalStateException("Task detail store is unavailable for test compatibility residue views");
-            }
-            return detailStore;
+            return readField(engine, "config", Object.class);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Task compatibility residue views are unavailable for tests", e);
         }

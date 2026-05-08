@@ -1503,5 +1503,3 @@ class TaskResultService {
         }
     }
 }
-
-

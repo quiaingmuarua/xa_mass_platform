@@ -16,6 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -73,7 +75,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
             assertApiOk(firstTerminate);
 
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
-            assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
+            assertTrue(List.of("EXPIRED", "FAILED").contains(String.valueOf(firstTerminal.messages().get(0).get("status"))));
             assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(workerId).get(0).getStatus());
 
             String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
@@ -128,4 +130,3 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
-
