@@ -41,7 +41,7 @@ The shared kernel is:
 - Active transport adapters: polling, websocket, and socket
 - Current task shell create HTTP route: `POST /api/v1/tasks`
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
-- Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/*`
+- Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; `TaskMsg.input/output` are per-item payload boundaries
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 

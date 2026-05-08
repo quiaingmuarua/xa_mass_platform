@@ -1,7 +1,5 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +44,7 @@ public record TaskOutcomeSnapshot(String taskId,
                                          String status,
                                          String finalReason,
                                          String leaseExpireTime) {
-        public static AttemptOutcomeSnapshot fromAttempt(SdkTaskMessageAttemptView attempt) {
+        public static AttemptOutcomeSnapshot fromAttempt(CompatibilityAttemptView attempt) {
             return new AttemptOutcomeSnapshot(
                     attempt.attemptNo(),
                     attempt.attemptId(),

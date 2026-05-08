@@ -3,6 +3,8 @@ import type {
     TaskActionResult,
     TaskCreateRequest,
     TaskCreateResult,
+    TaskDebugSyncRequest,
+    TaskDebugSyncResult,
     TaskDetailRecord,
     TaskDetailResponse,
     TaskListQuery,
@@ -65,6 +67,30 @@ export async function createTaskReal(
     }
 
     return shellResult
+}
+
+export async function invokeSyncTaskDebugReal(
+    request: TaskDebugSyncRequest,
+): Promise<TaskDebugSyncResult> {
+    return requestApiData<TaskDebugSyncResult>(
+        '/internal/v1/debug/task-invocations:sync',
+        {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: request.userId,
+                project: request.project,
+                taskName: request.taskName,
+                eventCode: request.eventCode,
+                mode: 'SINGLE_RUN',
+                payloadType: request.payloadType ?? 'JSON',
+                sharedConfig: request.sharedConfig,
+                inputs: request.inputs,
+                batchSize: 1,
+                defaultMsgMaxRetryCount: 0,
+                maxRuntimeSeconds: request.maxRuntimeSeconds,
+            }),
+        },
+    )
 }
 
 export async function getTaskDetailReal(

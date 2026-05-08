@@ -11,13 +11,14 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
+import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -398,10 +399,11 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
-                List<SdkTaskMessageView> messages = messageSnapshot.messages();
+                CompatibilityMessageSnapshot messageSnapshot =
+                        ProjectionTestViews.snapshot(app, taskId, config.messagesPerTask());
+                List<CompatibilityMessageView> messages = messageSnapshot.messages();
                 total += messages.size();
-                for (SdkTaskMessageView message : messages) {
+                for (CompatibilityMessageView message : messages) {
                     if ("SUCCESS".equals(message.status())) {
                         success++;
                     } else if ("FAILED".equals(message.status())) {

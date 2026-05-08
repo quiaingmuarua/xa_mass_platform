@@ -4,6 +4,7 @@ import {
     blockTaskMock,
     createTaskMock,
     getTaskDetailMock,
+    invokeSyncTaskDebugMock,
     listTasksMock,
     pauseTaskMock,
     resumeTaskMock,
@@ -14,6 +15,7 @@ import {
     blockTaskReal,
     createTaskReal,
     getTaskDetailReal,
+    invokeSyncTaskDebugReal,
     listTasksReal,
     pauseTaskReal,
     resumeTaskReal,
@@ -23,6 +25,8 @@ import type {
     TaskActionResult,
     TaskCreateRequest,
     TaskCreateResult,
+    TaskDebugSyncRequest,
+    TaskDebugSyncResult,
     TaskDetailResponse,
     TaskListQuery,
     TaskListResponse,
@@ -56,6 +60,16 @@ export async function createTask(
     }
 
     return createTaskReal(request)
+}
+
+export async function invokeSyncTaskDebug(
+    request: TaskDebugSyncRequest,
+): Promise<TaskDebugSyncResult> {
+    if (getAppConfig().useMockApi) {
+        return invokeSyncTaskDebugMock(request)
+    }
+
+    return invokeSyncTaskDebugReal(request)
 }
 
 export async function auditTask(

@@ -92,7 +92,10 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(2, terminalSnapshot.messages().size());
-            assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "EXPIRED".equals(message.get("status"))));
+            assertTrue(terminalSnapshot.messages().stream().allMatch(message ->
+                    List.of("EXPIRED", "FAILED").contains(String.valueOf(message.get("status")))));
+            assertTrue(terminalSnapshot.messages().stream().allMatch(message ->
+                    "MANUAL_CANCELLED".equals(String.valueOf(message.get("finalReason")))));
 
             Map<String, Object> deleteResponse = exchange(
                     "/api/v1/tasks/" + taskId,

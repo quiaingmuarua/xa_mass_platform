@@ -12,7 +12,6 @@ import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.starter.config.EngineConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -403,8 +402,16 @@ public abstract class AbstractSampleE2eTest {
             }
             java.lang.reflect.Field configField = MassEngine.class.getDeclaredField("config");
             configField.setAccessible(true);
-            EngineConfig config = (EngineConfig) configField.get(engine);
-            return config.getTaskCompatibilityQueryService();
+            Object config = configField.get(engine);
+            java.lang.reflect.Method taskQueryMethod = config.getClass().getMethod("getTaskQueryService");
+            taskQueryMethod.invoke(config);
+            java.lang.reflect.Field taskManagerField = config.getClass().getDeclaredField("taskManager");
+            taskManagerField.setAccessible(true);
+            TaskManager reflectedTaskManager = (TaskManager) taskManagerField.get(config);
+            if (reflectedTaskManager == null) {
+                throw new IllegalStateException("Task manager is unavailable for test compatibility queries");
+            }
+            return new TaskCompatibilityQueryService(reflectedTaskManager);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Task compatibility queries are unavailable for tests", e);
         }

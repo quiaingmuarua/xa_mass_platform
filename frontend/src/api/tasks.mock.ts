@@ -2,6 +2,8 @@ import type {
     TaskActionResult,
     TaskCreateRequest,
     TaskCreateResult,
+    TaskDebugSyncRequest,
+    TaskDebugSyncResult,
     TaskDetailResponse,
     TaskListItem,
     TaskListQuery,
@@ -243,6 +245,36 @@ export async function createTaskMock(
     return delay({
         taskId,
         message: 'Task created',
+    })
+}
+
+export async function invokeSyncTaskDebugMock(
+    request: TaskDebugSyncRequest,
+): Promise<TaskDebugSyncResult> {
+    const created = await createTaskMock({
+        userId: request.userId,
+        project: request.project,
+        taskName: request.taskName,
+        eventCode: request.eventCode,
+        mode: 'SINGLE_RUN',
+        payloadType: request.payloadType ?? 'JSON',
+        sharedConfig: request.sharedConfig,
+        inputs: request.inputs,
+        batchSize: 1,
+        defaultMsgMaxRetryCount: 0,
+        openEnded: false,
+        maxRuntimeSeconds: request.maxRuntimeSeconds,
+    })
+
+    return delay({
+        taskId: created.taskId,
+        messageId: 'mock-message-001',
+        synced: true,
+        timedOut: false,
+        status: 'SUCCESS',
+        output: {},
+        errorCode: '',
+        errorMessage: '',
     })
 }
 

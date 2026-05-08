@@ -177,8 +177,8 @@
 import {ElMessage} from 'element-plus'
 import {computed, ref, watch} from 'vue'
 import {useAuth} from '@/auth/use-auth'
-import {createTask} from '@/api/tasks'
-import type {TaskCreateRequest} from '@/types/tasks'
+import {invokeSyncTaskDebug} from '@/api/tasks'
+import type {TaskDebugSyncRequest} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 import {hasPermission} from '@/utils/permissions'
@@ -277,26 +277,22 @@ async function handleCreateDebugTask(): Promise<void> {
     return
   }
 
-  const request: TaskCreateRequest = {
+  const request: TaskDebugSyncRequest = {
     userId: currentOperatorId.value,
     project,
     taskName: `worker-debug:${eventCode}`,
     eventCode,
-    mode: 'SINGLE_RUN',
     payloadType: 'JSON',
     sharedConfig: {
       [TARGET_WORKER_ID]: props.worker.workerId,
     },
     inputs: [payload],
-    batchSize: 1,
-    defaultMsgMaxRetryCount: 0,
-    openEnded: false,
     maxRuntimeSeconds: 60,
   }
 
   sendingDebugMessage.value = true
   try {
-    const result = await createTask(request)
+    const result = await invokeSyncTaskDebug(request)
     lastSubmission.value = {
       taskId: result.taskId,
       project,

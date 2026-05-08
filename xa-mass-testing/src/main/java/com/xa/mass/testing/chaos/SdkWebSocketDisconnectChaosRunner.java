@@ -9,13 +9,14 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
+import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -295,11 +296,12 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, config.messagesPerTask());
-            List<SdkTaskMessageView> messages = messageSnapshot.messages();
+            CompatibilityMessageSnapshot messageSnapshot =
+                    ProjectionTestViews.snapshot(app, taskId, config.messagesPerTask());
+            List<CompatibilityMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
-            for (SdkTaskMessageView message : messages) {
-                List<SdkTaskMessageAttemptView> attempts = app.getTaskMessageAttemptViews(taskId, message.messageId());
+            for (CompatibilityMessageView message : messages) {
+                List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(app, taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.messageId(),
                         message.status(),
@@ -307,11 +309,11 @@ public final class SdkWebSocketDisconnectChaosRunner {
                         message.latestAttemptWorkerId(),
                         attempts.size(),
                         attempts.stream()
-                                .map(SdkTaskMessageAttemptView::status)
+                                .map(CompatibilityAttemptView::status)
                                 .filter(Objects::nonNull)
                                 .toList(),
                         attempts.stream()
-                                .map(SdkTaskMessageAttemptView::finalReason)
+                                .map(CompatibilityAttemptView::finalReason)
                                 .filter(Objects::nonNull)
                                 .toList()
                 ));

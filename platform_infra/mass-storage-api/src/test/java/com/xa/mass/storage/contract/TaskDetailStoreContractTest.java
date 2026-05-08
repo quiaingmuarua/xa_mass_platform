@@ -1,8 +1,8 @@
 package com.xa.mass.storage.contract;
 
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,11 +103,11 @@ public abstract class TaskDetailStoreContractTest {
         store.upsertTaskMessageProjection("t1", msg("t1", "m1"));
         TaskDetailStore.TaskMessageProjection updated = projectionWithStatus(
                 store.getTaskMessageProjection("t1", "m1").orElseThrow(),
-                TaskMsgStatus.SUCCESS
+                TaskMessageProjectionStatus.SUCCESS
         );
         store.upsertTaskMessageProjection("t1", updated);
         assertThat(store.getTaskMessageProjection("t1", "m1")).get()
-                .extracting(TaskDetailStore.TaskMessageProjection::status).isEqualTo(TaskMsgStatus.SUCCESS);
+                .extracting(TaskDetailStore.TaskMessageProjection::status).isEqualTo(TaskMessageProjectionStatus.SUCCESS);
     }
 
     @Test
@@ -133,11 +133,11 @@ public abstract class TaskDetailStoreContractTest {
         store.upsertTaskMessageAttemptProjection("t1", "m1", attempt("t1", "m1", "a1"));
         TaskDetailStore.TaskMessageAttemptProjection updated = attemptWithStatus(
                 store.getLatestTaskMessageAttemptProjection("t1", "m1").orElseThrow(),
-                TaskMsgAttemptStatus.SUCCEEDED
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
         );
         store.upsertTaskMessageAttemptProjection("t1", "m1", updated);
         assertThat(store.getLatestTaskMessageAttemptProjection("t1", "m1")).get()
-                .extracting(TaskDetailStore.TaskMessageAttemptProjection::status).isEqualTo(TaskMsgAttemptStatus.SUCCEEDED);
+                .extracting(TaskDetailStore.TaskMessageAttemptProjection::status).isEqualTo(TaskMessageAttemptProjectionStatus.SUCCEEDED);
     }
 
     @Test
@@ -165,7 +165,7 @@ public abstract class TaskDetailStoreContractTest {
 
         TaskDetailStore.TaskMessageAttemptProjection updated = attemptWithStatus(
                 store.getLatestTaskMessageAttemptProjection("t1", "m1").orElseThrow(),
-                TaskMsgAttemptStatus.SUCCEEDED
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
         );
         store.upsertTaskMessageAttemptProjection("t1", "m1", updated);
 
@@ -183,8 +183,8 @@ public abstract class TaskDetailStoreContractTest {
     @Test
     void getTaskMessageStats_countsAreConsistentWithStoredMessages() {
         store.upsertTaskMessageProjection("t1", msg("t1", "m1"));
-        store.upsertTaskMessageProjection("t1", msg("t1", "m2", TaskMsgStatus.SUCCESS));
-        store.upsertTaskMessageProjection("t1", msg("t1", "m3", TaskMsgStatus.FAILED));
+        store.upsertTaskMessageProjection("t1", msg("t1", "m2", TaskMessageProjectionStatus.SUCCESS));
+        store.upsertTaskMessageProjection("t1", msg("t1", "m3", TaskMessageProjectionStatus.FAILED));
 
         TaskDetailStore.TaskMessageStats stats = store.getTaskMessageStats("t1");
         assertThat(stats.getTotal()).isEqualTo(3);
@@ -194,10 +194,12 @@ public abstract class TaskDetailStoreContractTest {
 
     protected TaskDetailStore.TaskMessageProjection msg(String taskId, String messageId) {
         initTask(taskId);
-        return msg(taskId, messageId, TaskMsgStatus.INIT);
+        return msg(taskId, messageId, TaskMessageProjectionStatus.INIT);
     }
 
-    protected TaskDetailStore.TaskMessageProjection msg(String taskId, String messageId, TaskMsgStatus status) {
+    protected TaskDetailStore.TaskMessageProjection msg(String taskId,
+                                                        String messageId,
+                                                        TaskMessageProjectionStatus status) {
         initTask(taskId);
         return new TaskDetailStore.TaskMessageProjection(
                 messageId,
@@ -232,7 +234,7 @@ public abstract class TaskDetailStoreContractTest {
                 null,
                 null,
                 null,
-                TaskMsgAttemptStatus.DISPATCHED,
+                TaskMessageAttemptProjectionStatus.DISPATCHED,
                 null,
                 null,
                 null,
@@ -249,7 +251,7 @@ public abstract class TaskDetailStoreContractTest {
                 taskId,
                 Map.of("k", "v"),
                 null,
-                TaskMsgStatus.SUCCESS,
+                TaskMessageProjectionStatus.SUCCESS,
                 null,
                 null,
                 null,
@@ -280,7 +282,7 @@ public abstract class TaskDetailStoreContractTest {
                 null,
                 null,
                 null,
-                TaskMsgAttemptStatus.SUCCEEDED,
+                TaskMessageAttemptProjectionStatus.SUCCEEDED,
                 null,
                 null,
                 null,
@@ -289,7 +291,7 @@ public abstract class TaskDetailStoreContractTest {
     }
 
     private TaskDetailStore.TaskMessageProjection projectionWithStatus(TaskDetailStore.TaskMessageProjection projection,
-                                                                       TaskMsgStatus status) {
+                                                                       TaskMessageProjectionStatus status) {
         return new TaskDetailStore.TaskMessageProjection(
                 projection.messageId(),
                 projection.taskId(),
@@ -315,7 +317,7 @@ public abstract class TaskDetailStoreContractTest {
     }
 
     private TaskDetailStore.TaskMessageAttemptProjection attemptWithStatus(TaskDetailStore.TaskMessageAttemptProjection projection,
-                                                                           TaskMsgAttemptStatus status) {
+                                                                           TaskMessageAttemptProjectionStatus status) {
         return new TaskDetailStore.TaskMessageAttemptProjection(
                 projection.attemptId(),
                 projection.taskId(),

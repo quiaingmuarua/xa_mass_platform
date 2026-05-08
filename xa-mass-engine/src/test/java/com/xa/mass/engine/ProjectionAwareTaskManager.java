@@ -1,15 +1,13 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMessageSnapshot;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.engine.strategy.TaskScheduler;
 
 import java.util.List;
@@ -158,7 +156,9 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                 workerId,
                                 workerContextId,
                                 batchId,
-                                status != null ? TaskMsgAttemptStatus.valueOf(status) : TaskMsgAttemptStatus.DISPATCHED,
+                                status != null
+                                        ? TaskMessageAttemptProjectionStatus.valueOf(status)
+                                        : TaskMessageAttemptProjectionStatus.DISPATCHED,
                                 null,
                                 null,
                                 null,
@@ -188,9 +188,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                 workerId,
                                 workerContextId,
                                 batchId,
-                                status != null ? TaskMsgAttemptStatus.valueOf(status) : TaskMsgAttemptStatus.DISPATCHED,
+                                status != null
+                                        ? TaskMessageAttemptProjectionStatus.valueOf(status)
+                                        : TaskMessageAttemptProjectionStatus.DISPATCHED,
                                 finalReason != null
-                                        ? com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason.valueOf(finalReason)
+                                        ? TaskMessageAttemptProjectionFinalReason.valueOf(finalReason)
                                         : null,
                                 errorMessage,
                                 errorCode,
@@ -223,7 +225,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         TaskMsg taskMsg = payloadRef == null || payloadRef.isBlank()
                 ? new TaskMsg(messageId, taskId, input)
                 : new TaskMsg(messageId, taskId, input, payloadRef);
-        taskMsg.setStatus(status != null ? com.xa.mass.base.enums.taskmsg.TaskMsgStatus.valueOf(status) : null);
+        taskMsg.setStatus(status != null ? TaskMsgStatus.valueOf(status) : null);
         taskMsg.applyLatestAttemptProjection(
                 latestAttemptId,
                 latestAttemptWorkerId,
@@ -235,7 +237,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         taskMsg.setErrorMessage(errorMessage);
         taskMsg.setErrorCode(errorCode);
         taskMsg.setFinalReason(finalReason != null
-                ? com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason.valueOf(finalReason)
+                ? TaskMsgFinalReason.valueOf(finalReason)
                 : null);
         taskMsg.setOutput(output);
         taskMsg.setAssignedTime(assignedTime);

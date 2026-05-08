@@ -1,5 +1,11 @@
 import {setRuntimeConfigOverrides} from '@/app/config'
-import {createTaskReal, getTaskDetailReal, listTasksReal, terminateTaskReal,} from '@/api/tasks.real'
+import {
+    createTaskReal,
+    getTaskDetailReal,
+    invokeSyncTaskDebugReal,
+    listTasksReal,
+    terminateTaskReal,
+} from '@/api/tasks.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -182,5 +188,70 @@ describe('tasks.real', () => {
             expect.objectContaining({ method: 'POST' }),
         )
         expect(result.taskId).toBe('task-101')
+    })
+
+    it('posts worker debug sync invocations to the internal v1 endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    taskId: 'task-debug-001',
+                    messageId: 'msg-debug-001',
+                    synced: true,
+                    timedOut: false,
+                    status: 'SUCCESS',
+                    output: {},
+                    errorCode: '',
+                    errorMessage: '',
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await invokeSyncTaskDebugReal({
+            userId: 'ops-admin',
+            project: 'demoApp',
+            taskName: 'worker-debug:mock.state.get',
+            eventCode: 'mock.state.get',
+            payloadType: 'JSON',
+            sharedConfig: {
+                targetWorkerId: 'worker-us-01',
+            },
+            inputs: [
+                {
+                    includeRuntime: true,
+                },
+            ],
+            maxRuntimeSeconds: 60,
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/internal/v1/debug/task-invocations:sync',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({
+                    userId: 'ops-admin',
+                    project: 'demoApp',
+                    taskName: 'worker-debug:mock.state.get',
+                    eventCode: 'mock.state.get',
+                    mode: 'SINGLE_RUN',
+                    payloadType: 'JSON',
+                    sharedConfig: {
+                        targetWorkerId: 'worker-us-01',
+                    },
+                    inputs: [
+                        {
+                            includeRuntime: true,
+                        },
+                    ],
+                    batchSize: 1,
+                    defaultMsgMaxRetryCount: 0,
+                    maxRuntimeSeconds: 60,
+                }),
+            }),
+        )
+        expect(result.taskId).toBe('task-debug-001')
+        expect(result.synced).toBe(true)
     })
 })

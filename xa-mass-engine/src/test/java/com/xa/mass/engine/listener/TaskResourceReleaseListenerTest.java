@@ -1,9 +1,7 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskMessageAttemptClosedEvent;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -13,11 +11,13 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -108,7 +108,8 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
@@ -142,7 +143,8 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
@@ -176,7 +178,8 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
@@ -221,19 +224,25 @@ class TaskResourceReleaseListenerTest {
         verify(workerManager).unlockWorker("worker-1");
     }
 
-    private TaskMsgAttempt closedAttempt(String taskId,
-                                         String messageId,
-                                         String attemptId,
-                                         String workerId,
-                                         String workerContextId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, 1);
-        attempt.setWorkerId(workerId);
-        attempt.setWorkerContextId(workerContextId);
-        assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(1)));
-        assertTrue(attempt.markDispatched());
-        assertTrue(attempt.markRunning());
-        assertTrue(attempt.markSucceeded());
-        return attempt;
+    private TaskDetailStore.TaskMessageAttemptProjection closedAttempt(String taskId,
+                                                                       String messageId,
+                                                                       String attemptId,
+                                                                       String workerId,
+                                                                       String workerContextId) {
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                taskId,
+                messageId,
+                1,
+                workerId,
+                workerContextId,
+                null,
+                TaskMessageAttemptProjectionStatus.SUCCEEDED,
+                TaskMessageAttemptProjectionFinalReason.SUCCESS,
+                null,
+                null,
+                null
+        );
     }
 
     private List<com.xa.mass.runtime.api.ActiveLeaseRecord> activeLeases(String taskId,

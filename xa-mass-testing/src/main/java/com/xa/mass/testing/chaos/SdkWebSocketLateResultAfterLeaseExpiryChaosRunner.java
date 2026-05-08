@@ -3,11 +3,12 @@ package com.xa.mass.testing.chaos;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
-import com.xa.mass.sdk.SdkTaskMessageView;
+import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
+import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -113,7 +114,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         Map.of("source", "SdkWebSocketLateResultAfterLeaseExpiryChaosRunner")
                 ));
 
-                SdkTaskMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
+                CompatibilityMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTid(),
                         message.messageId(),
@@ -155,12 +156,14 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "late-result chaos task must converge"
                 );
 
-                SdkTaskMessageView terminalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
-                List<SdkTaskMessageAttemptView> terminalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
+                CompatibilityMessageView terminalMessage =
+                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                List<CompatibilityAttemptView> terminalAttempts =
+                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
                 ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
 
-                SdkTaskMessageAttemptView expiredAttempt = terminalAttempts.get(0);
-                SdkTaskMessageAttemptView successAttempt = terminalAttempts.get(1);
+                CompatibilityAttemptView expiredAttempt = terminalAttempts.get(0);
+                CompatibilityAttemptView successAttempt = terminalAttempts.get(1);
                 LocalDateTime initialLeaseExpireTime = expiredAttempt.leaseExpireTime();
 
                 ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
@@ -189,8 +192,10 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 ChaosSupport.maybeSleep(config.postReplayObserveDelayMillis());
 
                 TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTid(), 1);
-                SdkTaskMessageView finalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
-                List<SdkTaskMessageAttemptView> finalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
+                CompatibilityMessageView finalMessage =
+                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                List<CompatibilityAttemptView> finalAttempts =
+                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");

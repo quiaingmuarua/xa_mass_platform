@@ -10,6 +10,8 @@ import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 
@@ -48,7 +50,7 @@ class JdbcStoragePostgresTest {
 
             storage.upsertTaskMessageProjection("task-1", new TaskDetailStore.TaskMessageProjection(
                     "msg-1", "task-1", Map.of("target", "x"), null,
-                    com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT,
+                    TaskMessageProjectionStatus.INIT,
                     null, null, null, null, null,
                     0, 0, null, null, null, null,
                     null, null, null, null
@@ -56,7 +58,7 @@ class JdbcStoragePostgresTest {
             storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", new TaskDetailStore.TaskMessageAttemptProjection(
                     "attempt-1", "task-1", "msg-1", 1,
                     null, null, null,
-                    com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus.DISPATCHED,
+                    TaskMessageAttemptProjectionStatus.DISPATCHED,
                     null, null, null, null
             ));
 

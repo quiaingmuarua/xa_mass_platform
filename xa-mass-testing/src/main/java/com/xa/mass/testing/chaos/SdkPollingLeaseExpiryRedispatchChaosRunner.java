@@ -2,12 +2,13 @@ package com.xa.mass.testing.chaos;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
+import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.transport.model.TaskDispatchItem;
 
@@ -107,7 +108,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         Map.of("source", "SdkPollingLeaseExpiryRedispatchChaosRunner")
                 ));
 
-                SdkTaskMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
+                CompatibilityMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
                 ChaosSupport.waitForCondition(
                         () -> activeChaosWorker.stalledDispatches() >= 1,
                         config.timeoutSeconds(),
@@ -149,12 +150,14 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         config.timeoutSeconds(),
                         "polling lease-expiry redispatch task must converge"
                 );
-                SdkTaskMessageView finalMessage = runtime.app().getTaskMessageView(task.getTid(), message.messageId());
-                List<SdkTaskMessageAttemptView> finalAttempts = runtime.app().getTaskMessageAttemptViews(task.getTid(), message.messageId());
+                CompatibilityMessageView finalMessage =
+                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                List<CompatibilityAttemptView> finalAttempts =
+                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
-                SdkTaskMessageAttemptView expiredAttempt = finalAttempts.get(0);
-                SdkTaskMessageAttemptView successAttempt = finalAttempts.get(1);
+                CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);
+                CompatibilityAttemptView successAttempt = finalAttempts.get(1);
                 LocalDateTime initialLeaseExpireTime = expiredAttempt.leaseExpireTime();
 
                 ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),

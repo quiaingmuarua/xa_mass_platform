@@ -80,3 +80,26 @@ export interface TaskCreateResult {
     taskId: string
     message: string
 }
+
+export interface TaskDebugSyncRequest {
+    userId: string
+    project: string
+    taskName: string
+    eventCode: string
+    payloadType?: 'TEXT' | 'JSON'
+    sharedConfig: Record<string, unknown>
+    inputs: Array<Record<string, unknown>>
+    maxRuntimeSeconds: number
+}
+
+export interface TaskDebugSyncResult {
+    taskId: string
+    messageId: string
+    synced: boolean
+    timedOut: boolean
+    timeoutMs?: number
+    status?: string
+    output?: Record<string, unknown>
+    errorCode?: string
+    errorMessage?: string
+}

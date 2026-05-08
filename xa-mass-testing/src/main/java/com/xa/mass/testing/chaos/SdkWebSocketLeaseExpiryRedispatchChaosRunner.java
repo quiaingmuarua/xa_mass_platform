@@ -7,9 +7,6 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.sdk.SdkTaskMessageAttemptView;
-import com.xa.mass.sdk.SdkTaskMessageSnapshot;
-import com.xa.mass.sdk.SdkTaskMessageView;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -17,6 +14,10 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
+import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
+import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.java_websocket.client.WebSocketClient;
@@ -129,7 +130,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, CHAOS_WORKER_ID, "chaos worker should be online before scenario starts");
 
                 Task task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
-                SdkTaskMessageView message = waitForSingleMessage(app, task.getTid());
+                CompatibilityMessageView message = waitForSingleMessage(app, task.getTid());
 
                 waitForCondition(
                         () -> activeChaosWorker.disconnectCycles() >= 1,
@@ -142,7 +143,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                         "runtime should observe the chaos worker offline after disconnect"
                 );
 
-                SdkTaskMessageAttemptView firstAttempt = waitForActiveAttemptOnWorker(
+                CompatibilityAttemptView firstAttempt = waitForActiveAttemptOnWorker(
                         app,
                         task.getTid(),
                         message.messageId(),
@@ -154,18 +155,20 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> app.getTaskMessageAttemptViews(task.getTid(), message.messageId()).size() >= 2,
+                        () -> ProjectionTestViews.attempts(app, task.getTid(), message.messageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
 
                 TaskOutcome outcome = waitForTerminalTask(app, task.getTid(), "lease-expiry redispatch task must converge");
-                SdkTaskMessageView finalMessage = app.getTaskMessageView(task.getTid(), message.messageId());
-                List<SdkTaskMessageAttemptView> finalAttempts = app.getTaskMessageAttemptViews(task.getTid(), message.messageId());
+                CompatibilityMessageView finalMessage =
+                        ProjectionTestViews.message(app, task.getTid(), message.messageId());
+                List<CompatibilityAttemptView> finalAttempts =
+                        ProjectionTestViews.attempts(app, task.getTid(), message.messageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
-                SdkTaskMessageAttemptView expiredAttempt = finalAttempts.get(0);
-                SdkTaskMessageAttemptView successAttempt = finalAttempts.get(1);
+                CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);
+                CompatibilityAttemptView successAttempt = finalAttempts.get(1);
 
                 require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
                         "first attempt should belong to the chaos worker");
@@ -321,27 +324,27 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             waitForCondition(() -> app.isWorkerOnline(workerId), config.timeoutSeconds(), failureMessage);
         }
 
-        private SdkTaskMessageView waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
+        private CompatibilityMessageView waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
             waitForCondition(
-                    () -> app.getTaskMessageSnapshot(taskId, 1).messages().size() == 1,
+                    () -> ProjectionTestViews.snapshot(app, taskId, 1).messages().size() == 1,
                     config.timeoutSeconds(),
                     "task should materialize exactly one logical message"
             );
-            return app.getTaskMessageSnapshot(taskId, 1).messages().get(0);
+            return ProjectionTestViews.snapshot(app, taskId, 1).messages().get(0);
         }
 
-        private SdkTaskMessageAttemptView waitForActiveAttemptOnWorker(MassSdkApplication app,
-                                                                       String taskId,
-                                                                       String messageId,
-                                                                       String workerId,
-                                                                       String failureMessage) throws Exception {
+        private CompatibilityAttemptView waitForActiveAttemptOnWorker(MassSdkApplication app,
+                                                                      String taskId,
+                                                                      String messageId,
+                                                                      String workerId,
+                                                                      String failureMessage) throws Exception {
             waitForCondition(() -> {
-                SdkTaskMessageAttemptView attempt = app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
+                CompatibilityAttemptView attempt = ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
                 return attempt != null
                         && workerId.equals(attempt.workerId())
                         && !List.of("SUCCEEDED", "FAILED", "EXPIRED", "REVOKED").contains(attempt.status());
             }, config.timeoutSeconds(), failureMessage);
-            return app.getLatestActiveTaskMessageAttemptView(taskId, messageId);
+            return ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
         }
 
         private TaskOutcome waitForTerminalTask(MassSdkApplication app, String taskId, String failureMessage) throws Exception {
@@ -356,11 +359,11 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            SdkTaskMessageSnapshot messageSnapshot = app.getTaskMessageSnapshot(taskId, 1);
-            List<SdkTaskMessageView> messages = messageSnapshot.messages();
+            CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(app, taskId, 1);
+            List<CompatibilityMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
-            for (SdkTaskMessageView message : messages) {
-                List<SdkTaskMessageAttemptView> attempts = app.getTaskMessageAttemptViews(taskId, message.messageId());
+            for (CompatibilityMessageView message : messages) {
+                List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(app, taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.messageId(),
                         message.status(),
@@ -610,7 +613,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                      String status,
                                      String finalReason,
                                      String leaseExpireTime) {
-        private static AttemptProjection fromAttempt(SdkTaskMessageAttemptView attempt) {
+        private static AttemptProjection fromAttempt(CompatibilityAttemptView attempt) {
             return new AttemptProjection(
                     attempt.attemptNo(),
                     attempt.attemptId(),
