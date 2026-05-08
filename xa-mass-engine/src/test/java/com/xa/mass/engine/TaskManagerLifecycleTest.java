@@ -12,6 +12,10 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.*;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
@@ -2485,9 +2489,9 @@ class TaskManagerLifecycleTest {
         TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
         TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
 
-        assertEquals(1, limitOneSnapshot.returned());
+        assertEquals(1, limitOneSnapshot.messages().size());
         assertTrue(limitOneSnapshot.truncated());
-        assertEquals(0, zeroSnapshot.returned());
+        assertEquals(0, zeroSnapshot.messages().size());
         assertTrue(zeroSnapshot.truncated());
     }
 
@@ -2525,10 +2529,10 @@ class TaskManagerLifecycleTest {
         TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
         TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
 
-        assertEquals(1, limitOneSnapshot.returned());
+        assertEquals(1, limitOneSnapshot.messages().size());
         assertTrue(limitOneSnapshot.truncated(),
                 "snapshot truncation should follow runtime total work count even when one compatibility row is missing");
-        assertEquals(0, zeroSnapshot.returned());
+        assertEquals(0, zeroSnapshot.messages().size());
         assertTrue(zeroSnapshot.truncated(),
                 "zero-limit compatibility snapshot should still report truncation from runtime total work count");
     }

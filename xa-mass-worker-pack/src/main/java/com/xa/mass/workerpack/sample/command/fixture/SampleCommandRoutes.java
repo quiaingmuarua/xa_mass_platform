@@ -18,53 +18,53 @@ public final class SampleCommandRoutes {
     }
 
     public static void registerSampleRoutes() {
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.state.get")
-                .handler(SampleCommandRoutes::sampleStateGet)
-                .resolver(json -> json)
-                .summary("Return the current mock fault-injection state for a worker.")
-                .suggestedPhases("prepare", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.state.get",
+                SampleCommandRoutes::sampleStateGet,
+                "Return the current mock fault-injection state for a worker.",
+                true,
+                "prepare", "verify"
+        ));
 
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.delay.response")
-                .handler(SampleCommandRoutes::sampleDelayResponse)
-                .resolver(json -> json)
-                .summary("Delay future TASK result responses from the worker by a bounded number of milliseconds.")
-                .suggestedPhases("prepare", "trigger", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.delay.response",
+                SampleCommandRoutes::sampleDelayResponse,
+                "Delay future TASK result responses from the worker by a bounded number of milliseconds.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
 
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.drop.outbound")
-                .handler(SampleCommandRoutes::sampleDropOutbound)
-                .resolver(json -> json)
-                .summary("Drop future TASK result responses using mode off/once/always.")
-                .suggestedPhases("prepare", "trigger", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.drop.outbound",
+                SampleCommandRoutes::sampleDropOutbound,
+                "Drop future TASK result responses using mode off/once/always.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
 
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.task.result.status")
-                .handler(SampleCommandRoutes::sampleTaskResultStatus)
-                .resolver(json -> json)
-                .summary("Override future TASK result status with SUCCESS/FAILED, or clear the override.")
-                .suggestedPhases("prepare", "trigger", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.task.result.status",
+                SampleCommandRoutes::sampleTaskResultStatus,
+                "Override future TASK result status with SUCCESS/FAILED, or clear the override.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
 
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.disconnect")
-                .handler(SampleCommandRoutes::sampleDisconnect)
-                .resolver(json -> json)
-                .summary("Disconnect the target worker after the current disconnect task result is sent.")
-                .suggestedPhases("trigger", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.disconnect",
+                SampleCommandRoutes::sampleDisconnect,
+                "Disconnect the target worker after the current disconnect task result is sent.",
+                true,
+                "trigger", "verify"
+        ));
 
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.reset")
-                .handler(SampleCommandRoutes::sampleReset)
-                .resolver(json -> json)
-                .summary("Reset all mock fault-injection state for the target worker.")
-                .suggestedPhases("prepare", "verify")
-                .safeForScenario(true)
-                .build());
+        registerIfAbsent(command(
+                "mock.reset",
+                SampleCommandRoutes::sampleReset,
+                "Reset all mock fault-injection state for the target worker.",
+                true,
+                "prepare", "verify"
+        ));
     }
 
     private static Map<String, Object> sampleStateGet(JsonObject request, CommandContext context) {
@@ -179,6 +179,25 @@ public final class SampleCommandRoutes {
         if (!CommandRegistry.contains(definition.getEvent())) {
             CommandRegistry.register(definition);
         }
+    }
+
+    private static CommandDefinition<JsonObject, Map<String, Object>> command(
+            String event,
+            com.xa.mass.command.core.CommandHandler<JsonObject, Map<String, Object>> handler,
+            String summary,
+            boolean safeForScenario,
+            String... phases) {
+        return new CommandDefinition<>(
+                event,
+                handler,
+                json -> json,
+                CommandDefinition.Descriptor.simple(
+                        event,
+                        summary,
+                        java.util.List.of(phases),
+                        safeForScenario
+                )
+        );
     }
 }
 

@@ -6,6 +6,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -85,8 +88,8 @@ class TaskConcurrencyAcceptanceTest {
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
         assertEquals(1, finalTask.getTaskSuccessNumber());
 
-        assertEquals(TaskMsgStatus.SUCCESS, finalMessage.status());
-        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
+        assertEquals(TaskMessageProjectionStatus.SUCCESS, finalMessage.status());
+        assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
         assertTrue(firstOutput.equals(finalMessage.output()) || secondOutput.equals(finalMessage.output()));
 
         assertNotNull(finalAttempt);
@@ -131,14 +134,14 @@ class TaskConcurrencyAcceptanceTest {
         assertNotNull(finalAttempt);
         assertTrue(finalAttempt.status().isFinal());
 
-        if (finalMessage.status() == TaskMsgStatus.SUCCESS) {
-            assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
+        if (finalMessage.status() == TaskMessageProjectionStatus.SUCCESS) {
+            assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
             assertEquals(1, finalTask.getTaskSuccessNumber());
         } else {
-            assertEquals(TaskMsgStatus.EXPIRED, finalMessage.status());
-            assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, finalMessage.finalReason());
+            assertEquals(TaskMessageProjectionStatus.EXPIRED, finalMessage.status());
+            assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, finalMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, finalTask.getTerminalReason());
             assertEquals(0, finalTask.getTaskSuccessNumber());
@@ -191,8 +194,8 @@ class TaskConcurrencyAcceptanceTest {
         assertNotNull(latestAttempt);
         assertTrue(latestAttempt.status().isFinal());
 
-        if (currentMessage.status() == TaskMsgStatus.SUCCESS) {
-            assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, currentMessage.finalReason());
+        if (currentMessage.status() == TaskMessageProjectionStatus.SUCCESS) {
+            assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, currentMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, currentTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, currentTask.getTerminalReason());
             assertEquals(1, currentTask.getTaskSuccessNumber());
@@ -200,7 +203,7 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(1, terminalCount.get());
             assertEquals(0, dispatchRequestedCount.get());
         } else {
-            assertEquals(TaskMsgStatus.INIT, currentMessage.status());
+            assertEquals(TaskMessageProjectionStatus.INIT, currentMessage.status());
             assertEquals(1, currentMessage.retryCount());
             assertNull(currentMessage.finalReason());
             assertNull(currentMessage.errorMessage());
@@ -366,8 +369,8 @@ class TaskConcurrencyAcceptanceTest {
         TaskDetailStore.TaskMessageProjection finalMessage =
                 recoveringTaskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
         assertNotNull(finalMessage);
-        assertEquals(TaskMsgStatus.SUCCESS, finalMessage.status());
-        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
+        assertEquals(TaskMessageProjectionStatus.SUCCESS, finalMessage.status());
+        assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
         assertEquals(Map.of("outcome", "success"), finalMessage.output());
     }
 

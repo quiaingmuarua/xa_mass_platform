@@ -347,7 +347,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * Runtime-first ingest for one logical work item.
      *
      * <p>Runtime admission happens before compatibility projection write so
-     * {@link TaskMsg} is not the canonical ingest product for execution
+     * The legacy compatibility message projection is not the canonical ingest product for execution
      * correctness.</p>
      */
     void addTaskInput(String taskId,

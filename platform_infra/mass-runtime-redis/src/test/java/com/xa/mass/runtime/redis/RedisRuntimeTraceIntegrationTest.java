@@ -1,10 +1,7 @@
 package com.xa.mass.runtime.redis;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -16,6 +13,9 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -29,7 +29,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -100,7 +99,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         boolean handled = resultFacade.handleTaskMessageResult(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 true,
                 "ok-redis",
                 null,
@@ -108,15 +107,16 @@ class RedisRuntimeTraceIntegrationTest {
         );
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().getMessageId());
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        TaskDetailStore.TaskMessageProjection updated =
+                compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
+        assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
         assertFalse(runtime.hasReadyWork(fixture.task().getTid()));
         assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
         assertTraceContainsTaskEvent(fixture.task().getTid(), ExecutionEventType.TASK_TERMINAL_CLOSED);
     }
 
@@ -126,7 +126,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         boolean firstHandled = resultFacade.handleTaskMessageResult(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 true,
                 "ok-first",
                 null,
@@ -134,7 +134,7 @@ class RedisRuntimeTraceIntegrationTest {
         );
         boolean duplicateHandled = resultFacade.handleTaskMessageResult(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 false,
                 "boom-duplicate",
                 "IGNORED_DUPLICATE",
@@ -143,12 +143,13 @@ class RedisRuntimeTraceIntegrationTest {
 
         assertTrue(firstHandled);
         assertTrue(duplicateHandled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().getMessageId());
-        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok-first", updated.getOutput().get("mockData"));
+        TaskDetailStore.TaskMessageProjection updated =
+                compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
+        assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
+        assertEquals("ok-first", updated.output().get("mockData"));
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
     }
 
     @Test
@@ -157,7 +158,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         ResultApplyStatus runtimeStatus = runtime.applyResult(TaskWorkResult.success(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 fixture.claimedWork().leaseToken(),
                 "runtime-only-success",
                 Map.of("status", "SUCCESS", "mockData", "runtime-only-success")
@@ -165,7 +166,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         boolean handled = resultFacade.handleTaskMessageResult(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 true,
                 "late-after-runtime",
                 null,
@@ -174,12 +175,13 @@ class RedisRuntimeTraceIntegrationTest {
 
         assertEquals(ResultApplyStatus.SUCCESS_APPLIED, runtimeStatus);
         assertFalse(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().getMessageId());
-        assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
+        TaskDetailStore.TaskMessageProjection updated =
+                compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
+        assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
         assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE);
-        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
     }
 
     @Test
@@ -190,7 +192,7 @@ class RedisRuntimeTraceIntegrationTest {
 
         boolean handled = resultFacade.handleTaskMessageResult(
                 fixture.task().getTid(),
-                fixture.message().getMessageId(),
+                fixture.message().messageId(),
                 true,
                 "late-terminal",
                 null,
@@ -198,33 +200,35 @@ class RedisRuntimeTraceIntegrationTest {
         );
 
         assertTrue(handled);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().getMessageId());
-        assertEquals(TaskMsgStatus.ASSIGNED, updated.getStatus());
+        TaskDetailStore.TaskMessageProjection updated =
+                compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
+        assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
         assertEquals(1, runtime.activeLeases(fixture.task().getTid()).size());
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_IGNORED_LATE);
-        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_IGNORED_LATE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
     }
 
     @Test
     void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
 
-        boolean expired = maintenancePort.expireTaskMessage(fixture.task().getTid(), fixture.message().getMessageId());
+        boolean expired = maintenancePort.expireTaskMessage(fixture.task().getTid(), fixture.message().messageId());
 
         assertTrue(expired);
-        TaskMsg updated = compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().getMessageId());
-        assertEquals(TaskMsgStatus.INIT, updated.getStatus());
-        assertEquals(1, updated.getRetryCount());
+        TaskDetailStore.TaskMessageProjection updated =
+                compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
+        assertEquals(TaskMessageProjectionStatus.INIT, updated.status());
+        assertEquals(1, updated.retryCount());
         assertTrue(runtime.hasReadyWork(fixture.task().getTid()));
         assertEquals(1, runtime.stats(fixture.task().getTid()).readyCount());
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.LEASE_EXPIRED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_RETRY_RESET);
-        assertTraceContains(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
-        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().getMessageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.LEASE_EXPIRED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_RETRY_RESET);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
     }
 
     private RunningTaskFixture createAssignedTask(String taskName, int maxRetryCount) {
@@ -244,9 +248,30 @@ class RedisRuntimeTraceIntegrationTest {
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskMsg message = taskStorage.getTaskMessages(task.getTid(), 1).get(0);
-        message.setMaxRetryCount(maxRetryCount);
-        taskStorage.updateTaskMessage(task.getTid(), message);
+        TaskDetailStore.TaskMessageProjection message = taskStorage.getTaskMessageProjections(task.getTid(), 1).get(0);
+        taskStorage.upsertTaskMessageProjection(task.getTid(), new TaskDetailStore.TaskMessageProjection(
+                message.messageId(),
+                message.taskId(),
+                message.input(),
+                message.payloadRef(),
+                message.status(),
+                message.assignedTime(),
+                message.createTime(),
+                message.updateTime(),
+                message.startTime(),
+                message.completeTime(),
+                message.retryCount(),
+                maxRetryCount,
+                message.errorMessage(),
+                message.errorCode(),
+                message.finalReason(),
+                message.output(),
+                message.latestAttemptId(),
+                message.latestAttemptWorkerId(),
+                message.latestAttemptWorkerContextId(),
+                message.latestAttemptBatchId()
+        ));
+        message = taskStorage.getTaskMessageProjections(task.getTid(), 1).get(0);
 
         ClaimedTaskWork claimed = runtime.claimReady(
                 task.getTid(),
@@ -254,23 +279,46 @@ class RedisRuntimeTraceIntegrationTest {
                 1,
                 300
         ).get(0);
-        message.applyLatestAttemptProjection(claimed.workerId(), claimed.workerContextId(), claimed.batchId());
-        message.markAsAssigned();
-        taskStorage.updateTaskMessage(task.getTid(), message);
-
-        TaskMsgAttempt attempt = new TaskMsgAttempt(
-                "attempt-" + message.getMessageId() + "-1",
-                task.getTid(),
-                message.getMessageId(),
-                1
+        String attemptId = "attempt-" + message.messageId() + "-1";
+        message = new TaskDetailStore.TaskMessageProjection(
+                message.messageId(),
+                message.taskId(),
+                message.input(),
+                message.payloadRef(),
+                TaskMessageProjectionStatus.ASSIGNED,
+                LocalDateTime.now(),
+                message.createTime(),
+                LocalDateTime.now(),
+                message.startTime(),
+                message.completeTime(),
+                message.retryCount(),
+                message.maxRetryCount(),
+                message.errorMessage(),
+                message.errorCode(),
+                message.finalReason(),
+                message.output(),
+                attemptId,
+                claimed.workerId(),
+                claimed.workerContextId(),
+                claimed.batchId()
         );
-        attempt.setWorkerId(claimed.workerId());
-        attempt.setWorkerContextId(claimed.workerContextId());
-        attempt.setBatchId(claimed.batchId());
-        LocalDateTime leaseExpire = LocalDateTime.ofInstant(claimed.leaseExpireAt(), ZoneId.systemDefault());
-        assertTrue(attempt.markLeased(leaseExpire));
-        assertTrue(attempt.markDispatched());
-        taskStorage.addTaskMessageAttempt(task.getTid(), message.getMessageId(), attempt);
+        taskStorage.upsertTaskMessageProjection(task.getTid(), message);
+
+        TaskDetailStore.TaskMessageAttemptProjection attempt = new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                task.getTid(),
+                message.messageId(),
+                1,
+                claimed.workerId(),
+                claimed.workerContextId(),
+                claimed.batchId(),
+                TaskMessageAttemptProjectionStatus.DISPATCHED,
+                null,
+                null,
+                null,
+                null
+        );
+        taskStorage.upsertTaskMessageAttemptProjection(task.getTid(), message.messageId(), attempt);
         return new RunningTaskFixture(task, message, attempt, claimed);
     }
 
@@ -300,16 +348,19 @@ class RedisRuntimeTraceIntegrationTest {
                 "Did not expect trace event " + eventType + " for taskId=" + taskId + ", messageId=" + messageId);
     }
 
-    private TaskMsg compatibilityMessageSnapshotView(String taskId, String messageId) {
-        return taskStorage.getTaskMessages(taskId).stream()
-                .filter(message -> messageId.equals(message.getMessageId()))
+    private TaskDetailStore.TaskMessageProjection compatibilityMessageSnapshotView(String taskId, String messageId) {
+        return taskStorage.getTaskMessageProjections(taskId).stream()
+                .filter(message -> messageId.equals(message.messageId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "Task message not found in bounded compatibility snapshot: taskId="
                                 + taskId + ", messageId=" + messageId));
     }
 
-    private record RunningTaskFixture(Task task, TaskMsg message, TaskMsgAttempt attempt, ClaimedTaskWork claimedWork) {
+    private record RunningTaskFixture(Task task,
+                                      TaskDetailStore.TaskMessageProjection message,
+                                      TaskDetailStore.TaskMessageAttemptProjection attempt,
+                                      ClaimedTaskWork claimedWork) {
     }
 
     private static final class NoopTaskScheduler implements TaskScheduler {

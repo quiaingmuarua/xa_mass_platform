@@ -52,41 +52,16 @@ public final class ToolCommandRoutes {
 
     public static List<CommandDefinition<JsonObject, Map<String, Object>>> definitions() {
         return List.of(
-                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.time.now")
-                        .handler(ToolCommandRoutes::toolTimeNow)
-                        .resolver(json -> json)
-                        .summary("Return current time in the requested zone or UTC offset.")
-                        .suggestedPhases("prepare", "verify")
-                        .safeForScenario(true)
-                        .build(),
-                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.geo.lookup")
-                        .handler(ToolCommandRoutes::toolGeoLookup)
-                        .resolver(json -> json)
-                        .summary("Return a lightweight simulated geo profile for a city/query.")
-                        .suggestedPhases("prepare", "verify")
-                        .safeForScenario(true)
-                        .build(),
-                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.currency.quote")
-                        .handler(ToolCommandRoutes::toolCurrencyQuote)
-                        .resolver(json -> json)
-                        .summary("Return a simulated currency conversion quote derived from stable fake rates.")
-                        .suggestedPhases("prepare", "verify")
-                        .safeForScenario(true)
-                        .build(),
-                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.country.capital.lookup")
-                        .handler(ToolCommandRoutes::toolCountryCapitalLookup)
-                        .resolver(json -> json)
-                        .summary("Resolve a country code to a stable country/capital reference profile.")
-                        .suggestedPhases("prepare", "verify")
-                        .safeForScenario(true)
-                        .build(),
-                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.phone.country.detect")
-                        .handler(ToolCommandRoutes::toolPhoneCountryDetect)
-                        .resolver(json -> json)
-                        .summary("Detect a phone number country from common international dial-code prefixes.")
-                        .suggestedPhases("prepare", "verify")
-                        .safeForScenario(true)
-                        .build()
+                command("tool.time.now", ToolCommandRoutes::toolTimeNow,
+                        "Return current time in the requested zone or UTC offset.", true, "prepare", "verify"),
+                command("tool.geo.lookup", ToolCommandRoutes::toolGeoLookup,
+                        "Return a lightweight simulated geo profile for a city/query.", true, "prepare", "verify"),
+                command("tool.currency.quote", ToolCommandRoutes::toolCurrencyQuote,
+                        "Return a simulated currency conversion quote derived from stable fake rates.", true, "prepare", "verify"),
+                command("tool.country.capital.lookup", ToolCommandRoutes::toolCountryCapitalLookup,
+                        "Resolve a country code to a stable country/capital reference profile.", true, "prepare", "verify"),
+                command("tool.phone.country.detect", ToolCommandRoutes::toolPhoneCountryDetect,
+                        "Detect a phone number country from common international dial-code prefixes.", true, "prepare", "verify")
         );
     }
 
@@ -290,6 +265,25 @@ public final class ToolCommandRoutes {
         if (!CommandRegistry.contains(definition.getEvent())) {
             CommandRegistry.register(definition);
         }
+    }
+
+    private static CommandDefinition<JsonObject, Map<String, Object>> command(
+            String event,
+            com.xa.mass.command.core.CommandHandler<JsonObject, Map<String, Object>> handler,
+            String summary,
+            boolean safeForScenario,
+            String... phases) {
+        return new CommandDefinition<>(
+                event,
+                handler,
+                json -> json,
+                CommandDefinition.Descriptor.simple(
+                        event,
+                        summary,
+                        java.util.List.of(phases),
+                        safeForScenario
+                )
+        );
     }
 
     private record GeoPreset(

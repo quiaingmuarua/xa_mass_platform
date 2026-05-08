@@ -123,13 +123,13 @@ class TaskResourceReleaseListenerTest {
         listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
                 "task-1",
                 "msg-1",
-                closedAttempt.getAttemptId(),
-                closedAttempt.getAttemptNo(),
-                closedAttempt.getWorkerId(),
-                closedAttempt.getWorkerContextId(),
-                closedAttempt.getBatchId(),
-                closedAttempt.getStatus(),
-                closedAttempt.getFinalReason()
+                closedAttempt.attemptId(),
+                closedAttempt.attemptNo(),
+                closedAttempt.workerId(),
+                closedAttempt.workerContextId(),
+                closedAttempt.batchId(),
+                closedAttempt.status(),
+                closedAttempt.finalReason()
         ));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
@@ -158,13 +158,13 @@ class TaskResourceReleaseListenerTest {
         listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
                 "task-1",
                 "msg-1",
-                closedAttempt.getAttemptId(),
-                closedAttempt.getAttemptNo(),
-                closedAttempt.getWorkerId(),
-                closedAttempt.getWorkerContextId(),
-                closedAttempt.getBatchId(),
-                closedAttempt.getStatus(),
-                closedAttempt.getFinalReason()
+                closedAttempt.attemptId(),
+                closedAttempt.attemptNo(),
+                closedAttempt.workerId(),
+                closedAttempt.workerContextId(),
+                closedAttempt.batchId(),
+                closedAttempt.status(),
+                closedAttempt.finalReason()
         ));
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
@@ -186,13 +186,13 @@ class TaskResourceReleaseListenerTest {
         listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
                 "task-1",
                 "msg-1",
-                closedAttempt.getAttemptId(),
-                closedAttempt.getAttemptNo(),
-                closedAttempt.getWorkerId(),
-                closedAttempt.getWorkerContextId(),
-                closedAttempt.getBatchId(),
-                closedAttempt.getStatus(),
-                closedAttempt.getFinalReason()
+                closedAttempt.attemptId(),
+                closedAttempt.attemptNo(),
+                closedAttempt.workerId(),
+                closedAttempt.workerContextId(),
+                closedAttempt.batchId(),
+                closedAttempt.status(),
+                closedAttempt.finalReason()
         ));
 
         verify(workerManager, never()).unlockWorker("worker-1");
