@@ -7,7 +7,6 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
@@ -171,7 +170,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskDetailStore.TaskMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
+        for (com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection taskMsg : getTaskMessagesForProjectionAudit(taskId)) {
             if (taskMsg == null) {
                 continue;
             }
@@ -181,9 +180,9 @@ class TaskStateValidator {
             if (isCompleted(taskMsg) && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(taskMsg)) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
-            TaskDetailStore.TaskMessageAttemptStats attemptStats =
+            CompatibilityAttemptStats attemptStats =
                     getTaskMessageAttemptStats(taskId, taskMsg.messageId());
-            long activeAttemptCount = attemptStats.getActiveAttempts();
+            long activeAttemptCount = attemptStats.activeAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
                 violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
@@ -191,7 +190,7 @@ class TaskStateValidator {
             if (hasActiveAttempt && isCompleted(taskMsg)) {
                 violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
             }
-            boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
+            boolean allAttemptsFinal = attemptStats.totalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
                     && !isCompleted(taskMsg)
                     && taskMsg.status() != TaskMsgStatus.INIT) {
@@ -243,15 +242,15 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
+    private java.util.List<com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
         return compatibilityProjectionAccess.getTaskMessageProjectionsForAudit(taskId);
     }
 
-    private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    private CompatibilityAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private boolean isCompleted(TaskDetailStore.TaskMessageProjection taskMsg) {
+    private boolean isCompleted(com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection taskMsg) {
         return taskMsg != null && taskMsg.status() != null && taskMsg.status().isFinal();
     }
 

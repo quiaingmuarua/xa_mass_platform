@@ -1,9 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.model.TaskMessageSnapshot;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-
 import java.util.List;
 
 /**
@@ -15,11 +11,11 @@ import java.util.List;
  */
 interface TaskCompatibilityQueryPort {
 
-    TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
+    CompatibilityTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit);
 
-    TaskMsg getTaskMessageView(String taskId, String messageId);
+    CompatibilityTaskMessageView getTaskMessageView(String taskId, String messageId);
 
-    List<TaskMsgAttempt> getTaskMessageAttemptViews(String taskId, String messageId);
+    List<CompatibilityTaskMessageAttemptView> getTaskMessageAttemptViews(String taskId, String messageId);
 
-    TaskMsgAttempt getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
+    CompatibilityTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId);
 }

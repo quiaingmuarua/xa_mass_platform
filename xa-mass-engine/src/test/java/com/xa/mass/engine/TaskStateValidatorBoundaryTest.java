@@ -122,10 +122,6 @@ class TaskStateValidatorBoundaryTest {
             return TaskTerminalPolicyDecision.keepRunning();
         }
 
-        @Override
-        public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-            return new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
-        }
     }
 
     private static final class TrackingTaskDetailStore extends InMemoryTaskStorage {

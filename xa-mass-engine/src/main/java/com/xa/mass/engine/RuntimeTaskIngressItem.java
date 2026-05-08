@@ -1,9 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.storage.api.TaskDetailStore;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -40,32 +36,6 @@ record RuntimeTaskIngressItem(String taskId,
                 payloadRef,
                 0,
                 maxRetryCount
-        );
-    }
-
-    @CompatibilityProjectionOnly
-    TaskDetailStore.TaskMessageProjection toProjectionRecord() {
-        return new TaskDetailStore.TaskMessageProjection(
-                messageId,
-                taskId,
-                projectedInput(),
-                payloadRef,
-                TaskMsgStatus.INIT,
-                null,
-                null,
-                null,
-                null,
-                null,
-                retryCount,
-                maxRetryCount,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
         );
     }
 

@@ -417,11 +417,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             throw new IllegalStateException("task work enqueue failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        compatibilityProjectionAccess.upsertTaskMessageProjection(
-                taskId,
-                ingressItem.toProjectionRecord(),
-                "runtime ingress accepted"
-        );
+        compatibilityProjectionAccess.upsertRuntimeIngressProjection(ingressItem, "runtime ingress accepted");
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -486,11 +482,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     void publishTaskDispatchRequested(Task task) {
         eventPublisher.publishTaskDispatchRequested(task);
-    }
-
-    @Override
-    public TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
     }
 
     boolean deleteTaskRecord(String taskId) {
@@ -666,6 +657,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     com.xa.mass.engine.util.TraceEventLogger traceEvents() {
         return traceEventLogger;
+    }
+
+    TaskCompatibilityProjectionAccess compatibilityProjectionAccess() {
+        return compatibilityProjectionAccess;
     }
 
     /**

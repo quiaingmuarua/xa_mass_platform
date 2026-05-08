@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMessageSnapshot;
+import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -75,7 +76,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
     }
 
     public TaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
-        return compatibilityProjectionAccess.getTaskMessageSnapshot(taskId, limit);
+        CompatibilityTaskMessageSnapshot snapshot = compatibilityProjectionAccess.getTaskMessageSnapshot(taskId, limit);
+        List<TaskMsg> messages = snapshot.messages().stream()
+                .map(this::toCompatibilityTaskMessage)
+                .toList();
+        return new TaskMessageSnapshot(messages, snapshot.limit(), snapshot.truncated());
     }
 
     public boolean upsertTaskMessageProjectionRecord(String taskId,
@@ -103,27 +108,54 @@ public class ProjectionAwareTaskManager extends TaskManager {
 
     public TaskDetailStore.TaskMessageAttemptProjection getLatestActiveAttemptProjectionRecord(String taskId,
                                                                                                String messageId) {
-        TaskMsgAttempt attempt = compatibilityProjectionAccess.getLatestActiveTaskMessageAttemptView(taskId, messageId);
+        CompatibilityTaskMessageAttemptView attempt = compatibilityProjectionAccess.getLatestActiveTaskMessageAttemptView(taskId, messageId);
         if (attempt == null) {
             return null;
         }
         TaskDetailStore.TaskMessageAttemptProjection latestAuditView = getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-        TaskMsgAttemptStatus attemptStatus = attempt.getStatus() != null
-                ? attempt.getStatus()
+        TaskMsgAttemptStatus attemptStatus = attempt.status() != null
+                ? TaskMsgAttemptStatus.valueOf(attempt.status())
                 : TaskMsgAttemptStatus.DISPATCHED;
         return new TaskDetailStore.TaskMessageAttemptProjection(
-                attempt.getAttemptId(),
-                attempt.getTaskId(),
-                attempt.getMessageId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
+                attempt.attemptId(),
+                attempt.taskId(),
+                attempt.messageId(),
+                attempt.attemptNo(),
+                attempt.workerId(),
+                attempt.workerContextId(),
+                attempt.batchId(),
                 attemptStatus,
                 null,
                 null,
                 null,
                 null
         );
+    }
+
+    private TaskMsg toCompatibilityTaskMessage(CompatibilityTaskMessageView message) {
+        TaskMsg taskMsg = message.payloadRef() == null || message.payloadRef().isBlank()
+                ? new TaskMsg(message.messageId(), message.taskId(), message.input())
+                : new TaskMsg(message.messageId(), message.taskId(), message.input(), message.payloadRef());
+        taskMsg.setStatus(message.status() != null ? com.xa.mass.base.enums.taskmsg.TaskMsgStatus.valueOf(message.status()) : null);
+        taskMsg.applyLatestAttemptProjection(
+                message.latestAttemptId(),
+                message.latestAttemptWorkerId(),
+                message.latestAttemptWorkerContextId(),
+                message.latestAttemptBatchId()
+        );
+        taskMsg.setRetryCount(message.retryCount());
+        taskMsg.setMaxRetryCount(message.maxRetryCount());
+        taskMsg.setErrorMessage(message.errorMessage());
+        taskMsg.setErrorCode(message.errorCode());
+        taskMsg.setFinalReason(message.finalReason() != null
+                ? com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason.valueOf(message.finalReason())
+                : null);
+        taskMsg.setOutput(message.output());
+        taskMsg.setAssignedTime(message.assignedTime());
+        taskMsg.setCreateTime(message.createTime());
+        taskMsg.setUpdateTime(message.updateTime());
+        taskMsg.setStartTime(message.startTime());
+        taskMsg.setCompleteTime(message.completeTime());
+        return taskMsg;
     }
 }

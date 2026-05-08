@@ -170,12 +170,7 @@ public class EngineConfig {
 
     public TaskCompatibilityQueryService getTaskCompatibilityQueryService() {
         if (taskCompatibilityQueryService == null) {
-            taskCompatibilityQueryService = new TaskCompatibilityQueryService(
-                    getTaskDetailStore(),
-                    taskId -> getTaskStorage().getTask(taskId).orElse(null),
-                    (taskId, messageId) -> getTaskWorkRuntime().getActiveLease(taskId, messageId),
-                    taskId -> getTaskWorkRuntime().activeLeases(taskId)
-            );
+            taskCompatibilityQueryService = new TaskCompatibilityQueryService(ensureTaskManager());
         }
         return taskCompatibilityQueryService;
     }

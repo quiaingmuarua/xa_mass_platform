@@ -7,13 +7,14 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
+import com.xa.mass.engine.CompatibilityTaskMessageAttemptView;
+import com.xa.mass.engine.CompatibilityTaskMessageSnapshot;
+import com.xa.mass.engine.CompatibilityTaskMessageView;
 import com.xa.mass.engine.TaskCompatibilityQueryService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
@@ -241,7 +242,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public SdkTaskMessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         String normalizedTaskId = requireTaskId(taskId);
         int boundedLimit = Math.max(0, limit);
-        com.xa.mass.base.model.TaskMessageSnapshot snapshot = requireStartedTaskCompatibilityQueries()
+        CompatibilityTaskMessageSnapshot snapshot = requireStartedTaskCompatibilityQueries()
                 .getTaskMessageSnapshot(normalizedTaskId, boundedLimit);
         List<SdkTaskMessageView> messages = snapshot
                 .messages()
@@ -253,7 +254,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public SdkTaskMessageView getTaskMessageView(String taskId, String messageId) {
-        TaskMsg messageView = requireStartedTaskCompatibilityQueries()
+        CompatibilityTaskMessageView messageView = requireStartedTaskCompatibilityQueries()
                 .getTaskMessageView(requireTaskId(taskId), requireMessageId(messageId));
         return messageView != null ? toSdkTaskMessageView(messageView) : null;
     }
@@ -269,7 +270,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public SdkTaskMessageAttemptView getLatestActiveTaskMessageAttemptView(String taskId, String messageId) {
-        TaskMsgAttempt attemptView = requireStartedTaskCompatibilityQueries()
+        CompatibilityTaskMessageAttemptView attemptView = requireStartedTaskCompatibilityQueries()
                 .getLatestActiveTaskMessageAttemptView(requireTaskId(taskId), requireMessageId(messageId));
         return attemptView != null ? toSdkTaskMessageAttemptView(attemptView) : null;
     }
@@ -1649,52 +1650,52 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
     }
 
-    private SdkTaskMessageView toSdkTaskMessageView(TaskMsg taskMsg) {
+    private SdkTaskMessageView toSdkTaskMessageView(CompatibilityTaskMessageView taskMsg) {
         return new SdkTaskMessageView(
-                taskMsg.getMessageId(),
-                taskMsg.getTaskId(),
-                enumName(taskMsg.getStatus()),
+                taskMsg.messageId(),
+                taskMsg.taskId(),
+                taskMsg.status(),
                 taskMsg.latestAttemptId(),
-                taskMsg.getLatestAttemptWorkerId(),
-                taskMsg.getLatestAttemptWorkerContextId(),
-                taskMsg.getLatestAttemptBatchId(),
-                taskMsg.getRetryCount(),
-                taskMsg.getMaxRetryCount(),
-                taskMsg.getErrorMessage(),
-                taskMsg.getErrorCode(),
-                enumName(taskMsg.getFinalReason()),
-                taskMsg.getPayloadRef(),
-                copyMap(taskMsg.getInput()),
-                copyMap(taskMsg.getOutput()),
-                taskMsg.getAssignedTime(),
-                taskMsg.getCreateTime(),
-                taskMsg.getUpdateTime(),
-                taskMsg.getStartTime(),
-                taskMsg.getCompleteTime()
+                taskMsg.latestAttemptWorkerId(),
+                taskMsg.latestAttemptWorkerContextId(),
+                taskMsg.latestAttemptBatchId(),
+                taskMsg.retryCount(),
+                taskMsg.maxRetryCount(),
+                taskMsg.errorMessage(),
+                taskMsg.errorCode(),
+                taskMsg.finalReason(),
+                taskMsg.payloadRef(),
+                copyMap(taskMsg.input()),
+                copyMap(taskMsg.output()),
+                taskMsg.assignedTime(),
+                taskMsg.createTime(),
+                taskMsg.updateTime(),
+                taskMsg.startTime(),
+                taskMsg.completeTime()
         );
     }
 
-    private SdkTaskMessageAttemptView toSdkTaskMessageAttemptView(TaskMsgAttempt attempt) {
+    private SdkTaskMessageAttemptView toSdkTaskMessageAttemptView(CompatibilityTaskMessageAttemptView attempt) {
         return new SdkTaskMessageAttemptView(
-                attempt.getAttemptId(),
-                attempt.getTaskId(),
-                attempt.getMessageId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                enumName(attempt.getStatus()),
-                attempt.getLeaseExpireTime(),
-                attempt.getDispatchTime(),
-                attempt.getAckTime(),
-                attempt.getStartTime(),
-                attempt.getFinishTime(),
-                enumName(attempt.getFinalReason()),
-                attempt.getErrorMessage(),
-                attempt.getErrorCode(),
-                copyMap(attempt.getOutput()),
-                attempt.getCreateTime(),
-                attempt.getUpdateTime()
+                attempt.attemptId(),
+                attempt.taskId(),
+                attempt.messageId(),
+                attempt.attemptNo(),
+                attempt.workerId(),
+                attempt.workerContextId(),
+                attempt.batchId(),
+                attempt.status(),
+                attempt.leaseExpireTime(),
+                attempt.dispatchTime(),
+                attempt.ackTime(),
+                attempt.startTime(),
+                attempt.finishTime(),
+                attempt.finalReason(),
+                attempt.errorMessage(),
+                attempt.errorCode(),
+                copyMap(attempt.output()),
+                attempt.createTime(),
+                attempt.updateTime()
         );
     }
 

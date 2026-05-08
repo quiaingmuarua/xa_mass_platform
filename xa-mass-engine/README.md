@@ -79,9 +79,9 @@ Keep these facts fixed unless the owning global baselines change:
   not the hot-path runtime owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow `TaskMsg` / `TaskMsgAttempt` residue reads back into it
-- `TaskCompatibilityQueryService` is the explicit bounded residue-read surface
-  for `TaskMsg`, `TaskMsgAttempt`, and `TaskMessageSnapshot`; new callers must
-  opt into that compatibility path deliberately
+- `TaskCompatibilityQueryService` is the explicit bounded residue-read surface;
+  it returns engine-owned compatibility view snapshots instead of exporting
+  `TaskMsg` / `TaskMsgAttempt` directly to cross-module callers
 - runtime ingest must stay correct when compatibility `TaskMsg` projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes are
   best-effort residue
