@@ -2,8 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.storage.api.TaskDetailStore;
 
 import java.util.ArrayList;
@@ -41,11 +39,6 @@ final class JdbcTaskCompatibilityProjection {
         taskMessageAttempts.remove(taskId);
     }
 
-    void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        upsertTaskMessageProjection(taskId,
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null);
-    }
-
     boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
         MessageBucket bucket = taskMessages.get(taskId);
         if (bucket != null && projection != null && projection.messageId() != null) {
@@ -57,21 +50,9 @@ final class JdbcTaskCompatibilityProjection {
         return false;
     }
 
-    List<TaskMsg> getTaskMessages(String taskId) {
-        return getTaskMessageProjections(taskId).stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList();
-    }
-
     List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.snapshot() : List.of();
-    }
-
-    List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return getTaskMessageProjections(taskId, limit).stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList();
     }
 
     List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
@@ -82,38 +63,9 @@ final class JdbcTaskCompatibilityProjection {
         return bucket != null ? bucket.snapshot(limit) : List.of();
     }
 
-    List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.snapshotNonFinal().stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList() : List.of();
-    }
-
-    long countTaskMessages(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.size() : 0;
-    }
-
-    Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-        return getTaskMessageProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection);
-    }
-
     Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.get(messageId) : Optional.empty();
-    }
-
-    boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        TaskDetailStore.TaskMessageProjection projection =
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null;
-        return bucket != null && projection != null && projection.messageId() != null && bucket.update(projection);
-    }
-
-    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        upsertTaskMessageAttemptProjection(taskId, messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
     }
 
     boolean upsertTaskMessageAttemptProjection(String taskId,
@@ -129,16 +81,10 @@ final class JdbcTaskCompatibilityProjection {
         return true;
     }
 
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+    List<TaskDetailStore.TaskMessageAttemptProjection> getTaskMessageAttemptProjections(String taskId,
+                                                                                        String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.snapshot().stream()
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                .toList() : List.of();
-    }
-
-    Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return getLatestTaskMessageAttemptProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection);
+        return bucket != null ? bucket.snapshot() : List.of();
     }
 
     Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
@@ -147,23 +93,9 @@ final class JdbcTaskCompatibilityProjection {
         return bucket != null ? bucket.latest() : Optional.empty();
     }
 
-    Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.latestActive().map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                : Optional.empty();
-    }
-
     TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.stats() : new TaskDetailStore.TaskMessageAttemptStats(0, 0, 0, 0, 0);
-    }
-
-    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null
-                && attempt != null
-                && attempt.getAttemptId() != null
-                && bucket.update(TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt));
     }
 
     TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {

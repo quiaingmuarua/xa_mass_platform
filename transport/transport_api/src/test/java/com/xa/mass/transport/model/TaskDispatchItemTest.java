@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -125,6 +126,7 @@ class TaskDispatchItemTest {
                 "agent",
                 0,
                 "attempt-1",
+                "route-1",
                 "worker-1",
                 "ctx-1",
                 "batch-1",
@@ -147,6 +149,7 @@ class TaskDispatchItemTest {
                 "agent",
                 0,
                 "attempt-1",
+                "route-1",
                 "worker-1",
                 "ctx-1",
                 "batch-1",
@@ -177,6 +180,7 @@ class TaskDispatchItemTest {
                 "agent",
                 0,
                 "attempt-1",
+                "route-1",
                 "worker-1",
                 "ctx-1",
                 "batch-1",
@@ -204,6 +208,7 @@ class TaskDispatchItemTest {
                         "agent",
                         0,
                         "attempt-1",
+                        "route-1",
                         "worker-1",
                         "ctx-1",
                         "batch-1",
@@ -224,6 +229,7 @@ class TaskDispatchItemTest {
                         "agent",
                         0,
                         "attempt-1",
+                        "route-1",
                         "worker-1",
                         "ctx-1",
                         "batch-1",
@@ -244,6 +250,7 @@ class TaskDispatchItemTest {
                         "agent",
                         0,
                         "attempt-1",
+                        "route-1",
                         "worker-1",
                         "ctx-1",
                         "batch-1",
@@ -252,6 +259,48 @@ class TaskDispatchItemTest {
                 )
         );
         assertEquals("eventCode must not be blank", eventCodeError.getMessage());
+    }
+
+    @Test
+    void genericDispatchItemsHaveNoRouteKeyUntilTransportAddressIsResolved() {
+        TaskDispatchItem item = new TaskDispatchItem(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "agent",
+                0,
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                Map.of(),
+                Map.of()
+        );
+
+        assertNull(item.routeKey());
+    }
+
+    @Test
+    void transportDecodedItemsRetainCanonicalRouteKeyForReplyPath() {
+        TaskDispatchItem item = TaskDispatchItem.fromDecodedTransportPayload(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "agent",
+                0,
+                "attempt-1",
+                "route-9",
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                Map.of("target", "worker-a"),
+                Map.of("mode", "fast")
+        );
+
+        assertEquals("route-9", item.routeKey());
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {

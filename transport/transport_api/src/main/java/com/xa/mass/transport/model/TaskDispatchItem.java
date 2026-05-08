@@ -32,6 +32,7 @@ public final class TaskDispatchItem {
     private final String userId;
     private final int retryCount;
     private final String attemptId;
+    private final String routeKey;
     private final String workerId;
     private final String workerContextId;
     private final String batchId;
@@ -69,7 +70,25 @@ public final class TaskDispatchItem {
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
         this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
-                attemptId, workerId, workerContextId, batchId, input, sharedConfig, false, null);
+                attemptId, null, workerId, workerContextId, batchId, input, sharedConfig, false, null);
+    }
+
+    public TaskDispatchItem(String taskId,
+                            String messageId,
+                            String eventCode,
+                            String taskName,
+                            String project,
+                            String userId,
+                            int retryCount,
+                            String attemptId,
+                            String routeKey,
+                            String workerId,
+                            String workerContextId,
+                            String batchId,
+                            Map<String, Object> input,
+                            Map<String, Object> sharedConfig) {
+        this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
+                attemptId, routeKey, workerId, workerContextId, batchId, input, sharedConfig, false, null);
     }
 
     private TaskDispatchItem(String taskId,
@@ -80,6 +99,7 @@ public final class TaskDispatchItem {
                              String userId,
                              int retryCount,
                              String attemptId,
+                             String routeKey,
                              String workerId,
                              String workerContextId,
                              String batchId,
@@ -95,6 +115,7 @@ public final class TaskDispatchItem {
         this.userId = userId;
         this.retryCount = retryCount;
         this.attemptId = attemptId;
+        this.routeKey = routeKey;
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
@@ -134,6 +155,7 @@ public final class TaskDispatchItem {
                 task.userId(),
                 dispatchBinding.retryCount(),
                 dispatchBinding.attemptId(),
+                null,
                 dispatchBinding.workerId(),
                 dispatchBinding.workerContextId(),
                 dispatchBinding.batchId(),
@@ -150,6 +172,7 @@ public final class TaskDispatchItem {
                                                                String userId,
                                                                int retryCount,
                                                                String attemptId,
+                                                               String routeKey,
                                                                String workerId,
                                                                String workerContextId,
                                                                String batchId,
@@ -164,6 +187,7 @@ public final class TaskDispatchItem {
                 userId,
                 retryCount,
                 attemptId,
+                routeKey,
                 workerId,
                 workerContextId,
                 batchId,
@@ -186,6 +210,7 @@ public final class TaskDispatchItem {
                 packet.payloadString(TransportPacket.PAYLOAD_USER_ID),
                 packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT),
                 packet.attemptId(),
+                packet.routeKey(),
                 packet.payloadString(TransportPacket.PAYLOAD_WORKER_ID),
                 packet.payloadString(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID),
                 packet.payloadString(TransportPacket.PAYLOAD_BATCH_ID),
@@ -214,6 +239,10 @@ public final class TaskDispatchItem {
 
     public String attemptId() {
         return attemptId;
+    }
+
+    public String routeKey() {
+        return routeKey;
     }
 
     public String getWorkerId() {
@@ -344,4 +373,5 @@ public final class TaskDispatchItem {
         }
         return value.trim();
     }
+
 }

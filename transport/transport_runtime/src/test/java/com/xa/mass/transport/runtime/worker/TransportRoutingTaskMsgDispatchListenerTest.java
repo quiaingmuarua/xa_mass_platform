@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -532,7 +533,14 @@ class TransportRoutingTaskMsgDispatchListenerTest {
     }
 
     private static TaskDispatchContext taskContext(Task task) {
-        return TaskDispatchContext.from(task);
+        return new TaskDispatchContext(
+                task.getTid(),
+                task.getTaskName(),
+                task.getProject(),
+                task.getUser() != null ? task.getUser().getUserId() : null,
+                "crawler.fetch-page",
+                Map.of("_sdk", Map.of("eventCode", "crawler.fetch-page"))
+        );
     }
 
     private static final class NoopWorkerSystemEventChannel implements com.xa.mass.transport.channel.WorkerSystemEventChannel {

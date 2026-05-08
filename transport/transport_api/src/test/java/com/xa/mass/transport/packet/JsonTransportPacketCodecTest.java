@@ -115,7 +115,7 @@ class JsonTransportPacketCodecTest {
     }
 
     @Test
-    void taskDispatchRequiresStableIdentityFields() {
+    void taskDispatchRequiresTaskAndMessageIdentityButAllowsOptionalEventCode() {
         IllegalArgumentException taskIdError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
                 TransportPacket.CURRENT_VERSION,
                 "packet-4",
@@ -148,7 +148,7 @@ class JsonTransportPacketCodecTest {
         ));
         assertEquals("messageId must not be blank", messageIdError.getMessage());
 
-        IllegalArgumentException eventCodeError = assertThrows(IllegalArgumentException.class, () -> new TransportPacket(
+        TransportPacket packet = new TransportPacket(
                 TransportPacket.CURRENT_VERSION,
                 "packet-6",
                 null,
@@ -161,8 +161,8 @@ class JsonTransportPacketCodecTest {
                 " ",
                 TransportPacket.JSON_CONTENT_TYPE,
                 Map.of()
-        ));
-        assertEquals("eventCode must not be blank", eventCodeError.getMessage());
+        );
+        assertEquals(null, packet.eventCode());
     }
 
     @Test

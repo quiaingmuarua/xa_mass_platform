@@ -2,8 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 
@@ -141,18 +139,8 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public synchronized void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        runtimeProjection.addTaskMessage(taskId, taskMsg);
-    }
-
-    @Override
     public synchronized boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
         return runtimeProjection.upsertTaskMessageProjection(taskId, projection);
-    }
-
-    @Override
-    public List<TaskMsg> getTaskMessages(String taskId) {
-        return runtimeProjection.getTaskMessages(taskId);
     }
 
     @Override
@@ -161,43 +149,13 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return runtimeProjection.getTaskMessages(taskId, limit);
-    }
-
-    @Override
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
         return runtimeProjection.getTaskMessageProjections(taskId, limit);
     }
 
     @Override
-    public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return runtimeProjection.getNonFinalTaskMessages(taskId);
-    }
-
-    @Override
-    public long countTaskMessages(String taskId) {
-        return runtimeProjection.countTaskMessages(taskId);
-    }
-
-    @Override
-    public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-        return runtimeProjection.getTaskMessage(taskId, messageId);
-    }
-
-    @Override
     public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
         return runtimeProjection.getTaskMessageProjection(taskId, messageId);
-    }
-
-    @Override
-    public synchronized boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return runtimeProjection.updateTaskMessage(taskId, taskMsg);
-    }
-
-    @Override
-    public synchronized void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        runtimeProjection.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override
@@ -208,13 +166,9 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return runtimeProjection.getTaskMessageAttempts(taskId, messageId);
-    }
-
-    @Override
-    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return runtimeProjection.getLatestTaskMessageAttempt(taskId, messageId);
+    public List<TaskDetailStore.TaskMessageAttemptProjection> getTaskMessageAttemptProjections(String taskId,
+                                                                                                String messageId) {
+        return runtimeProjection.getTaskMessageAttemptProjections(taskId, messageId);
     }
 
     @Override
@@ -224,18 +178,8 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
     }
 
     @Override
-    public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return runtimeProjection.getLatestActiveTaskMessageAttempt(taskId, messageId);
-    }
-
-    @Override
     public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         return runtimeProjection.getTaskMessageAttemptStats(taskId, messageId);
-    }
-
-    @Override
-    public synchronized boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return runtimeProjection.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     @Override

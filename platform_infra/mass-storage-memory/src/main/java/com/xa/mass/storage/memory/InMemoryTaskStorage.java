@@ -4,8 +4,6 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 
@@ -150,12 +148,6 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        upsertTaskMessageProjection(taskId,
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null);
-    }
-
-    @Override
     public boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
         MessageBucket bucket = taskMessages.get(taskId);
         if (bucket != null && projection != null && projection.messageId() != null) {
@@ -168,23 +160,9 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public List<TaskMsg> getTaskMessages(String taskId) {
-        return getTaskMessageProjections(taskId).stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList();
-    }
-
-    @Override
     public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.snapshot() : List.of();
-    }
-
-    @Override
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return getTaskMessageProjections(taskId, limit).stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList();
     }
 
     @Override
@@ -197,43 +175,9 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.snapshotNonFinal().stream()
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
-                .toList() : List.of();
-    }
-
-    @Override
-    public long countTaskMessages(String taskId) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.size() : 0;
-    }
-
-    @Override
-    public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-        return getTaskMessageProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection);
-    }
-
-    @Override
     public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.get(messageId) : Optional.empty();
-    }
-
-    @Override
-    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        MessageBucket bucket = taskMessages.get(taskId);
-        TaskDetailStore.TaskMessageProjection projection =
-                taskMsg != null ? TaskDetailStore.TaskMessageProjection.fromCompatibilityProjection(taskMsg) : null;
-        return bucket != null && projection != null && projection.messageId() != null && bucket.update(projection);
-    }
-
-    @Override
-    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        upsertTaskMessageAttemptProjection(taskId, messageId,
-                attempt != null ? TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt) : null);
     }
 
     @Override
@@ -251,17 +195,10 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+    public List<TaskDetailStore.TaskMessageAttemptProjection> getTaskMessageAttemptProjections(String taskId,
+                                                                                               String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.snapshot().stream()
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                .toList() : List.of();
-    }
-
-    @Override
-    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return getLatestTaskMessageAttemptProjection(taskId, messageId)
-                .map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection);
+        return bucket != null ? bucket.snapshot() : List.of();
     }
 
     @Override
@@ -272,25 +209,9 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
     }
 
     @Override
-    public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null ? bucket.latestActive().map(TaskDetailStore.TaskMessageAttemptProjection::toCompatibilityProjection)
-                : Optional.empty();
-    }
-
-    @Override
     public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
         AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.stats() : new TaskMessageAttemptStats(0, 0, 0, 0, 0);
-    }
-
-    @Override
-    public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
-        return bucket != null
-                && attempt != null
-                && attempt.getAttemptId() != null
-                && bucket.update(TaskDetailStore.TaskMessageAttemptProjection.fromCompatibilityProjection(attempt));
     }
 
     @Override

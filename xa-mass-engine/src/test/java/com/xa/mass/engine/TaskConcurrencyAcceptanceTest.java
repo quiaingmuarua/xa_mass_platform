@@ -10,6 +10,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -798,12 +799,12 @@ class TaskConcurrencyAcceptanceTest {
         private final ConcurrentHashMap<String, AtomicInteger> suppressedReads = new ConcurrentHashMap<>();
 
         @Override
-        public java.util.Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+        public java.util.Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
             AtomicInteger remaining = suppressedReads.get(taskId + "|" + messageId);
             if (remaining != null && remaining.getAndDecrement() > 0) {
                 return java.util.Optional.empty();
             }
-            return super.getTaskMessage(taskId, messageId);
+            return super.getTaskMessageProjection(taskId, messageId);
         }
 
         private void suppressNextTaskMessageLookup(String taskId, String messageId) {

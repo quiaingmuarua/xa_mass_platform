@@ -13,6 +13,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.base.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
@@ -540,11 +541,13 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     private List<TaskMsg> storedMessages(String taskId) {
-        long count = taskStorage.countTaskMessages(taskId);
+        long count = taskStorage.getTaskMessageStats(taskId).getTotal();
         if (count == 0) {
             return List.of();
         }
-        return taskStorage.getTaskMessages(taskId, Math.toIntExact(count));
+        return taskStorage.getTaskMessageProjections(taskId, Math.toIntExact(count)).stream()
+                .map(TaskDetailStore.TaskMessageProjection::toCompatibilityProjection)
+                .toList();
     }
 
     private List<TaskMsg> projectedMessages(String taskId) {
@@ -626,18 +629,39 @@ class SimpleTaskMsgAssignListenerTest {
         private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
 
         @Override
-        public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+        public Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
+                                                                                                            String messageId) {
             latestAttemptReadCount.incrementAndGet();
-            return super.getLatestTaskMessageAttempt(taskId, messageId);
+            return super.getLatestTaskMessageAttemptProjection(taskId, messageId);
         }
     }
 
     private static final class ProjectionPayloadScrubbingStorage extends InMemoryTaskStorage {
         @Override
-        public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
-            Optional<TaskMsg> message = super.getTaskMessage(taskId, messageId);
-            message.ifPresent(taskMsg -> taskMsg.setInput(java.util.Map.of()));
-            return message;
+        public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
+            return super.getTaskMessageProjection(taskId, messageId)
+                    .map(projection -> new TaskDetailStore.TaskMessageProjection(
+                            projection.messageId(),
+                            projection.taskId(),
+                            java.util.Map.of(),
+                            projection.payloadRef(),
+                            projection.status(),
+                            projection.assignedTime(),
+                            projection.createTime(),
+                            projection.updateTime(),
+                            projection.startTime(),
+                            projection.completeTime(),
+                            projection.retryCount(),
+                            projection.maxRetryCount(),
+                            projection.errorMessage(),
+                            projection.errorCode(),
+                            projection.finalReason(),
+                            projection.output(),
+                            projection.latestAttemptId(),
+                            projection.latestAttemptWorkerId(),
+                            projection.latestAttemptWorkerContextId(),
+                            projection.latestAttemptBatchId()
+                    ));
         }
     }
 
@@ -645,15 +669,17 @@ class SimpleTaskMsgAssignListenerTest {
         private final AtomicInteger taskMessageReadCount = new AtomicInteger();
 
         @Override
-        public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
+        public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
             taskMessageReadCount.incrementAndGet();
-            return super.getTaskMessage(taskId, messageId);
+            return super.getTaskMessageProjection(taskId, messageId);
         }
     }
 
     private static final class FailingAddAttemptStorage extends InMemoryTaskStorage {
         @Override
-        public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+        public boolean upsertTaskMessageAttemptProjection(String taskId,
+                                                          String messageId,
+                                                          TaskDetailStore.TaskMessageAttemptProjection projection) {
             throw new IllegalStateException("compatibility attempt projection unavailable");
         }
     }

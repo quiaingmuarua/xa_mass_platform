@@ -53,9 +53,11 @@ Current runtime-essential helpers:
 
 - `upsertTaskMessageProjection(TaskMessageProjection)`
 - `getTaskMessageProjection(...)`
+- `getTaskMessageProjections(...)`
 - `upsertTaskMessageAttemptProjection(TaskMessageAttemptProjection)`
-- `getLatestTaskMessageAttempt(...)`
-- `getLatestActiveTaskMessageAttempt(...)`
+- `getTaskMessageAttemptProjections(...)`
+- `getLatestTaskMessageAttemptProjection(...)`
+- `getLatestActiveTaskMessageAttemptProjection(...)`
 - `getTaskMessageStats(...)`
 - `getTaskMessageAttemptStats(...)`
 
@@ -80,6 +82,9 @@ Rules:
 - engine hot-path code should prefer `TaskDetailStore.TaskMessageProjection`
   and `TaskDetailStore.TaskMessageAttemptProjection` over direct `TaskMsg` /
   `TaskMsgAttempt` store interaction
+- `TaskDetailStore` now treats projection methods as the primary owner
+  surface; deprecated `TaskMsg` / `TaskMsgAttempt` CRUD methods are boundary
+  materialization helpers only and must not regain implementation ownership
 - engine query seams that still return `TaskMsg`, `TaskMsgAttempt`, or
   `TaskMessageSnapshot` should be explicitly marked compatibility-only and must
   not be treated as the default external read API going forward
@@ -93,8 +98,10 @@ Rules:
   residue unit where possible; `TaskMsg` / `TaskMsgAttempt` materialization
   belongs at compatibility boundaries, not as the store's internal owner shape
 - `getLatestActiveTaskMessageAttempt(...)` remains a transitional repair helper
-  for runtime-to-projection convergence, but transport result ingest no longer
-  requires an active compatibility attempt row for envelope identity validation
+  for runtime-to-projection convergence, but its owner path is now
+  `getLatestActiveTaskMessageAttemptProjection(...)`; transport result ingest
+  no longer requires an active compatibility attempt row for envelope identity
+  validation
 - runtime result convergence should prefer `TaskMsg.latestAttemptId`; when that
   field is missing, a bounded latest-attempt audit read may be used only to
   reuse the final audit row id, not to decide whether the runtime lease is

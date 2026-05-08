@@ -2276,9 +2276,10 @@ class TaskManagerLifecycleTest {
         private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
 
         @Override
-        public java.util.Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+        public java.util.Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
+                                                                                                                     String messageId) {
             latestAttemptReadCount.incrementAndGet();
-            return super.getLatestTaskMessageAttempt(taskId, messageId);
+            return super.getLatestTaskMessageAttemptProjection(taskId, messageId);
         }
     }
 

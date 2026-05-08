@@ -123,7 +123,7 @@ public class PullWorkerSession {
         );
         return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
-                dispatchItem.getWorkerId(),
+                routeKeyForResult(dispatchItem),
                 dispatchItem.attemptId(),
                 null,
                 null,
@@ -154,6 +154,13 @@ public class PullWorkerSession {
 
     private String normalizeReason(String reason, String defaultReason) {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
+    }
+
+    private String routeKeyForResult(TaskDispatchItem dispatchItem) {
+        if (dispatchItem.routeKey() != null && !dispatchItem.routeKey().isBlank()) {
+            return dispatchItem.routeKey();
+        }
+        return dispatchItem.getWorkerId();
     }
 }
 

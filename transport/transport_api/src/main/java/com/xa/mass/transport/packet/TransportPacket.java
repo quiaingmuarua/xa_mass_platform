@@ -238,7 +238,6 @@ public final class TransportPacket {
             case TASK_DISPATCH -> {
                 requireNormalized(taskId, "taskId");
                 requireNormalized(messageId, "messageId");
-                requireNormalized(eventCode, "eventCode");
             }
             case TASK_RESULT -> {
                 requireNormalized(taskId, "taskId");

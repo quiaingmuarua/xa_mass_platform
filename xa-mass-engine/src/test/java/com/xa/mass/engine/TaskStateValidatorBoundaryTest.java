@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -34,10 +33,33 @@ class TaskStateValidatorBoundaryTest {
 
     @Test
     void explicitProjectionAuditUsesProjectionReadSurface() {
-        TaskMsg msg = new TaskMsg("msg-1", "task-1", Map.of("target", "alpha"));
         CountingStateRuntimePort runtime = new CountingStateRuntimePort(sampleTask(), TaskWorkStats.EMPTY);
         TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
-        detailStore.addTaskMessage("task-1", msg);
+        detailStore.upsertTaskMessageProjection(
+                "task-1",
+                new TaskDetailStore.TaskMessageProjection(
+                        "msg-1",
+                        "task-1",
+                        Map.of("target", "alpha"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        3,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        );
         TaskStateValidator validator = new TaskStateValidator(runtime, detailStore, new com.xa.mass.engine.util.TraceEventLogger(null));
 
         TaskStateValidationResult result = validator.auditTaskProjectionState("task-1");
@@ -91,9 +113,9 @@ class TaskStateValidatorBoundaryTest {
         private final AtomicInteger projectionAuditReads = new AtomicInteger();
 
         @Override
-        public List<TaskMsg> getTaskMessages(String taskId) {
+        public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId) {
             projectionAuditReads.incrementAndGet();
-            return super.getTaskMessages(taskId);
+            return super.getTaskMessageProjections(taskId);
         }
     }
 }

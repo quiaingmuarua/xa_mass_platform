@@ -222,7 +222,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void missingAttemptResidueIsRecreatedOnlyAsFinalBoundedAuditView() {
+    void missingAttemptResidueDoesNotRecreateCompatibilityAttemptResidueWhenRuntimeLeaseAlreadyOwnsTruth() {
         scheduler = new RecordingTaskScheduler();
         AttemptWriteCountingStorage countingStorage = new AttemptWriteCountingStorage();
         taskStorage = countingStorage;
@@ -240,10 +240,10 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-bounded-attempt", null));
 
         assertTrue(handled);
-        assertEquals(1, countingStorage.addAttemptCount,
-                "missing attempt residue should be recreated once as the final bounded audit view");
-        assertTrue(countingStorage.updateAttemptCount <= 1,
-                "result convergence should not keep restamping intermediate attempt states when only runtime lease exists");
+        assertEquals(0, countingStorage.addAttemptCount,
+                "result convergence should not recreate compatibility attempt residue when runtime lease already owns the accepted result");
+        assertEquals(0, countingStorage.updateAttemptCount,
+                "result convergence should not restamp compatibility attempt residue when no attempt row exists");
         TaskMsgAttempt recoveredAttempt = latestAttemptAuditView(fixture);
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMsgAttemptStatus.SUCCEEDED, recoveredAttempt.getStatus());
