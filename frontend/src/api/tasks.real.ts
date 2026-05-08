@@ -10,12 +10,10 @@ import type {
     TaskListResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
-    TaskValidationSummary,
 } from '@/types/tasks'
 
 interface TaskDetailEnvelope {
     task: TaskDetailRecord
-    stateValidation: TaskValidationSummary
 }
 
 export async function listTasksReal(
@@ -104,7 +102,6 @@ export async function getTaskDetailReal(
 
     return {
         task: normalizeTaskRecord(detail.task),
-        stateValidation: detail.stateValidation,
     }
 }
 

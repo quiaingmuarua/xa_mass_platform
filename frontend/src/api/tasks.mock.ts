@@ -71,15 +71,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             createTime: '2026-04-20 08:30:00',
             updateTime: '2026-04-20 11:24:00',
         },
-        stateValidation: {
-            valid: true,
-            needsResolution: false,
-            totalMessages: 10,
-            successMessages: 6,
-            failedMessages: 0,
-            processingMessages: 4,
-            violations: [],
-        },
     },
     'task-002': {
         task: {
@@ -103,15 +94,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             createTime: '2026-04-19 23:10:00',
             updateTime: '2026-04-20 10:51:00',
         },
-        stateValidation: {
-            valid: true,
-            needsResolution: false,
-            totalMessages: 8,
-            successMessages: 2,
-            failedMessages: 2,
-            processingMessages: 0,
-            violations: [],
-        },
     },
     'task-003': {
         task: {
@@ -134,15 +116,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             peakAssignedWorkerCount: 3,
             createTime: '2026-04-20 05:00:00',
             updateTime: '2026-04-20 09:18:00',
-        },
-        stateValidation: {
-            valid: true,
-            needsResolution: false,
-            totalMessages: 12,
-            successMessages: 12,
-            failedMessages: 0,
-            processingMessages: 0,
-            violations: [],
         },
     },
 }
@@ -227,15 +200,6 @@ export async function createTaskShellMock(
             createTime: createdAt,
             updateTime: createdAt,
         },
-        stateValidation: {
-            valid: true,
-            needsResolution: false,
-            totalMessages: 0,
-            successMessages: 0,
-            failedMessages: 0,
-            processingMessages: 0,
-            violations: [],
-        },
     }
 
     return delay({
@@ -262,7 +226,6 @@ export async function appendTaskItemsMock(
     detail.task.taskTargetNumber += normalizedItems.length
     detail.task.taskEligibleNumber += normalizedItems.length
     detail.task.taskNonSuccessNumber += normalizedItems.length
-    detail.stateValidation.totalMessages += normalizedItems.length
     listItem.eligibleCount += normalizedItems.length
 
     return delay({

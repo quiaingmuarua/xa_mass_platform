@@ -488,7 +488,7 @@ class TaskManagerLifecycleTest {
         assertEquals(payloadRef, leasedView.payloadRef());
         assertEquals("worker-overlay-best-effort", leasedView.latestAttemptWorkerId());
         assertEquals(1, snapshot.messages().size());
-        assertEquals(messageId, snapshot.messages().get(0).getMessageId());
+        assertEquals(messageId, snapshot.messages().get(0).messageId());
         assertEquals(TaskMessageProjectionStatus.ASSIGNED, snapshot.messages().get(0).status());
         assertEquals(payloadRef, snapshot.messages().get(0).payloadRef());
     }
@@ -1845,7 +1845,6 @@ class TaskManagerLifecycleTest {
                 java.util.Map.of("result", "done"),
                 TaskMessageProjectionFinalReason.BUSINESS_SUCCESS
         );
-        message.setFinalReason(null);
         taskManager.upsertTaskMessageProjectionRecord(
                 task.getTid(),
                 new TaskDetailStore.TaskMessageProjection(
@@ -2500,10 +2499,10 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.cancelTask(task.getTid()));
 
-        TaskMessageSnapshot snapshot = taskManager.getTaskMessageSnapshot(task.getTid(), 10);
+        ProjectionTestSupport.MessageSnapshot snapshot = taskManager.getTaskMessageSnapshot(task.getTid(), 10);
         assertEquals(2, snapshot.messages().size());
-        assertEquals(List.of(TaskMsgStatus.EXPIRED, TaskMsgStatus.FAILED),
-                snapshot.messages().stream().map(TaskMsg::getStatus).toList());
+        assertEquals(List.of(TaskMessageProjectionStatus.EXPIRED, TaskMessageProjectionStatus.FAILED),
+                snapshot.messages().stream().map(TaskDetailStore.TaskMessageProjection::status).toList());
 
         TaskDetailStore.TaskMessageProjection storedAssigned =
                 taskManager.getStoredTaskMessageRecord(task.getTid(), messages.get(0).messageId());
@@ -2548,8 +2547,8 @@ class TaskManagerLifecycleTest {
         );
         assertEquals(2, claimed.size());
 
-        TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
-        TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
+        ProjectionTestSupport.MessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
+        ProjectionTestSupport.MessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
 
         assertEquals(1, limitOneSnapshot.messages().size());
         assertTrue(limitOneSnapshot.truncated());
@@ -2588,8 +2587,8 @@ class TaskManagerLifecycleTest {
                 1
         );
 
-        TaskMessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
-        TaskMessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
+        ProjectionTestSupport.MessageSnapshot limitOneSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 1);
+        ProjectionTestSupport.MessageSnapshot zeroSnapshot = manager.getTaskMessageSnapshot(task.getTid(), 0);
 
         assertEquals(1, limitOneSnapshot.messages().size());
         assertTrue(limitOneSnapshot.truncated(),

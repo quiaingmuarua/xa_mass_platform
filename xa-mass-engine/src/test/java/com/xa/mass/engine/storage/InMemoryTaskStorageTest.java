@@ -2,11 +2,6 @@ package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.TaskMsg;
-import com.xa.mass.engine.TaskMsgAttempt;
-import com.xa.mass.engine.TaskMsgAttemptStatus;
-import com.xa.mass.engine.TaskMsgFinalReason;
-import com.xa.mass.engine.TaskMsgStatus;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
@@ -29,11 +24,13 @@ class InMemoryTaskStorageTest {
     void latestActiveAttemptIgnoresNewerFinalAttempts() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
 
-        TaskMsgAttempt runningAttempt = attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING);
-        TaskMsgAttempt failedAttempt = attempt("attempt-2", 2, TaskMsgAttemptStatus.FAILED);
+        TaskDetailStore.TaskMessageAttemptProjection runningAttempt =
+                attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING);
+        TaskDetailStore.TaskMessageAttemptProjection failedAttempt =
+                attempt("attempt-2", 2, TaskMessageAttemptProjectionStatus.FAILED);
 
-        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", toProjection(runningAttempt));
-        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", toProjection(failedAttempt));
+        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", runningAttempt);
+        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", failedAttempt);
 
         Optional<TaskDetailStore.TaskMessageAttemptProjection> latestActive =
                 storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1");
@@ -46,11 +43,13 @@ class InMemoryTaskStorageTest {
     void perMessageAttemptStatsTrackIndexedAttemptStateCounts() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
 
-        TaskMsgAttempt runningAttempt = attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING);
-        TaskMsgAttempt failedAttempt = attempt("attempt-2", 2, TaskMsgAttemptStatus.FAILED);
+        TaskDetailStore.TaskMessageAttemptProjection runningAttempt =
+                attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING);
+        TaskDetailStore.TaskMessageAttemptProjection failedAttempt =
+                attempt("attempt-2", 2, TaskMessageAttemptProjectionStatus.FAILED);
 
-        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", toProjection(runningAttempt));
-        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", toProjection(failedAttempt));
+        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", runningAttempt);
+        storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", failedAttempt);
 
         TaskDetailStore.TaskMessageAttemptStats initialStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
         assertEquals(2, initialStats.getTotalAttempts());
@@ -59,8 +58,21 @@ class InMemoryTaskStorageTest {
         assertEquals(1, initialStats.getFailedAttempts());
         assertEquals(0, initialStats.getExpiredAttempts());
 
-        runningAttempt.setStatus(TaskMsgAttemptStatus.SUCCEEDED);
-        assertTrue(storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", toProjection(runningAttempt)));
+        runningAttempt = new TaskDetailStore.TaskMessageAttemptProjection(
+                runningAttempt.attemptId(),
+                runningAttempt.taskId(),
+                runningAttempt.messageId(),
+                runningAttempt.attemptNo(),
+                runningAttempt.workerId(),
+                runningAttempt.workerContextId(),
+                runningAttempt.batchId(),
+                TaskMessageAttemptProjectionStatus.SUCCEEDED,
+                TaskMessageAttemptProjectionFinalReason.SUCCESS,
+                runningAttempt.errorMessage(),
+                runningAttempt.errorCode(),
+                runningAttempt.output()
+        );
+        assertTrue(storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", runningAttempt));
 
         TaskDetailStore.TaskMessageAttemptStats updatedStats = storage.getTaskMessageAttemptStats("task-1", "msg-1");
         assertEquals(2, updatedStats.getTotalAttempts());
@@ -137,17 +149,23 @@ class InMemoryTaskStorageTest {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
-        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
-        TaskMsg assigned = message("msg-assigned", TaskMsgStatus.ASSIGNED);
-        TaskMsg success = message("msg-success", TaskMsgStatus.SUCCESS);
-        success.setFinalReason(TaskMsgFinalReason.BUSINESS_SUCCESS);
-        TaskMsg failed = message("msg-failed", TaskMsgStatus.FAILED);
-        failed.setFinalReason(TaskMsgFinalReason.MANUAL_CANCELLED);
+        TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
+        TaskDetailStore.TaskMessageProjection assigned = message("msg-assigned", TaskMessageProjectionStatus.ASSIGNED, null);
+        TaskDetailStore.TaskMessageProjection success = message(
+                "msg-success",
+                TaskMessageProjectionStatus.SUCCESS,
+                TaskMessageProjectionFinalReason.BUSINESS_SUCCESS
+        );
+        TaskDetailStore.TaskMessageProjection failed = message(
+                "msg-failed",
+                TaskMessageProjectionStatus.FAILED,
+                TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+        );
 
-        storage.upsertTaskMessageProjection("task-1", toProjection(init));
-        storage.upsertTaskMessageProjection("task-1", toProjection(assigned));
-        storage.upsertTaskMessageProjection("task-1", toProjection(success));
-        storage.upsertTaskMessageProjection("task-1", toProjection(failed));
+        storage.upsertTaskMessageProjection("task-1", init);
+        storage.upsertTaskMessageProjection("task-1", assigned);
+        storage.upsertTaskMessageProjection("task-1", success);
+        storage.upsertTaskMessageProjection("task-1", failed);
 
         assertEquals(java.util.Set.of("msg-init", "msg-assigned"),
                 allMessageProjections(storage, "task-1").stream()
@@ -155,8 +173,29 @@ class InMemoryTaskStorageTest {
                         .map(TaskDetailStore.TaskMessageProjection::messageId)
                         .collect(java.util.stream.Collectors.toSet()));
 
-        assertTrue(assigned.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED));
-        assertTrue(storage.upsertTaskMessageProjection("task-1", toProjection(assigned)));
+        assigned = new TaskDetailStore.TaskMessageProjection(
+                assigned.messageId(),
+                assigned.taskId(),
+                assigned.input(),
+                assigned.payloadRef(),
+                TaskMessageProjectionStatus.EXPIRED,
+                assigned.assignedTime(),
+                assigned.createTime(),
+                LocalDateTime.now(),
+                assigned.startTime(),
+                LocalDateTime.now(),
+                assigned.retryCount(),
+                assigned.maxRetryCount(),
+                assigned.errorMessage(),
+                assigned.errorCode(),
+                TaskMessageProjectionFinalReason.MANUAL_CANCELLED,
+                null,
+                assigned.latestAttemptId(),
+                assigned.latestAttemptWorkerId(),
+                assigned.latestAttemptWorkerContextId(),
+                assigned.latestAttemptBatchId()
+        );
+        assertTrue(storage.upsertTaskMessageProjection("task-1", assigned));
 
         assertEquals(java.util.Set.of("msg-init"),
                 allMessageProjections(storage, "task-1").stream()
@@ -170,10 +209,10 @@ class InMemoryTaskStorageTest {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
-        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
-        storage.upsertTaskMessageProjection("task-1", toProjection(init));
+        TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
+        storage.upsertTaskMessageProjection("task-1", init);
         storage.upsertTaskMessageAttemptProjection("task-1", "msg-init",
-                toProjection(attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING)));
+                attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING));
 
         assertTrue(storage.deleteTask("task-1"));
         assertTrue(storage.getTask("task-1").isEmpty());
@@ -187,10 +226,10 @@ class InMemoryTaskStorageTest {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
-        TaskMsg init = message("msg-init", TaskMsgStatus.INIT);
-        storage.upsertTaskMessageProjection("task-1", toProjection(init));
+        TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
+        storage.upsertTaskMessageProjection("task-1", init);
         storage.upsertTaskMessageAttemptProjection("task-1", "msg-init",
-                toProjection(attempt("attempt-1", 1, TaskMsgAttemptStatus.RUNNING)));
+                attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING));
 
         Task replacement = runningTask("task-1", LocalDateTime.now(), 120);
         storage.saveTask(replacement);
@@ -210,22 +249,54 @@ class InMemoryTaskStorageTest {
         return storage.getTaskMessageProjections(taskId, Math.toIntExact(total));
     }
 
-    private TaskMsgAttempt attempt(String attemptId, int attemptNo, TaskMsgAttemptStatus status) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt();
-        attempt.setAttemptId(attemptId);
-        attempt.setAttemptNo(attemptNo);
-        attempt.setTaskId("task-1");
-        attempt.setMessageId("msg-1");
-        attempt.setStatus(status);
-        return attempt;
+    private TaskDetailStore.TaskMessageAttemptProjection attempt(String attemptId,
+                                                                 int attemptNo,
+                                                                 TaskMessageAttemptProjectionStatus status) {
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attemptId,
+                "task-1",
+                "msg-1",
+                attemptNo,
+                null,
+                null,
+                null,
+                status,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
-    private TaskMsg message(String messageId, TaskMsgStatus status) {
-        TaskMsg message = new TaskMsg();
-        message.setTaskId("task-1");
-        message.setMessageId(messageId);
-        message.setStatus(status);
-        return message;
+    private TaskDetailStore.TaskMessageProjection message(String messageId,
+                                                          TaskMessageProjectionStatus status,
+                                                          TaskMessageProjectionFinalReason finalReason) {
+        LocalDateTime now = LocalDateTime.now();
+        return new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                "task-1",
+                java.util.Map.of(),
+                null,
+                status,
+                status == TaskMessageProjectionStatus.ASSIGNED ? now : null,
+                now,
+                now,
+                status == TaskMessageProjectionStatus.RUNNING || status == TaskMessageProjectionStatus.SUCCESS
+                        || status == TaskMessageProjectionStatus.FAILED || status == TaskMessageProjectionStatus.EXPIRED
+                        ? now
+                        : null,
+                status != null && status.isFinal() ? now : null,
+                0,
+                3,
+                null,
+                null,
+                finalReason,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private Task runningTask(String taskId, LocalDateTime startTime, int maxRuntimeSeconds) {
@@ -237,51 +308,4 @@ class InMemoryTaskStorageTest {
         return task;
     }
 
-    private TaskDetailStore.TaskMessageProjection toProjection(TaskMsg message) {
-        return new TaskDetailStore.TaskMessageProjection(
-                message.getMessageId(),
-                message.getTaskId(),
-                message.getInput(),
-                message.getPayloadRef(),
-                message.getStatus() != null ? TaskMessageProjectionStatus.valueOf(message.getStatus().name()) : null,
-                message.getAssignedTime(),
-                message.getCreateTime(),
-                message.getUpdateTime(),
-                message.getStartTime(),
-                message.getCompleteTime(),
-                message.getRetryCount(),
-                message.getMaxRetryCount(),
-                message.getErrorMessage(),
-                message.getErrorCode(),
-                message.getFinalReason() != null
-                        ? TaskMessageProjectionFinalReason.valueOf(message.getFinalReason().name())
-                        : null,
-                message.getOutput(),
-                message.latestAttemptId(),
-                message.getLatestAttemptWorkerId(),
-                message.getLatestAttemptWorkerContextId(),
-                message.getLatestAttemptBatchId()
-        );
-    }
-
-    private TaskDetailStore.TaskMessageAttemptProjection toProjection(TaskMsgAttempt attempt) {
-        return new TaskDetailStore.TaskMessageAttemptProjection(
-                attempt.getAttemptId(),
-                attempt.getTaskId(),
-                attempt.getMessageId(),
-                attempt.getAttemptNo(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                attempt.getStatus() != null
-                        ? TaskMessageAttemptProjectionStatus.valueOf(attempt.getStatus().name())
-                        : null,
-                attempt.getFinalReason() != null
-                        ? TaskMessageAttemptProjectionFinalReason.valueOf(attempt.getFinalReason().name())
-                        : null,
-                attempt.getErrorMessage(),
-                attempt.getErrorCode(),
-                attempt.getOutput()
-        );
-    }
 }

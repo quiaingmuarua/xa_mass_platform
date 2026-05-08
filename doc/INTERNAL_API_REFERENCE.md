@@ -304,7 +304,6 @@ Response notes:
 
 - returns `task`
 - returns `security`
-- returns `stateValidation`
 - does not return item payload snapshots by default
 - SDK credential callers may use this route under the same ownership-based
   task-view gate
@@ -389,8 +388,7 @@ Behavior:
 
 ### 4.8 Task Detail Boundaries
 
-- `GET /api/v1/tasks/{taskId}` returns task shell, aggregate state, security view,
-  and `stateValidation`
+- `GET /api/v1/tasks/{taskId}` returns task shell, aggregate state, and security view
 - public task API does not expose task-item snapshot, per-item detail, attempt
   audit, or projection-audit routes
 - residue or projection diagnostics are not part of the public v1 task surface

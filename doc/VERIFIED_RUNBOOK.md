@@ -114,7 +114,7 @@ curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS` for success-mode sample clients
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> FAILED` when `sample.client.task-result-status=FAILED`
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
-- task detail response returns shell/state data and `stateValidation`
+- task detail response returns shell and aggregate state only
 - public API no longer exposes task-item snapshot, task-item detail, or attempt-detail query routes
 
 ## 4. Runtime Facts To Trust

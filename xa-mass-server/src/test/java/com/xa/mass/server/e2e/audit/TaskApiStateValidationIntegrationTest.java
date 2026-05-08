@@ -3,6 +3,7 @@ package com.xa.mass.server.e2e.audit;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -51,9 +53,10 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> created = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(created);
-        assertEquals(Boolean.TRUE, stateValidation(created).get("valid"));
-        assertEquals(Boolean.FALSE, stateValidation(created).get("needsResolution"));
-        assertEquals("NEW", stateValidation(created).get("status"));
+        TaskStateValidationResult createdValidation = validateTaskState(taskId);
+        assertTrue(createdValidation.isValid());
+        assertFalse(createdValidation.isNeedsResolution());
+        assertEquals("NEW", createdValidation.getStatus().name());
 
         Map<String, Object> auditResponse = exchange(
                 "/api/v1/tasks/" + taskId + ":approve",
@@ -63,15 +66,15 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(auditResponse);
 
         Map<String, Object> terminal = waitForTaskDetail(taskId, "TERMINAL");
-        Map<String, Object> validation = stateValidation(terminal);
+        TaskStateValidationResult validation = validateTaskState(taskId);
 
-        assertEquals(Boolean.TRUE, validation.get("valid"));
-        assertEquals(Boolean.FALSE, validation.get("needsResolution"));
-        assertEquals("TERMINAL", validation.get("status"));
-        assertEquals("ALL_MESSAGES_SUCCEEDED", validation.get("terminalReason"));
-        assertEquals(2, ((Number) validation.get("totalMessages")).intValue());
-        assertEquals(2, ((Number) validation.get("successMessages")).intValue());
-        assertEquals(0, ((Number) validation.get("failedMessages")).intValue());
+        assertTrue(validation.isValid());
+        assertFalse(validation.isNeedsResolution());
+        assertEquals("TERMINAL", validation.getStatus().name());
+        assertEquals("ALL_MESSAGES_SUCCEEDED", validation.getTerminalReason().name());
+        assertEquals(2, validation.getTotalMessages());
+        assertEquals(2, validation.getSuccessMessages());
+        assertEquals(0, validation.getFailedMessages());
     }
 
     @Test
@@ -93,16 +96,16 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(updateStoredTask(task));
 
         Map<String, Object> reopened = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        Map<String, Object> validation = stateValidation(reopened);
+        TaskStateValidationResult validation = validateTaskState(taskId);
 
         assertApiOk(reopened);
         assertEquals("RUNNING", task(reopened).get("status"));
-        assertEquals(Boolean.TRUE, validation.get("valid"));
-        assertEquals(Boolean.TRUE, validation.get("needsResolution"));
-        assertEquals("RUNNING", validation.get("status"));
-        assertEquals(2, ((Number) validation.get("totalMessages")).intValue());
-        assertEquals(2, ((Number) validation.get("successMessages")).intValue());
-        assertEquals(0, ((Number) validation.get("failedMessages")).intValue());
+        assertTrue(validation.isValid());
+        assertTrue(validation.isNeedsResolution());
+        assertEquals("RUNNING", validation.getStatus().name());
+        assertEquals(2, validation.getTotalMessages());
+        assertEquals(2, validation.getSuccessMessages());
+        assertEquals(0, validation.getFailedMessages());
     }
 
     @Test
@@ -123,12 +126,12 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(updateStoredTask(task));
 
         Map<String, Object> response = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        Map<String, Object> validation = stateValidation(response);
+        TaskStateValidationResult validation = validateTaskState(taskId);
 
         assertApiOk(response);
-        assertEquals(Boolean.FALSE, validation.get("valid"));
-        assertEquals(Boolean.FALSE, validation.get("needsResolution"));
-        assertEquals("TERMINAL", validation.get("status"));
+        assertFalse(validation.isValid());
+        assertFalse(validation.isNeedsResolution());
+        assertEquals("TERMINAL", validation.getStatus().name());
         assertEquals(List.of("TERMINAL_REASON_MISSING"), violations(validation));
     }
 
@@ -150,13 +153,13 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(updateStoredTask(task));
 
         Map<String, Object> response = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        Map<String, Object> validation = stateValidation(response);
+        TaskStateValidationResult validation = validateTaskState(taskId);
 
         assertApiOk(response);
-        assertEquals(Boolean.FALSE, validation.get("valid"));
-        assertEquals(Boolean.FALSE, validation.get("needsResolution"));
-        assertEquals("TERMINAL", validation.get("status"));
-        assertEquals("ALL_MESSAGES_FAILED", validation.get("terminalReason"));
+        assertFalse(validation.isValid());
+        assertFalse(validation.isNeedsResolution());
+        assertEquals("TERMINAL", validation.getStatus().name());
+        assertEquals("ALL_MESSAGES_FAILED", validation.getTerminalReason().name());
         assertEquals(List.of("TERMINAL_REASON_MISMATCH_ALL_FAILED"), violations(validation));
     }
 

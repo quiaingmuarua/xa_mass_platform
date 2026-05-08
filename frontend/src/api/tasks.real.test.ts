@@ -83,15 +83,6 @@ describe('tasks.real', () => {
                         createTime: [2026, 4, 21, 9, 0, 0],
                         updateTime: [2026, 4, 21, 9, 30, 0],
                     },
-                    stateValidation: {
-                        valid: true,
-                        needsResolution: false,
-                        totalMessages: 10,
-                        successMessages: 6,
-                        failedMessages: 0,
-                        processingMessages: 4,
-                        violations: [],
-                    },
                 },
             }),
         )

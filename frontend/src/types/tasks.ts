@@ -10,16 +10,6 @@ export interface TaskListItem {
     updatedAt: string
 }
 
-export interface TaskValidationSummary {
-    valid: boolean
-    needsResolution: boolean
-    totalMessages: number
-    successMessages: number
-    failedMessages: number
-    processingMessages: number
-    violations: string[]
-}
-
 export interface TaskDetailRecord {
     tid: string
     taskName: string
@@ -42,7 +32,6 @@ export interface TaskDetailRecord {
 
 export interface TaskDetailResponse {
     task: TaskDetailRecord
-    stateValidation: TaskValidationSummary
 }
 
 export interface TaskListResponse {

@@ -8,6 +8,7 @@ import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -127,7 +128,8 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(createdDetail);
         assertEquals("NEW", task(createdDetail).get("status"));
-        assertEquals(Boolean.TRUE, stateValidation(createdDetail).get("valid"));
+        TaskStateValidationResult createdValidation = validateTaskState(taskId);
+        assertTrue(createdValidation.isValid());
 
         assertApiOk(approveTask(taskId));
 
@@ -168,8 +170,9 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> terminalDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(terminalDetail);
-        assertEquals(Boolean.TRUE, stateValidation(terminalDetail).get("valid"));
-        assertEquals(Boolean.FALSE, stateValidation(terminalDetail).get("needsResolution"));
+        TaskStateValidationResult terminalValidation = validateTaskState(taskId);
+        assertTrue(terminalValidation.isValid());
+        assertFalse(terminalValidation.isNeedsResolution());
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-offline"

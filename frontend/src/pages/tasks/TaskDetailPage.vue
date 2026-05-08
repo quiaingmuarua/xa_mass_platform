@@ -4,7 +4,7 @@
       <div>
         <h2 class="page-title">Task Detail</h2>
         <p class="page-subtitle">
-          Runtime-centric detail page shaped around task aggregate and validation
+          Runtime-centric detail page shaped around task shell and aggregate
           state.
         </p>
       </div>
@@ -141,27 +141,23 @@
         <el-col :span="12">
           <el-card class="page-card detail-card">
             <template #header>
-              <strong>State validation</strong>
+              <strong>Runtime summary</strong>
             </template>
             <el-descriptions :column="1" border>
-              <el-descriptions-item label="Valid">{{
-                detail.stateValidation.valid
+              <el-descriptions-item label="Target messages">{{
+                detail.task.taskTargetNumber
               }}</el-descriptions-item>
-              <el-descriptions-item label="Needs resolution">
-                {{ detail.stateValidation.needsResolution }}
+              <el-descriptions-item label="Eligible messages">
+                {{ detail.task.taskEligibleNumber }}
               </el-descriptions-item>
-              <el-descriptions-item label="Total messages">
-                {{ detail.stateValidation.totalMessages }}
+              <el-descriptions-item label="Success messages">
+                {{ detail.task.taskSuccessNumber }}
               </el-descriptions-item>
-              <el-descriptions-item label="Processing">
-                {{ detail.stateValidation.processingMessages }}
+              <el-descriptions-item label="Non-success messages">
+                {{ detail.task.taskNonSuccessNumber }}
               </el-descriptions-item>
-              <el-descriptions-item label="Violations">
-                {{
-                  detail.stateValidation.violations.length > 0
-                    ? detail.stateValidation.violations.join(', ')
-                    : '-'
-                }}
+              <el-descriptions-item label="Updated">
+                {{ detail.task.updateTime }}
               </el-descriptions-item>
             </el-descriptions>
           </el-card>

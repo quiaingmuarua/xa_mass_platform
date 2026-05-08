@@ -36,7 +36,7 @@ describe('tasks API facade', () => {
 
         const detail = await getTaskDetail(result.taskId)
         expect(detail.task.taskName).toBe('Create from console test')
-        expect(detail.stateValidation.totalMessages).toBe(2)
+        expect(detail.task.taskEligibleNumber).toBe(2)
     })
 
     it('submits sync debug invocations through the mock adapter', async () => {

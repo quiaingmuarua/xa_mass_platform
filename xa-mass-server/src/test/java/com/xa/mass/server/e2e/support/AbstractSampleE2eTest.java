@@ -3,6 +3,7 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -129,14 +130,14 @@ public abstract class AbstractSampleE2eTest {
         return (List<Map<String, Object>>) responseData(response).get("messages");
     }
 
-    @SuppressWarnings("unchecked")
-    protected Map<String, Object> stateValidation(Map<String, Object> response) {
-        return (Map<String, Object>) responseData(response).get("stateValidation");
+    protected TaskStateValidationResult validateTaskState(String taskId) {
+        return requireSdkApp().validateTaskState(taskId);
     }
 
-    @SuppressWarnings("unchecked")
-    protected List<String> violations(Map<String, Object> validation) {
-        return (List<String>) validation.get("violations");
+    protected List<String> violations(TaskStateValidationResult validation) {
+        return validation.getViolations() == null
+                ? List.of()
+                : validation.getViolations().stream().map(Enum::name).toList();
     }
 
     protected String createTaskId(String taskName, String textContent, List<String> targets, int batchSize) {
