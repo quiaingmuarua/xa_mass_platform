@@ -1,4 +1,4 @@
-﻿package com.xa.mass.server.e2e.results;
+package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
@@ -87,8 +87,7 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
 
             assertApiOk(appendTaskItems(taskId,
                     "demo.dispatch",
-                    List.of(Map.of("target", "target-a"), Map.of("target", "target-b")),
-                    0 // maxRetryCount=0: no retries
+                    List.of(Map.of("target", "target-a"), Map.of("target", "target-b"))
             ));
             assertApiOk(sealTask(taskId));
             assertApiOk(approveTask(taskId));

@@ -1,7 +1,6 @@
 package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.TaskExecutionSpec;
-import com.xa.mass.base.enums.task.TaskSourceType;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -14,7 +13,6 @@ public final class MassTaskShellCreateRequest {
     private final String project;
     private final Map<String, Object> sharedConfig;
     private final TaskExecutionSpec executionSpec;
-    private final TaskSourceType sourceType;
     private final String sourceRef;
 
     private MassTaskShellCreateRequest(Builder builder) {
@@ -23,7 +21,6 @@ public final class MassTaskShellCreateRequest {
         this.project = builder.project;
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
         this.executionSpec = TaskExecutionSpec.normalized(builder.executionSpec);
-        this.sourceType = builder.sourceType;
         this.sourceRef = normalizeString(builder.sourceRef);
     }
 
@@ -55,10 +52,6 @@ public final class MassTaskShellCreateRequest {
         return executionSpec.getBatchSize();
     }
 
-    public TaskSourceType getSourceType() {
-        return sourceType;
-    }
-
     public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
         return executionSpec.getWorkloadClass();
     }
@@ -81,7 +74,6 @@ public final class MassTaskShellCreateRequest {
         private String project;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
         private TaskExecutionSpec executionSpec;
-        private TaskSourceType sourceType;
         private String sourceRef;
 
         private Builder() {
@@ -117,11 +109,6 @@ public final class MassTaskShellCreateRequest {
                 this.executionSpec = new TaskExecutionSpec();
             }
             this.executionSpec.setBatchSize(batchSize);
-            return this;
-        }
-
-        public Builder sourceType(TaskSourceType sourceType) {
-            this.sourceType = sourceType;
             return this;
         }
 

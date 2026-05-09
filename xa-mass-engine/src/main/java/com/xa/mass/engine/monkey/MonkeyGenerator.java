@@ -2,7 +2,6 @@ package com.xa.mass.engine.monkey;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -96,7 +95,6 @@ public class MonkeyGenerator {
         private int defaultMaxRetryCount = 3;
         private boolean keepIntakeOpen;
         private int maxRuntimeSeconds;
-        private TaskSourceType sourceType;
         private TaskWorkloadClass workloadClass;
         private String sourceRef;
 
@@ -170,14 +168,6 @@ public class MonkeyGenerator {
 
         public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
             this.maxRuntimeSeconds = maxRuntimeSeconds;
-        }
-
-        public TaskSourceType getSourceType() {
-            return sourceType;
-        }
-
-        public void setSourceType(TaskSourceType sourceType) {
-            this.sourceType = sourceType;
         }
 
         public TaskWorkloadClass getWorkloadClass() {

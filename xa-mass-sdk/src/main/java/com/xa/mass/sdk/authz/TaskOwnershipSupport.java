@@ -23,7 +23,6 @@ public final class TaskOwnershipSupport {
                 .project(request.getProject())
                 .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
                 .executionSpec(request.getExecutionSpec())
-                .sourceType(request.getSourceType())
                 .sourceRef(request.getSourceRef())
                 .build();
     }

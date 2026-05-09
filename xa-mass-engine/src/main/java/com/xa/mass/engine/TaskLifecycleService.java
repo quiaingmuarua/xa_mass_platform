@@ -2,9 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
@@ -271,7 +269,9 @@ class TaskLifecycleService {
         int added = ingressItems.size();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
-        task.setIngestStatus(resolvePostAppendIngestStatus(task));
+        if (task.getContract() == TaskContract.SESSION) {
+            task.setIntakeStatus(TaskIntakeStatus.OPEN);
+        }
         taskManager.updateTask(task);
         if (task.getStatus().isActive()) {
             taskManager.requestTaskDispatch(task);
@@ -289,18 +289,10 @@ class TaskLifecycleService {
             logger.info("[sealTask] Session task {} ignores seal semantics; lifecycle closes through explicit stop policies", taskId);
             return false;
         }
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            if (task.getIngestStatus() == TaskIngestStatus.SEALED
-                    || task.getIngestStatus() == TaskIngestStatus.FAILED) {
-                return false;
-            }
-            task.setIngestStatus(TaskIngestStatus.SEALED);
-        } else if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
-            task.setIntakeStatus(TaskIntakeStatus.SEALED);
-            task.setIngestStatus(TaskIngestStatus.SEALED);
-        } else {
+        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return false;
         }
+        task.setIntakeStatus(TaskIntakeStatus.SEALED);
         taskManager.updateTask(task);
         stateResolver.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);
@@ -311,10 +303,6 @@ class TaskLifecycleService {
         if (task.getStatus() == null || task.getStatus().isFinal()) {
             return false;
         }
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            return task.getIngestStatus() != TaskIngestStatus.SEALED
-                    && task.getIngestStatus() != TaskIngestStatus.FAILED;
-        }
         return switch (task.getContract()) {
             case SESSION -> true;
             case BATCH -> task.getIntakeStatus() == TaskIntakeStatus.OPEN;
@@ -322,15 +310,6 @@ class TaskLifecycleService {
     }
 
     private String describeInputAppendRejection(Task task, String taskId) {
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            if (task.getIngestStatus() == TaskIngestStatus.SEALED) {
-                return "Task ingest already sealed: " + taskId;
-            }
-            if (task.getIngestStatus() == TaskIngestStatus.FAILED) {
-                return "Task ingest failed and cannot accept more inputs: " + taskId;
-            }
-            return "Task cannot accept file ingest inputs in status " + task.getStatus();
-        }
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return switch (task.getContract()) {
                 case SESSION -> "Session task is terminal and cannot accept more inputs: " + taskId;
@@ -338,16 +317,6 @@ class TaskLifecycleService {
             };
         }
         return "Task intake is closed or task is terminal: " + task.getStatus();
-    }
-
-    private TaskIngestStatus resolvePostAppendIngestStatus(Task task) {
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            return TaskIngestStatus.READY;
-        }
-        if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
-            return TaskIngestStatus.READY;
-        }
-        return task.getIngestStatus();
     }
 
     boolean deleteTask(String taskId) {
@@ -420,14 +389,7 @@ class TaskLifecycleService {
         if (task == null) {
             return;
         }
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            if (task.getIngestStatus() != TaskIngestStatus.FAILED) {
-                task.setIngestStatus(TaskIngestStatus.SEALED);
-            }
-            return;
-        }
         task.setIntakeStatus(TaskIntakeStatus.SEALED);
-        task.setIngestStatus(TaskIngestStatus.SEALED);
     }
 }
 

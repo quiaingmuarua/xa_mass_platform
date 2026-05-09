@@ -8,7 +8,6 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
@@ -490,7 +489,6 @@ public class TaskApiController {
                 .project(resolvedProject)
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .executionSpec(TaskExecutionSpec.normalized(requestBody.getExecutionSpec()))
-                .sourceType(resolveSourceType(requestBody))
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -515,7 +513,6 @@ public class TaskApiController {
                 && requestBody.getProject() == null
                 && requestBody.getSharedConfig() == null
                 && requestBody.getExecutionSpec() == null
-                && requestBody.getSourceType() == null
                 && requestBody.getSourceRef() == null;
     }
 
@@ -565,7 +562,6 @@ public class TaskApiController {
                     null,
                     requestBody != null ? requestBody.getUserId() : null,
                     Map.of(
-                        "sourceType", requestBody != null ? String.valueOf(requestBody.getSourceType()) : "",
                         "executionProfile", requestBody != null && requestBody.getExecutionSpec() != null
                                 ? String.valueOf(requestBody.getExecutionSpec().getProfile()) : "",
                         "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
@@ -719,13 +715,6 @@ public class TaskApiController {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
-    }
-
-    private TaskSourceType resolveSourceType(TaskShellCreateApiRequest requestBody) {
-        if (requestBody.getSourceType() != null) {
-            return requestBody.getSourceType();
-        }
-        return TaskSourceType.STREAM;
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

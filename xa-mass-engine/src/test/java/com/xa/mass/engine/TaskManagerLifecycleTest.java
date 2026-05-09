@@ -2,9 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
@@ -52,9 +50,9 @@ class TaskManagerLifecycleTest {
         Task task = createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskSourceType.BATCH, task.getSourceType());
+        assertEquals(TaskContract.BATCH, task.getContract());
         assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
-        assertEquals(TaskIngestStatus.SEALED, task.getIngestStatus());
+        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertNotNull(task.getProjectRef());
         assertEquals("demoApp", task.getProjectRef().getCode());
         assertNotNull(task.getUser());
@@ -73,13 +71,13 @@ class TaskManagerLifecycleTest {
     @Test
     void createTaskPreservesExplicitInteractiveWorkloadIndependentlyFromSourceType() {
         TaskCreateSpec dto = buildRequest("task-interactive");
-        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setContract(TaskContract.SESSION);
         dto.setKeepIntakeOpen(true);
         dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         Task task = createTask(dto);
 
-        assertEquals(TaskSourceType.STREAM, task.getSourceType());
+        assertEquals(TaskContract.SESSION, task.getContract());
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
     }
@@ -177,76 +175,77 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createStreamTaskAllowsEmptyInitialInputsAndCreatesShell() {
+    void createSessionTaskAllowsEmptyInitialInputsAndCreatesShell() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("stream-shell");
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setKeepIntakeOpen(true);
-        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setContract(TaskContract.SESSION);
         dto.setInputs(List.of());
 
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
         assertEquals(TaskContract.SESSION, task.getContract());
-        assertEquals(TaskSourceType.STREAM, task.getSourceType());
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
-        assertEquals(TaskIngestStatus.READY, task.getIngestStatus());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
         assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
     }
 
     @Test
-    void createFileTaskAllowsEmptyInitialInputsAndCreatesPendingShell() {
+    void createBatchTaskAllowsEmptyInitialInputsAndKeepsOpaqueSourceRef() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setSourceType(TaskSourceType.FILE);
+        dto.setContract(TaskContract.BATCH);
         dto.setSourceRef("mock/input/demo.csv");
+        dto.setKeepIntakeOpen(true);
         dto.setInputs(List.of());
 
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskSourceType.FILE, task.getSourceType());
-        assertEquals(TaskIngestStatus.PENDING, task.getIngestStatus());
-        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
+        assertEquals(TaskContract.BATCH, task.getContract());
+        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals("mock/input/demo.csv", task.getSourceRef());
         assertEquals(0, task.getTaskTargetNumber());
         assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
     }
 
     @Test
-    void createFileTaskRequiresSourceRef() {
+    void createBatchTaskDoesNotRequireSourceRef() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell-no-ref");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setSourceType(TaskSourceType.FILE);
+        dto.setContract(TaskContract.BATCH);
+        dto.setKeepIntakeOpen(true);
         dto.setInputs(List.of());
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
+        Task task = createTask(dto);
 
-        assertEquals("sourceRef is required for FILE task sources", error.getMessage());
+        assertNotNull(task);
+        assertNull(task.getSourceRef());
     }
 
     @Test
-    void createFileTaskRejectsInitialInputsToKeepFileIngestChunked() {
+    void createBatchTaskAllowsInitialInputsEvenWhenSourceRefLooksFileLike() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-shell-with-inline-input");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setSourceType(TaskSourceType.FILE);
+        dto.setContract(TaskContract.BATCH);
         dto.setSourceRef("mock/input/demo.csv");
         dto.setInputs(List.of(java.util.Map.of("target", "alpha")));
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
+        Task task = createTask(dto);
 
-        assertEquals("FILE task sources must be created as a sourceRef shell; ingest work items in batches",
-                error.getMessage());
+        assertEquals(TaskContract.BATCH, task.getContract());
+        assertEquals(1, task.getTaskTargetNumber());
+        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
 
     @Test
@@ -256,7 +255,7 @@ class TaskManagerLifecycleTest {
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setKeepIntakeOpen(true);
-        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setContract(TaskContract.SESSION);
         dto.setInputs(List.of());
 
         Task task = createTask(dto);
@@ -296,7 +295,7 @@ class TaskManagerLifecycleTest {
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setKeepIntakeOpen(true);
-        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setContract(TaskContract.SESSION);
         dto.setInputs(List.of());
 
         Task task = createTask(manager, dto);
@@ -355,7 +354,7 @@ class TaskManagerLifecycleTest {
         failingStorage.failNextTaskMessageAdd();
 
         Task task = createTask(manager, dto);
-        assertEquals(TaskIngestStatus.SEALED, task.getIngestStatus());
+        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
 
         manager.approveTask(task.getTid());
@@ -552,13 +551,14 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void fileTaskCanIngestItemsBeforeApprovalWithoutDispatch() {
+    void batchTaskCanIngestItemsBeforeApprovalWithoutDispatch() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName("file-ingest-before-approval");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setSourceType(TaskSourceType.FILE);
+        dto.setContract(TaskContract.BATCH);
         dto.setSourceRef("mock/input/demo.csv");
+        dto.setKeepIntakeOpen(true);
         dto.setInputs(List.of());
 
         Task task = createTask(dto);
@@ -575,7 +575,7 @@ class TaskManagerLifecycleTest {
 
         assertEquals(2, added);
         assertEquals(TaskStatus.NEW, updatedTask.getStatus());
-        assertEquals(TaskIngestStatus.READY, updatedTask.getIngestStatus());
+        assertEquals(TaskIntakeStatus.OPEN, updatedTask.getIntakeStatus());
         assertEquals(2, updatedTask.getTaskTargetNumber());
         assertEquals(2, messages.size());
         assertEquals(0, dispatchRequests.get());
@@ -588,7 +588,7 @@ class TaskManagerLifecycleTest {
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setKeepIntakeOpen(true);
-        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setContract(TaskContract.SESSION);
         dto.setInputs(List.of());
         Task task = createTask(dto);
 

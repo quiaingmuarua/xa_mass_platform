@@ -2,7 +2,6 @@ package com.xa.mass.api.model.task;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -23,7 +22,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
     private List<Object> items;
     private int batchSize;
     private int maxRuntimeSeconds;
-    private TaskSourceType sourceType;
     private TaskWorkloadClass workloadClass;
     private String sourceRef;
 
@@ -105,14 +103,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
 
     public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
         this.maxRuntimeSeconds = maxRuntimeSeconds;
-    }
-
-    public TaskSourceType getSourceType() {
-        return sourceType;
-    }
-
-    public void setSourceType(TaskSourceType sourceType) {
-        this.sourceType = sourceType;
     }
 
     public TaskWorkloadClass getWorkloadClass() {

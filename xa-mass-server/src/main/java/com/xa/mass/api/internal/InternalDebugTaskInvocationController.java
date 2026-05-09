@@ -9,7 +9,6 @@ import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.InternalDebugTaskInvocationApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
@@ -244,7 +243,6 @@ public class InternalDebugTaskInvocationController {
                 .project(resolvedProject)
                 .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
                 .executionSpec(executionSpec)
-                .sourceType(requestBody.getSourceType() != null ? requestBody.getSourceType() : TaskSourceType.STREAM)
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }

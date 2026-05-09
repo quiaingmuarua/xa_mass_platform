@@ -2,7 +2,6 @@ package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskSourceType;
 
 import java.util.Map;
 
@@ -14,7 +13,6 @@ public class TaskShellCreateRequestDto {
     private String project;
     private Map<String, Object> sharedConfig;
     private TaskExecutionSpec executionSpec;
-    private TaskSourceType sourceType;
     private String sourceRef;
 
     public String getUserId() {
@@ -81,14 +79,6 @@ public class TaskShellCreateRequestDto {
 
     public void setBatchSize(int batchSize) {
         executionSpecOrDefault().setBatchSize(batchSize);
-    }
-
-    public TaskSourceType getSourceType() {
-        return sourceType;
-    }
-
-    public void setSourceType(TaskSourceType sourceType) {
-        this.sourceType = sourceType;
     }
 
     public int getMaxRuntimeSeconds() {

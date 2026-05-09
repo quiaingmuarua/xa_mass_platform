@@ -3,9 +3,7 @@ package com.xa.mass.base.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
@@ -37,9 +35,7 @@ public class Task {
     private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
-    private TaskSourceType sourceType;
     private TaskExecutionSpec executionSpec;
-    private TaskIngestStatus ingestStatus;
     private String sourceRef;
     private TaskIntakeStatus intakeStatus;
     private UserRef user;
@@ -51,9 +47,7 @@ public class Task {
 
     public Task() {
         this.status = TaskStatus.NEW;
-        this.sourceType = TaskSourceType.BATCH;
         this.executionSpec = new TaskExecutionSpec();
-        this.ingestStatus = TaskIngestStatus.SEALED;
         this.intakeStatus = TaskIntakeStatus.SEALED;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
@@ -204,15 +198,6 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public TaskSourceType getSourceType() {
-        return sourceType;
-    }
-
-    public void setSourceType(TaskSourceType sourceType) {
-        this.sourceType = sourceType == null ? TaskSourceType.BATCH : sourceType;
-        this.updateTime = LocalDateTime.now();
-    }
-
     public TaskExecutionSpec getExecutionSpec() {
         return executionSpec;
     }
@@ -237,15 +222,6 @@ public class Task {
 
     public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
         executionSpecOrDefault().setWorkloadClass(workloadClass);
-        this.updateTime = LocalDateTime.now();
-    }
-
-    public TaskIngestStatus getIngestStatus() {
-        return ingestStatus;
-    }
-
-    public void setIngestStatus(TaskIngestStatus ingestStatus) {
-        this.ingestStatus = ingestStatus == null ? TaskIngestStatus.SEALED : ingestStatus;
         this.updateTime = LocalDateTime.now();
     }
 
@@ -448,9 +424,8 @@ public class Task {
                 ", taskName='" + taskName + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
-                ", sourceType=" + sourceType +
                 ", executionSpec=" + executionSpec +
-                ", ingestStatus=" + ingestStatus +
+                ", intakeStatus=" + intakeStatus +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +

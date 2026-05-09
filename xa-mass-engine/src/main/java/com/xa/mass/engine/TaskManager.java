@@ -3,8 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -183,8 +181,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             Task task = createTaskShellInternal(dto);
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
-                    + ", sourceType=" + task.getSourceType()
-                    + ", ingestStatus=" + task.getIngestStatus(), duration);
+                    + ", contract=" + task.getContract()
+                    + ", intakeStatus=" + task.getIntakeStatus(), duration);
             return task;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
@@ -622,24 +620,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
         TaskContract contract = resolveShellContract(dto, normalizedSpec);
         normalizedSpec.setContract(contract);
-        normalizedSpec.setWorkloadClass(resolveWorkloadClass(dto, contract, normalizedSpec));
+        normalizedSpec.setWorkloadClass(resolveWorkloadClass(contract, normalizedSpec));
         dto.setExecutionSpec(normalizedSpec);
-        TaskSourceType sourceType = resolveShellSourceType(dto, contract);
-        dto.setSourceType(sourceType);
-        validateSourceContractPair(sourceType, contract);
-        if (sourceType == TaskSourceType.FILE
-                && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
-            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
-        }
     }
 
     private TaskContract resolveShellContract(TaskShellCreateRequestDto dto, TaskExecutionSpec normalizedSpec) {
-        if (dto.getSourceType() == TaskSourceType.STREAM) {
-            return TaskContract.SESSION;
-        }
-        if (dto.getSourceType() == TaskSourceType.FILE || dto.getSourceType() == TaskSourceType.BATCH) {
-            return TaskContract.BATCH;
-        }
         if (normalizedSpec != null
                 && normalizedSpec.getWorkloadClass() == com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE) {
             return TaskContract.SESSION;
@@ -650,12 +635,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return TaskContract.BATCH;
     }
 
-    private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskShellCreateRequestDto dto,
-                                                                                TaskContract contract,
-                                                                                TaskExecutionSpec normalizedSpec) {
-        if (dto != null && dto.getSourceType() == TaskSourceType.STREAM) {
-            return com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE;
-        }
+    private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
+                                                                               TaskExecutionSpec normalizedSpec) {
         if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
             if (contract == TaskContract.SESSION) {
                 return com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE;
@@ -665,22 +646,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return contract == TaskContract.SESSION
                 ? com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE
                 : com.xa.mass.base.enums.task.TaskWorkloadClass.BULK;
-    }
-
-    private void validateSourceContractPair(TaskSourceType sourceType, TaskContract contract) {
-        if (sourceType == TaskSourceType.FILE && contract != TaskContract.BATCH) {
-            throw new IllegalArgumentException("FILE task sources require BATCH task contract");
-        }
-        if (sourceType == TaskSourceType.STREAM && contract != TaskContract.SESSION) {
-            throw new IllegalArgumentException("STREAM task sources require SESSION task contract");
-        }
-    }
-
-    private TaskSourceType resolveShellSourceType(TaskShellCreateRequestDto dto, TaskContract contract) {
-        if (dto.getSourceType() != null) {
-            return dto.getSourceType();
-        }
-        return contract == TaskContract.SESSION ? TaskSourceType.STREAM : TaskSourceType.BATCH;
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -837,19 +802,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
-        TaskContract contract = dto.getContract();
-        TaskSourceType sourceType = resolveShellSourceType(dto, contract);
-        return createTaskRecord(
-                dto,
-                sourceType,
-                sourceType == TaskSourceType.FILE ? TaskIngestStatus.PENDING : TaskIngestStatus.READY,
-                sourceType == TaskSourceType.FILE ? TaskIntakeStatus.SEALED : TaskIntakeStatus.OPEN
-        );
+        return createTaskRecord(dto, resolveInitialIntakeStatus(dto.getContract()));
     }
 
     private Task createTaskRecord(TaskShellCreateRequestDto dto,
-                                  TaskSourceType sourceType,
-                                  TaskIngestStatus ingestStatus,
                                   TaskIntakeStatus intakeStatus) {
         String tid = java.util.UUID.randomUUID().toString();
         LogUtils.setTaskId(tid);
@@ -858,26 +814,29 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
         Task task = new Task(
                 tid,
-                deriveTaskName(dto, tid, sourceType),
+                deriveTaskName(dto, tid),
                 dto.getProject(),
                 0,
                 dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                 user
         );
         task.setTenantId(dto.getTenantId());
-        task.setSourceType(sourceType);
         task.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
         task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
-        task.setIngestStatus(ingestStatus);
         task.setIntakeStatus(intakeStatus);
         taskStorage.saveTask(task);
         eventPublisher.publishTaskCreated(task);
         return task;
     }
 
-    private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId, TaskSourceType sourceType) {
+    private TaskIntakeStatus resolveInitialIntakeStatus(TaskContract contract) {
+        return TaskIntakeStatus.OPEN;
+    }
+
+    private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
         String project = dto.getProject() != null ? dto.getProject().trim() : "task";
-        String normalizedSourceType = sourceType != null ? sourceType.name().toLowerCase(java.util.Locale.ROOT) : "stream";
+        TaskContract contract = dto.getContract() != null ? dto.getContract() : TaskContract.BATCH;
+        String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
         String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
                 ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)
                 : "standard";
@@ -885,9 +844,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         String sourceHint = sourceRef == null ? null : basename(sourceRef);
         String shortTaskId = taskId.length() <= 8 ? taskId : taskId.substring(0, 8);
         if (sourceHint != null && !sourceHint.isBlank()) {
-            return project + "-" + normalizedSourceType + "-" + profile + "-" + sourceHint + "-" + shortTaskId;
+            return project + "-" + normalizedContract + "-" + profile + "-" + sourceHint + "-" + shortTaskId;
         }
-        return project + "-" + normalizedSourceType + "-" + profile + "-" + shortTaskId;
+        return project + "-" + normalizedContract + "-" + profile + "-" + shortTaskId;
     }
 
     private String basename(String value) {

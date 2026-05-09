@@ -3,7 +3,6 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
@@ -326,7 +325,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .sharedConfig(dto.getSharedConfig())
                 .batchSize(dto.getBatchSize())
                 .maxRuntimeSeconds(dto.getMaxRuntimeSeconds())
-                .sourceType(dto.getSourceType())
                 .workloadClass(dto.getWorkloadClass())
                 .sourceRef(sourceRef)
                 .build();
@@ -341,7 +339,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         private int batchSize;
         private boolean keepIntakeOpen;
         private int maxRuntimeSeconds;
-        private TaskSourceType sourceType;
         private TaskWorkloadClass workloadClass;
         private String sourceRef;
 
@@ -407,14 +404,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
         public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
             this.maxRuntimeSeconds = maxRuntimeSeconds;
-        }
-
-        public TaskSourceType getSourceType() {
-            return sourceType;
-        }
-
-        public void setSourceType(TaskSourceType sourceType) {
-            this.sourceType = sourceType;
         }
 
         public TaskWorkloadClass getWorkloadClass() {

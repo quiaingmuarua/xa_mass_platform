@@ -3,7 +3,6 @@ package com.xa.mass.api.model.task;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 import com.xa.mass.base.model.TaskExecutionSpec;
-import com.xa.mass.base.enums.task.TaskSourceType;
 
 import java.util.Map;
 
@@ -14,7 +13,6 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
     private String project;
     private Map<String, Object> sharedConfig;
     private TaskExecutionSpec executionSpec;
-    private TaskSourceType sourceType;
     private String sourceRef;
 
     public String getUserId() {
@@ -58,14 +56,6 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
             this.executionSpec = new TaskExecutionSpec();
         }
         this.executionSpec.setBatchSize(batchSize);
-    }
-
-    public TaskSourceType getSourceType() {
-        return sourceType;
-    }
-
-    public void setSourceType(TaskSourceType sourceType) {
-        this.sourceType = sourceType;
     }
 
     public int getMaxRuntimeSeconds() {

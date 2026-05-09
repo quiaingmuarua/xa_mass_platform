@@ -17,7 +17,6 @@ public final class MassTaskShellCreateRequestMapper {
         dto.setProject(request.getProject());
         dto.setSharedConfig(request.getSharedConfig());
         dto.setExecutionSpec(request.getExecutionSpec());
-        dto.setSourceType(request.getSourceType());
         dto.setSourceRef(request.getSourceRef());
         return dto;
     }
