@@ -99,6 +99,14 @@ public class TaskShellCreateRequestDto {
         executionSpecOrDefault().setMaxRuntimeSeconds(maxRuntimeSeconds);
     }
 
+    public int getDefaultMaxRetryCount() {
+        return executionSpecOrDefault().getDefaultMaxRetryCount();
+    }
+
+    public void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
+        executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
+    }
+
     public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
         return executionSpecOrDefault().getWorkloadClass();
     }

@@ -272,13 +272,14 @@ public final class TaskFlowLoadModelRunner {
             shell.setBatchSize(config.batchSize());
             shell.setWorkloadClass(config.workloadClass());
             shell.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
-            return new TaskCreatePlan(shell, buildInputs(config.messageCount()), config.maxRetryCount(), false);
+            shell.setDefaultMaxRetryCount(config.maxRetryCount());
+            return new TaskCreatePlan(shell, buildInputs(config.messageCount()), false);
         }
 
         private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
             Task task = taskCommands.createTaskShell(request.shell());
             if (!request.inputs().isEmpty()) {
-                taskCommands.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
+                taskCommands.appendTaskItems(task.getTid(), request.inputs());
             }
             if (!request.keepIntakeOpen()) {
                 require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
@@ -288,7 +289,6 @@ public final class TaskFlowLoadModelRunner {
 
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
-                                      int defaultMsgMaxRetryCount,
                                       boolean keepIntakeOpen) {
         }
 

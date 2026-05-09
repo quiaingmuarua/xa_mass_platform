@@ -72,10 +72,6 @@ public class TaskCommandService {
         return taskCommands.appendTaskItems(taskId, inputs);
     }
 
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount) {
-        return taskCommands.appendTaskItems(taskId, inputs, defaultMsgMaxRetryCount);
-    }
-
     public boolean sealTask(String taskId) {
         return taskCommands.sealTask(taskId);
     }

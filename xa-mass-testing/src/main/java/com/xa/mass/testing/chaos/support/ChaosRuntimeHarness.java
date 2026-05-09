@@ -3,6 +3,7 @@ package com.xa.mass.testing.chaos.support;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -193,18 +194,20 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public Task createApprovedTask(TaskCreateSpec spec) {
+        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        executionSpec.setBatchSize(spec.batchSize());
+        executionSpec.setMaxRuntimeSeconds(spec.maxRuntimeSeconds());
+        executionSpec.setDefaultMaxRetryCount(spec.defaultMaxRetryCount());
         Task task = createTask(
                 MassTaskShellCreateRequest.builder()
                         .userId(spec.userId())
                         .project(spec.projectCode())
                         .sourceRef(spec.taskName())
                         .sharedConfig(spec.sharedConfig())
-                        .batchSize(spec.batchSize())
-                        .maxRuntimeSeconds(spec.maxRuntimeSeconds())
+                        .executionSpec(executionSpec)
                         .build(),
                 spec.eventCode(),
                 new ArrayList<>(spec.inputs()),
-                spec.defaultMsgMaxRetryCount(),
                 false
         );
         ChaosSupport.require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
@@ -214,7 +217,6 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private Task createTask(MassTaskShellCreateRequest request,
                             String eventCode,
                             List<Object> items,
-                            int defaultMsgMaxRetryCount,
                             boolean keepIntakeOpen) {
         Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
@@ -348,7 +350,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                  Map<String, Object> sharedConfig,
                                  List<Map<String, Object>> inputs,
                                  int batchSize,
-                                 int defaultMsgMaxRetryCount,
+                                 int defaultMaxRetryCount,
                                  int maxRuntimeSeconds) {
         public static TaskCreateSpec multiMessage(String userId,
                                                   String projectCode,
@@ -356,7 +358,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                   String routingCode,
                                                   int messageCount,
                                                   int batchSize,
-                                                  int defaultMsgMaxRetryCount,
+                                                  int defaultMaxRetryCount,
                                                   int maxRuntimeSeconds) {
             Map<String, Object> sharedConfig = new LinkedHashMap<>();
             sharedConfig.put(TaskSharedConfig.ROUTING_CODE, routingCode);
@@ -376,7 +378,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     Map.copyOf(sharedConfig),
                     List.copyOf(inputs),
                     batchSize,
-                    defaultMsgMaxRetryCount,
+                    defaultMaxRetryCount,
                     maxRuntimeSeconds
             );
         }
@@ -387,7 +389,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                                String routingCode,
                                                                List<Boolean> failFlags,
                                                                int batchSize,
-                                                               int defaultMsgMaxRetryCount,
+                                                               int defaultMaxRetryCount,
                                                                int maxRuntimeSeconds) {
             Map<String, Object> sharedConfig = new LinkedHashMap<>();
             sharedConfig.put(TaskSharedConfig.ROUTING_CODE, routingCode);
@@ -408,7 +410,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     Map.copyOf(sharedConfig),
                     List.copyOf(inputs),
                     batchSize,
-                    defaultMsgMaxRetryCount,
+                    defaultMaxRetryCount,
                     maxRuntimeSeconds
             );
         }
@@ -417,7 +419,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                    String projectCode,
                                                    String taskName,
                                                    String routingCode,
-                                                   int defaultMsgMaxRetryCount,
+                                                   int defaultMaxRetryCount,
                                                    int maxRuntimeSeconds,
                                                    Map<String, Object> extraSharedConfig) {
             Map<String, Object> sharedConfig = new LinkedHashMap<>();
@@ -437,7 +439,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             "target", taskName + "-target-0"
                     )),
                     1,
-                    defaultMsgMaxRetryCount,
+                    defaultMaxRetryCount,
                     maxRuntimeSeconds
             );
         }

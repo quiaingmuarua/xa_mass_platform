@@ -336,9 +336,9 @@ public final class SdkTransportLoadRunner {
                             ))
                             .batchSize(config.batchSize())
                             .maxRuntimeSeconds(config.timeoutSeconds())
+                            .defaultMaxRetryCount(config.maxRetryCount())
                             .build(),
                     new ArrayList<>(buildInputs(taskIndex)),
-                    config.maxRetryCount(),
                     false
             );
         }
@@ -359,7 +359,6 @@ public final class SdkTransportLoadRunner {
 
         private record TaskCreateSpec(MassTaskShellCreateRequest shell,
                                       List<Object> items,
-                                      int defaultMsgMaxRetryCount,
                                       boolean keepIntakeOpen) {
         }
 

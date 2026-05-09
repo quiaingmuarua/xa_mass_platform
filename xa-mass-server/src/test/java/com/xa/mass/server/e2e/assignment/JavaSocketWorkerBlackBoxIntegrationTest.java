@@ -85,7 +85,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/socket-java")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/socket-java"))));
         assertApiOk(sealTask(taskId));
 
         assertApiOk(approveTask(taskId));
@@ -231,7 +231,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input), 3));
+        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input)));
         assertApiOk(sealTask(taskId));
         assertApiOk(approveTask(taskId));
         return taskId;

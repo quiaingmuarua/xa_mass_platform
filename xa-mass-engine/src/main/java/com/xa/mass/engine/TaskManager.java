@@ -340,13 +340,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
     }
 
-    @Override
-    public int appendTaskItems(String taskId,
-                               List<Map<String, Object>> inputs,
-                               int defaultMsgMaxRetryCount) {
-        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs, defaultMsgMaxRetryCount));
-    }
-
     /**
      * Closes the current task intake window.
      */

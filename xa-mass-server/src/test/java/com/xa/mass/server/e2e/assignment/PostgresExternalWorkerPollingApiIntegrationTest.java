@@ -132,7 +132,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/postgres-page")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/postgres-page"))));
         assertApiOk(sealTask(taskId));
 
         assertApiOk(approveTask(taskId));

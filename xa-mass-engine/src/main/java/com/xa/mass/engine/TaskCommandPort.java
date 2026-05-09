@@ -37,7 +37,5 @@ public interface TaskCommandPort {
 
     int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
 
-    int appendTaskItems(String taskId, List<Map<String, Object>> inputs, int defaultMsgMaxRetryCount);
-
     boolean sealTask(String taskId);
 }

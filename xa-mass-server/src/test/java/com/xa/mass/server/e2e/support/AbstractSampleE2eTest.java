@@ -222,13 +222,6 @@ public abstract class AbstractSampleE2eTest {
         return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, body);
     }
 
-    protected Map<String, Object> appendTaskItems(String taskId,
-                                                  String eventCode,
-                                                  List<?> items,
-                                                  int ignoredDefaultMsgMaxRetryCount) {
-        return appendTaskItems(taskId, eventCode, items);
-    }
-
     protected Map<String, Object> sealTask(String taskId) {
         return exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null);
     }

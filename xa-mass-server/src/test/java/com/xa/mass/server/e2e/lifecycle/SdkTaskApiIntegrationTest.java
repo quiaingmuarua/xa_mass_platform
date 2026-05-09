@@ -69,7 +69,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("demoApp", responseData(createResponse).get("project"));
         assertEquals("sdk-client", responseData(createResponse).get("userId"));
         assertEquals("crawler-agent", responseData(createResponse).get("principalId"));
-        assertApiOk(appendTaskItems(taskId, "demo.dispatch", java.util.List.of(Map.of("target", "sdk-target-001")), 2));
+        assertApiOk(appendTaskItems(taskId, "demo.dispatch", java.util.List.of(Map.of("target", "sdk-target-001"))));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> approveResponse = approveTask(taskId);

@@ -126,7 +126,7 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input), 3));
+        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input)));
         assertApiOk(sealTask(taskId));
         return taskId;
     }

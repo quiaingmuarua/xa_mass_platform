@@ -80,14 +80,14 @@ Current entry points:
 
 - create: non-file `SESSION` and `BATCH` shells initialize `intakeStatus=OPEN`
 - create: file-backed `BATCH` shells initialize `intakeStatus=SEALED`
-- `sealTask`: `OPEN -> SEALED`
+- `sealTask`: `BATCH` / file-ingest close action; `SESSION` does not use `sealTask` as a lifecycle owner in the current kernel slice
 
 Must hold:
 
 - automatic message-driven terminal closure only happens for `BATCH` tasks after intake has been sealed
-- `SESSION` tasks may close intake with `sealTask`, but draining current work is still not sufficient for automatic terminal closure
+- `SESSION` tasks keep their append window open while alive in the current kernel slice; draining current work is not sufficient for automatic terminal closure
 - `intakeStatus=OPEN` may still close only for explicit stop reasons that allow open-intake closure: `MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, or `RETRY_BUDGET_EXHAUSTED`
-- `intakeStatus` is the active append-window lifecycle truth
+- `intakeStatus` is the active append-window lifecycle truth for `BATCH`; `SESSION` currently keeps the window open until terminal control closes it
 
 ## 4. Message Projection Status
 

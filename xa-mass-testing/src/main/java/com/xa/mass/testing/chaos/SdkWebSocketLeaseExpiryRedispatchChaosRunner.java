@@ -308,13 +308,13 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     ))
                     .batchSize(1)
                     .maxRuntimeSeconds(config.timeoutSeconds())
+                    .defaultMaxRetryCount(1)
                     .build(),
                     List.of(Map.of(
                             "seq", 0,
                             "taskName", taskName,
                             "target", taskName + "-target-0"
                     )),
-                    1,
                     false);
             require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
             return task;
@@ -323,7 +323,6 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         private Task createTask(MassSdkApplication app,
                                 MassTaskShellCreateRequest request,
                                 List<Object> items,
-                                int defaultMsgMaxRetryCount,
                                 boolean keepIntakeOpen) {
             Task task = app.createTaskShell(request);
             if (items != null && !items.isEmpty()) {

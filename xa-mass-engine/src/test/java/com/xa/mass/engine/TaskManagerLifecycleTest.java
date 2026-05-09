@@ -74,7 +74,7 @@ class TaskManagerLifecycleTest {
     void createTaskPreservesExplicitInteractiveWorkloadIndependentlyFromSourceType() {
         TaskCreateSpec dto = buildRequest("task-interactive");
         dto.setSourceType(TaskSourceType.STREAM);
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         Task task = createTask(dto);
@@ -182,7 +182,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("stream-shell");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -255,7 +255,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("payload-ref-ingress");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -295,7 +295,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("payload-ref-best-effort-ingress");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -401,7 +401,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("payload-ref-best-effort-expiry");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -457,7 +457,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("payload-ref-best-effort-overlay");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -510,7 +510,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("retry-budget-best-effort-overlay");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
 
@@ -587,7 +587,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("stream-shell-ingest-limit");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of());
         Task task = createTask(dto);
@@ -621,7 +621,7 @@ class TaskManagerLifecycleTest {
             dto.setTaskName("interactive-backpressure");
             dto.setProject("demoApp");
             dto.setUserId("agent");
-            dto.setOpenEnded(true);
+            dto.setKeepIntakeOpen(true);
             dto.setSourceType(TaskSourceType.STREAM);
             dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "alpha")));
@@ -1747,9 +1747,9 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void sessionTaskStaysNonTerminalAfterSealWhenCurrentWorkDrains() {
+    void sessionTaskRejectsSealAndStaysAppendableAfterCurrentWorkDrains() {
         TaskCreateSpec request = buildRequest("task-open-ended", List.of("alpha"));
-        request.setOpenEnded(true);
+        request.setKeepIntakeOpen(true);
         Task task = createTask(request);
 
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
@@ -1768,17 +1768,54 @@ class TaskManagerLifecycleTest {
         assertNull(beforeSeal.getTerminalReason());
         assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
 
-        assertTrue(taskManager.sealTask(task.getTid()));
+        assertFalse(taskManager.sealTask(task.getTid()));
+        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(
+                java.util.Map.<String, Object>of("target", "beta")
+        )));
 
-        Task sealed = taskManager.getTask(task.getTid());
+        Task current = taskManager.getTask(task.getTid());
         TaskStateResolutionResult resolution = taskManager.resolveTaskState(task.getTid());
 
-        assertEquals(TaskStatus.RUNNING, sealed.getStatus());
-        assertNull(sealed.getTerminalReason());
-        assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
+        assertEquals(TaskStatus.RUNNING, current.getStatus());
+        assertNull(current.getTerminalReason());
+        assertEquals(TaskIntakeStatus.OPEN, current.getIntakeStatus());
+        assertEquals(2, current.getTaskTargetNumber());
         assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, resolution.getOutcome());
         assertEquals(TaskStatus.RUNNING, resolution.getStatus());
         assertNull(resolution.getTerminalReason());
+    }
+
+    @Test
+    void sessionTaskTerminalClosureClosesAppendWindow() {
+        TaskCreateSpec request = buildRequest("task-open-ended-terminal-close", List.of("alpha"));
+        request.setKeepIntakeOpen(true);
+        Task task = createTask(request);
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        Task terminalTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, terminalTask.getStatus());
+        assertEquals(TaskIntakeStatus.SEALED, terminalTask.getIntakeStatus());
+        assertEquals(TaskIngestStatus.SEALED, terminalTask.getIngestStatus());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                taskManager.appendTaskItems(task.getTid(), List.of(
+                        java.util.Map.<String, Object>of("target", "beta")
+                )));
+        assertTrue(error.getMessage().contains("cannot accept more inputs"));
+    }
+
+    @Test
+    void batchTaskDispatchRequestsDoNotEmitSessionDispatchSignals() {
+        Task task = createTask(buildRequest("task-batch-runtime-dispatch", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+
+        AtomicInteger dispatchRequests = new AtomicInteger();
+        taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+
+        taskManager.requestTaskDispatch(taskManager.getTask(task.getTid()));
+
+        assertEquals(0, dispatchRequests.get());
     }
 
     @Test
@@ -1824,7 +1861,7 @@ class TaskManagerLifecycleTest {
     @Test
     void pausedOpenEndedTaskCanAppendWithoutImmediateDispatch() {
         TaskCreateSpec request = buildRequest("task-open-ended-paused-append", List.of("alpha"));
-        request.setOpenEnded(true);
+        request.setKeepIntakeOpen(true);
         Task task = createTask(request);
         taskManager.approveTask(task.getTid());
         assertTrue(taskManager.pauseTask(task.getTid()));
@@ -2414,7 +2451,7 @@ class TaskManagerLifecycleTest {
         );
 
         TaskCreateSpec request = buildRequest("task-open-intake-runtime-limit", List.of("alpha"));
-        request.setOpenEnded(true);
+        request.setKeepIntakeOpen(true);
         Task task = createTask(policyAwareManager, request);
         policyAwareManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2443,7 +2480,7 @@ class TaskManagerLifecycleTest {
 
         for (TaskTerminalReason terminalReason : policyDrivenReasons) {
             TaskCreateSpec request = buildRequest("task-open-intake-" + terminalReason.name(), List.of("alpha"));
-            request.setOpenEnded(true);
+            request.setKeepIntakeOpen(true);
             Task task = createTask(request);
             task.setStatus(TaskStatus.TERMINAL);
             task.setTerminalReason(terminalReason);
@@ -2537,7 +2574,7 @@ class TaskManagerLifecycleTest {
     void expireRunningSessionMessageTransitionsToExpired() {
         TaskCreateSpec request = buildRequest("expire-running", List.of("alpha"), 0);
         request.setSourceType(TaskSourceType.STREAM);
-        request.setOpenEnded(true);
+        request.setKeepIntakeOpen(true);
         Task task = createTask(request);
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2802,7 +2839,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("snapshot-bounded-runtime-overlay");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "stored")));
 
@@ -2846,7 +2883,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("snapshot-runtime-total-truncation");
         dto.setProject("demoApp");
         dto.setUserId("agent");
-        dto.setOpenEnded(true);
+        dto.setKeepIntakeOpen(true);
         dto.setSourceType(TaskSourceType.STREAM);
         dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "stored")));
 
@@ -2936,7 +2973,7 @@ class TaskManagerLifecycleTest {
             request.setContract(TaskContract.SESSION);
         } else if (sourceType == TaskSourceType.FILE || sourceType == TaskSourceType.BATCH) {
             request.setContract(TaskContract.BATCH);
-        } else if (request.isOpenEnded() || request.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+        } else if (request.isKeepIntakeOpen() || request.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
             request.setContract(TaskContract.SESSION);
         } else {
             request.setContract(TaskContract.BATCH);
@@ -2951,7 +2988,7 @@ class TaskManagerLifecycleTest {
         if (sourceType == TaskSourceType.FILE && (request.getSourceRef() == null || request.getSourceRef().isBlank())) {
             throw new IllegalArgumentException("sourceRef is required for FILE task sources");
         }
-        if (sourceType != TaskSourceType.FILE && !request.isOpenEnded()
+        if (sourceType != TaskSourceType.FILE && !request.isKeepIntakeOpen()
                 && (request.getInputs() == null || request.getInputs().isEmpty())) {
             throw new IllegalArgumentException("inputs must be a non-empty list");
         }
@@ -2970,9 +3007,9 @@ class TaskManagerLifecycleTest {
 
         Task task = manager.createTaskShell(request.toShellRequest());
         if (request.getInputs() != null && !request.getInputs().isEmpty()) {
-            manager.appendTaskItems(task.getTid(), request.getInputs(), request.getDefaultMsgMaxRetryCount());
+            manager.appendTaskItems(task.getTid(), request.getInputs());
         }
-        if (sourceType != TaskSourceType.FILE && !request.isOpenEnded()) {
+        if (sourceType != TaskSourceType.FILE && request.getContract() == TaskContract.BATCH) {
             assertTrue(manager.sealTask(task.getTid()));
         }
         return manager.getTask(task.getTid());
@@ -2986,7 +3023,7 @@ class TaskManagerLifecycleTest {
         return buildRequest(taskName, targets, 3);
     }
 
-    private TaskCreateSpec buildRequest(String taskName, List<String> targets, int defaultMsgMaxRetryCount) {
+    private TaskCreateSpec buildRequest(String taskName, List<String> targets, int defaultMaxRetryCount) {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
@@ -2996,14 +3033,13 @@ class TaskManagerLifecycleTest {
                 .map(target -> java.util.Map.<String, Object>of("target", target))
                 .toList());
         dto.setBatchSize(1);
-        dto.setDefaultMsgMaxRetryCount(defaultMsgMaxRetryCount);
+        dto.setDefaultMaxRetryCount(defaultMaxRetryCount);
         return dto;
     }
 
     private static final class TaskCreateSpec extends TaskShellCreateRequestDto {
         private java.util.List<java.util.Map<String, Object>> inputs;
-        private boolean openEnded;
-        private int defaultMsgMaxRetryCount = 3;
+        private boolean keepIntakeOpen;
 
         java.util.List<java.util.Map<String, Object>> getInputs() {
             return inputs;
@@ -3013,20 +3049,12 @@ class TaskManagerLifecycleTest {
             this.inputs = inputs;
         }
 
-        boolean isOpenEnded() {
-            return openEnded;
+        boolean isKeepIntakeOpen() {
+            return keepIntakeOpen;
         }
 
-        void setOpenEnded(boolean openEnded) {
-            this.openEnded = openEnded;
-        }
-
-        int getDefaultMsgMaxRetryCount() {
-            return defaultMsgMaxRetryCount;
-        }
-
-        void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
-            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+        void setKeepIntakeOpen(boolean keepIntakeOpen) {
+            this.keepIntakeOpen = keepIntakeOpen;
         }
 
         TaskShellCreateRequestDto toShellRequest() {
@@ -3041,6 +3069,7 @@ class TaskManagerLifecycleTest {
             dto.setSourceType(getSourceType());
             dto.setWorkloadClass(getWorkloadClass());
             dto.setSourceRef(getSourceRef());
+            dto.setDefaultMaxRetryCount(getDefaultMaxRetryCount());
             return dto;
         }
     }
@@ -3299,6 +3328,7 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+
 
 
 

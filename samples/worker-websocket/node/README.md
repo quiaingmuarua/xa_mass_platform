@@ -67,8 +67,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}/items \
         "symbol": "AAPL",
         "market": "NASDAQ"
       }
-    ],
-    "defaultMsgMaxRetryCount": 0
+    ]
   }'
 
 curl -X POST "http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}:approve?comment=stock-stream"
@@ -83,8 +82,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}/items \
         "symbol": "MSFT",
         "market": "NASDAQ"
       }
-    ],
-    "defaultMsgMaxRetryCount": 0
+    ]
   }'
 ```
 

@@ -121,7 +121,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/h2-page")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/h2-page"))));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);

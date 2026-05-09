@@ -33,6 +33,9 @@ class TaskDispatchRequestService {
         if (!isUsable(task)) {
             return;
         }
+        if (task.getContract() == TaskContract.BATCH) {
+            return;
+        }
         delayedDispatchSchedule.remove(task.getTid());
         taskManager.publishTaskDispatchRequested(task);
     }

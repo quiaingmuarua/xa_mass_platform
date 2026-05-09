@@ -243,12 +243,6 @@ class TaskLifecycleService {
     }
 
     int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
-        return appendTaskItems(taskId, inputs, 3);
-    }
-
-    int appendTaskItems(String taskId,
-                        List<java.util.Map<String, Object>> inputs,
-                        int defaultMsgMaxRetryCount) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
@@ -270,7 +264,7 @@ class TaskLifecycleService {
                     taskId,
                     java.util.UUID.randomUUID().toString(),
                     input,
-                    defaultMsgMaxRetryCount
+                    task.getDefaultMaxRetryCount()
             ));
         }
         taskManager.addRuntimeIngressItems(task, ingressItems);
@@ -289,6 +283,10 @@ class TaskLifecycleService {
     boolean sealTask(String taskId) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
+            return false;
+        }
+        if (task.getContract() == TaskContract.SESSION) {
+            logger.info("[sealTask] Session task {} ignores seal semantics; lifecycle closes through explicit stop policies", taskId);
             return false;
         }
         if (task.getSourceType() == TaskSourceType.FILE) {
@@ -318,7 +316,8 @@ class TaskLifecycleService {
                     && task.getIngestStatus() != TaskIngestStatus.FAILED;
         }
         return switch (task.getContract()) {
-            case SESSION, BATCH -> task.getIntakeStatus() == TaskIntakeStatus.OPEN;
+            case SESSION -> true;
+            case BATCH -> task.getIntakeStatus() == TaskIntakeStatus.OPEN;
         };
     }
 
@@ -334,7 +333,7 @@ class TaskLifecycleService {
         }
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return switch (task.getContract()) {
-                case SESSION -> "Session task intake is closed: " + taskId;
+                case SESSION -> "Session task is terminal and cannot accept more inputs: " + taskId;
                 case BATCH -> "Batch task intake is sealed: " + taskId;
             };
         }
@@ -389,6 +388,7 @@ class TaskLifecycleService {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
                 if (result) {
+                    closeTaskIntakeOnTerminal(task);
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             trigger, "TaskManager", "task terminated: " + reason);
                     traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
@@ -414,6 +414,20 @@ class TaskLifecycleService {
             logger.error("Failed to terminate task {}", taskId, e);
             return false;
         }
+    }
+
+    private void closeTaskIntakeOnTerminal(Task task) {
+        if (task == null) {
+            return;
+        }
+        if (task.getSourceType() == TaskSourceType.FILE) {
+            if (task.getIngestStatus() != TaskIngestStatus.FAILED) {
+                task.setIngestStatus(TaskIngestStatus.SEALED);
+            }
+            return;
+        }
+        task.setIntakeStatus(TaskIntakeStatus.SEALED);
+        task.setIngestStatus(TaskIngestStatus.SEALED);
     }
 }
 

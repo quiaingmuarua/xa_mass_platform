@@ -229,7 +229,8 @@ public final class TaskWorkloadMixSmokeRunner {
             shell.setWorkloadClass(TaskWorkloadClass.BULK);
             shell.setBatchSize(config.bulkBatchSize());
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
-            return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), 3, false);
+            shell.setDefaultMaxRetryCount(3);
+            return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
         private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
@@ -250,13 +251,14 @@ public final class TaskWorkloadMixSmokeRunner {
             shell.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
             shell.setBatchSize(config.interactiveBatchSize());
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
-            return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), 3, false);
+            shell.setDefaultMaxRetryCount(3);
+            return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
         }
 
         private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
             Task task = taskCommands.createTaskShell(request.shell());
             if (!request.inputs().isEmpty()) {
-                taskCommands.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
+                taskCommands.appendTaskItems(task.getTid(), request.inputs());
             }
             if (!request.keepIntakeOpen()) {
                 require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
@@ -266,7 +268,6 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
-                                      int defaultMsgMaxRetryCount,
                                       boolean keepIntakeOpen) {
         }
 

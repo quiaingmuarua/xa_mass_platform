@@ -59,7 +59,7 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
             Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-            assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", "target-a")), 3));
+            assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", "target-a"))));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> auditResponse = approveTask(taskId);

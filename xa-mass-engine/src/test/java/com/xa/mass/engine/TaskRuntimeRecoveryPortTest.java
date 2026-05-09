@@ -75,8 +75,9 @@ class TaskRuntimeRecoveryPortTest {
     }
 
     private static Task createTask(TaskManager manager, TaskCreateSpec request) {
+        request.shell().setDefaultMaxRetryCount(3);
         Task task = manager.createTaskShell(request.shell());
-        manager.appendTaskItems(task.getTid(), request.inputs(), 3);
+        manager.appendTaskItems(task.getTid(), request.inputs());
         manager.sealTask(task.getTid());
         return manager.getTask(task.getTid());
     }

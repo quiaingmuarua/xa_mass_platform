@@ -454,25 +454,26 @@ class TaskConcurrencyAcceptanceTest {
         return createRunningSingleMessageTask(taskName, 3);
     }
 
-    private Task createRunningSingleMessageTask(String taskName, int defaultMsgMaxRetryCount) {
-        return createRunningTask(taskManager, taskName, 1, defaultMsgMaxRetryCount);
+    private Task createRunningSingleMessageTask(String taskName, int defaultMaxRetryCount) {
+        return createRunningTask(taskManager, taskName, 1, defaultMaxRetryCount);
     }
 
-    private Task createRunningTask(ProjectionAwareTaskManager manager, String taskName, int messageCount, int defaultMsgMaxRetryCount) {
-        Task task = createTask(manager, buildRequestWithRetry(taskName, messageCount, defaultMsgMaxRetryCount));
+    private Task createRunningTask(ProjectionAwareTaskManager manager, String taskName, int messageCount, int defaultMaxRetryCount) {
+        Task task = createTask(manager, buildRequestWithRetry(taskName, messageCount, defaultMaxRetryCount));
         assertTrue(manager.approveTask(task.getTid()));
         task.setStatus(TaskStatus.RUNNING);
         assertTrue(manager.updateTask(task));
         return task;
     }
 
-    private TaskCreateSpec buildRequestWithRetry(String taskName, int defaultMsgMaxRetryCount) {
-        return buildRequestWithRetry(taskName, 1, defaultMsgMaxRetryCount);
+    private TaskCreateSpec buildRequestWithRetry(String taskName, int defaultMaxRetryCount) {
+        return buildRequestWithRetry(taskName, 1, defaultMaxRetryCount);
     }
 
-    private TaskCreateSpec buildRequestWithRetry(String taskName, int messageCount, int defaultMsgMaxRetryCount) {
+    private TaskCreateSpec buildRequestWithRetry(String taskName, int messageCount, int defaultMaxRetryCount) {
         TaskCreateSpec dto = buildRequest(taskName, messageCount);
-        return new TaskCreateSpec(dto.shell(), dto.inputs(), defaultMsgMaxRetryCount);
+        dto.shell().setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return dto;
     }
 
     private void registerCounts(String taskId,
@@ -507,16 +508,17 @@ class TaskConcurrencyAcceptanceTest {
         shell.setSharedConfig(Map.of("textContent", "concurrency", "routingCode", "us"));
         shell.setUserId("agent");
         shell.setBatchSize(1);
+        shell.setDefaultMaxRetryCount(3);
         List<Map<String, Object>> inputs = java.util.stream.IntStream.range(0, messageCount)
                 .mapToObj(index -> Map.<String, Object>of("target", "alpha-" + index))
                 .toList();
-        return new TaskCreateSpec(shell, inputs, 3);
+        return new TaskCreateSpec(shell, inputs);
     }
 
     private Task createTask(ProjectionAwareTaskManager manager, TaskCreateSpec request) {
         Task task = manager.createTaskShell(request.shell());
         if (!request.inputs().isEmpty()) {
-            manager.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
+            manager.appendTaskItems(task.getTid(), request.inputs());
         }
         assertTrue(manager.sealTask(task.getTid()));
         return manager.getTask(task.getTid());
@@ -528,8 +530,7 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private record TaskCreateSpec(TaskShellCreateRequestDto shell,
-                                  List<Map<String, Object>> inputs,
-                                  int defaultMsgMaxRetryCount) {
+                                  List<Map<String, Object>> inputs) {
     }
 
     private TaskDetailStore.TaskMessageProjection assignMessage(ProjectionAwareTaskManager manager,

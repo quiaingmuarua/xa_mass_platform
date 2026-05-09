@@ -93,8 +93,8 @@ public class MonkeyGenerator {
         private java.util.Map<String, Object> sharedConfig;
         private java.util.List<java.util.Map<String, Object>> inputs;
         private int batchSize;
-        private int defaultMsgMaxRetryCount = 3;
-        private boolean openEnded;
+        private int defaultMaxRetryCount = 3;
+        private boolean keepIntakeOpen;
         private int maxRuntimeSeconds;
         private TaskSourceType sourceType;
         private TaskWorkloadClass workloadClass;
@@ -148,20 +148,20 @@ public class MonkeyGenerator {
             this.batchSize = batchSize;
         }
 
-        public int getDefaultMsgMaxRetryCount() {
-            return defaultMsgMaxRetryCount;
+        public int getDefaultMaxRetryCount() {
+            return defaultMaxRetryCount;
         }
 
-        public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
-            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+        public void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
+            this.defaultMaxRetryCount = defaultMaxRetryCount;
         }
 
-        public boolean isOpenEnded() {
-            return openEnded;
+        public boolean isKeepIntakeOpen() {
+            return keepIntakeOpen;
         }
 
-        public void setOpenEnded(boolean openEnded) {
-            this.openEnded = openEnded;
+        public void setKeepIntakeOpen(boolean keepIntakeOpen) {
+            this.keepIntakeOpen = keepIntakeOpen;
         }
 
         public int getMaxRuntimeSeconds() {
@@ -197,4 +197,5 @@ public class MonkeyGenerator {
         }
     }
 }
+
 

@@ -62,8 +62,9 @@ Keep these facts fixed unless the owning global baselines change:
   - `SESSION + INTERACTIVE`
   - `BATCH + BULK`
 - `SESSION` shell lifecycle stays open even when the current runtime work set
-  drains; sealing a session closes append intake only and does not reuse batch
-  all-final auto-terminal semantics
+  drains; the current kernel slice does not treat `sealTask` as a session
+  lifecycle owner, so session closure stays explicit or policy-driven rather
+  than reusing batch intake-seal semantics
 - `BATCH` lease expiry is attempt loss, not a stable per-item timeout contract:
   runtime retry budget decides `retry reset` vs `FAILED + RETRY_EXHAUSTED`
 - `Task.workloadClass` is the explicit workload tuning input; scheduling

@@ -67,6 +67,10 @@ public final class MassTaskShellCreateRequest {
         return executionSpec.getMaxRuntimeSeconds();
     }
 
+    public int getDefaultMaxRetryCount() {
+        return executionSpec.getDefaultMaxRetryCount();
+    }
+
     public String getSourceRef() {
         return sourceRef;
     }
@@ -134,6 +138,14 @@ public final class MassTaskShellCreateRequest {
                 this.executionSpec = new TaskExecutionSpec();
             }
             this.executionSpec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+            return this;
+        }
+
+        public Builder defaultMaxRetryCount(int defaultMaxRetryCount) {
+            if (this.executionSpec == null) {
+                this.executionSpec = new TaskExecutionSpec();
+            }
+            this.executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
             return this;
         }
 
