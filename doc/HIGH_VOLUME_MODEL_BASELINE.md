@@ -77,7 +77,7 @@ Keep these decisions stable:
 
 Minimal target shape:
 
-- task shell: `taskId`, `status`, `project`, `user`, `sharedConfig`, `sourceType`, `ingestStatus`, `intakeStatus`, aggregate counters, `terminalReason`, timestamps
+- task shell: `taskId`, `status`, `project`, `user`, `sharedConfig`, `contract`, `sourceType`, `ingestStatus`, `intakeStatus`, aggregate counters, `terminalReason`, timestamps
 - runnable envelope: `taskId`, `messageId`, `eventCode`, `payload` or `payloadRef`, `retryCount`, `leaseToken`, worker or routing hints, visibility/scheduling timestamp
 - active lease truth: `taskId`, `messageId`, `leaseToken`, `workerId`, `workerContextId`, `payloadRef`, `leaseExpireAt`, `retryCount`
 - trace or audit export event: task lifecycle, dispatch binding, attempt state transition, result acceptance or rejection, retry reset, expiry, terminal closure

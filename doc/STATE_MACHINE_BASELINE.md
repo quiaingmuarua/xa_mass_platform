@@ -78,8 +78,8 @@ States:
 
 Current entry points:
 
-- create: `openEnded=true` initializes `intakeStatus=OPEN`
-- create: `openEnded=false` initializes `intakeStatus=SEALED`
+- create: non-file `SESSION` and `BATCH` shells initialize `intakeStatus=OPEN`
+- create: file-backed `BATCH` shells initialize `intakeStatus=SEALED`
 - `sealTask`: `OPEN -> SEALED`
 
 Must hold:

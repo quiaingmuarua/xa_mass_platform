@@ -875,7 +875,7 @@ class MassSdkTest {
                 .build();
 
         Assertions.assertThrows(IllegalStateException.class,
-                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), List.of(), 3, false));
+                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), null, List.of(), 3, false));
         assertEngineOperationsFailFast(app);
     }
 
@@ -1198,15 +1198,13 @@ class MassSdkTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .taskName("sdk-task")
-                .mode(TaskMode.STREAMING)
-                .payloadType(PayloadType.JSON)
+                .sourceRef("sdk-task")
                 .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
                 .batchSize(2)
                 .maxRuntimeSeconds(600)
                 .build();
 
-        Task result = createShellWithOptionalItems(app, request, List.of(
+        Task result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), 5, true);
@@ -1217,17 +1215,11 @@ class MassSdkTest {
         TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertEquals("sdk-task", dto.getTaskName());
+        Assertions.assertNull(dto.getTaskName());
+        Assertions.assertEquals("sdk-task", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of(
-                                "textContent", "hello",
-                                "routingCode", "us",
-                                "_sdk", Map.of(
-                                        "taskMode", "STREAMING",
-                                        "payloadType", "JSON"
-                                )
-                        ),
+                        Map.of("textContent", "hello", "routingCode", "us"),
                         new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
                 ),
                 dto.getSharedConfig()
@@ -1235,8 +1227,8 @@ class MassSdkTest {
         Assertions.assertEquals(2, dto.getBatchSize());
         Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
         verify(taskCommandService).appendTaskItems("task-001", List.of(
-                Map.of("target", "target-a"),
-                Map.of("target", "target-b")
+                Map.of("target", "target-a", "eventCode", "demo.dispatch"),
+                Map.of("target", "target-b", "eventCode", "demo.dispatch")
         ), 5);
     }
 
@@ -1337,14 +1329,21 @@ class MassSdkTest {
 
         SdkTaskResumeResult resumeResult = app.resumeTaskDetailed("task-1");
         boolean updated = app.updateTaskDefinition("task-1", MassTaskUpdateRequest.builder()
-                .taskName("after")
+                .project("testApp")
+                .userId("user-2")
+                .sharedConfig(Map.of("routingCode", "us"))
+                .batchSize(4)
                 .build());
         boolean deleted = app.deleteTask("task-1");
 
         assertTrue(resumeResult.success());
         assertEquals("READY", resumeResult.status());
         assertTrue(updated);
-        assertEquals("after", task.getTaskName());
+        assertEquals("before", task.getTaskName());
+        assertEquals("testApp", task.getProject());
+        assertEquals("user-2", task.getUser().getUserId());
+        assertEquals(Map.of("routingCode", "us"), task.getSharedConfig());
+        assertEquals(4, task.getBatchSize());
         assertTrue(deleted);
         verify(taskCommands).resumeTaskDetailed("task-1");
         verify(taskCommands).updateTask(task);
@@ -1514,16 +1513,13 @@ class MassSdkTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .taskName("crawler-stream")
-                .eventCode("crawler.fetch-page")
-                .mode(TaskMode.STREAMING)
-                .payloadType(PayloadType.JSON)
+                .sourceRef("crawler-stream")
                 .sharedConfig(Map.of("routingCode", "us"))
                 .batchSize(1)
                 .maxRuntimeSeconds(60)
                 .build();
 
-        Task result = createShellWithOptionalItems(app, request, List.of(
+        Task result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
                 Map.of("url", "https://example.test/page-1"),
                 Map.of("url", "https://example.test/page-2")
         ), 2, true);
@@ -1534,24 +1530,18 @@ class MassSdkTest {
         TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertEquals("crawler-stream", dto.getTaskName());
+        Assertions.assertNull(dto.getTaskName());
+        Assertions.assertEquals("crawler-stream", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of(
-                                "routingCode", "us",
-                                "_sdk", Map.of(
-                                        "eventCode", "crawler.fetch-page",
-                                        "taskMode", "STREAMING",
-                                        "payloadType", "JSON"
-                                )
-                        ),
+                        Map.of("routingCode", "us"),
                         new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
                 ),
                 dto.getSharedConfig()
         );
         verify(taskCommandService).appendTaskItems("task-stream-001", List.of(
-                Map.of("url", "https://example.test/page-1"),
-                Map.of("url", "https://example.test/page-2")
+                Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
+                Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
         ), 2);
     }
 
@@ -1987,9 +1977,9 @@ class MassSdkTest {
             Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
-                    .taskName("custom-project-task")
+                    .sourceRef("custom-project-task")
                     .batchSize(1)
-                    .build(), List.of(Map.of("target", "chat-1")), 3, false);
+                    .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), 3, false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppExecutableTest", task.getProject());
@@ -2028,11 +2018,9 @@ class MassSdkTest {
             Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppCatalogTest")
-                    .taskName("bot-command-task")
-                    .eventCode("bot.command")
-                    .payloadType(PayloadType.TEXT)
+                    .sourceRef("bot-command-task")
                     .batchSize(1)
-                    .build(), List.of(Map.of("text", "/start")), 3, false);
+                    .build(), "bot.command", List.of(Map.of("text", "/start")), 3, false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppCatalogTest", task.getProject());
@@ -2701,10 +2689,10 @@ class MassSdkTest {
             Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
                     .project("demoApp")
-                    .taskName("fetch-page")
+                    .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
                     .batchSize(1)
-                    .build(), List.of(Map.of("url", "https://example.test/page-1")), 3, false);
+                    .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), 3, false);
 
             assertTrue(app.approveTask(task.getTid()));
 
@@ -2751,7 +2739,7 @@ class MassSdkTest {
     }
 
     @Test
-    void appendTaskItemsConvertsPayloadAgainstShellMetadata() {
+    void appendTaskItemsAppliesBatchEventCodeWithoutPayloadRewriting() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
@@ -2765,6 +2753,7 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         app.appendTaskItems("task-map-002", MassTaskItemBatchAppendRequest.builder()
+                .eventCode("demo.dispatch")
                 .items(List.of(
                         Map.of("target", "hello"),
                         Map.of("target", "world")
@@ -2772,16 +2761,17 @@ class MassSdkTest {
                 .defaultMsgMaxRetryCount(4)
                 .build());
         app.appendTaskItems("task-json-002", MassTaskItemBatchAppendRequest.builder()
+                .eventCode("crawler.fetch-page")
                 .items(List.of(Map.of("target", "https://example.test")))
                 .defaultMsgMaxRetryCount(2)
                 .build());
 
         verify(taskCommandService).appendTaskItems("task-map-002", List.of(
-                Map.of("target", "hello"),
-                Map.of("target", "world")
+                Map.of("target", "hello", "eventCode", "demo.dispatch"),
+                Map.of("target", "world", "eventCode", "demo.dispatch")
         ), 4);
         verify(taskCommandService).appendTaskItems("task-json-002", List.of(
-                Map.of("target", "https://example.test")
+                Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
         ), 2);
     }
 
@@ -3080,6 +3070,7 @@ class MassSdkTest {
 
     private static Task createShellWithOptionalItems(MassSdkApplication app,
                                                      MassTaskShellCreateRequest request,
+                                                     String eventCode,
                                                      List<Object> items,
                                                      int defaultMsgMaxRetryCount,
                                                      boolean keepIntakeOpen) {
@@ -3088,6 +3079,7 @@ class MassSdkTest {
         Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
                     .items(items)
                     .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());

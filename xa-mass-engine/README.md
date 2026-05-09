@@ -54,8 +54,15 @@ engine-internal listener packages.
 
 Keep these facts fixed unless the owning global baselines change:
 
-- `Task.workloadClass` is the explicit workload input; scheduling semantics must
-  not drift back into free-form `sharedConfig`
+- task classification is now three-axis, not one-axis:
+  - `Task.contract`: kernel lifecycle/dispatch/terminal contract
+  - `Task.sourceType`: intake/source shape only
+  - `Task.workloadClass`: runtime tuning intent only
+- current mainstream combinations are:
+  - `SESSION + INTERACTIVE`
+  - `BATCH + BULK`
+- `Task.workloadClass` is the explicit workload tuning input; scheduling
+  semantics must not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
 - `TaskManager` is the engine orchestration entry, not the place to keep raw
@@ -73,11 +80,14 @@ Keep these facts fixed unless the owning global baselines change:
   `TaskManager` growth
 - `TaskResultIngestPort` is the narrow backing seam for transport-facing
   result ingress; keep callback acceptance off the raw `TaskManager` facade
-- `TaskAssignWorker` owns lane-local assignment signal admission; queue-full
-  pressure must converge through internal retry/defer behavior instead of
-  silently dropping `READY` / redispatch signals
+- `TaskAssignWorker` owns session/interactive assignment-signal admission;
+  queue-full pressure must converge through internal retry/defer behavior
+  instead of silently dropping `READY` / redispatch signals
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
+- batch/bulk redispatch is runtime-driven from `TaskWorkRuntime.readyTaskIds`
+  through starter-owned recovery/pump wiring; task-signal queues are not the
+  only batch redispatch owner anymore
 - bounded message/attempt compatibility residue is not the hot-path runtime
   owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not

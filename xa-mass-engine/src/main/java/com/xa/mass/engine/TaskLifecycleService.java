@@ -282,7 +282,7 @@ class TaskLifecycleService {
         if (task.getStatus().isActive()) {
             taskManager.requestTaskDispatch(task);
         }
-        logger.info("[appendTaskItems] Added {} items to open-ended task {}", added, taskId);
+        logger.info("[appendTaskItems] Added {} items to task {}", added, taskId);
         return added;
     }
 

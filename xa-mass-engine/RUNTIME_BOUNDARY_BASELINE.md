@@ -40,6 +40,8 @@ Engine hot paths must treat these runtime semantics as authoritative:
 
 - `enqueue(...)` is the runtime-owned admission point for logical work
 - `readyTaskIds(limit)` is the startup and redispatch recovery surface
+- batch/bulk redispatch should prefer periodic recovery from
+  `readyTaskIds(limit)` over engine-local task-delay ownership
 - `claimReady(...)` is the exclusive runtime claim path
 - `applyResult(...)` is the only runtime result convergence path
 - `pollExpiredLeases(...)` reports runtime expiry truth
@@ -152,6 +154,8 @@ delay, and lease transfer semantics are explicitly implemented and verified.
 Startup or replay recovery must trust runtime truth first:
 
 - dispatch recovery reads `TaskWorkRuntime.readyTaskIds(limit)`
+- starter-owned bulk dispatch pump also reads `TaskWorkRuntime.readyTaskIds(limit)`
+  and routes only batch-contract tasks into direct assignment/matching
 - storage task status alone must not imply dispatchable runtime work
 - runtime task ids missing from storage are filtered as residue, not promoted
   into synthetic storage truth

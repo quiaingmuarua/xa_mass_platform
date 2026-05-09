@@ -333,7 +333,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Appends new work items to a READY or RUNNING open-ended task.
+     * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
     @Override
     public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
@@ -348,7 +348,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Seals an open-ended task.
+     * Closes the current task intake window.
      */
     @Override
     public boolean sealTask(String taskId) {
