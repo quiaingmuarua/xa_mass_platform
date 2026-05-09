@@ -13,6 +13,8 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
@@ -145,17 +147,32 @@ public final class SdkWebSocketDisconnectChaosRunner {
                 );
 
                 Task steadyTask = createTargetedTask(app, "sdk-chaos-steady-control", STEADY_WORKER_ID);
-                TaskOutcome steadyOutcome = waitForTerminalTask(app, steadyTask.getTid(), "steady control task must converge");
+                TaskOutcome steadyOutcome = waitForTerminalTask(
+                        app,
+                        runtime.taskDetailStore(),
+                        steadyTask.getTid(),
+                        "steady control task must converge"
+                );
 
                 waitForCondition(
                         () -> activeChaosWorker.reconnectCycles() >= 1 && app.isWorkerOnline(CHAOS_WORKER_ID),
                         config.timeoutSeconds(),
                         "chaos worker should reconnect and become online again"
                 );
-                TaskOutcome chaosOutcome = waitForTerminalTask(app, chaosTask.getTid(), "chaos task must converge after reconnect");
+                TaskOutcome chaosOutcome = waitForTerminalTask(
+                        app,
+                        runtime.taskDetailStore(),
+                        chaosTask.getTid(),
+                        "chaos task must converge after reconnect"
+                );
 
                 Task followUpTask = createTargetedTask(app, "sdk-chaos-follow-up", CHAOS_WORKER_ID);
-                TaskOutcome followUpOutcome = waitForTerminalTask(app, followUpTask.getTid(), "follow-up task must converge after reconnect");
+                TaskOutcome followUpOutcome = waitForTerminalTask(
+                        app,
+                        runtime.taskDetailStore(),
+                        followUpTask.getTid(),
+                        "follow-up task must converge after reconnect"
+                );
 
                 require(steadyOutcome.allMessagesSuccessful(), "steady control task should succeed");
                 require(chaosOutcome.allMessagesSuccessful(), "chaos task should succeed after delayed result submission");
@@ -197,6 +214,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
         private EmbeddedRuntime buildRuntime(ChaosConfig config) {
             int transportPort = findFreePort();
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -210,9 +228,11 @@ public final class SdkWebSocketDisconnectChaosRunner {
                             .enabled(true)
                             .workerThreads(4)
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
-                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds()))
+                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskStorage))
                     .build();
-            return new EmbeddedRuntime(app, transportPort, ENDPOINT_PATH);
+            return new EmbeddedRuntime(app, taskStorage, transportPort, ENDPOINT_PATH);
         }
 
         private void registerWorker(MassSdkApplication app, String workerId) {
@@ -284,7 +304,10 @@ public final class SdkWebSocketDisconnectChaosRunner {
             waitForCondition(() -> app.isWorkerOnline(workerId), config.timeoutSeconds(), failureMessage);
         }
 
-        private TaskOutcome waitForTerminalTask(MassSdkApplication app, String taskId, String failureMessage) throws Exception {
+        private TaskOutcome waitForTerminalTask(MassSdkApplication app,
+                                                TaskDetailStore taskDetailStore,
+                                                String taskId,
+                                                String failureMessage) throws Exception {
             waitForCondition(
                     () -> {
                         Task current = app.getTask(taskId);
@@ -297,11 +320,12 @@ public final class SdkWebSocketDisconnectChaosRunner {
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
             CompatibilityMessageSnapshot messageSnapshot =
-                    ProjectionTestViews.snapshot(app, taskId, config.messagesPerTask());
+                    ProjectionTestViews.snapshot(taskDetailStore, taskId, config.messagesPerTask());
             List<CompatibilityMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (CompatibilityMessageView message : messages) {
-                List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(app, taskId, message.messageId());
+                List<CompatibilityAttemptView> attempts =
+                        ProjectionTestViews.attempts(taskDetailStore, taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.messageId(),
                         message.status(),
@@ -547,7 +571,10 @@ public final class SdkWebSocketDisconnectChaosRunner {
         }
     }
 
-    private record EmbeddedRuntime(MassSdkApplication app, int transportPort, String endpointPath) {
+    private record EmbeddedRuntime(MassSdkApplication app,
+                                   TaskDetailStore taskDetailStore,
+                                   int transportPort,
+                                   String endpointPath) {
         private URI serverUri(String workerId) {
             require(transportPort > 0, "websocket server port must be allocated");
             return URI.create("ws://127.0.0.1:" + transportPort + endpointPath + "?workerId=" + workerId);

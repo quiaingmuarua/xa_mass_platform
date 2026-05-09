@@ -16,6 +16,8 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
 import com.xa.mass.testing.chaos.support.ProjectionTestViews;
@@ -150,7 +152,7 @@ public final class SdkTransportLoadRunner {
 
                 long wallNanos = System.nanoTime() - wallStartNanos;
                 FinalTaskStats finalTaskStats = collectFinalTaskStats(app, taskIds);
-                FinalMessageStats finalMessageStats = collectFinalMessageStats(app, taskIds);
+                FinalMessageStats finalMessageStats = collectFinalMessageStats(runtime.taskDetailStore(), taskIds);
                 DeliveryQueueSnapshot deliveryQueue = collectDeliveryQueueSnapshot(app, finalMessageStats.totalMessages());
                 Path reportPath = writeReport(config, runtime, finalTaskStats, finalMessageStats,
                         deliveryQueue, wallNanos, metrics.snapshot());
@@ -195,6 +197,7 @@ public final class SdkTransportLoadRunner {
 
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -208,9 +211,11 @@ public final class SdkTransportLoadRunner {
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
                             .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
                             .queueMode())
-                    .engine(engine -> engine.enabled(true))
+                    .engine(engine -> engine.enabled(true)
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskStorage))
                     .build();
-            return new EmbeddedRuntime(app, transportPort, ENDPOINT_PATH);
+            return new EmbeddedRuntime(app, taskStorage, transportPort, ENDPOINT_PATH);
         }
 
         private void registerWorkers(MassSdkApplication app,
@@ -286,12 +291,12 @@ public final class SdkTransportLoadRunner {
             }
             require(activeSessionCount(app, config.transport().adapterId()) >= config.workerCount(),
                     "realtime workers did not become ready for adapter=" + config.transport().adapterId()
-                            + " sessions=" + app.listSessions());
+                            + " sessions=" + app.transportDebug().listSessions());
         }
 
         private int activeSessionCount(MassSdkApplication app, String adapterId) {
             int active = 0;
-            for (Map<String, Object> session : app.listSessions()) {
+            for (Map<String, Object> session : app.transportDebug().listSessions()) {
                 Object connections = session.get("connections");
                 if (!(connections instanceof List<?> list)) {
                     continue;
@@ -393,14 +398,14 @@ public final class SdkTransportLoadRunner {
             return new FinalTaskStats(terminalTasks, terminalReasons);
         }
 
-        private FinalMessageStats collectFinalMessageStats(MassSdkApplication app, List<String> taskIds) {
+        private FinalMessageStats collectFinalMessageStats(TaskDetailStore taskDetailStore, List<String> taskIds) {
             long total = 0;
             long success = 0;
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
                 CompatibilityMessageSnapshot messageSnapshot =
-                        ProjectionTestViews.snapshot(app, taskId, config.messagesPerTask());
+                        ProjectionTestViews.snapshot(taskDetailStore, taskId, config.messagesPerTask());
                 List<CompatibilityMessageView> messages = messageSnapshot.messages();
                 total += messages.size();
                 for (CompatibilityMessageView message : messages) {
@@ -424,7 +429,7 @@ public final class SdkTransportLoadRunner {
 
         @SuppressWarnings("unchecked")
         private DeliveryQueueSnapshot collectDeliveryQueueSnapshot(MassSdkApplication app, long totalMessages) {
-            Map<String, Object> queueDetail = app.getQueueDetail();
+            Map<String, Object> queueDetail = app.transportDebug().getQueueDetail();
             Map<String, Object> deliveryQueue = (Map<String, Object>) queueDetail.get("deliveryQueue");
             require(deliveryQueue != null, "deliveryQueue diagnostics should be available");
             DeliveryQueueSnapshot snapshot = DeliveryQueueSnapshot.from(deliveryQueue);
@@ -982,7 +987,10 @@ public final class SdkTransportLoadRunner {
         }
     }
 
-    private record EmbeddedRuntime(MassSdkApplication app, int transportPort, String endpointPath) {
+    private record EmbeddedRuntime(MassSdkApplication app,
+                                   TaskDetailStore taskDetailStore,
+                                   int transportPort,
+                                   String endpointPath) {
         private URI serverUri(String workerId) {
             require(transportPort > 0, "websocket server port must be allocated");
             return URI.create("ws://127.0.0.1:" + transportPort + endpointPath + "?workerId=" + workerId);

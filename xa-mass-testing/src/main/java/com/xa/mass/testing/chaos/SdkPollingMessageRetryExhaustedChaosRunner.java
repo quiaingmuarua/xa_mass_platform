@@ -152,7 +152,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                 );
 
                 List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.app(), task.getTid(), MESSAGE_COUNT).messages();
+                        runtime.taskDetailStore(), task.getTid(), MESSAGE_COUNT).messages();
 
                 ChaosSupport.require(messages.size() == MESSAGE_COUNT,
                         "task should have exactly " + MESSAGE_COUNT + " message projections");
@@ -168,7 +168,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                                     + ", got " + msg.retryCount());
 
                     List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.app(), task.getTid(), msg.messageId());
+                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), msg.messageId());
                     ChaosSupport.require(attempts.size() == EXPECTED_ATTEMPTS_PER_MESSAGE,
                             "message " + msg.messageId() + " should have exactly "
                                     + EXPECTED_ATTEMPTS_PER_MESSAGE + " attempts, got " + attempts.size());

@@ -14,6 +14,8 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
@@ -130,7 +132,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, CHAOS_WORKER_ID, "chaos worker should be online before scenario starts");
 
                 Task task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
-                CompatibilityMessageView message = waitForSingleMessage(app, task.getTid());
+                CompatibilityMessageView message = waitForSingleMessage(runtime.taskDetailStore(), task.getTid());
 
                 waitForCondition(
                         () -> activeChaosWorker.disconnectCycles() >= 1,
@@ -144,7 +146,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 );
 
                 CompatibilityAttemptView firstAttempt = waitForActiveAttemptOnWorker(
-                        app,
+                        runtime.taskDetailStore(),
                         task.getTid(),
                         message.messageId(),
                         CHAOS_WORKER_ID,
@@ -155,16 +157,21 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> ProjectionTestViews.attempts(app, task.getTid(), message.messageId()).size() >= 2,
+                        () -> ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
 
-                TaskOutcome outcome = waitForTerminalTask(app, task.getTid(), "lease-expiry redispatch task must converge");
+                TaskOutcome outcome = waitForTerminalTask(
+                        app,
+                        runtime.taskDetailStore(),
+                        task.getTid(),
+                        "lease-expiry redispatch task must converge"
+                );
                 CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(app, task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
                 List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(app, task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);
@@ -245,6 +252,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
         private EmbeddedRuntime buildRuntime(ChaosConfig config) {
             int transportPort = findFreePort();
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -259,9 +267,11 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                             .workerThreads(4)
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds()))
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskStorage))
                     .build();
-            return new EmbeddedRuntime(app, transportPort, ENDPOINT_PATH);
+            return new EmbeddedRuntime(app, taskStorage, transportPort, ENDPOINT_PATH);
         }
 
         private void registerWorker(MassSdkApplication app, String workerId) {
@@ -324,30 +334,34 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             waitForCondition(() -> app.isWorkerOnline(workerId), config.timeoutSeconds(), failureMessage);
         }
 
-        private CompatibilityMessageView waitForSingleMessage(MassSdkApplication app, String taskId) throws Exception {
+        private CompatibilityMessageView waitForSingleMessage(TaskDetailStore taskDetailStore, String taskId) throws Exception {
             waitForCondition(
-                    () -> ProjectionTestViews.snapshot(app, taskId, 1).messages().size() == 1,
+                    () -> ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().size() == 1,
                     config.timeoutSeconds(),
                     "task should materialize exactly one logical message"
             );
-            return ProjectionTestViews.snapshot(app, taskId, 1).messages().get(0);
+            return ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().get(0);
         }
 
-        private CompatibilityAttemptView waitForActiveAttemptOnWorker(MassSdkApplication app,
+        private CompatibilityAttemptView waitForActiveAttemptOnWorker(TaskDetailStore taskDetailStore,
                                                                       String taskId,
                                                                       String messageId,
                                                                       String workerId,
                                                                       String failureMessage) throws Exception {
             waitForCondition(() -> {
-                CompatibilityAttemptView attempt = ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
+                CompatibilityAttemptView attempt =
+                        ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
                 return attempt != null
                         && workerId.equals(attempt.workerId())
                         && !List.of("SUCCEEDED", "FAILED", "EXPIRED", "REVOKED").contains(attempt.status());
             }, config.timeoutSeconds(), failureMessage);
-            return ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
+            return ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
         }
 
-        private TaskOutcome waitForTerminalTask(MassSdkApplication app, String taskId, String failureMessage) throws Exception {
+        private TaskOutcome waitForTerminalTask(MassSdkApplication app,
+                                                TaskDetailStore taskDetailStore,
+                                                String taskId,
+                                                String failureMessage) throws Exception {
             waitForCondition(
                     () -> {
                         Task current = app.getTask(taskId);
@@ -359,11 +373,13 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
             Task task = app.getTask(taskId);
             require(task != null, "task should exist: " + taskId);
-            CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(app, taskId, 1);
+            CompatibilityMessageSnapshot messageSnapshot =
+                    ProjectionTestViews.snapshot(taskDetailStore, taskId, 1);
             List<CompatibilityMessageView> messages = messageSnapshot.messages();
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (CompatibilityMessageView message : messages) {
-                List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(app, taskId, message.messageId());
+                List<CompatibilityAttemptView> attempts =
+                        ProjectionTestViews.attempts(taskDetailStore, taskId, message.messageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.messageId(),
                         message.status(),
@@ -576,7 +592,10 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
     }
 
-    private record EmbeddedRuntime(MassSdkApplication app, int transportPort, String endpointPath) {
+    private record EmbeddedRuntime(MassSdkApplication app,
+                                   TaskDetailStore taskDetailStore,
+                                   int transportPort,
+                                   String endpointPath) {
         private URI serverUri() {
             require(transportPort > 0, "websocket server port must be allocated");
             return URI.create("ws://127.0.0.1:" + transportPort + endpointPath);

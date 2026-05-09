@@ -11,6 +11,8 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -25,11 +27,16 @@ import java.util.Set;
 public final class ChaosRuntimeHarness implements AutoCloseable {
 
     private final MassSdkApplication app;
+    private final TaskDetailStore taskDetailStore;
     private final int transportPort;
     private final String endpointPath;
 
-    private ChaosRuntimeHarness(MassSdkApplication app, int transportPort, String endpointPath) {
+    private ChaosRuntimeHarness(MassSdkApplication app,
+                                TaskDetailStore taskDetailStore,
+                                int transportPort,
+                                String endpointPath) {
         this.app = app;
+        this.taskDetailStore = taskDetailStore;
         this.transportPort = transportPort;
         this.endpointPath = endpointPath;
     }
@@ -39,8 +46,9 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public static ChaosRuntimeHarness createWebSocket(WebSocketRuntimeConfig config,
-                                                       ExecutionEventSink traceSink) {
+                                                      ExecutionEventSink traceSink) {
         int transportPort = ChaosSupport.findFreePort();
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -55,12 +63,14 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .workerThreads(config.workerThreads())
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds());
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskStorage);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return new ChaosRuntimeHarness(builder.build(), transportPort, config.endpointPath());
+        return new ChaosRuntimeHarness(builder.build(), taskStorage, transportPort, config.endpointPath());
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
@@ -68,7 +78,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config,
-                                                     ExecutionEventSink traceSink) {
+                                                    ExecutionEventSink traceSink) {
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
@@ -79,16 +90,22 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .workerThreads(config.workerThreads())
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds());
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskStorage);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return new ChaosRuntimeHarness(builder.build(), 0, "");
+        return new ChaosRuntimeHarness(builder.build(), taskStorage, 0, "");
     }
 
     public MassSdkApplication app() {
         return app;
+    }
+
+    public TaskDetailStore taskDetailStore() {
+        return taskDetailStore;
     }
 
     public void start() {
@@ -149,9 +166,9 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public void waitForTaskStatus(String taskId,
-                                   TaskStatus expectedStatus,
-                                   int timeoutSeconds,
-                                   String failureMessage) throws Exception {
+                                  TaskStatus expectedStatus,
+                                  int timeoutSeconds,
+                                  String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
                 () -> {
                     Task current = app.getTask(taskId);
@@ -165,13 +182,13 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public Task createApprovedTask(TaskCreateSpec spec) {
         Task task = createTask(
                 MassTaskShellCreateRequest.builder()
-                .userId(spec.userId())
-                .project(spec.projectCode())
-                .taskName(spec.taskName())
-                .sharedConfig(spec.sharedConfig())
-                .batchSize(spec.batchSize())
-                .maxRuntimeSeconds(spec.maxRuntimeSeconds())
-                .build(),
+                        .userId(spec.userId())
+                        .project(spec.projectCode())
+                        .taskName(spec.taskName())
+                        .sharedConfig(spec.sharedConfig())
+                        .batchSize(spec.batchSize())
+                        .maxRuntimeSeconds(spec.maxRuntimeSeconds())
+                        .build(),
                 new ArrayList<>(spec.inputs()),
                 spec.defaultMsgMaxRetryCount(),
                 false
@@ -207,11 +224,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public CompatibilityMessageView waitForSingleMessage(String taskId, int timeoutSeconds) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> ProjectionTestViews.snapshot(app, taskId, 1).messages().size() == 1,
+                () -> ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().size() == 1,
                 timeoutSeconds,
                 "task should materialize exactly one logical message"
         );
-        return ProjectionTestViews.snapshot(app, taskId, 1).messages().get(0);
+        return ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().get(0);
     }
 
     public CompatibilityAttemptView waitForActiveAttemptOnWorker(String taskId,
@@ -220,7 +237,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                                  int timeoutSeconds,
                                                                  String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(() -> {
-            CompatibilityAttemptView attempt = ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
+            CompatibilityAttemptView attempt = ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
             return attempt != null
                     && workerId.equals(attempt.workerId())
                     && attempt.status() != null
@@ -229,7 +246,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     && !attempt.status().equals("EXPIRED")
                     && !attempt.status().equals("REVOKED");
         }, timeoutSeconds, failureMessage);
-        return ProjectionTestViews.latestActiveAttempt(app, taskId, messageId);
+        return ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
     }
 
     public void waitForAttemptCount(String taskId,
@@ -238,7 +255,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                     int timeoutSeconds,
                                     String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> ProjectionTestViews.attempts(app, taskId, messageId).size() >= minimumAttempts,
+                () -> ProjectionTestViews.attempts(taskDetailStore, taskId, messageId).size() >= minimumAttempts,
                 timeoutSeconds,
                 failureMessage
         );
@@ -262,11 +279,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public TaskOutcomeSnapshot snapshotTaskOutcome(String taskId, int messageLimit) {
         Task task = app.getTask(taskId);
         ChaosSupport.require(task != null, "task should exist: " + taskId);
-        CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(app, taskId, messageLimit);
+        CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(taskDetailStore, taskId, messageLimit);
         List<CompatibilityMessageView> messages = messageSnapshot.messages();
         List<TaskOutcomeSnapshot.MessageOutcomeSnapshot> snapshots = new ArrayList<>(messages.size());
         for (CompatibilityMessageView message : messages) {
-            List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(app, taskId, message.messageId());
+            List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(taskDetailStore, taskId, message.messageId());
             snapshots.add(new TaskOutcomeSnapshot.MessageOutcomeSnapshot(
                     message.messageId(),
                     message.status(),
@@ -318,13 +335,13 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                  int defaultMsgMaxRetryCount,
                                  int maxRuntimeSeconds) {
         public static TaskCreateSpec multiMessage(String userId,
-                                                   String projectCode,
-                                                   String taskName,
-                                                   String routingCode,
-                                                   int messageCount,
-                                                   int batchSize,
-                                                   int defaultMsgMaxRetryCount,
-                                                   int maxRuntimeSeconds) {
+                                                  String projectCode,
+                                                  String taskName,
+                                                  String routingCode,
+                                                  int messageCount,
+                                                  int batchSize,
+                                                  int defaultMsgMaxRetryCount,
+                                                  int maxRuntimeSeconds) {
             Map<String, Object> sharedConfig = new LinkedHashMap<>();
             sharedConfig.put(TaskSharedConfig.ROUTING_CODE, routingCode);
             List<Map<String, Object>> inputs = new ArrayList<>();
@@ -407,4 +424,3 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         }
     }
 }
-

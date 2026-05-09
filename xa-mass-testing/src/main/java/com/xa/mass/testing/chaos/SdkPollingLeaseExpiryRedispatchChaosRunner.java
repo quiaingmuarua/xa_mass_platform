@@ -151,9 +151,9 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         "polling lease-expiry redispatch task must converge"
                 );
                 CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
                 List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);

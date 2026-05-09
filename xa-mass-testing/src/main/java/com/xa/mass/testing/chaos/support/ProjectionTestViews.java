@@ -1,10 +1,6 @@
 package com.xa.mass.testing.chaos.support;
 
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.starter.MassApplication;
-import com.xa.mass.starter.MassEngine;
-import com.xa.mass.starter.config.EngineConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,9 +11,10 @@ public final class ProjectionTestViews {
     private ProjectionTestViews() {
     }
 
-    public static CompatibilityMessageSnapshot snapshot(MassSdkApplication app, String taskId, int limit) {
+    public static CompatibilityMessageSnapshot snapshot(TaskDetailStore taskDetailStore, String taskId, int limit) {
+        TaskDetailStore store = taskDetailStore(taskDetailStore);
         List<CompatibilityMessageView> messages = new ArrayList<>();
-        List<TaskDetailStore.TaskMessageProjection> projections = taskDetailStore(app).getTaskMessageProjections(taskId, limit);
+        List<TaskDetailStore.TaskMessageProjection> projections = store.getTaskMessageProjections(taskId, limit);
         for (TaskDetailStore.TaskMessageProjection projection : projections) {
             messages.add(new CompatibilityMessageView(
                     projection.messageId(),
@@ -42,14 +39,14 @@ public final class ProjectionTestViews {
                     projection.completeTime()
             ));
         }
-        long total = taskDetailStore(app).getTaskMessageStats(taskId).getTotal();
+        long total = store.getTaskMessageStats(taskId).getTotal();
         boolean truncated = limit > 0 && total > projections.size();
         return new CompatibilityMessageSnapshot(messages, Math.max(limit, 0), truncated);
     }
 
-    public static CompatibilityMessageView message(MassSdkApplication app, String taskId, String messageId) {
+    public static CompatibilityMessageView message(TaskDetailStore taskDetailStore, String taskId, String messageId) {
         TaskDetailStore.TaskMessageProjection projection =
-                taskDetailStore(app).getTaskMessageProjection(taskId, messageId).orElse(null);
+                taskDetailStore(taskDetailStore).getTaskMessageProjection(taskId, messageId).orElse(null);
         if (projection == null) {
             return null;
         }
@@ -77,10 +74,12 @@ public final class ProjectionTestViews {
         );
     }
 
-    public static List<CompatibilityAttemptView> attempts(MassSdkApplication app, String taskId, String messageId) {
+    public static List<CompatibilityAttemptView> attempts(TaskDetailStore taskDetailStore,
+                                                          String taskId,
+                                                          String messageId) {
         List<CompatibilityAttemptView> attempts = new ArrayList<>();
         for (TaskDetailStore.TaskMessageAttemptProjection projection
-                : taskDetailStore(app).getTaskMessageAttemptProjections(taskId, messageId)) {
+                : taskDetailStore(taskDetailStore).getTaskMessageAttemptProjections(taskId, messageId)) {
             attempts.add(new CompatibilityAttemptView(
                     projection.attemptId(),
                     projection.taskId(),
@@ -106,9 +105,11 @@ public final class ProjectionTestViews {
         return List.copyOf(attempts);
     }
 
-    public static CompatibilityAttemptView latestActiveAttempt(MassSdkApplication app, String taskId, String messageId) {
+    public static CompatibilityAttemptView latestActiveAttempt(TaskDetailStore taskDetailStore,
+                                                               String taskId,
+                                                               String messageId) {
         TaskDetailStore.TaskMessageAttemptProjection projection =
-                taskDetailStore(app).getLatestActiveTaskMessageAttemptProjection(taskId, messageId).orElse(null);
+                taskDetailStore(taskDetailStore).getLatestActiveTaskMessageAttemptProjection(taskId, messageId).orElse(null);
         if (projection == null) {
             return null;
         }
@@ -135,32 +136,7 @@ public final class ProjectionTestViews {
         );
     }
 
-    private static TaskDetailStore taskDetailStore(MassSdkApplication app) {
-        Objects.requireNonNull(app, "app");
-        MassApplication delegate = readField(app, "delegate", MassApplication.class);
-        MassEngine engine = Objects.requireNonNull(delegate.getEngine(), "engine");
-        EngineConfig config = Objects.requireNonNull(engine.getConfig(), "engineConfig");
-        return Objects.requireNonNull(config.getTaskDetailStore(), "taskDetailStore");
-    }
-
-    private static <T> T readField(Object target, String fieldName, Class<T> type) {
-        Objects.requireNonNull(target, "target");
-        Class<?> current = target.getClass();
-        while (current != null) {
-            try {
-                java.lang.reflect.Field field = current.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                Object value = field.get(target);
-                if (value == null) {
-                    return null;
-                }
-                return type.cast(value);
-            } catch (NoSuchFieldException ignored) {
-                current = current.getSuperclass();
-            } catch (IllegalAccessException e) {
-                throw new IllegalStateException("Failed to read field " + fieldName + " from " + target.getClass(), e);
-            }
-        }
-        throw new IllegalStateException("Field not found: " + fieldName + " on " + target.getClass());
+    private static TaskDetailStore taskDetailStore(TaskDetailStore taskDetailStore) {
+        return Objects.requireNonNull(taskDetailStore, "taskDetailStore");
     }
 }

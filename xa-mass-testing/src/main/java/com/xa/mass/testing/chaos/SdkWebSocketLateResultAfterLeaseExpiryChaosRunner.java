@@ -157,9 +157,9 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 );
 
                 CompatibilityMessageView terminalMessage =
-                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
                 List<CompatibilityAttemptView> terminalAttempts =
-                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
                 ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
 
                 CompatibilityAttemptView expiredAttempt = terminalAttempts.get(0);
@@ -193,9 +193,9 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTid(), 1);
                 CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
                 List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.app(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");
