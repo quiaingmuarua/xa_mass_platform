@@ -166,7 +166,6 @@ describe('tasks.real', () => {
         const result = await appendTaskItemsReal('task-101', {
             eventCode: 'mock.state.get',
             items: [{ target: 'alpha' }, { target: 'beta' }],
-            defaultMsgMaxRetryCount: 3,
         })
 
         expect(fetchMock).toHaveBeenCalledWith(
@@ -248,7 +247,6 @@ describe('tasks.real', () => {
                         },
                     ],
                     batchSize: 1,
-                    defaultMsgMaxRetryCount: 0,
                     maxRuntimeSeconds: 60,
                 }),
             }),

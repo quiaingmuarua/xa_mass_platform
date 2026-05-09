@@ -67,10 +67,6 @@ export interface TaskShellCreateRequest {
     maxRuntimeSeconds?: number
     sourceType?: 'STREAM' | 'FILE'
     sourceRef?: string
-    taskName?: string
-    eventCode?: string
-    mode?: 'SINGLE_RUN' | 'STREAMING'
-    payloadType?: 'TEXT' | 'JSON'
 }
 
 export interface TaskShellCreateResult {
@@ -81,7 +77,6 @@ export interface TaskShellCreateResult {
 export interface TaskItemBatchAppendRequest {
     eventCode?: string
     items: Array<Record<string, unknown>>
-    defaultMsgMaxRetryCount: number
 }
 
 export interface TaskDebugSyncRequest {

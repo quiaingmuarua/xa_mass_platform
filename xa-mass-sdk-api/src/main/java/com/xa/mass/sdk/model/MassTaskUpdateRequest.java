@@ -37,11 +37,6 @@ public final class MassTaskUpdateRequest {
         return project;
     }
 
-    @Deprecated(forRemoval = false)
-    public String getTaskName() {
-        return null;
-    }
-
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
     }
@@ -91,11 +86,6 @@ public final class MassTaskUpdateRequest {
 
         public Builder project(String project) {
             this.project = project;
-            return this;
-        }
-
-        @Deprecated(forRemoval = false)
-        public Builder taskName(String taskName) {
             return this;
         }
 

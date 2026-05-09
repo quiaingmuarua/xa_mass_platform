@@ -3,7 +3,6 @@ export interface TaskStarterDraft {
     eventCode?: string
     taskName: string
     batchSize: number
-    defaultMsgMaxRetryCount: number
     openEnded: boolean
     maxRuntimeSeconds: number
     sharedConfig: Record<string, unknown>
@@ -14,7 +13,6 @@ export interface TaskStarterDraft {
 interface TaskStarterOverride {
     taskName?: string
     batchSize?: number
-    defaultMsgMaxRetryCount?: number
     openEnded?: boolean
     maxRuntimeSeconds?: number
     sharedConfig?: Record<string, unknown>
@@ -31,7 +29,6 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'demoApp',
         taskName: 'Run demo dispatch task',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
         openEnded: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
@@ -78,7 +75,6 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'testApp',
         taskName: 'Run smoke validation',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 1,
         openEnded: false,
         maxRuntimeSeconds: 60,
         sharedConfig: {
@@ -103,7 +99,6 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'otherApp',
         taskName: 'Run other app dispatch task',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
         openEnded: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
@@ -137,9 +132,6 @@ export function resolveTaskStarterDraft(
         eventCode,
         taskName: override?.taskName ?? definition.taskName,
         batchSize: override?.batchSize ?? definition.batchSize,
-        defaultMsgMaxRetryCount:
-            override?.defaultMsgMaxRetryCount ??
-            definition.defaultMsgMaxRetryCount,
         openEnded: override?.openEnded ?? definition.openEnded,
         maxRuntimeSeconds:
             override?.maxRuntimeSeconds ?? definition.maxRuntimeSeconds,
@@ -174,7 +166,6 @@ function buildFallbackStarter(projectCode: string): TaskStarterDefinition {
         projectCode: resolvedProjectCode,
         taskName: `New ${resolvedProjectCode} task`,
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
         openEnded: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {},

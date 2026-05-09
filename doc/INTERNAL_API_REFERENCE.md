@@ -242,7 +242,6 @@ Supported request fields:
 Not supported on this route:
 
 - `inputs`
-- `defaultMsgMaxRetryCount`
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams`
 
 Contract rules:
@@ -344,6 +343,7 @@ Request shape:
 
 ```json
 {
+  "eventCode": "demo.dispatch",
   "items": [
     {
       "target": "target-001"
@@ -351,18 +351,19 @@ Request shape:
     {
       "target": "target-002"
     }
-  ],
-  "defaultMsgMaxRetryCount": 3
+  ]
 }
 ```
 
 Contract rules:
 
 - `items` must be a non-empty list
+- append requires batch-level `eventCode` or per-item `eventCode`
 - task must exist
 - task intake must still be open
 - request is subject to ingress safety limits
-- payload conversion follows the task shell's declared payload semantics
+- payload is treated as opaque ingress data; the runtime does not infer payload
+  schema from the task shell
 
 Current server guardrails:
 

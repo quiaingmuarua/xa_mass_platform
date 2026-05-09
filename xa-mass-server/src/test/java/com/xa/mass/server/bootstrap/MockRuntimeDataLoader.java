@@ -165,7 +165,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             if (dto.getInputs() != null && !dto.getInputs().isEmpty()) {
                 runtime.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                         .items(new ArrayList<>(dto.getInputs()))
-                        .defaultMsgMaxRetryCount(dto.getDefaultMsgMaxRetryCount())
                         .build());
             }
             if (!dto.isOpenEnded()) {
@@ -317,16 +316,19 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private MassTaskShellCreateRequest toShellCreateRequest(BootstrapTaskFixture dto) {
+        String sourceRef = dto.getSourceRef();
+        if ((sourceRef == null || sourceRef.isBlank()) && dto.getTaskName() != null && !dto.getTaskName().isBlank()) {
+            sourceRef = dto.getTaskName();
+        }
         return MassTaskShellCreateRequest.builder()
                 .userId(dto.getUserId())
                 .project(dto.getProject())
-                .taskName(dto.getTaskName())
                 .sharedConfig(dto.getSharedConfig())
                 .batchSize(dto.getBatchSize())
                 .maxRuntimeSeconds(dto.getMaxRuntimeSeconds())
                 .sourceType(dto.getSourceType())
                 .workloadClass(dto.getWorkloadClass())
-                .sourceRef(dto.getSourceRef())
+                .sourceRef(sourceRef)
                 .build();
     }
 

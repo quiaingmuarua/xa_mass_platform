@@ -369,7 +369,6 @@ public class TaskApiController {
             int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(items)
-                    .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                     .build());
             return ok(Map.of("message", "Items appended", "added", added));
         } catch (SdkUnauthenticatedException e) {

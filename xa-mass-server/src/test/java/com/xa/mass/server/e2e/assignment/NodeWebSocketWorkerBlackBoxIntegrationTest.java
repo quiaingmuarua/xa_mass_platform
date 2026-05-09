@@ -207,8 +207,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                             "symbol", "MSFT",
                             "market", "NASDAQ",
                             "sourceUrl", sourceUrl
-                    )),
-                    "defaultMsgMaxRetryCount", 0
+                    ))
             )));
 
             String invalidRequestId = "stockreq-invalid-0003";
@@ -218,8 +217,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                             "requestId", invalidRequestId,
                             "market", "NASDAQ",
                             "sourceUrl", sourceUrl
-                    )),
-                    "defaultMsgMaxRetryCount", 0
+                    ))
             )));
 
             TaskSnapshot stockResults = waitForTaskSnapshot(

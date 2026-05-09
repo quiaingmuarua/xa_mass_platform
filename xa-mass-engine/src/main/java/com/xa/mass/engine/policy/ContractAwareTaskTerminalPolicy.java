@@ -1,8 +1,6 @@
 package com.xa.mass.engine.policy;
 
 import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -37,21 +35,10 @@ public class ContractAwareTaskTerminalPolicy implements TaskTerminalPolicy {
     }
 
     private TaskTerminalPolicyDecision evaluateSession(Task task, TaskWorkStats stats) {
-        if (task.getIntakeStatus() == TaskIntakeStatus.SEALED
-                && stats.totalCount() > 0
-                && stats.finalCount() == stats.totalCount()) {
-            return determineSessionTerminalReason(stats);
-        }
+        // Session shells may stop accepting new items, but draining the current
+        // runtime work set is not sufficient to end the session lifecycle.
+        // Terminal closure stays explicit or policy-driven outside the
+        // all-final batch convergence model.
         return TaskTerminalPolicyDecision.keepRunning();
-    }
-
-    private TaskTerminalPolicyDecision determineSessionTerminalReason(TaskWorkStats stats) {
-        if (stats.successCount() == stats.totalCount()) {
-            return TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED);
-        }
-        if (stats.failedCount() + stats.expiredCount() == stats.totalCount()) {
-            return TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.ALL_MESSAGES_FAILED);
-        }
-        return TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MIXED_MESSAGE_RESULTS);
     }
 }

@@ -149,8 +149,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
-                "items", List.of(Map.of("url", "https://example.test/page-1")),
-                "defaultMsgMaxRetryCount", 3
+                "items", List.of(Map.of("url", "https://example.test/page-1"))
         ), submitterHeaders));
         assertApiOk(exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null, submitterHeaders));
 

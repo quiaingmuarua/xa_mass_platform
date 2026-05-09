@@ -61,6 +61,9 @@ Keep these facts fixed unless the owning global baselines change:
 - current mainstream combinations are:
   - `SESSION + INTERACTIVE`
   - `BATCH + BULK`
+- `SESSION` shell lifecycle stays open even when the current runtime work set
+  drains; sealing a session closes append intake only and does not reuse batch
+  all-final auto-terminal semantics
 - `Task.workloadClass` is the explicit workload tuning input; scheduling
   semantics must not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-message

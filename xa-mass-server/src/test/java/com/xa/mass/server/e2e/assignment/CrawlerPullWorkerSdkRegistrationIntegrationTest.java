@@ -158,7 +158,6 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
-                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
         }
         if (!keepIntakeOpen) {

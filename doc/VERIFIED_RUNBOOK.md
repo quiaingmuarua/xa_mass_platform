@@ -93,7 +93,7 @@ curl -s -X POST http://127.0.0.1:8088/api/v1/tasks \
 
 curl -s -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
-  -d '{"eventCode":"demo.dispatch","items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"defaultMsgMaxRetryCount":3}'
+  -d '{"eventCode":"demo.dispatch","items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}]}'
 
 curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}:seal
 ```

@@ -59,7 +59,7 @@ Current entry points:
 - `resumeTask`: `PAUSED -> READY` or `PAUSED -> TERMINAL`
 - `cancelTask`: non-terminal -> `TERMINAL`
 - assignment success: `READY -> RUNNING`
-- message convergence: non-terminal -> `TERMINAL`
+- batch message convergence: non-terminal -> `TERMINAL`
 
 Must hold:
 
@@ -84,7 +84,8 @@ Current entry points:
 
 Must hold:
 
-- automatic message-driven terminal closure only happens when `intakeStatus=SEALED`
+- automatic message-driven terminal closure only happens for `BATCH` tasks after intake has been sealed
+- `SESSION` tasks may close intake with `sealTask`, but draining current work is still not sufficient for automatic terminal closure
 - `intakeStatus=OPEN` may still close only for explicit stop reasons that allow open-intake closure: `MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, or `RETRY_BUDGET_EXHAUSTED`
 - `openEnded` is a compatibility field; `intakeStatus` is the active lifecycle truth
 
@@ -218,8 +219,9 @@ Must hold:
 
 - terminal task -> non-null `terminalReason`
 - non-terminal task -> null `terminalReason`
-- message-driven closure must match engine work-runtime aggregate counters; message projection remains the compatibility projection/audit view
-- open-intake task closure is only valid for `MANUAL_CANCELLED` or policy-driven stop reasons; normal message-convergence reasons must wait until `intakeStatus=SEALED`
+- batch message-driven closure must match engine work-runtime aggregate counters; message projection remains the compatibility projection/audit view
+- open-intake task closure is only valid for `MANUAL_CANCELLED` or policy-driven stop reasons; normal batch message-convergence reasons must wait until `intakeStatus=SEALED`
+- `SESSION` tasks do not auto-close to `ALL_MESSAGES_SUCCEEDED` / `ALL_MESSAGES_FAILED` / `MIXED_MESSAGE_RESULTS` just because the current runtime work set drained
 
 ## 8. Time-Based Policy Enforcement
 

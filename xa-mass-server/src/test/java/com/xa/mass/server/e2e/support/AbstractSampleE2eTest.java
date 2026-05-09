@@ -213,14 +213,12 @@ public abstract class AbstractSampleE2eTest {
 
     protected Map<String, Object> appendTaskItems(String taskId,
                                                   String eventCode,
-                                                  List<?> items,
-                                                  int defaultMsgMaxRetryCount) {
+                                                  List<?> items) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (eventCode != null && !eventCode.isBlank()) {
             body.put("eventCode", eventCode);
         }
         body.put("items", items);
-        body.put("defaultMsgMaxRetryCount", defaultMsgMaxRetryCount);
         return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, body);
     }
 

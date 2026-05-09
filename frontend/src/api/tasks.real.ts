@@ -62,7 +62,6 @@ export async function appendTaskItemsReal(
         body: JSON.stringify({
             eventCode: request.eventCode,
             items: request.items,
-            defaultMsgMaxRetryCount: request.defaultMsgMaxRetryCount,
         }),
     })
 }
@@ -87,7 +86,6 @@ export async function invokeSyncTaskDebugReal(
                 sharedConfig: request.sharedConfig,
                 items: request.items,
                 batchSize: request.batchSize ?? 1,
-                defaultMsgMaxRetryCount: 0,
                 maxRuntimeSeconds: request.maxRuntimeSeconds,
                 workloadClass: request.workloadClass,
             }),

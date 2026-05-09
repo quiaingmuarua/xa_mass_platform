@@ -41,7 +41,7 @@ Core lifecycle:
 - `pause -> resume`
 - `approve -> assign -> running -> terminate -> delete`
 - `running -> pause -> callback -> terminal`
-- `openEnded -> complete current messages -> remain non-terminal -> seal -> terminal`
+- `openEnded/session -> complete current messages -> remain non-terminal even after seal -> explicit terminate`
 
 Robustness:
 

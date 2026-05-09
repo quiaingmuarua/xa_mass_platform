@@ -886,7 +886,8 @@ class TaskResultService {
     }
 
     void shutdown() {
-        // Runtime-owned retry wakeup lifecycle is managed by TaskDispatchRequestService.
+        // Session delayed wakeups are managed by TaskDispatchRequestService.
+        // Batch redispatch recovery is driven by runtime ready visibility.
     }
 
     private void requestRetryDispatch(Task task, long workRetryDelayMillis) {

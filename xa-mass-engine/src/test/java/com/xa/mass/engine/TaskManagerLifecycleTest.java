@@ -189,7 +189,9 @@ class TaskManagerLifecycleTest {
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
+        assertEquals(TaskContract.SESSION, task.getContract());
         assertEquals(TaskSourceType.STREAM, task.getSourceType());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
         assertEquals(TaskIngestStatus.READY, task.getIngestStatus());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
@@ -988,6 +990,49 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void batchRetryableFailureDelaysRuntimeVisibilityWithoutTaskLevelRedispatchWakeup() throws InterruptedException {
+        String previousBulkRetryDelay = System.getProperty("xa.mass.engine.bulkWorkRetryDelayMillis");
+        try {
+            System.setProperty("xa.mass.engine.bulkWorkRetryDelayMillis", "200");
+
+            InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+            ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                    new RecordingTaskScheduler(),
+                    managerStorage,
+                    managerStorage,
+                    new InMemoryTaskWorkRuntime());
+            Task task = createTask(manager, buildRequest("task-result-batch-delayed-retry", List.of("alpha")));
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(manager, task, message, "worker-batch-1", "worker-context-batch-1", "batch-0");
+
+            AtomicInteger dispatchEvents = new AtomicInteger();
+            CountDownLatch dispatchLatch = new CountDownLatch(1);
+            manager.events().addTaskDispatchListener(ignored -> {
+                dispatchEvents.incrementAndGet();
+                dispatchLatch.countDown();
+            });
+
+            assertTrue(manager.handleTaskMessageResult(task.getTid(), message.messageId(), false, "boom-once"));
+
+            TaskDetailStore.TaskMessageProjection retriedMessage =
+                    manager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+            assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
+            assertEquals(1, retriedMessage.retryCount());
+            assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+            assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).delayedCount());
+            assertEquals(0, dispatchEvents.get());
+            assertFalse(dispatchLatch.await(400, TimeUnit.MILLISECONDS));
+            assertEquals(0, dispatchEvents.get());
+        } finally {
+            restoreProperty("xa.mass.engine.bulkWorkRetryDelayMillis", previousBulkRetryDelay);
+        }
+    }
+
+    @Test
     void delayedRetryWakeupIsCoalescedPerTaskUnderMultipleRetryableFailures() throws InterruptedException {
         String previousInteractiveRetryDelay = System.getProperty("xa.mass.engine.interactiveWorkRetryDelayMillis");
         try {
@@ -1297,8 +1342,12 @@ class TaskManagerLifecycleTest {
 
         assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
                 "result hot path should accept runtime-owned callback without reading message projection residue");
-        TaskDetailStore.TaskMessageProjection finalProjection =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection finalProjection = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertNotNull(finalProjection);
         assertEquals(TaskMessageProjectionStatus.SUCCESS, finalProjection.status());
     }
@@ -1512,25 +1561,40 @@ class TaskManagerLifecycleTest {
 
     @Test
     void retryableFailurePublishesAttemptClosedBeforeDispatchRequested() {
-        Task task = createTask(buildRequest("task-result-retry-order", List.of("alpha")));
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
+        String previousDelay = System.getProperty("xa.mass.engine.interactiveWorkRetryDelayMillis");
+        try {
+            System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "0");
+            taskManager = new ProjectionAwareTaskManager(
+                    scheduler,
+                    taskStorage,
+                    taskStorage,
+                    new InMemoryTaskWorkRuntime()
+            );
 
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
+            TaskCreateSpec request = buildRequest("task-result-retry-order", List.of("alpha"));
+            request.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            Task task = createTask(request);
+            taskManager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            taskManager.updateTask(task);
 
-        List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
-                events.add("attempt-closed:" + attempt.status()));
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
-                events.add("logical-final:" + event.status()));
-        taskManager.events().addTaskDispatchListener(currentTask ->
-                events.add("dispatch:" + currentTask.getStatus()));
+            TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
 
-        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), false, "boom-once"));
+            List<String> events = new java.util.ArrayList<>();
+            taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+                    events.add("attempt-closed:" + attempt.status()));
+            taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+                    events.add("logical-final:" + event.status()));
+            taskManager.events().addTaskDispatchListener(currentTask ->
+                    events.add("dispatch:" + currentTask.getStatus()));
 
-        assertEquals(List.of("attempt-closed:REVOKED", "dispatch:RUNNING"), events);
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), false, "boom-once"));
+
+            assertEquals(List.of("attempt-closed:REVOKED", "dispatch:RUNNING"), events);
+        } finally {
+            restoreProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", previousDelay);
+        }
     }
 
     @Test
@@ -1680,7 +1744,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void openEndedTaskStaysNonTerminalUntilSealed() {
+    void sessionTaskStaysNonTerminalAfterSealWhenCurrentWorkDrains() {
         TaskCreateSpec request = buildRequest("task-open-ended", List.of("alpha"));
         request.setOpenEnded(true);
         Task task = createTask(request);
@@ -1704,9 +1768,14 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.sealTask(task.getTid()));
 
         Task sealed = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
-        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
+        TaskStateResolutionResult resolution = taskManager.resolveTaskState(task.getTid());
+
+        assertEquals(TaskStatus.RUNNING, sealed.getStatus());
+        assertNull(sealed.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
+        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, resolution.getOutcome());
+        assertEquals(TaskStatus.RUNNING, resolution.getStatus());
+        assertNull(resolution.getTerminalReason());
     }
 
     @Test
@@ -2504,44 +2573,59 @@ class TaskManagerLifecycleTest {
 
     @Test
     void expireAssignedMessageWithRetryBudgetResetsToInitAndRequestsRedispatch() {
-        Task task = createTask(buildRequest("expire-retry", List.of("alpha"), 1));
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
+        String previousDelay = System.getProperty("xa.mass.engine.interactiveWorkRetryDelayMillis");
+        try {
+            System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "0");
+            taskManager = new ProjectionAwareTaskManager(
+                    scheduler,
+                    taskStorage,
+                    taskStorage,
+                    new InMemoryTaskWorkRuntime()
+            );
 
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
+            TaskCreateSpec request = buildRequest("expire-retry", List.of("alpha"), 1);
+            request.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+            Task task = createTask(request);
+            taskManager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            taskManager.updateTask(task);
 
-        List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
-                events.add("attempt-closed:" + attempt.status()));
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
-                events.add("logical-final:" + event.status()));
-        taskManager.events().addTaskDispatchListener(currentTask ->
-                events.add("dispatch:" + currentTask.getStatus()));
+            TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
 
-        assertTrue(taskManager.expireTaskMessage(task.getTid(), message.messageId()));
+            List<String> events = new java.util.ArrayList<>();
+            taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+                    events.add("attempt-closed:" + attempt.status()));
+            taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+                    events.add("logical-final:" + event.status()));
+            taskManager.events().addTaskDispatchListener(currentTask ->
+                    events.add("dispatch:" + currentTask.getStatus()));
 
-        TaskDetailStore.TaskMessageProjection retriedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
-        Task updatedTask = taskManager.getTask(task.getTid());
+            assertTrue(taskManager.expireTaskMessage(task.getTid(), message.messageId()));
 
-        assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
-        assertEquals(1, retriedMessage.retryCount());
-        assertNull(retriedMessage.finalReason());
-        assertNull(retriedMessage.latestAttemptWorkerId());
-        assertNull(retriedMessage.latestAttemptWorkerContextId());
-        assertNull(retriedMessage.latestAttemptBatchId());
-        assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
+            TaskDetailStore.TaskMessageProjection retriedMessage =
+                    taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+            TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
+                    taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+            Task updatedTask = taskManager.getTask(task.getTid());
 
-        assertNotNull(latestAttempt);
-        assertEquals(TaskMessageAttemptProjectionStatus.EXPIRED, latestAttempt.status());
-        assertEquals(TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED, latestAttempt.finalReason());
+            assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
+            assertEquals(1, retriedMessage.retryCount());
+            assertNull(retriedMessage.finalReason());
+            assertNull(retriedMessage.latestAttemptWorkerId());
+            assertNull(retriedMessage.latestAttemptWorkerContextId());
+            assertNull(retriedMessage.latestAttemptBatchId());
+            assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
 
-        assertEquals(TaskStatus.RUNNING, updatedTask.getStatus());
-        assertEquals(List.of("attempt-closed:EXPIRED", "dispatch:RUNNING"), events);
+            assertNotNull(latestAttempt);
+            assertEquals(TaskMessageAttemptProjectionStatus.EXPIRED, latestAttempt.status());
+            assertEquals(TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED, latestAttempt.finalReason());
+
+            assertEquals(TaskStatus.RUNNING, updatedTask.getStatus());
+            assertEquals(List.of("attempt-closed:EXPIRED", "dispatch:RUNNING"), events);
+        } finally {
+            restoreProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", previousDelay);
+        }
     }
 
     @Test
@@ -2848,9 +2932,6 @@ class TaskManagerLifecycleTest {
             sourceType = request.getContract() == TaskContract.SESSION ? TaskSourceType.STREAM : TaskSourceType.BATCH;
             request.setSourceType(sourceType);
         }
-        if (request.getWorkloadClass() == null) {
-            request.setWorkloadClass(TaskWorkloadClass.BULK);
-        }
         if (sourceType == TaskSourceType.FILE && request.getInputs() != null && !request.getInputs().isEmpty()) {
             throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
         }
@@ -3064,6 +3145,28 @@ class TaskManagerLifecycleTest {
         } else {
             System.setProperty(key, previousValue);
         }
+    }
+
+    private static TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjection(
+            ProjectionAwareTaskManager manager,
+            String taskId,
+            String messageId,
+            TaskMessageProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = manager.getVisibleTaskMessageProjection(taskId, messageId);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

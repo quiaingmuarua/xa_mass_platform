@@ -10,7 +10,6 @@ public class TaskItemBatchIngestApiRequest extends AbstractUnknownFieldRequest {
 
     private String eventCode;
     private List<Object> items;
-    private int defaultMsgMaxRetryCount = 3;
 
     public String getEventCode() {
         return eventCode;
@@ -26,13 +25,5 @@ public class TaskItemBatchIngestApiRequest extends AbstractUnknownFieldRequest {
 
     public void setItems(List<Object> items) {
         this.items = items;
-    }
-
-    public int getDefaultMsgMaxRetryCount() {
-        return defaultMsgMaxRetryCount;
-    }
-
-    public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
-        this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
     }
 }

@@ -1229,7 +1229,7 @@ class MassSdkTest {
         verify(taskCommandService).appendTaskItems("task-001", List.of(
                 Map.of("target", "target-a", "eventCode", "demo.dispatch"),
                 Map.of("target", "target-b", "eventCode", "demo.dispatch")
-        ), 5);
+        ));
     }
 
     @Test
@@ -1542,7 +1542,7 @@ class MassSdkTest {
         verify(taskCommandService).appendTaskItems("task-stream-001", List.of(
                 Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
                 Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
-        ), 2);
+        ));
     }
 
     @Test
@@ -1556,7 +1556,7 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(taskCommandService.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
+        when(taskCommandService.appendTaskItems(any(), any())).thenReturn(2);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1565,14 +1565,13 @@ class MassSdkTest {
                         Map.of("target", "hello"),
                         Map.of("target", "world")
                 ))
-                .defaultMsgMaxRetryCount(4)
                 .build());
 
         assertEquals(2, added);
         verify(taskCommandService).appendTaskItems("task-map-001", List.of(
                 Map.of("target", "hello"),
                 Map.of("target", "world")
-        ), 4);
+        ));
     }
 
     @Test
@@ -2748,7 +2747,7 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(taskCommandService.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
+        when(taskCommandService.appendTaskItems(any(), any())).thenReturn(2);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -2758,21 +2757,19 @@ class MassSdkTest {
                         Map.of("target", "hello"),
                         Map.of("target", "world")
                 ))
-                .defaultMsgMaxRetryCount(4)
                 .build());
         app.appendTaskItems("task-json-002", MassTaskItemBatchAppendRequest.builder()
                 .eventCode("crawler.fetch-page")
                 .items(List.of(Map.of("target", "https://example.test")))
-                .defaultMsgMaxRetryCount(2)
                 .build());
 
         verify(taskCommandService).appendTaskItems("task-map-002", List.of(
                 Map.of("target", "hello", "eventCode", "demo.dispatch"),
                 Map.of("target", "world", "eventCode", "demo.dispatch")
-        ), 4);
+        ));
         verify(taskCommandService).appendTaskItems("task-json-002", List.of(
                 Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
-        ), 2);
+        ));
     }
 
     @Test
@@ -3081,7 +3078,6 @@ class MassSdkTest {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
-                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
         }
         if (!keepIntakeOpen) {

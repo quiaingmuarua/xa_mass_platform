@@ -196,8 +196,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
-        int retrySeed = request.getDefaultMsgMaxRetryCount() == null ? 3 : request.getDefaultMsgMaxRetryCount();
-        return requireStartedTaskCommands().appendTaskItems(requireTaskId(taskId), converted, retrySeed);
+        return requireStartedTaskCommands().appendTaskItems(requireTaskId(taskId), converted);
     }
 
     public boolean sealTask(String taskId) {

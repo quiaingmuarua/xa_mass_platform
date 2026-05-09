@@ -184,16 +184,6 @@
               />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="Max retry count">
-              <el-input-number
-                v-model="createForm.defaultMsgMaxRetryCount"
-                :min="0"
-                :step="1"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-col>
         </el-row>
 
         <el-row :gutter="16">
@@ -300,7 +290,6 @@ const createForm = reactive({
   project: '',
   eventCode: '',
   batchSize: 1,
-  defaultMsgMaxRetryCount: 3,
   openEnded: false,
   maxRuntimeSeconds: 0,
   itemsText: '{"target":"alpha"}\n{"target":"beta"}',
@@ -391,7 +380,6 @@ function resetCreateForm(): void {
   createForm.project = projectOptions.value[0] ?? ''
   createForm.eventCode = starterEventCode.value || ''
   createForm.batchSize = 1
-  createForm.defaultMsgMaxRetryCount = 3
   createForm.openEnded = false
   createForm.maxRuntimeSeconds = 0
   createForm.itemsText = '{"target":"alpha"}\n{"target":"beta"}'
@@ -437,7 +425,6 @@ function applyCreateDraftFromQuery(): void {
   createForm.project = starter.projectCode
   createForm.eventCode = starter.eventCode || ''
   createForm.batchSize = starter.batchSize
-  createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
   createForm.openEnded = starter.openEnded
   createForm.maxRuntimeSeconds = starter.maxRuntimeSeconds
   createForm.itemsText = stringifyStarterItems(starter.items)
@@ -517,10 +504,6 @@ function buildCreateDraft(): {
     appendRequest: {
       eventCode,
       items,
-      defaultMsgMaxRetryCount: Math.max(
-        0,
-        Number(createForm.defaultMsgMaxRetryCount) || 0,
-      ),
     },
     openEnded: createForm.openEnded,
   }

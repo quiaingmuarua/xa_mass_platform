@@ -223,7 +223,7 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(0, currentTask.getTaskSuccessNumber());
             assertEquals(0, logicallyFinalCount.get());
             assertEquals(0, terminalCount.get());
-            assertEquals(1, dispatchRequestedCount.get());
+            assertEquals(0, dispatchRequestedCount.get());
             assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
         }
     }

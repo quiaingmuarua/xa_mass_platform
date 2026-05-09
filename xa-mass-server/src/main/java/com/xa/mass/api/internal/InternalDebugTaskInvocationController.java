@@ -111,7 +111,6 @@ public class InternalDebugTaskInvocationController {
             taskAdmin.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(requestBody.getItems())
-                    .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                     .build());
             taskAdmin.sealTask(task.getTid());
             taskAdmin.approveTask(task.getTid());

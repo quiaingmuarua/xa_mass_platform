@@ -184,7 +184,7 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void appendTaskItemsPassesBatchEventCodeAndRetrySeed() throws Exception {
+    void appendTaskItemsPassesBatchEventCode() throws Exception {
         Task task = taskWithStatus(TaskStatus.READY);
         task.setProject("demoApp");
 
@@ -196,8 +196,7 @@ class TaskApiControllerTest {
                         .content("""
                                 {
                                   "eventCode":"chatbot.reply",
-                                  "items":[{"text":"hello"},{"text":"world"}],
-                                  "defaultMsgMaxRetryCount":5
+                                  "items":[{"text":"hello"},{"text":"world"}]
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -208,7 +207,6 @@ class TaskApiControllerTest {
         verify(taskAdmin).appendTaskItems(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
         assertEquals(List.of(Map.of("text", "hello"), Map.of("text", "world")), captor.getValue().getItems());
         assertEquals("chatbot.reply", captor.getValue().getEventCode());
-        assertEquals(5, captor.getValue().getDefaultMsgMaxRetryCount());
     }
 
     @Test
@@ -221,12 +219,31 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "items":[{"target":"hello"}],
-                                  "defaultMsgMaxRetryCount":5
+                                  "items":[{"target":"hello"}]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.msg").value("append requires batch eventCode or per-item eventCode"));
+
+        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemsRejectsRemovedRetrySeedField() throws Exception {
+        Task task = taskWithStatus(TaskStatus.READY);
+        task.setProject("demoApp");
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "items":[{"text":"hello"}],
+                                  "defaultMsgMaxRetryCount":5
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
 
         verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
     }

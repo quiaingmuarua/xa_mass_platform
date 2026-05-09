@@ -215,6 +215,7 @@ and documented here in the same change.
 The canonical model must be able to represent these flows:
 
 - `Task`: `NEW -> READY`, `READY -> RUNNING`, `RUNNING/PAUSED/BLOCKED -> TERMINAL`
+- session shells may drain their current runtime work set without emitting `TASK_TERMINAL_CLOSED`; explicit or policy-driven closure remains the terminal trigger
 - task progress reconciliation snapshots
 - message projection: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
 - attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`

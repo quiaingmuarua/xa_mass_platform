@@ -167,8 +167,7 @@ export async function createTaskShellMock(
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
     const normalizedSharedConfig = request.sharedConfig ?? {}
     const displayTaskName =
-        request.taskName?.trim() ||
-        `${request.project}-${request.executionSpec?.batchSize ?? request.batchSize ?? 1}`
+        request.sourceRef?.trim() || `${request.project}-${taskId}`
     const batchSize = request.executionSpec?.batchSize ?? request.batchSize ?? 1
 
     const listItem: TaskListItem = {
@@ -264,7 +263,6 @@ export async function invokeSyncTaskDebugMock(
     await appendTaskItemsMock(created.taskId, {
         eventCode: request.eventCode,
         items: request.items,
-        defaultMsgMaxRetryCount: 0,
     })
     await sealTaskMock(created.taskId)
 

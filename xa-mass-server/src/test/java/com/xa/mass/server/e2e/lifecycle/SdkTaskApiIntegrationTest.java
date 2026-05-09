@@ -130,8 +130,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> appendResponse = exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
-                "items", java.util.List.of(Map.of("url", "https://example.test/page-1")),
-                "defaultMsgMaxRetryCount", 2
+                "items", java.util.List.of(Map.of("url", "https://example.test/page-1"))
         ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiError(appendResponse, 403);

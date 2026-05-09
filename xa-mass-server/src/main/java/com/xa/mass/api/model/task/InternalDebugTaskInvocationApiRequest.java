@@ -22,7 +22,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
     private Map<String, Object> sharedConfig;
     private List<Object> items;
     private int batchSize;
-    private int defaultMsgMaxRetryCount = 3;
     private int maxRuntimeSeconds;
     private TaskSourceType sourceType;
     private TaskWorkloadClass workloadClass;
@@ -98,14 +97,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
 
     public void setBatchSize(int batchSize) {
         this.batchSize = batchSize;
-    }
-
-    public int getDefaultMsgMaxRetryCount() {
-        return defaultMsgMaxRetryCount;
-    }
-
-    public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
-        this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
     }
 
     public int getMaxRuntimeSeconds() {
