@@ -12,6 +12,7 @@ import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -108,6 +109,7 @@ public class InternalDebugTaskInvocationController {
             }
 
             taskAdmin.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(requestBody.getEventCode())
                     .items(requestBody.getItems())
                     .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                     .build());
@@ -210,9 +212,8 @@ public class InternalDebugTaskInvocationController {
                     requestBody != null ? requestBody.getEventCode() : null,
                     requestBody != null ? requestBody.getUserId() : null,
                     Map.of(
-                            "taskName", requestBody != null ? String.valueOf(requestBody.getTaskName()) : "",
                             "mode", requestBody != null ? String.valueOf(requestBody.getMode()) : "",
-                            "payloadType", requestBody != null ? String.valueOf(requestBody.getPayloadType()) : "",
+                            "eventCode", requestBody != null ? String.valueOf(requestBody.getEventCode()) : "",
                             "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
                     )
             );
@@ -231,24 +232,20 @@ public class InternalDebugTaskInvocationController {
                                                                     String resolvedUserId,
                                                                     String syncKey) {
         requireBusinessBindings(resolvedProject, resolvedUserId);
-        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
-            throw new IllegalArgumentException("taskName is required");
-        }
         if (requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank()) {
             validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
         }
+        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        executionSpec.setBatchSize(Math.max(requestBody.getBatchSize(), 1));
+        executionSpec.setMaxRuntimeSeconds(requestBody.getMaxRuntimeSeconds());
+        executionSpec.setWorkloadClass(requestBody.getWorkloadClass());
         return MassTaskShellCreateRequest.builder()
                 .userId(resolvedUserId)
+                .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
-                .taskName(requestBody.getTaskName())
-                .eventCode(requestBody.getEventCode())
-                .mode(TaskMode.SINGLE_RUN)
-                .payloadType(requestBody.getPayloadType() != null ? requestBody.getPayloadType() : com.xa.mass.sdk.catalog.PayloadType.JSON)
                 .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
-                .batchSize(requestBody.getBatchSize())
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
-                .sourceType(TaskSourceType.STREAM)
-                .workloadClass(requestBody.getWorkloadClass())
+                .executionSpec(executionSpec)
+                .sourceType(requestBody.getSourceType() != null ? requestBody.getSourceType() : TaskSourceType.STREAM)
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -270,9 +267,17 @@ public class InternalDebugTaskInvocationController {
         if (metadataCatalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
-        if (!projectMetadata.getEventCodes().contains(eventCode)) {
+        if (!projectMetadata.getAuthorizedEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
+    }
+
+    private String resolveProjectTenantId(String projectCode) {
+        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
+        if (projectMetadata == null) {
+            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+        }
+        return projectMetadata.getTenantId();
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

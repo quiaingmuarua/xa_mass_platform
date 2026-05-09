@@ -50,16 +50,27 @@ export interface TaskActionResult {
     terminalReason?: string
 }
 
+export interface TaskExecutionSpec {
+    profile?: 'STANDARD' | 'LATENCY_SENSITIVE' | 'IDEMPOTENT_BATCH'
+    workloadClass?: 'INTERACTIVE' | 'BULK'
+    batchSize?: number
+    maxRuntimeSeconds?: number
+    defaultMaxRetryCount?: number
+}
+
 export interface TaskShellCreateRequest {
     userId: string
     project: string
-    taskName: string
+    sharedConfig: Record<string, unknown>
+    executionSpec?: TaskExecutionSpec
+    batchSize?: number
+    maxRuntimeSeconds?: number
+    sourceType?: 'STREAM' | 'FILE'
+    sourceRef?: string
+    taskName?: string
     eventCode?: string
     mode?: 'SINGLE_RUN' | 'STREAMING'
     payloadType?: 'TEXT' | 'JSON'
-    sharedConfig: Record<string, unknown>
-    batchSize: number
-    maxRuntimeSeconds: number
 }
 
 export interface TaskShellCreateResult {
@@ -68,6 +79,7 @@ export interface TaskShellCreateResult {
 }
 
 export interface TaskItemBatchAppendRequest {
+    eventCode?: string
     items: Array<Record<string, unknown>>
     defaultMsgMaxRetryCount: number
 }
@@ -75,12 +87,14 @@ export interface TaskItemBatchAppendRequest {
 export interface TaskDebugSyncRequest {
     userId: string
     project: string
-    taskName: string
     eventCode: string
-    payloadType?: 'TEXT' | 'JSON'
     sharedConfig: Record<string, unknown>
-    inputs: Array<Record<string, unknown>>
+    items: Array<Record<string, unknown>>
+    batchSize?: number
     maxRuntimeSeconds: number
+    workloadClass?: 'INTERACTIVE' | 'BULK'
+    taskName?: string
+    payloadType?: 'TEXT' | 'JSON'
 }
 
 export interface TaskDebugSyncResult {

@@ -40,7 +40,7 @@ Current default scope:
   - task identity
   - project
   - task source/workload intent carried by task truth
-  - eventCode and shared config carried by task truth
+  - shared config carried by task truth
   - task status and terminal reason
   - bounded task aggregates already stored on the task model
 - worker registration truth

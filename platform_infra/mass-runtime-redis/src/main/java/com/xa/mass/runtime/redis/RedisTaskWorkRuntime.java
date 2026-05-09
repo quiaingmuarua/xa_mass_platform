@@ -54,6 +54,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     private static final Gson GSON = new Gson();
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
+    private static final char EVENT_SCOPE_SEPARATOR = '\u001F';
 
     private static final String ENQUEUE_SCRIPT = String.join("\n",
             "local taskId = ARGV[1]",
@@ -133,6 +134,15 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "local leaseExpireAtMillis = tonumber(ARGV[5])",
             "local dueCount = tonumber(ARGV[6])",
             "local slotCount = tonumber(ARGV[7])",
+            "local function event_scope_matches(encodedScope, eventCode)",
+            "  if not encodedScope or encodedScope == '' then",
+            "    return true",
+            "  end",
+            "  if not eventCode or eventCode == '' then",
+            "    return false",
+            "  end",
+            "  return string.find(encodedScope, string.char(31) .. eventCode .. string.char(31), 1, true) ~= nil",
+            "end",
             "local function work_member(messageId)",
             "  return tostring(string.len(taskId)) .. ':' .. taskId .. messageId",
             "end",
@@ -187,53 +197,64 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "end",
             "local claimed = {}",
             "for slot = 1, slotCount do",
-            "  local workerBase = argCursor + ((slot - 1) * 4)",
+            "  local workerBase = argCursor + ((slot - 1) * 5)",
             "  local workerId = ARGV[workerBase]",
             "  local workerContextId = ARGV[workerBase + 1]",
             "  local batchId = ARGV[workerBase + 2]",
             "  local leaseToken = ARGV[workerBase + 3]",
+            "  local encodedScope = ARGV[workerBase + 4]",
+            "  local queueLength = redis.call('LLEN', readyQueue)",
+            "  local scanned = 0",
             "  local messageId = redis.call('LPOP', readyQueue)",
             "  while messageId do",
-            "    decr_non_negative(taskStats, 'readyCount', 1)",
-            "    decr_non_negative(runtimeStats, 'readyCount', 1)",
             "    local workHash = taskPrefix .. ':work:' .. messageId",
             "    local leaseHash = taskPrefix .. ':lease:' .. messageId",
             "    if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
             "      local retryCount = tonumber(redis.call('HGET', workHash, 'retryCount') or '0')",
             "      local eventCode = redis.call('HGET', workHash, 'eventCode') or ''",
-            "      local payloadJson = redis.call('HGET', workHash, 'payloadJson') or ''",
-            "      local payloadRef = redis.call('HGET', workHash, 'payloadRef') or ''",
-            "      local workMember = work_member(messageId)",
-            "      redis.call('HSET', leaseHash,",
-            "        'leaseToken', leaseToken,",
-            "        'workerId', workerId,",
-            "        'workerContextId', workerContextId,",
-            "        'batchId', batchId,",
-            "        'payloadRef', payloadRef,",
-            "        'retryCount', tostring(retryCount),",
-            "        'leaseExpireAtMillis', tostring(leaseExpireAtMillis),",
-            "        'leasedAtMillis', tostring(nowMillis))",
-            "      redis.call('SADD', taskActive, workMember)",
-            "      redis.call('SADD', worker_active(workerId), workMember)",
-            "      redis.call('ZADD', leaseExpiry, leaseExpireAtMillis, workMember)",
-            "      redis.call('HINCRBY', taskStats, 'inflightCount', 1)",
-            "      redis.call('HINCRBY', runtimeStats, 'inflightCount', 1)",
-            "      redis.call('HINCRBY', runtimeStats, 'claimedItems', 1)",
-            "      table.insert(claimed, messageId)",
-            "      table.insert(claimed, leaseToken)",
-            "      table.insert(claimed, workerId)",
-            "      table.insert(claimed, workerContextId)",
-            "      table.insert(claimed, batchId)",
-            "      table.insert(claimed, eventCode)",
-            "      table.insert(claimed, payloadJson)",
-            "      table.insert(claimed, payloadRef)",
-            "      table.insert(claimed, tostring(retryCount))",
+            "      if event_scope_matches(encodedScope, eventCode) then",
+            "        decr_non_negative(taskStats, 'readyCount', 1)",
+            "        decr_non_negative(runtimeStats, 'readyCount', 1)",
+            "        local payloadJson = redis.call('HGET', workHash, 'payloadJson') or ''",
+            "        local payloadRef = redis.call('HGET', workHash, 'payloadRef') or ''",
+            "        local workMember = work_member(messageId)",
+            "        redis.call('HSET', leaseHash,",
+            "          'leaseToken', leaseToken,",
+            "          'workerId', workerId,",
+            "          'workerContextId', workerContextId,",
+            "          'batchId', batchId,",
+            "          'payloadRef', payloadRef,",
+            "          'retryCount', tostring(retryCount),",
+            "          'leaseExpireAtMillis', tostring(leaseExpireAtMillis),",
+            "          'leasedAtMillis', tostring(nowMillis))",
+            "        redis.call('SADD', taskActive, workMember)",
+            "        redis.call('SADD', worker_active(workerId), workMember)",
+            "        redis.call('ZADD', leaseExpiry, leaseExpireAtMillis, workMember)",
+            "        redis.call('HINCRBY', taskStats, 'inflightCount', 1)",
+            "        redis.call('HINCRBY', runtimeStats, 'inflightCount', 1)",
+            "        redis.call('HINCRBY', runtimeStats, 'claimedItems', 1)",
+            "        table.insert(claimed, messageId)",
+            "        table.insert(claimed, leaseToken)",
+            "        table.insert(claimed, workerId)",
+            "        table.insert(claimed, workerContextId)",
+            "        table.insert(claimed, batchId)",
+            "        table.insert(claimed, eventCode)",
+            "        table.insert(claimed, payloadJson)",
+            "        table.insert(claimed, payloadRef)",
+            "        table.insert(claimed, tostring(retryCount))",
+            "        break",
+            "      end",
+            "      redis.call('RPUSH', readyQueue, messageId)",
+            "    else",
+            "      decr_non_negative(taskStats, 'readyCount', 1)",
+            "      decr_non_negative(runtimeStats, 'readyCount', 1)",
+            "    end",
+            "    scanned = scanned + 1",
+            "    if scanned >= queueLength then",
+            "      messageId = nil",
             "      break",
             "    end",
             "    messageId = redis.call('LPOP', readyQueue)",
-            "  end",
-            "  if not messageId then",
-            "    break",
             "  end",
             "end",
             "maybe_upsert_ready_score()",
@@ -931,14 +952,13 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             args.add(messageId);
             args.add(keyspace.workMember(taskId, messageId));
         }
-        List<String> leaseTokens = new ArrayList<>(claimPlan.size());
         for (WorkerClaimTarget target : claimPlan) {
             String leaseToken = UUID.randomUUID().toString();
-            leaseTokens.add(leaseToken);
             args.add(target.workerId());
             args.add(nullToEmpty(target.workerContextId()));
             args.add(nullToEmpty(target.batchId()));
             args.add(leaseToken);
+            args.add(encodeSupportedEventCodes(target.supportedEventCodes()));
         }
         List<Object> rawClaimed = evalMulti(
                 CLAIM_READY_SCRIPT,
@@ -1530,6 +1550,21 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String encodeSupportedEventCodes(Set<String> eventCodes) {
+        if (eventCodes == null || eventCodes.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append(EVENT_SCOPE_SEPARATOR);
+        for (String eventCode : eventCodes) {
+            if (eventCode == null || eventCode.isBlank()) {
+                continue;
+            }
+            builder.append(eventCode.trim()).append(EVENT_SCOPE_SEPARATOR);
+        }
+        return builder.length() == 1 ? "" : builder.toString();
     }
 
     private static String emptyToNull(String value) {

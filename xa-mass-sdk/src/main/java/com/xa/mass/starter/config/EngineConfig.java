@@ -70,6 +70,7 @@ public class EngineConfig {
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
+    private long runtimeReadyDispatchIntervalMillis = 250L;
     private long taskMessageLeaseSeconds = 300L;
 
     public EngineConfig() {
@@ -103,6 +104,7 @@ public class EngineConfig {
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
         this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
+        this.runtimeReadyDispatchIntervalMillis = source.runtimeReadyDispatchIntervalMillis;
         this.taskMessageLeaseSeconds = source.taskMessageLeaseSeconds;
     }
 
@@ -337,6 +339,14 @@ public class EngineConfig {
 
     public void setLeaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
         this.leaseWatchdogIntervalSeconds = leaseWatchdogIntervalSeconds;
+    }
+
+    public long getRuntimeReadyDispatchIntervalMillis() {
+        return runtimeReadyDispatchIntervalMillis;
+    }
+
+    public void setRuntimeReadyDispatchIntervalMillis(long runtimeReadyDispatchIntervalMillis) {
+        this.runtimeReadyDispatchIntervalMillis = runtimeReadyDispatchIntervalMillis;
     }
 
     public long getTaskMessageLeaseSeconds() {

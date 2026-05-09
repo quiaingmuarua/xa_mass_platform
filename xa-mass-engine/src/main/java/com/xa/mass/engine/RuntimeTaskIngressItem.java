@@ -44,7 +44,10 @@ record RuntimeTaskIngressItem(String taskId,
     }
 
     Map<String, Object> projectedInput() {
-        return Map.of();
+        if (eventCode == null) {
+            return Map.of();
+        }
+        return Map.of(EVENT_CODE_KEY, eventCode);
     }
 
     private static String extractPayloadRef(Map<String, Object> input) {
@@ -75,6 +78,7 @@ record RuntimeTaskIngressItem(String taskId,
         }
         LinkedHashMap<String, Object> copy = new LinkedHashMap<>(values);
         copy.remove(EVENT_CODE_KEY);
+        copy.remove(PAYLOAD_REF_KEY);
         return copy.isEmpty() ? Map.of() : Map.copyOf(copy);
     }
 

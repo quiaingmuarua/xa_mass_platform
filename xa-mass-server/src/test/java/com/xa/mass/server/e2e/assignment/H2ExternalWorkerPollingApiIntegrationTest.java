@@ -113,16 +113,15 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", "crawler-fetch-page-h2");
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
-        createBody.put("eventCode", "crawler.fetch-page");
+        createBody.put("sourceRef", "crawler-fetch-page-h2");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("batchSize", 1);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
         Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/h2-page")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/h2-page")), 3));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);

@@ -342,7 +342,10 @@ public class TaskApiController {
     }
 
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(@PathVariable String taskId,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(
+                                                                            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                            @PathVariable String taskId,
                                                                             @RequestBody TaskItemBatchIngestApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task append items");
@@ -355,11 +358,24 @@ public class TaskApiController {
                 return badRequest("items must be a non-empty list");
             }
             validateIngestGuardrails(items);
+            List<String> eventCodes = resolveAppendEventCodes(requestBody, items);
+            if (eventCodes.isEmpty()) {
+                return badRequest("append requires batch eventCode or per-item eventCode");
+            }
+            for (String eventCode : eventCodes) {
+                validateProjectAndEvent(task.getProject(), eventCode);
+            }
+            resolveTaskAppender(apiKeyHeader, authorizationHeader, task, eventCodes);
             int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(requestBody.getEventCode())
                     .items(items)
                     .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                     .build());
             return ok(Map.of("message", "Items appended", "added", added));
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());
         } catch (IllegalStateException e) {
@@ -592,6 +608,66 @@ public class TaskApiController {
         } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
             throw new SdkUnauthenticatedException(ex.getMessage());
         }
+    }
+
+    private PrincipalContext resolveTaskAppender(String apiKeyHeader,
+                                                 String authorizationHeader,
+                                                 Task task,
+                                                 List<String> eventCodes) {
+        try {
+            return apiAuthorizationService.resolveAuthorizedTaskAppender(
+                    apiKeyHeader,
+                    authorizationHeader,
+                    task,
+                    eventCodes,
+                    Map.of(
+                            "taskId", task != null ? String.valueOf(task.getTid()) : "",
+                            "project", task != null ? String.valueOf(task.getProject()) : "",
+                            "eventCodes", eventCodes == null ? List.of() : eventCodes,
+                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_APPEND.name()
+                    )
+            );
+        } catch (com.xa.mass.api.auth.ApiForbiddenException ex) {
+            throw new SecurityException(ex.getMessage());
+        } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
+            throw new SdkUnauthenticatedException(ex.getMessage());
+        }
+    }
+
+    private List<String> resolveAppendEventCodes(TaskItemBatchIngestApiRequest requestBody,
+                                                 List<Object> items) {
+        LinkedHashSet<String> eventCodes = new LinkedHashSet<>();
+        String batchEventCode = normalizeEventCode(requestBody != null ? requestBody.getEventCode() : null);
+        if (batchEventCode != null) {
+            eventCodes.add(batchEventCode);
+        }
+        if (items != null) {
+            for (Object item : items) {
+                String itemEventCode = extractItemEventCode(item);
+                if (itemEventCode != null) {
+                    eventCodes.add(itemEventCode);
+                }
+            }
+        }
+        return eventCodes.isEmpty() ? List.of() : List.copyOf(eventCodes);
+    }
+
+    private String extractItemEventCode(Object item) {
+        if (!(item instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Object rawEventCode = rawMap.get("eventCode");
+        if (rawEventCode == null) {
+            return null;
+        }
+        return normalizeEventCode(String.valueOf(rawEventCode));
+    }
+
+    private String normalizeEventCode(String eventCode) {
+        if (eventCode == null || eventCode.isBlank()) {
+            return null;
+        }
+        return eventCode.trim();
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

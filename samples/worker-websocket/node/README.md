@@ -42,17 +42,15 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
   -d '{
     "project": "crawlerApp",
-    "taskName": "stock-quote-stream",
     "userId": "stock-agent",
-    "eventCode": "stock.quote.fetch",
-    "mode": "STREAMING",
-    "payloadType": "JSON",
-    "workloadClass": "INTERACTIVE",
     "sharedConfig": {
       "routingCode": "us",
       "sourceUrl": "http://127.0.0.1:8088/api/v1/meta/events/stock.quote.fetch"
     },
-    "batchSize": 1
+    "executionSpec": {
+      "batchSize": 1,
+      "workloadClass": "INTERACTIVE"
+    }
   }'
 ```
 
@@ -62,6 +60,7 @@ Append the first request, approve the task, then append later quote requests:
 curl -X POST http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}/items \
   -H 'Content-Type: application/json' \
   -d '{
+    "eventCode": "stock.quote.fetch",
     "items": [
       {
         "requestId": "stockreq-init-0001",
@@ -77,6 +76,7 @@ curl -X POST "http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}:approve?comment=stoc
 curl -X POST http://127.0.0.1:8088/api/v1/tasks/${TASK_ID}/items \
   -H 'Content-Type: application/json' \
   -d '{
+    "eventCode": "stock.quote.fetch",
     "items": [
       {
         "requestId": "stockreq-async-0002",

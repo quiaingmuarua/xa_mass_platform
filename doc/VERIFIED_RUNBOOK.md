@@ -89,11 +89,11 @@ Create a task shell, append items, then seal:
 ```bash
 curl -s -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","sharedConfig":{"textContent":"smoke"},"userId":"agent","batchSize":1,"maxRuntimeSeconds":0}'
+  -d '{"project":"demoApp","sharedConfig":{"textContent":"smoke"},"userId":"agent","executionSpec":{"batchSize":1,"maxRuntimeSeconds":0}}'
 
 curl -s -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
-  -d '{"items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"defaultMsgMaxRetryCount":3}'
+  -d '{"eventCode":"demo.dispatch","items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"defaultMsgMaxRetryCount":3}'
 
 curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}:seal
 ```
@@ -121,12 +121,15 @@ curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
 
 Task create/update:
 
-- Shell create supports `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `batchSize`, and `maxRuntimeSeconds`.
+- Shell create supports `userId`, `project`, `sharedConfig`, `executionSpec`, `sourceType`, and `sourceRef`.
 - `POST /api/v1/tasks` is the public shell-create route.
+- `taskName` is server-derived and persisted on the shell; callers do not provide it.
+- `eventCode` is not task shell truth; append requests declare capability at the batch level or per item.
 - The public task API and control-console read models do not define a dedicated routing-code field.
 - Work items are appended explicitly through `POST /api/v1/tasks/{taskId}/items`.
+- Append requires explicit `eventCode` either on the batch request or on each item payload.
 - Unknown or retired create fields fail fast.
-- Update is metadata-only and supports `userId`, `project`, `taskName`, `sharedConfig`, and `batchSize`.
+- Update is metadata-only and supports `userId`, `project`, `sharedConfig`, and `batchSize`.
 - Updates are allowed only while the task is `NEW` or `BLOCKED`.
 
 Assignment and dispatch:

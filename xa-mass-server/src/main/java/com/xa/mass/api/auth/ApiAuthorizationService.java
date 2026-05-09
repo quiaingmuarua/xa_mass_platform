@@ -126,6 +126,31 @@ public class ApiAuthorizationService {
         return resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
     }
 
+    public PrincipalContext resolveAuthorizedTaskAppender(String apiKeyHeader,
+                                                          String authorizationHeader,
+                                                          com.xa.mass.base.model.Task task,
+                                                          List<String> eventCodes,
+                                                          Map<String, Object> context) {
+        PrincipalContext submitter =
+                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+        if (submitter == null) {
+            return null;
+        }
+        requireTaskOwnershipAccess(submitter, task, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+        List<String> normalizedEventCodes = eventCodes == null ? List.of() : List.copyOf(eventCodes);
+        for (String eventCode : normalizedEventCodes) {
+            requireSubmitterTaskAccess(
+                    submitter,
+                    task != null ? task.getProject() : null,
+                    eventCode,
+                    null,
+                    ApiSecurityScenario.SUBMITTER_TASK_APPEND,
+                    context
+            );
+        }
+        return submitter;
+    }
+
     public void requireOperatorRoutePermission(PrincipalContext principal,
                                                PlatformResourceType resourceType,
                                                PlatformAction action,
@@ -150,8 +175,19 @@ public class ApiAuthorizationService {
                                            String userId,
                                            ApiSecurityScenario scenario,
                                            Map<String, Object> context) {
+        requireSubmitterTaskAccess(principal, project, eventCode, userId, scenario, context);
+    }
+
+    private void requireSubmitterTaskAccess(PrincipalContext principal,
+                                            String project,
+                                            String eventCode,
+                                            String userId,
+                                            ApiSecurityScenario scenario,
+                                            Map<String, Object> context) {
         Map<String, Object> resourceAttributes = new LinkedHashMap<>();
-        resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, scenario.requiredPermission());
+        if (scenario.requiredPermission() != null && !scenario.requiredPermission().isBlank()) {
+            resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, scenario.requiredPermission());
+        }
         if (userId != null) {
             resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, userId);
         }

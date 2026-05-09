@@ -110,11 +110,10 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void createTaskRejectsUnknownFieldsInRequestBody() {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
-        createBody.put("taskName", "guard-unknown-fields");
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle", "routingCode", "us"));
         createBody.put("userId", "itest");
-        createBody.put("batchSize", 1);
+        createBody.put("executionSpec", java.util.Map.of("batchSize", 1));
         createBody.put("targetJsonList", java.util.List.of("{\"phone\":\"123\"}"));
 
         ResponseEntity<String> response = restTemplate.exchange(
@@ -130,12 +129,14 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void createTaskAcceptsMaxRuntimeSecondsAsSupportedField() {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
-        createBody.put("taskName", "guard-max-runtime");
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime", "routingCode", "us"));
         createBody.put("userId", "itest");
-        createBody.put("batchSize", 1);
-        createBody.put("maxRuntimeSeconds", 120);
+        createBody.put("sourceRef", "guard-max-runtime");
+        createBody.put("executionSpec", java.util.Map.of(
+                "batchSize", 1,
+                "maxRuntimeSeconds", 120
+        ));
 
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);

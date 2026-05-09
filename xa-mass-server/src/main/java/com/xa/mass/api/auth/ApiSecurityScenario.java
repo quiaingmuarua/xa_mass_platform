@@ -21,6 +21,13 @@ public enum ApiSecurityScenario {
             null,
             CredentialAudience.SDK_SUBMITTER
     ),
+    SUBMITTER_TASK_APPEND(
+            "task-append",
+            PlatformResourceType.TASK,
+            PlatformAction.EDIT,
+            PrincipalContext.TASK_CREATE_PERMISSION,
+            CredentialAudience.SDK_SUBMITTER
+    ),
     WORKER_REGISTER(
             "worker-register",
             PlatformResourceType.WORKER,

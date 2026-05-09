@@ -4,6 +4,7 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
@@ -90,16 +91,18 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         session.connect();
         try {
             waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
+            TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+            executionSpec.setBatchSize(1);
 
             var task = createShellWithOptionalItems(
                     MassTaskShellCreateRequest.builder()
                             .userId("crawler-agent")
                             .project("crawlerApp")
-                            .taskName("crawler-fetch-page")
-                            .eventCode("crawler.fetch-page")
+                            .sourceRef("crawler-fetch-page")
                             .sharedConfig(Map.of("routingCode", "us"))
-                            .batchSize(1)
+                            .executionSpec(executionSpec)
                             .build(),
+                    "crawler.fetch-page",
                     List.of(Map.of("url", "https://example.test/page-1")),
                     3,
                     false
@@ -146,12 +149,14 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
     }
 
     private com.xa.mass.base.model.Task createShellWithOptionalItems(MassTaskShellCreateRequest request,
+                                                                     String eventCode,
                                                                      List<Object> items,
                                                                      int defaultMsgMaxRetryCount,
                                                                      boolean keepIntakeOpen) {
         com.xa.mass.base.model.Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
                     .items(items)
                     .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());

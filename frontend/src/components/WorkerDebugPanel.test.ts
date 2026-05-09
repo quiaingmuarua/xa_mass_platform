@@ -61,13 +61,11 @@ describe('WorkerDebugPanel', () => {
         expect(invokeSyncTaskDebug).toHaveBeenCalledWith({
             userId: mockAdminUser.id,
             project: 'demoApp',
-            taskName: 'worker-debug:mock.state.get',
             eventCode: 'mock.state.get',
-            payloadType: 'JSON',
             sharedConfig: {
                 targetWorkerId: 'worker-us-01',
             },
-            inputs: [
+            items: [
                 {
                     includeRuntime: true,
                 },

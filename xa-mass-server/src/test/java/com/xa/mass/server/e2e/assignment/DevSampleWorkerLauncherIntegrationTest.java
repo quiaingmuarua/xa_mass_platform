@@ -63,27 +63,25 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(app.getProject("crawlerApp") != null);
         assertTrue(app.getEvent("stock.quote.fetch") != null);
         assertEquals(5, app.listDefaultRules().size());
-        waitForSeedTask("sample-crawler-fetch-page", "TERMINAL");
-        waitForSeedTask("sample-stock-quote-stream", "RUNNING");
+        waitForSeedTaskContaining("sample-crawler-fetch-page", "TERMINAL");
+        waitForSeedTaskContaining("sample-stock-quote-stream", "RUNNING");
 
         String requestId = "launcher-stock-req-0001";
         String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/meta/events/stock.quote.fetch";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
-        createBody.put("taskName", "launcher-stock-quote");
         createBody.put("userId", "launcher-itest");
-        createBody.put("eventCode", "stock.quote.fetch");
-        createBody.put("payloadType", "JSON");
+        createBody.put("sourceRef", "launcher-stock-quote");
         createBody.put("sharedConfig", Map.of(
                 "routingCode", "us",
                 "sourceUrl", sourceUrl
         ));
-        createBody.put("batchSize", 1);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
 
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(Map.of(
+        assertApiOk(appendTaskItems(taskId, "stock.quote.fetch", List.of(Map.of(
                 "requestId", requestId,
                 "symbol", "NVDA",
                 "market", "NASDAQ"
@@ -131,14 +129,14 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void waitForSeedTask(String taskName, String expectedStatus) throws InterruptedException {
+    private void waitForSeedTaskContaining(String taskNameFragment, String expectedStatus) throws InterruptedException {
         Map<String, Object> matched = null;
         for (int attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
             Map<String, Object> response = exchange("/api/v1/tasks", HttpMethod.GET, null);
             assertApiOk(response);
             List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(response).get("items");
             matched = items.stream()
-                    .filter(item -> Objects.equals(taskName, item.get("taskName")))
+                    .filter(item -> String.valueOf(item.get("taskName")).contains(taskNameFragment))
                     .findFirst()
                     .orElse(null);
             if (matched != null && Objects.equals(expectedStatus, matched.get("status"))) {
@@ -146,7 +144,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
             }
             Thread.sleep(250L);
         }
-        throw new AssertionError("Seed task did not reach status " + expectedStatus + ": " + taskName
+        throw new AssertionError("Seed task did not reach status " + expectedStatus + ": " + taskNameFragment
                 + ", lastTask=" + matched);
     }
 }

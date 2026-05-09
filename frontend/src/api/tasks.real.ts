@@ -36,18 +36,19 @@ export async function listTasksReal(
 export async function createTaskShellReal(
     request: TaskShellCreateRequest,
 ): Promise<TaskShellCreateResult> {
+    const executionSpec = request.executionSpec ?? {
+        batchSize: request.batchSize,
+        maxRuntimeSeconds: request.maxRuntimeSeconds,
+    }
     return requestApiData<TaskShellCreateResult>('/api/v1/tasks', {
         method: 'POST',
         body: JSON.stringify({
             userId: request.userId,
             project: request.project,
-            taskName: request.taskName,
-            eventCode: request.eventCode,
-            mode: request.mode,
-            payloadType: request.payloadType,
             sharedConfig: request.sharedConfig,
-            batchSize: request.batchSize,
-            maxRuntimeSeconds: request.maxRuntimeSeconds,
+            executionSpec,
+            sourceType: request.sourceType,
+            sourceRef: request.sourceRef,
         }),
     })
 }
@@ -59,6 +60,7 @@ export async function appendTaskItemsReal(
     return requestApiData<{ added: number }>(`/api/v1/tasks/${taskId}/items`, {
         method: 'POST',
         body: JSON.stringify({
+            eventCode: request.eventCode,
             items: request.items,
             defaultMsgMaxRetryCount: request.defaultMsgMaxRetryCount,
         }),
@@ -81,15 +83,13 @@ export async function invokeSyncTaskDebugReal(
             body: JSON.stringify({
                 userId: request.userId,
                 project: request.project,
-                taskName: request.taskName,
                 eventCode: request.eventCode,
-                mode: 'SINGLE_RUN',
-                payloadType: request.payloadType ?? 'JSON',
                 sharedConfig: request.sharedConfig,
-                inputs: request.inputs,
-                batchSize: 1,
+                items: request.items,
+                batchSize: request.batchSize ?? 1,
                 defaultMsgMaxRetryCount: 0,
                 maxRuntimeSeconds: request.maxRuntimeSeconds,
+                workloadClass: request.workloadClass,
             }),
         },
     )

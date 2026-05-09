@@ -140,17 +140,15 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders));
 
         Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", "crawler-fetch-page");
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
-        createBody.put("eventCode", "crawler.fetch-page");
-        createBody.put("payloadType", "JSON");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("batchSize", 1);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
         Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "eventCode", "crawler.fetch-page",
                 "items", List.of(Map.of("url", "https://example.test/page-1")),
                 "defaultMsgMaxRetryCount", 3
         ), submitterHeaders));

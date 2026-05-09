@@ -14,6 +14,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -92,6 +93,7 @@ public final class SdkTransportLoadRunner {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Gson FRAME_GSON = new GsonBuilder().create();
     private static final String ENDPOINT_PATH = "/testing";
+    private static final String TASK_EVENT_CODE = "demo.dispatch";
 
     private SdkTransportLoadRunner() {
     }
@@ -228,6 +230,12 @@ public final class SdkTransportLoadRunner {
                         .workerId(workerId)
                         .workerGroupId("sdk-load")
                         .supportedProjects(List.of("demoApp"))
+                        .eventBindings(List.of(
+                                WorkerEventBinding.builder()
+                                        .eventCode(TASK_EVENT_CODE)
+                                        .projectCodes(List.of("demoApp"))
+                                        .build()
+                        ))
                         .transportHint(transportHint)
                         .adapterId(transportMode.adapterId())
                         .build());
@@ -319,7 +327,7 @@ public final class SdkTransportLoadRunner {
                     MassTaskShellCreateRequest.builder()
                             .userId("sdk-load")
                             .project("demoApp")
-                            .taskName("sdk-transport-load-" + taskIndex)
+                            .sourceRef("sdk-transport-load-" + taskIndex)
                             .workloadClass(config.workloadClass())
                             .sharedConfig(Map.of(
                                     "source", "SdkTransportLoadRunner",
@@ -339,6 +347,7 @@ public final class SdkTransportLoadRunner {
             Task task = app.createTaskShell(request.shell());
             if (request.items() != null && !request.items().isEmpty()) {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                        .eventCode(TASK_EVENT_CODE)
                         .items(request.items())
                         .defaultMsgMaxRetryCount(request.defaultMsgMaxRetryCount())
                         .build());

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -115,6 +116,34 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("t1", targets("w1"), 1, 30);
         assertThat(runtime.claimReady("t1", targets("w2"), 1, 30)).isEmpty();
+    }
+
+    @Test
+    void claimReady_onlyClaimsMessagesSupportedByWorkerEventScope() {
+        runtime.enqueue(new TaskWorkEnvelope("t1", "m1", "crawler.fetch-page",
+                Map.of("key", "m1"), null, 0, 3, null, null, clock.get()), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(new TaskWorkEnvelope("t1", "m2", "stock.quote.fetch",
+                Map.of("key", "m2"), null, 0, 3, null, null, clock.get()), WorkEnqueueOptions.DEFAULT);
+
+        List<ClaimedTaskWork> claimed = runtime.claimReady(
+                "t1",
+                List.of(
+                        new WorkerClaimTarget("crawler-worker", "ctx-crawler", "batch-crawler", 1,
+                                Set.of("crawler.fetch-page")),
+                        new WorkerClaimTarget("stock-worker", "ctx-stock", "batch-stock", 1,
+                                Set.of("stock.quote.fetch"))
+                ),
+                2,
+                30
+        );
+
+        assertThat(claimed).hasSize(2);
+        assertThat(claimed)
+                .extracting(ClaimedTaskWork::workerId, ClaimedTaskWork::eventCode)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("crawler-worker", "crawler.fetch-page"),
+                        org.assertj.core.groups.Tuple.tuple("stock-worker", "stock.quote.fetch")
+                );
     }
 
     @Test

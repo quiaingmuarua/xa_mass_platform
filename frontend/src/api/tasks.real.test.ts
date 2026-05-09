@@ -137,13 +137,11 @@ describe('tasks.real', () => {
         const result = await createTaskShellReal({
             userId: 'agent',
             project: 'demoApp',
-            taskName: 'demo-task',
-            eventCode: 'mock.state.get',
-            mode: 'SINGLE_RUN',
-            payloadType: 'JSON',
             sharedConfig: { textContent: 'hello' },
-            batchSize: 2,
-            maxRuntimeSeconds: 0,
+            executionSpec: {
+                batchSize: 2,
+                maxRuntimeSeconds: 0,
+            },
         })
 
         expect(fetchMock).toHaveBeenCalledWith(
@@ -166,6 +164,7 @@ describe('tasks.real', () => {
         vi.stubGlobal('fetch', fetchMock)
 
         const result = await appendTaskItemsReal('task-101', {
+            eventCode: 'mock.state.get',
             items: [{ target: 'alpha' }, { target: 'beta' }],
             defaultMsgMaxRetryCount: 3,
         })
@@ -220,13 +219,11 @@ describe('tasks.real', () => {
         const result = await invokeSyncTaskDebugReal({
             userId: 'ops-admin',
             project: 'demoApp',
-            taskName: 'worker-debug:mock.state.get',
             eventCode: 'mock.state.get',
-            payloadType: 'JSON',
             sharedConfig: {
                 targetWorkerId: 'worker-us-01',
             },
-            inputs: [
+            items: [
                 {
                     includeRuntime: true,
                 },
@@ -241,14 +238,11 @@ describe('tasks.real', () => {
                 body: JSON.stringify({
                     userId: 'ops-admin',
                     project: 'demoApp',
-                    taskName: 'worker-debug:mock.state.get',
                     eventCode: 'mock.state.get',
-                    mode: 'SINGLE_RUN',
-                    payloadType: 'JSON',
                     sharedConfig: {
                         targetWorkerId: 'worker-us-01',
                     },
-                    inputs: [
+                    items: [
                         {
                             includeRuntime: true,
                         },

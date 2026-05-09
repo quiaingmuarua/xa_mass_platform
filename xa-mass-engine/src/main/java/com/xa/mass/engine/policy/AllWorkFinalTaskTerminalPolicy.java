@@ -1,5 +1,6 @@
 package com.xa.mass.engine.policy;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
@@ -8,13 +9,16 @@ import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
 /**
- * Mainline policy: a task reaches TERMINAL only when all engine work items
- * have reached a final runtime outcome.
+ * Batch task terminal policy: a task reaches TERMINAL only when all engine
+ * work items have reached a final runtime outcome after intake has been closed.
  */
 public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
 
     @Override
     public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats) {
+        if (task == null || task.getContract() != TaskContract.BATCH) {
+            return TaskTerminalPolicyDecision.keepRunning();
+        }
         if (stats.totalCount() <= 0) {
             return TaskTerminalPolicyDecision.keepRunning();
         }

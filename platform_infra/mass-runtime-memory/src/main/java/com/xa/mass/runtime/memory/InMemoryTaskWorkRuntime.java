@@ -198,10 +198,48 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         }
 
         List<ClaimedTaskWork> claimed = new ArrayList<>(Math.min(maxItems, ready.size()));
-        int workerCursor = 0;
         Instant leasedAt = clock.get();
         Instant leaseExpireAt = leasedAt.plusSeconds(Math.max(1L, leaseSeconds));
+        int workerCursor = 0;
         while (!ready.isEmpty() && claimed.size() < maxItems && hasCapacity(capacities)) {
+            boolean progressed = false;
+            int startingCursor = workerCursor;
+            for (int i = 0; i < capacities.size() && claimed.size() < maxItems; i++) {
+                WorkerCapacity capacity = nextCapacity(capacities, workerCursor);
+                if (capacity == null) {
+                    break;
+                }
+                workerCursor = (capacities.indexOf(capacity) + 1) % capacities.size();
+                if (!tryClaimCompatibleWork(taskId, ready, capacity, claimed, leaseExpireAt, leasedAt)) {
+                    if (workerCursor == startingCursor) {
+                        break;
+                    }
+                    continue;
+                }
+                progressed = true;
+            }
+            if (!progressed) {
+                break;
+            }
+        }
+        if (ready.isEmpty()) {
+            readyByTask.remove(taskId);
+        }
+        claimedItems.addAndGet(claimed.size());
+        return List.copyOf(claimed);
+    }
+
+    private boolean tryClaimCompatibleWork(String taskId,
+                                           ArrayDeque<WorkKey> ready,
+                                           WorkerCapacity capacity,
+                                           List<ClaimedTaskWork> claimed,
+                                           Instant leaseExpireAt,
+                                           Instant leasedAt) {
+        if (ready.isEmpty() || capacity == null || !capacity.hasCapacity()) {
+            return false;
+        }
+        int scanBudget = ready.size();
+        while (scanBudget-- > 0 && !ready.isEmpty() && capacity.hasCapacity()) {
             WorkKey key = ready.pollFirst();
             TaskWorkEnvelope item = workByKey.get(key);
             if (item == null || leaseByKey.containsKey(key)) {
@@ -217,12 +255,10 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                 taskStats.delayedCount++;
                 continue;
             }
-            WorkerCapacity capacity = nextCapacity(capacities, workerCursor);
-            if (capacity == null) {
-                ready.addFirst(key);
-                break;
+            if (!capacity.target.supportsEvent(item.eventCode())) {
+                ready.addLast(key);
+                continue;
             }
-            workerCursor = capacities.indexOf(capacity) + 1;
             capacity.claimed++;
             decrementReady(taskId);
             String leaseToken = UUID.randomUUID().toString();
@@ -256,12 +292,9 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                     item.retryCount(),
                     leaseExpireAt
             ));
+            return true;
         }
-        if (ready.isEmpty()) {
-            readyByTask.remove(taskId);
-        }
-        claimedItems.addAndGet(claimed.size());
-        return List.copyOf(claimed);
+        return false;
     }
 
     @Override
@@ -771,5 +804,4 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         }
     }
 }
-
 

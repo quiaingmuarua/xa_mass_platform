@@ -40,18 +40,25 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
     }
 
     private AuthorizationDecision authorizeTask(AuthorizationRequest request, PrincipalContext principal) {
-        if (request.getAction() != PlatformAction.CREATE) {
-            return AuthorizationDecision.allow();
+        if (request.getAction() == PlatformAction.CREATE) {
+            AuthorizationDecision projectDecision = authorizeTaskProjectScope(request, principal);
+            if (!projectDecision.isAllowed()) {
+                return projectDecision;
+            }
+            AuthorizationDecision eventDecision = authorizeTaskEventScope(request, principal);
+            if (!eventDecision.isAllowed()) {
+                return eventDecision;
+            }
+            return authorizeTaskUserScope(request, principal);
         }
-        AuthorizationDecision projectDecision = authorizeTaskProjectScope(request, principal);
-        if (!projectDecision.isAllowed()) {
-            return projectDecision;
+        if (request.getAction() == PlatformAction.EDIT) {
+            AuthorizationDecision projectDecision = authorizeTaskProjectScope(request, principal);
+            if (!projectDecision.isAllowed()) {
+                return projectDecision;
+            }
+            return authorizeTaskEventScope(request, principal);
         }
-        AuthorizationDecision eventDecision = authorizeTaskEventScope(request, principal);
-        if (!eventDecision.isAllowed()) {
-            return eventDecision;
-        }
-        return authorizeTaskUserScope(request, principal);
+        return AuthorizationDecision.allow();
     }
 
     private AuthorizationDecision authorizeWorker(AuthorizationRequest request, PrincipalContext principal) {

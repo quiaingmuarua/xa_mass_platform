@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -102,7 +103,7 @@ public class TaskWorkerAssignListener {
         int requiredStartWorkerCount = initialStatus == TaskStatus.READY
                 ? getRequiredStartWorkerCount(task)
                 : 1;
-        int matchRequestCount = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
+        int matchRequestCount = resolveMatchRequestCount(task, desiredDispatchWorkerCount, requiredStartWorkerCount);
         List<MatchedWorkerContext> matched = matchingStrategy.matchWorkers(task, matchRequestCount);
         log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
                 matchingStrategy.getClass().getSimpleName(), matched.size(), task.getTid());
@@ -141,7 +142,8 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, Math.min(matched.size(), desiredDispatchWorkerCount));
+        int dispatchCandidateLimit = usesTaskLevelEventCapability(task) ? desiredDispatchWorkerCount : matched.size();
+        List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, Math.min(matched.size(), dispatchCandidateLimit));
         if (dispatchCandidates.isEmpty()) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "no dispatch candidates remained after capacity trim", requiredStartWorkerCount);
@@ -210,6 +212,22 @@ public class TaskWorkerAssignListener {
 
     private int getRequiredStartWorkerCount(Task task) {
         return Math.max(task.getMinRequiredWorkerCount(), 1);
+    }
+
+    private int resolveMatchRequestCount(Task task,
+                                         int desiredDispatchWorkerCount,
+                                         int requiredStartWorkerCount) {
+        int baseline = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
+        if (usesTaskLevelEventCapability(task)) {
+            return baseline;
+        }
+        int candidateCount = workerManager.findWorkerCandidates(task).size();
+        return Math.max(baseline, Math.max(candidateCount, 1));
+    }
+
+    private boolean usesTaskLevelEventCapability(Task task) {
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        return eventCode != null && !eventCode.isBlank();
     }
 
     private void unlockWorkers(List<MatchedWorkerContext> workers) {

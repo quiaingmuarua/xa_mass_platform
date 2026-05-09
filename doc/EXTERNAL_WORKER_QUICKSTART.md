@@ -95,20 +95,21 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
   -H 'X-Mass-Api-Key: crawler-submitter-key' \
   -d '{
-    "taskName": "crawler-fetch-page",
     "project": "crawlerApp",
     "userId": "crawler-agent",
-    "eventCode": "crawler.fetch-page",
     "sharedConfig": {
       "routingCode": "us"
     },
-    "batchSize": 1
+    "executionSpec": {
+      "batchSize": 1
+    }
   }'
 
 curl -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
   -H 'X-Mass-Api-Key: crawler-submitter-key' \
   -d '{
+    "eventCode": "crawler.fetch-page",
     "items": [
       {
         "url": "https://example.com"

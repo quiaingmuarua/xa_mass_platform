@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
@@ -316,7 +317,9 @@ class TaskLifecycleService {
             return task.getIngestStatus() != TaskIngestStatus.SEALED
                     && task.getIngestStatus() != TaskIngestStatus.FAILED;
         }
-        return task.getIntakeStatus() == TaskIntakeStatus.OPEN;
+        return switch (task.getContract()) {
+            case SESSION, BATCH -> task.getIntakeStatus() == TaskIntakeStatus.OPEN;
+        };
     }
 
     private String describeInputAppendRejection(Task task, String taskId) {
@@ -330,7 +333,10 @@ class TaskLifecycleService {
             return "Task cannot accept file ingest inputs in status " + task.getStatus();
         }
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
-            return "Task is not open-ended: " + taskId;
+            return switch (task.getContract()) {
+                case SESSION -> "Session task intake is closed: " + taskId;
+                case BATCH -> "Batch task intake is sealed: " + taskId;
+            };
         }
         return "Task intake is closed or task is terminal: " + task.getStatus();
     }

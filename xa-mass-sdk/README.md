@@ -89,12 +89,12 @@ app.registerWorkerContext(WorkerContextRegistration.builder()
 var task = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
-        .taskName("demo-task")
         .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
         .batchSize(1)
         .build());
 
 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+        .eventCode("demo.dispatch")
         .items(java.util.List.of(
                 java.util.Map.of("target", "target-a")))
         .build());
@@ -140,12 +140,11 @@ app.registerProject(ProjectMetadata.builder()
 var botTask = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("bot-user")
         .project("botApp")
-        .taskName("bot-command")
-        .eventCode("bot.command")
         .batchSize(1)
         .build());
 
 app.appendTaskItems(botTask.getTid(), MassTaskItemBatchAppendRequest.builder()
+        .eventCode("bot.command")
         .items(java.util.List.of(
                 java.util.Map.of("command", "/start")))
         .build());
@@ -194,7 +193,7 @@ Current SDK contracts:
 
 | Area | Contract |
 | --- | --- |
-| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; task-backed event definitions are metadata plus permission contracts, not an implicit aggregate create API |
+| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
 | resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |

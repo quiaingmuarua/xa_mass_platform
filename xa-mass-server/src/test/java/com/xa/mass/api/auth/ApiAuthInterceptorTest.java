@@ -140,8 +140,10 @@ class ApiAuthInterceptorTest {
                         .header("X-Mass-Api-Key", "sdk-key")
                         .content("""
                                 {
-                                  "taskName":"sdk-task",
-                                  "eventCode":"crawler.fetch-page"
+                                  "project":"crawlerApp",
+                                  "userId":"sdk-user",
+                                  "sourceRef":"sdk-task",
+                                  "executionSpec":{"batchSize":1}
                                 }
                                 """))
                 .andExpect(status().isOk())

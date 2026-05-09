@@ -116,7 +116,7 @@
         type="info"
         :closable="false"
         :title="`Metadata starter context: ${starterEventCode}`"
-        description="Task shell create accepts eventCode directly. Keep sharedConfig and item payloads opaque, and only provide fields your runtime contract actually consumes."
+        description="Task shell create stays event-agnostic. This starter only pre-fills the append capability eventCode and payload examples."
       />
 
       <el-alert
@@ -144,14 +144,6 @@
       <el-form label-position="top">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Task name" required>
-              <el-input
-                v-model="createForm.taskName"
-                placeholder="Warm worker pool"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="Project" required>
               <el-select
                 v-model="createForm.project"
@@ -169,6 +161,14 @@
                   :value="project"
                 />
               </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Append event code" required>
+              <el-input
+                v-model="createForm.eventCode"
+                placeholder="demo.dispatch"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -297,8 +297,8 @@ const filters = reactive({
   status: '' as TaskListItem['status'] | '',
 })
 const createForm = reactive({
-  taskName: '',
   project: '',
+  eventCode: '',
   batchSize: 1,
   defaultMsgMaxRetryCount: 3,
   openEnded: false,
@@ -388,8 +388,8 @@ function openCreateDialog(): void {
 }
 
 function resetCreateForm(): void {
-  createForm.taskName = ''
   createForm.project = projectOptions.value[0] ?? ''
+  createForm.eventCode = starterEventCode.value || ''
   createForm.batchSize = 1
   createForm.defaultMsgMaxRetryCount = 3
   createForm.openEnded = false
@@ -407,7 +407,6 @@ function maybeOpenCreateDialogFromQuery(): void {
   const signature = JSON.stringify({
     create: route.query.create,
     project: route.query.project,
-    taskName: route.query.taskName,
     eventCode: route.query.eventCode,
   })
 
@@ -436,7 +435,7 @@ function applyCreateDraftFromQuery(): void {
   })
 
   createForm.project = starter.projectCode
-  createForm.taskName = starter.taskName
+  createForm.eventCode = starter.eventCode || ''
   createForm.batchSize = starter.batchSize
   createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
   createForm.openEnded = starter.openEnded
@@ -446,10 +445,6 @@ function applyCreateDraftFromQuery(): void {
     starter.sharedConfig,
   )
   starterGuidance.value = starter.guidance
-
-  if (typeof route.query.taskName === 'string') {
-    createForm.taskName = route.query.taskName
-  }
 }
 
 async function handleCreate(): Promise<void> {
@@ -494,14 +489,14 @@ function buildCreateDraft(): {
   appendRequest: TaskItemBatchAppendRequest
   openEnded: boolean
 } {
-  const taskName = createForm.taskName.trim()
   const project = createForm.project.trim()
+  const eventCode = createForm.eventCode.trim()
 
-  if (!taskName) {
-    throw new Error('Task name is required.')
-  }
   if (!project) {
     throw new Error('Project is required.')
+  }
+  if (!eventCode) {
+    throw new Error('Append event code is required.')
   }
 
   const items = parseItemLines(createForm.itemsText)
@@ -513,19 +508,14 @@ function buildCreateDraft(): {
     shellRequest: {
       userId: currentOperatorId.value,
       project,
-      taskName,
-      eventCode: starterEventCode.value || undefined,
-      mode: starterEventCode.value
-        ? createForm.openEnded
-          ? 'STREAMING'
-          : 'SINGLE_RUN'
-        : undefined,
-      payloadType: starterEventCode.value ? 'JSON' : undefined,
       sharedConfig,
-      batchSize: Math.max(1, Number(createForm.batchSize) || 1),
-      maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+      executionSpec: {
+        batchSize: Math.max(1, Number(createForm.batchSize) || 1),
+        maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+      },
     },
     appendRequest: {
+      eventCode,
       items,
       defaultMsgMaxRetryCount: Math.max(
         0,

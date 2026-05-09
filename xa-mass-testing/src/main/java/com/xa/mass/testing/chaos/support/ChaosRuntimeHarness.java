@@ -9,6 +9,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -120,6 +121,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
                 .supportedProjects(List.of(projectCode))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode(defaultEventCode(projectCode))
+                                .projectCodes(List.of(projectCode))
+                                .build()
+                ))
                 .transportHint(WorkerTransportHints.REALTIME)
                 .build());
         app.registerWorkerContext(WorkerContextRegistration.builder()
@@ -138,6 +145,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
                 .supportedProjects(List.of(projectCode))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode(defaultEventCode(projectCode))
+                                .projectCodes(List.of(projectCode))
+                                .build()
+                ))
                 .transportHint(WorkerTransportHints.POLLING)
                 .adapterId("polling")
                 .build());
@@ -184,11 +197,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 MassTaskShellCreateRequest.builder()
                         .userId(spec.userId())
                         .project(spec.projectCode())
-                        .taskName(spec.taskName())
+                        .sourceRef(spec.taskName())
                         .sharedConfig(spec.sharedConfig())
                         .batchSize(spec.batchSize())
                         .maxRuntimeSeconds(spec.maxRuntimeSeconds())
                         .build(),
+                spec.eventCode(),
                 new ArrayList<>(spec.inputs()),
                 spec.defaultMsgMaxRetryCount(),
                 false
@@ -198,12 +212,14 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     private Task createTask(MassTaskShellCreateRequest request,
+                            String eventCode,
                             List<Object> items,
                             int defaultMsgMaxRetryCount,
                             boolean keepIntakeOpen) {
         Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
                     .items(items)
                     .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
@@ -329,6 +345,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public record TaskCreateSpec(String userId,
                                  String projectCode,
                                  String taskName,
+                                 String eventCode,
                                  Map<String, Object> sharedConfig,
                                  List<Map<String, Object>> inputs,
                                  int batchSize,
@@ -356,6 +373,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     userId,
                     projectCode,
                     taskName,
+                    defaultEventCode(projectCode),
                     Map.copyOf(sharedConfig),
                     List.copyOf(inputs),
                     batchSize,
@@ -387,6 +405,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     userId,
                     projectCode,
                     taskName,
+                    defaultEventCode(projectCode),
                     Map.copyOf(sharedConfig),
                     List.copyOf(inputs),
                     batchSize,
@@ -411,6 +430,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     userId,
                     projectCode,
                     taskName,
+                    defaultEventCode(projectCode),
                     Map.copyOf(sharedConfig),
                     List.of(Map.of(
                             "seq", 0,
@@ -422,5 +442,13 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                     maxRuntimeSeconds
             );
         }
+    }
+
+    private static String defaultEventCode(String projectCode) {
+        return switch (projectCode) {
+            case "crawlerApp" -> "crawler.fetch-page";
+            case "testApp", "otherApp", "demoApp" -> "demo.dispatch";
+            default -> "demo.dispatch";
+        };
     }
 }

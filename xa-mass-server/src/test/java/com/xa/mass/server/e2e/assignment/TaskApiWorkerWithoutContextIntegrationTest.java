@@ -50,16 +50,16 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
             assertClientConnects(client, "stateless worker client failed to connect");
 
             Map<String, Object> createBody = new LinkedHashMap<>();
-            createBody.put("taskName", "worker-without-context");
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "stateless dispatch integration"));
             createBody.put("userId", "itest");
-            createBody.put("batchSize", 1);
+            createBody.put("sourceRef", "worker-without-context");
+            createBody.put("executionSpec", Map.of("batchSize", 1));
 
             Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-            assertApiOk(appendTaskItems(taskId, List.of(Map.of("target", "target-a")), 3));
+            assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", "target-a")), 3));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> auditResponse = approveTask(taskId);

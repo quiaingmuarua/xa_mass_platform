@@ -86,15 +86,13 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
-                "taskName", "cross-language-node-worker",
                 "userId", "crawler-agent",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON",
-                "batchSize", 1
+                "sourceRef", "cross-language-node-worker",
+                "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/realtime-node")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/realtime-node")), 3));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> approveResponse = approveTask(taskId);
@@ -172,18 +170,17 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         String initialRequestId = "stockreq-init-0001";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
-        createBody.put("taskName", "stock-quote-stream");
         createBody.put("userId", "stock-agent");
-        createBody.put("eventCode", "stock.quote.fetch");
-        createBody.put("mode", "STREAMING");
-        createBody.put("payloadType", "JSON");
-        createBody.put("workloadClass", "INTERACTIVE");
+        createBody.put("sourceRef", "stock-quote-stream");
         createBody.put("sharedConfig", Map.of("routingCode", "us", "sourceUrl", sourceUrl));
-        createBody.put("batchSize", 1);
+        createBody.put("executionSpec", Map.of(
+                "batchSize", 1,
+                "workloadClass", "INTERACTIVE"
+        ));
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(Map.of(
+        assertApiOk(appendTaskItems(taskId, "stock.quote.fetch", List.of(Map.of(
                 "requestId", initialRequestId,
                 "symbol", "AAPL",
                 "market", "NASDAQ"
@@ -204,6 +201,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
             String successRequestId = "stockreq-async-0002";
             assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                    "eventCode", "stock.quote.fetch",
                     "items", List.of(Map.of(
                             "requestId", successRequestId,
                             "symbol", "MSFT",
@@ -215,6 +213,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
             String invalidRequestId = "stockreq-invalid-0003";
             assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                    "eventCode", "stock.quote.fetch",
                     "items", List.of(Map.of(
                             "requestId", invalidRequestId,
                             "market", "NASDAQ",

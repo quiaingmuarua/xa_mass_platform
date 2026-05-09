@@ -82,15 +82,13 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
-                "taskName", "cross-language-java-worker",
                 "userId", "crawler-agent",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON",
-                "batchSize", 1
+                "sourceRef", "cross-language-java-worker",
+                "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", "https://example.test/realtime-java")), 3));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/realtime-java")), 3));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> approveResponse = approveTask(taskId);

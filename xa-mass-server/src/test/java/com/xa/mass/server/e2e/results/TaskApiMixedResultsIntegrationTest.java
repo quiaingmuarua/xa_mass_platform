@@ -68,15 +68,15 @@ class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
         );
         try {
             java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
-            createBody.put("taskName", "mixed-results");
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test", "routingCode", "us"));
             createBody.put("userId", "itest");
-            createBody.put("batchSize", 1);
+            createBody.put("sourceRef", "mixed-results");
+            createBody.put("executionSpec", Map.of("batchSize", 1));
             Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-            assertApiOk(appendTaskItems(taskId, List.of(
+            assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(
                     Map.of("target", "target-a"),
                     Map.of("target", "target-b")
             ), 0));

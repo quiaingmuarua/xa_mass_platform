@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskExecutionProfile;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
@@ -7,6 +8,7 @@ import java.util.Objects;
 
 public class TaskExecutionSpec {
 
+    private TaskContract contract;
     private TaskExecutionProfile profile;
     private TaskWorkloadClass workloadClass;
     private int batchSize;
@@ -14,6 +16,7 @@ public class TaskExecutionSpec {
     private int defaultMaxRetryCount;
 
     public TaskExecutionSpec() {
+        this.contract = TaskContract.BATCH;
         this.profile = TaskExecutionProfile.STANDARD;
         this.workloadClass = TaskWorkloadClass.BULK;
         this.batchSize = 1;
@@ -26,12 +29,21 @@ public class TaskExecutionSpec {
         if (spec == null) {
             return normalized;
         }
+        normalized.setContract(spec.getContract());
         normalized.setProfile(spec.getProfile());
         normalized.setWorkloadClass(spec.getWorkloadClass());
         normalized.setBatchSize(spec.getBatchSize());
         normalized.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
         normalized.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
         return normalized;
+    }
+
+    public TaskContract getContract() {
+        return contract;
+    }
+
+    public void setContract(TaskContract contract) {
+        this.contract = contract == null ? TaskContract.BATCH : contract;
     }
 
     public TaskExecutionProfile getProfile() {
@@ -81,12 +93,13 @@ public class TaskExecutionSpec {
         return batchSize == that.batchSize
                 && maxRuntimeSeconds == that.maxRuntimeSeconds
                 && defaultMaxRetryCount == that.defaultMaxRetryCount
+                && contract == that.contract
                 && profile == that.profile
                 && workloadClass == that.workloadClass;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
+        return Objects.hash(contract, profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
     }
 }

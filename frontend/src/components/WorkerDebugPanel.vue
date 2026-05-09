@@ -280,13 +280,11 @@ async function handleCreateDebugTask(): Promise<void> {
   const request: TaskDebugSyncRequest = {
     userId: currentOperatorId.value,
     project,
-    taskName: `worker-debug:${eventCode}`,
     eventCode,
-    payloadType: 'JSON',
     sharedConfig: {
       [TARGET_WORKER_ID]: props.worker.workerId,
     },
-    inputs: [payload],
+    items: [payload],
     maxRuntimeSeconds: 60,
   }
 

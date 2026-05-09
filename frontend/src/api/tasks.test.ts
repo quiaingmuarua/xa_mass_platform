@@ -13,15 +13,16 @@ describe('tasks API facade', () => {
             userId: 'ops-admin',
             project: 'demoApp',
             taskName: 'Create from console test',
-            eventCode: 'mock.state.get',
-            payloadType: 'JSON',
             sharedConfig: {
                 textContent: 'hello',
             },
-            batchSize: 2,
-            maxRuntimeSeconds: 0,
+            executionSpec: {
+                batchSize: 2,
+                maxRuntimeSeconds: 0,
+            },
         })
         await appendTaskItems(result.taskId, {
+            eventCode: 'mock.state.get',
             items: [{ target: 'alpha' }, { target: 'beta' }],
             defaultMsgMaxRetryCount: 3,
         })
@@ -43,13 +44,11 @@ describe('tasks API facade', () => {
         const result = await invokeSyncTaskDebug({
             userId: 'ops-admin',
             project: 'demoApp',
-            taskName: 'worker-debug:mock.state.get',
             eventCode: 'mock.state.get',
-            payloadType: 'JSON',
             sharedConfig: {
                 targetWorkerId: 'worker-us-01',
             },
-            inputs: [{ includeRuntime: true }],
+            items: [{ includeRuntime: true }],
             maxRuntimeSeconds: 60,
         })
 

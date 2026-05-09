@@ -74,17 +74,16 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertSdkMetadataProjection(WORKER_ID);
 
             Map<String, Object> createBody = new LinkedHashMap<>();
-            createBody.put("taskName", "external-node-polling-worker");
             createBody.put("project", "crawlerApp");
             createBody.put("userId", "crawler-agent");
-            createBody.put("eventCode", "crawler.fetch-page");
             createBody.put("sharedConfig", Map.of("routingCode", "us"));
-            createBody.put("batchSize", 1);
+            createBody.put("executionSpec", Map.of("batchSize", 1));
 
             Map<String, Object> createResponse = createTaskShell(createBody, sdkCredentialHeaders(SUBMITTER_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-            assertApiOk(appendTaskItems(taskId, List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page")), 3));
+            assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
+                    List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page")), 3));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> approveResponse = approveTask(taskId);

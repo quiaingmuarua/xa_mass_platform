@@ -1,5 +1,6 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -20,6 +21,7 @@ import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +60,7 @@ public class MassEngine {
     private TaskEventService taskEvents;
     private TaskAssignWorker assignWorker;
     private LeaseExpireWatchdog leaseWatchdog;
+    private RuntimeReadyDispatchPump runtimeReadyDispatchPump;
     private TaskResourceReleaseListener resourceReleaseListener;
     private EngineRuntimeBridge runtimeBridge;
     private Consumer<Task> taskReadyListener;
@@ -108,10 +111,25 @@ public class MassEngine {
                     : new TaskWorkerAssignListener(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntimePort, taskEvents, traceEventLogger);
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
+            runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
+                    runtimeRecoveryPort,
+                    workerAssignListener::onTaskAssign,
+                    config.getRuntimeReadyDispatchIntervalMillis(),
+                    STARTUP_READY_TASK_SCAN_LIMIT
+            );
+            runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
-            taskReadyListener = assignWorker::submit;
-            taskDispatchSignalListener = assignWorker::submit;
+            taskReadyListener = task -> {
+                if (task != null && task.getContract() == TaskContract.SESSION) {
+                    assignWorker.submit(task);
+                }
+            };
+            taskDispatchSignalListener = task -> {
+                if (task != null && task.getContract() == TaskContract.SESSION) {
+                    assignWorker.submit(task);
+                }
+            };
             taskMessageAttemptClosedListener = resourceReleaseListener::onTaskMessageAttemptClosed;
             taskTerminalListener = resourceReleaseListener::onTaskTerminal;
             eventListeners.addTaskReadyListener(taskReadyListener);
@@ -165,6 +183,10 @@ public class MassEngine {
                 leaseWatchdog.stop();
                 leaseWatchdog = null;
             }
+            if (runtimeReadyDispatchPump != null) {
+                runtimeReadyDispatchPump.stop();
+                runtimeReadyDispatchPump = null;
+            }
             if (assignWorker != null) {
                 assignWorker.stop();
                 assignWorker = null;
@@ -209,7 +231,8 @@ public class MassEngine {
         }
         for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
             TaskStatus status = task.getStatus();
-            if (status == TaskStatus.READY || status == TaskStatus.RUNNING) {
+            if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
+                    && task.getContract() == TaskContract.SESSION) {
                 assignWorker.submit(task);
             }
         }

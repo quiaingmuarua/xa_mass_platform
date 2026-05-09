@@ -151,26 +151,27 @@ public abstract class AbstractSampleE2eTest {
                 : validation.getViolations().stream().map(Enum::name).toList();
     }
 
-    protected String createTaskId(String taskName, String textContent, List<String> targets, int batchSize) {
-        return createTaskId(taskName, textContent, targets, batchSize, null);
+    protected String createTaskId(String sourceRef, String textContent, List<String> targets, int batchSize) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, null);
     }
 
-    protected String createTaskId(String taskName,
+    protected String createTaskId(String sourceRef,
                                   String textContent,
                                   List<String> targets,
                                   int batchSize,
                                   TaskWorkloadClass workloadClass) {
         String defaultRoutingCode = "us";
         Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
-        createBody.put("payloadType", "JSON");
         createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
         createBody.put("userId", "itest");
+        createBody.put("sourceRef", sourceRef);
+        Map<String, Object> executionSpec = new LinkedHashMap<>();
+        executionSpec.put("batchSize", batchSize);
         if (workloadClass != null) {
-            createBody.put("workloadClass", workloadClass.name());
+            executionSpec.put("workloadClass", workloadClass.name());
         }
-        createBody.put("batchSize", batchSize);
+        createBody.put("executionSpec", executionSpec);
 
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
@@ -178,6 +179,7 @@ public abstract class AbstractSampleE2eTest {
         assertFalse(taskId.isBlank());
         Map<String, Object> ingestResponse = appendTaskItems(
                 taskId,
+                "demo.dispatch",
                 targets.stream()
                         .map(target -> Map.<String, Object>of("target", target))
                         .toList(),
@@ -189,12 +191,12 @@ public abstract class AbstractSampleE2eTest {
         return taskId;
     }
 
-    protected String createTaskId(String taskName, String textContent, String target) {
-        return createTaskId(taskName, textContent, List.of(target), 1);
+    protected String createTaskId(String sourceRef, String textContent, String target) {
+        return createTaskId(sourceRef, textContent, List.of(target), 1);
     }
 
-    protected String createTaskId(String taskName, String... targets) {
-        return createTaskId(taskName, taskName + " integration", List.of(targets), 1);
+    protected String createTaskId(String sourceRef, String... targets) {
+        return createTaskId(sourceRef, sourceRef + " integration", List.of(targets), 1);
     }
 
     protected Map<String, Object> audit(String taskId, String comment) {
@@ -209,11 +211,17 @@ public abstract class AbstractSampleE2eTest {
         return exchange("/api/v1/tasks", HttpMethod.POST, body, headers);
     }
 
-    protected Map<String, Object> appendTaskItems(String taskId, List<?> items, int defaultMsgMaxRetryCount) {
-        return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
-                "items", items,
-                "defaultMsgMaxRetryCount", defaultMsgMaxRetryCount
-        ));
+    protected Map<String, Object> appendTaskItems(String taskId,
+                                                  String eventCode,
+                                                  List<?> items,
+                                                  int defaultMsgMaxRetryCount) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (eventCode != null && !eventCode.isBlank()) {
+            body.put("eventCode", eventCode);
+        }
+        body.put("items", items);
+        body.put("defaultMsgMaxRetryCount", defaultMsgMaxRetryCount);
+        return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, body);
     }
 
     protected Map<String, Object> sealTask(String taskId) {

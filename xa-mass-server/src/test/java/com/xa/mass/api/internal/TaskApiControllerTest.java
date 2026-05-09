@@ -184,13 +184,9 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void appendTaskItemsUsesStoredTextPayloadTypeAndRetrySeed() throws Exception {
+    void appendTaskItemsPassesBatchEventCodeAndRetrySeed() throws Exception {
         Task task = taskWithStatus(TaskStatus.READY);
-        task.setSharedConfig(Map.of("_sdk", Map.of(
-                "eventCode", "chatbot.reply",
-                "payloadType", "TEXT",
-                "taskMode", "STREAMING"
-        )));
+        task.setProject("demoApp");
 
         when(taskQueries.getTask(TASK_ID)).thenReturn(task);
         when(taskAdmin.appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class))).thenReturn(2);
@@ -199,7 +195,8 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "items":["hello","world"],
+                                  "eventCode":"chatbot.reply",
+                                  "items":[{"text":"hello"},{"text":"world"}],
                                   "defaultMsgMaxRetryCount":5
                                 }
                                 """))
@@ -209,8 +206,29 @@ class TaskApiControllerTest {
         ArgumentCaptor<MassTaskItemBatchAppendRequest> captor =
                 ArgumentCaptor.forClass(MassTaskItemBatchAppendRequest.class);
         verify(taskAdmin).appendTaskItems(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
-        assertEquals(List.of("hello", "world"), captor.getValue().getItems());
+        assertEquals(List.of(Map.of("text", "hello"), Map.of("text", "world")), captor.getValue().getItems());
+        assertEquals("chatbot.reply", captor.getValue().getEventCode());
         assertEquals(5, captor.getValue().getDefaultMsgMaxRetryCount());
+    }
+
+    @Test
+    void appendTaskItemsRejectsMissingEventCode() throws Exception {
+        Task task = taskWithStatus(TaskStatus.READY);
+        task.setProject("demoApp");
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "items":[{"target":"hello"}],
+                                  "defaultMsgMaxRetryCount":5
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("append requires batch eventCode or per-item eventCode"));
+
+        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
     }
 
     @Test

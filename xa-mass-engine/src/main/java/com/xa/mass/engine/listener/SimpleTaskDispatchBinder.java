@@ -141,7 +141,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         slot.worker().getWorkerId(),
                         slot.workerContextId(),
                         slot.batchId(),
-                        perWorkerBatchLimit
+                        perWorkerBatchLimit,
+                        supportedEventCodes(slot.worker())
                 ))
                 .collect(Collectors.toList());
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
@@ -170,6 +171,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
+                releaseWorkerContextIfIdleForTask(task, slot.workerContext(), "matched worker received no messages");
                 workerManager.unlockWorker(slot.worker().getWorkerId());
                 traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
@@ -397,11 +399,12 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             if (slot.assignedCount() <= 0) {
                 continue;
             }
-            releaseWorkerContextAfterDispatchFailure(task, slot.workerContext());
+            releaseWorkerContextIfIdleForTask(task, slot.workerContext(),
+                    "workerContext released after dispatch submit failure");
         }
     }
 
-    private void releaseWorkerContextAfterDispatchFailure(Task task, WorkerContext workerContext) {
+    private void releaseWorkerContextIfIdleForTask(Task task, WorkerContext workerContext, String reason) {
         if (task == null || workerContext == null) {
             return;
         }
@@ -413,24 +416,31 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         }
         WorkerContextStatus fromStatus = workerContext.getStatus();
         if (!workerContext.release()) {
-            log.warn("[MsgAssign] WorkerContext {} could not be released after dispatch submit failure for task {} from status {}",
-                    workerContext.getWorkerContextId(), task.getTid(), workerContext.getStatus());
+            log.warn("[MsgAssign] WorkerContext {} could not be released for task {} from status {} ({})",
+                    workerContext.getWorkerContextId(), task.getTid(), workerContext.getStatus(), reason);
             return;
         }
         boolean stored = workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
         if (!stored) {
-            log.warn("[MsgAssign] Failed to persist workerContext {} release after dispatch submit failure for task {}",
-                    workerContext.getWorkerContextId(), task.getTid());
+            log.warn("[MsgAssign] Failed to persist workerContext {} release for task {} ({})",
+                    workerContext.getWorkerContextId(), task.getTid(), reason);
         }
         traceEventLogger.workerContextStatusTransition(
                 task.getTid(),
                 workerContext,
                 fromStatus,
                 workerContext.getStatus(),
-                "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
+                "RELEASE_WORKER_CONTEXT",
                 "SimpleTaskDispatchBinder",
-                "workerContext released after dispatch submit failure"
+                reason
         );
+    }
+
+    private java.util.Set<String> supportedEventCodes(Worker worker) {
+        if (worker == null || worker.getSupportedEventCodes() == null || worker.getSupportedEventCodes().isEmpty()) {
+            return java.util.Set.of();
+        }
+        return new java.util.LinkedHashSet<>(worker.getSupportedEventCodes());
     }
 }
 

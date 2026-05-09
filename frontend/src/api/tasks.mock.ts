@@ -166,16 +166,20 @@ export async function createTaskShellMock(
     const taskId = `task-${String(mockTaskList.length + 1).padStart(3, '0')}`
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
     const normalizedSharedConfig = request.sharedConfig ?? {}
+    const displayTaskName =
+        request.taskName?.trim() ||
+        `${request.project}-${request.executionSpec?.batchSize ?? request.batchSize ?? 1}`
+    const batchSize = request.executionSpec?.batchSize ?? request.batchSize ?? 1
 
     const listItem: TaskListItem = {
         id: taskId,
-        taskName: request.taskName,
+        taskName: displayTaskName,
         project: request.project,
         status: 'NEW',
         terminalReason: null,
         successCount: 0,
         eligibleCount: 0,
-        batchSize: request.batchSize,
+        batchSize,
         updatedAt: createdAt,
     }
 
@@ -183,11 +187,11 @@ export async function createTaskShellMock(
     mockTaskDetails[taskId] = {
         task: {
             tid: taskId,
-            taskName: request.taskName,
+            taskName: displayTaskName,
             project: request.project,
             status: 'NEW',
             terminalReason: null,
-            batchSize: request.batchSize,
+            batchSize,
             sharedConfig: normalizedSharedConfig,
             user: {
                 name: request.userId,
@@ -249,16 +253,17 @@ export async function invokeSyncTaskDebugMock(
     const created = await createTaskShellMock({
         userId: request.userId,
         project: request.project,
-        taskName: request.taskName,
-        eventCode: request.eventCode,
-        mode: 'SINGLE_RUN',
-        payloadType: request.payloadType ?? 'JSON',
         sharedConfig: request.sharedConfig,
-        batchSize: 1,
+        executionSpec: {
+            batchSize: request.batchSize ?? 1,
+            maxRuntimeSeconds: request.maxRuntimeSeconds,
+            workloadClass: request.workloadClass,
+        },
         maxRuntimeSeconds: request.maxRuntimeSeconds,
     })
     await appendTaskItemsMock(created.taskId, {
-        items: request.inputs,
+        eventCode: request.eventCode,
+        items: request.items,
         defaultMsgMaxRetryCount: 0,
     })
     await sealTaskMock(created.taskId)

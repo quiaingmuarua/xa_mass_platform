@@ -13,6 +13,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -72,6 +73,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
     private static final String ENDPOINT_PATH = "/testing-chaos";
     private static final String PROJECT_CODE = "demoApp";
     private static final String ROUTING_CODE = "us";
+    private static final String TASK_EVENT_CODE = "demo.dispatch";
     private static final String CHAOS_WORKER_ID = "sdk-lease-chaos-worker-0";
     private static final String STEADY_WORKER_ID = "sdk-lease-chaos-worker-1";
 
@@ -279,6 +281,12 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     .workerId(workerId)
                     .workerGroupId("sdk-lease-chaos")
                     .supportedProjects(List.of(PROJECT_CODE))
+                    .eventBindings(List.of(
+                            WorkerEventBinding.builder()
+                                    .eventCode(TASK_EVENT_CODE)
+                                    .projectCodes(List.of(PROJECT_CODE))
+                                    .build()
+                    ))
                     .transportHint(WorkerTransportHints.REALTIME)
                     .build());
             app.registerWorkerContext(WorkerContextRegistration.builder()
@@ -293,7 +301,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             Task task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("sdk-chaos")
                     .project(PROJECT_CODE)
-                    .taskName(taskName)
+                    .sourceRef(taskName)
                     .sharedConfig(Map.of(
                             TaskSharedConfig.ROUTING_CODE, ROUTING_CODE,
                             "source", "SdkWebSocketLeaseExpiryRedispatchChaosRunner"
@@ -320,6 +328,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             Task task = app.createTaskShell(request);
             if (items != null && !items.isEmpty()) {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                        .eventCode(TASK_EVENT_CODE)
                         .items(items)
                         .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                         .build());

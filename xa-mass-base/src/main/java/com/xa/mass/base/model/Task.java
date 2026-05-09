@@ -1,6 +1,7 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
@@ -240,6 +241,15 @@ public class Task {
 
     public void setExecutionSpec(TaskExecutionSpec executionSpec) {
         this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public TaskContract getContract() {
+        return executionSpecOrDefault().getContract();
+    }
+
+    public void setContract(TaskContract contract) {
+        executionSpecOrDefault().setContract(contract);
         this.updateTime = LocalDateTime.now();
     }
 

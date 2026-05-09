@@ -104,6 +104,44 @@ class DefaultAuthorizationPolicyTest {
     }
 
     @Test
+    void submitterTaskEditAuthorizationPreservesProjectAndEventScopeChecksWithoutUserScope() {
+        PrincipalContext submitter = PrincipalContext.builder()
+                .principalId("crawler-agent")
+                .userId("crawler-user")
+                .permissions(List.of("task:create"))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build();
+
+        Map<String, Object> resourceAttributes = Map.of(
+                DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, "task:create",
+                DefaultAuthorizationPolicy.ATTR_USER_ID, "other-user"
+        );
+
+        AuthorizationDecision allowed = policy.authorize(AuthorizationRequest.builder()
+                .principal(submitter)
+                .resourceType(PlatformResourceType.TASK)
+                .action(PlatformAction.EDIT)
+                .project("crawlerApp")
+                .eventCode("crawler.fetch-page")
+                .resourceAttributes(resourceAttributes)
+                .build());
+
+        AuthorizationDecision deniedEvent = policy.authorize(AuthorizationRequest.builder()
+                .principal(submitter)
+                .resourceType(PlatformResourceType.TASK)
+                .action(PlatformAction.EDIT)
+                .project("crawlerApp")
+                .eventCode("crawler.parse-result")
+                .resourceAttributes(resourceAttributes)
+                .build());
+
+        assertTrue(allowed.isAllowed());
+        assertFalse(deniedEvent.isAllowed());
+        assertEquals(AuthorizationReasonCode.EVENT_SCOPE_DENIED, deniedEvent.getReasonCode());
+    }
+
+    @Test
     void externalWorkerAuthorizationPreservesWorkerBindingAndRegisterScopeChecks() {
         PrincipalContext workerPrincipal = PrincipalContext.builder()
                 .principalId("node-worker-1")

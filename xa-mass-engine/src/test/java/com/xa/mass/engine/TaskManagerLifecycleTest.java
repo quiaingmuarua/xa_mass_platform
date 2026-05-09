@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
@@ -2834,8 +2835,17 @@ class TaskManagerLifecycleTest {
             throw new IllegalArgumentException("task request body is required");
         }
         TaskSourceType sourceType = request.getSourceType();
+        if (sourceType == TaskSourceType.STREAM) {
+            request.setContract(TaskContract.SESSION);
+        } else if (sourceType == TaskSourceType.FILE || sourceType == TaskSourceType.BATCH) {
+            request.setContract(TaskContract.BATCH);
+        } else if (request.isOpenEnded() || request.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            request.setContract(TaskContract.SESSION);
+        } else {
+            request.setContract(TaskContract.BATCH);
+        }
         if (sourceType == null) {
-            sourceType = request.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+            sourceType = request.getContract() == TaskContract.SESSION ? TaskSourceType.STREAM : TaskSourceType.BATCH;
             request.setSourceType(sourceType);
         }
         if (request.getWorkloadClass() == null) {
@@ -2933,6 +2943,7 @@ class TaskManagerLifecycleTest {
             dto.setSharedConfig(getSharedConfig());
             dto.setBatchSize(getBatchSize());
             dto.setMaxRuntimeSeconds(getMaxRuntimeSeconds());
+            dto.setContract(getContract());
             dto.setSourceType(getSourceType());
             dto.setWorkloadClass(getWorkloadClass());
             dto.setSourceRef(getSourceRef());

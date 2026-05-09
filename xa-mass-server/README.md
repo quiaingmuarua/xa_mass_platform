@@ -52,8 +52,9 @@ Current host security matrix:
 
 | Scenario | Principal surface | Resource/action | Current gate |
 | --- | --- | --- | --- |
-| `SUBMITTER_TASK_CREATE` | SDK credential | `TASK / CREATE` | `task:create` + project/event/user scope |
+| `SUBMITTER_TASK_CREATE` | SDK credential | `TASK / CREATE` | `task:create` + project/user scope |
 | `SUBMITTER_TASK_VIEW` | SDK credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
+| `SUBMITTER_TASK_APPEND` | SDK credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
 | `WORKER_CONTEXT_REGISTER` | external worker credential | `WORKER_CONTEXT / REGISTER` | `worker:poll` + worker binding + project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
@@ -181,27 +182,27 @@ Transport facts:
 - fix the selected worker with `sharedConfig.targetWorkerId`
 - command execution stays on normal task lifecycle and does not use a dedicated worker-control side-channel
 
-Example request body:
+Example normal task-backed flow:
 
 ```json
+POST /api/v1/tasks
 {
   "project": "demoApp",
-  "taskName": "targeted-delay-response",
-  "eventCode": "mock.delay.response",
-  "mode": "SINGLE_RUN",
-  "payloadType": "JSON",
   "userId": "itest",
+  "sourceRef": "mock-delay-response",
   "sharedConfig": {
     "targetWorkerId": "it-worker-0"
   },
-  "batchSize": 1
+  "executionSpec": {
+    "batchSize": 1
+  }
 }
 ```
 
-Append the debug payload separately through `POST /api/v1/tasks/{taskId}/items`, for example:
-
 ```json
+POST /api/v1/tasks/{taskId}/items
 {
+  "eventCode": "mock.delay.response",
   "items": [
     {
       "millis": 500

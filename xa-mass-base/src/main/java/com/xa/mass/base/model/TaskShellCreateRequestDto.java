@@ -1,6 +1,7 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskSourceType;
 
 import java.util.Map;
@@ -64,6 +65,14 @@ public class TaskShellCreateRequestDto {
 
     public void setExecutionSpec(TaskExecutionSpec executionSpec) {
         this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
+    }
+
+    public TaskContract getContract() {
+        return executionSpecOrDefault().getContract();
+    }
+
+    public void setContract(TaskContract contract) {
+        executionSpecOrDefault().setContract(contract);
     }
 
     public int getBatchSize() {

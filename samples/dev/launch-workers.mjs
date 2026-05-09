@@ -119,17 +119,25 @@ async function seedTasks(taskSpecs) {
       MASS_BASE_URL: baseUrl,
       MASS_WS_URL: wsUrl,
     });
+    const shellRequest = {
+      userId: requestBody.userId,
+      project: requestBody.project,
+      sharedConfig: requestBody.sharedConfig,
+      executionSpec: requestBody.executionSpec ?? normalizeExecutionSpec(requestBody),
+      sourceType: requestBody.sourceType,
+      sourceRef: requestBody.sourceRef,
+    };
     const createResponse = await post("/api/v1/tasks", taskSubmitterKey, {
-      ...requestBody,
-      inputs: undefined,
-      defaultMsgMaxRetryCount: undefined,
-      openEnded: undefined,
+      ...shellRequest,
     });
     const taskId = String(createResponse.data?.taskId ?? "");
-    console.log(`[sample-launcher] created seed task ${requestBody.taskName}: ${taskId}`);
-    if (Array.isArray(requestBody.inputs) && requestBody.inputs.length > 0) {
+    console.log(
+      `[sample-launcher] created seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
+    );
+    if (Array.isArray(requestBody.items) && requestBody.items.length > 0) {
       await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskSubmitterKey, {
-        items: requestBody.inputs,
+        eventCode: requestBody.eventCode,
+        items: requestBody.items,
         defaultMsgMaxRetryCount: requestBody.defaultMsgMaxRetryCount ?? 0,
       });
     }
@@ -138,7 +146,9 @@ async function seedTasks(taskSpecs) {
     }
     if (taskSpec.approve && taskId) {
       await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:approve?comment=sample-launcher`, taskSubmitterKey, null);
-      console.log(`[sample-launcher] approved seed task ${requestBody.taskName}: ${taskId}`);
+      console.log(
+        `[sample-launcher] approved seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
+      );
     }
   }
 }
@@ -198,6 +208,20 @@ function replacePlaceholders(value, replacements) {
     );
   }
   return value;
+}
+
+function normalizeExecutionSpec(requestBody) {
+  const spec = {};
+  if (Number.isInteger(requestBody.batchSize) && requestBody.batchSize > 0) {
+    spec.batchSize = requestBody.batchSize;
+  }
+  if (typeof requestBody.workloadClass === "string" && requestBody.workloadClass.length > 0) {
+    spec.workloadClass = requestBody.workloadClass;
+  }
+  if (Number.isInteger(requestBody.maxRuntimeSeconds) && requestBody.maxRuntimeSeconds >= 0) {
+    spec.maxRuntimeSeconds = requestBody.maxRuntimeSeconds;
+  }
+  return Object.keys(spec).length === 0 ? undefined : spec;
 }
 
 function forwardLogs(workerId, chunk) {

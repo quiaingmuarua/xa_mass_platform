@@ -118,18 +118,15 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
                                            Map<String, Object> input) {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
-        createBody.put("taskName", taskName);
-        createBody.put("eventCode", eventCode);
-        createBody.put("mode", "SINGLE_RUN");
-        createBody.put("payloadType", "JSON");
         createBody.put("userId", "itest");
         createBody.put("sharedConfig", Map.of(TaskSharedConfig.TARGET_WORKER_ID, workerId));
-        createBody.put("batchSize", 1);
+        createBody.put("sourceRef", taskName);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
 
         Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(appendTaskItems(taskId, List.of(input), 3));
+        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input), 3));
         assertApiOk(sealTask(taskId));
         return taskId;
     }

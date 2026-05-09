@@ -60,12 +60,8 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "demoApp",
-                "taskName", "sdk-runtime-task",
-                "eventCode", "demo.dispatch",
-                "mode", "SINGLE_RUN",
-                "payloadType", "JSON",
                 "sharedConfig", Map.of("source", "sdk"),
-                "batchSize", 1
+                "executionSpec", Map.of("batchSize", 1)
         ), sdkHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
 
         assertApiOk(createResponse);
@@ -73,7 +69,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("demoApp", responseData(createResponse).get("project"));
         assertEquals("sdk-client", responseData(createResponse).get("userId"));
         assertEquals("crawler-agent", responseData(createResponse).get("principalId"));
-        assertApiOk(appendTaskItems(taskId, java.util.List.of(Map.of("target", "sdk-target-001")), 2));
+        assertApiOk(appendTaskItems(taskId, "demo.dispatch", java.util.List.of(Map.of("target", "sdk-target-001")), 2));
         assertApiOk(sealTask(taskId));
 
         Map<String, Object> approveResponse = approveTask(taskId);
@@ -90,11 +86,6 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> task = task(detailResponse);
         Map<String, Object> securityView = (Map<String, Object>) responseData(detailResponse).get("security");
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
-        Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
-
-        assertEquals("demo.dispatch", sdkMetadata.get("eventCode"));
-        assertEquals("JSON", sdkMetadata.get("payloadType"));
-        assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
         assertFalse(sharedConfig.containsKey("_massSecurity"));
         assertEquals("crawler-agent", securityView.get("createdByPrincipalId"));
@@ -112,9 +103,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
-                "taskName", "scope-violation",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON"
+                "userId", "bot-user"
         ), sdkHeaders(Map.of("Authorization", "Bearer telegram-key")));
 
         assertApiError(createResponse, 403);
@@ -122,7 +111,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterEventScopeViolation() {
+    void appendTaskThroughUnifiedTaskApiRejectsSdkSubmitterEventScopeViolation() {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("crawler-reader")
                 .credential("crawler-reader-key")
@@ -133,13 +122,20 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
-                "taskName", "event-scope-violation",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON"
+                "userId", "crawler-user"
         ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
-        assertApiError(createResponse, 403);
-        assertEquals("SDK credential event scope denied: crawler.fetch-page", apiMsg(createResponse));
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        Map<String, Object> appendResponse = exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "eventCode", "crawler.fetch-page",
+                "items", java.util.List.of(Map.of("url", "https://example.test/page-1")),
+                "defaultMsgMaxRetryCount", 2
+        ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+
+        assertApiError(appendResponse, 403);
+        assertEquals("SDK credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
     }
 
     @SuppressWarnings("unchecked")

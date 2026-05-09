@@ -75,17 +75,18 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
         try {
             // Create a 2-message task with maxRetryCount=0 — each message gets exactly one attempt.
             Map<String, Object> createBody = Map.of(
-                    "taskName", "all-messages-failed",
                     "project", "demoApp",
                     "sharedConfig", Map.of("textContent", "all messages failed e2e", "routingCode", "us"),
                     "userId", "itest",
-                    "batchSize", 1
+                    "sourceRef", "all-messages-failed",
+                    "executionSpec", Map.of("batchSize", 1)
             );
             Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
             assertApiOk(appendTaskItems(taskId,
+                    "demo.dispatch",
                     List.of(Map.of("target", "target-a"), Map.of("target", "target-b")),
                     0 // maxRetryCount=0: no retries
             ));

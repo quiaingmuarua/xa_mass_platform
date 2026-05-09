@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
@@ -17,6 +18,7 @@ import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
@@ -95,7 +97,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime, null);
+        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime, null);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -111,7 +113,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime, executionEventSink);
+        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime, executionEventSink);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -374,6 +376,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         addRuntimeIngressItem(new RuntimeTaskIngressItem(
                 taskId,
                 messageId,
+                null,
                 Map.of(),
                 payloadRef,
                 0,
@@ -623,19 +626,68 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (dto.getTenantId() == null || dto.getTenantId().isBlank()) {
             dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
         }
-        dto.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
-        TaskSourceType sourceType = resolveShellSourceType(dto);
+        TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
+        TaskContract contract = resolveShellContract(dto, normalizedSpec);
+        normalizedSpec.setContract(contract);
+        normalizedSpec.setWorkloadClass(resolveWorkloadClass(dto, contract, normalizedSpec));
+        dto.setExecutionSpec(normalizedSpec);
+        TaskSourceType sourceType = resolveShellSourceType(dto, contract);
+        dto.setSourceType(sourceType);
+        validateSourceContractPair(sourceType, contract);
         if (sourceType == TaskSourceType.FILE
                 && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
             throw new IllegalArgumentException("sourceRef is required for FILE task sources");
         }
     }
 
-    private TaskSourceType resolveShellSourceType(TaskShellCreateRequestDto dto) {
+    private TaskContract resolveShellContract(TaskShellCreateRequestDto dto, TaskExecutionSpec normalizedSpec) {
+        if (dto.getSourceType() == TaskSourceType.STREAM) {
+            return TaskContract.SESSION;
+        }
+        if (dto.getSourceType() == TaskSourceType.FILE || dto.getSourceType() == TaskSourceType.BATCH) {
+            return TaskContract.BATCH;
+        }
+        if (normalizedSpec != null
+                && normalizedSpec.getWorkloadClass() == com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE) {
+            return TaskContract.SESSION;
+        }
+        if (normalizedSpec != null && normalizedSpec.getContract() != null) {
+            return normalizedSpec.getContract();
+        }
+        return TaskContract.BATCH;
+    }
+
+    private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskShellCreateRequestDto dto,
+                                                                                TaskContract contract,
+                                                                                TaskExecutionSpec normalizedSpec) {
+        if (dto != null && dto.getSourceType() == TaskSourceType.STREAM) {
+            return com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE;
+        }
+        if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
+            if (contract == TaskContract.SESSION) {
+                return com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE;
+            }
+            return normalizedSpec.getWorkloadClass();
+        }
+        return contract == TaskContract.SESSION
+                ? com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE
+                : com.xa.mass.base.enums.task.TaskWorkloadClass.BULK;
+    }
+
+    private void validateSourceContractPair(TaskSourceType sourceType, TaskContract contract) {
+        if (sourceType == TaskSourceType.FILE && contract != TaskContract.BATCH) {
+            throw new IllegalArgumentException("FILE task sources require BATCH task contract");
+        }
+        if (sourceType == TaskSourceType.STREAM && contract != TaskContract.SESSION) {
+            throw new IllegalArgumentException("STREAM task sources require SESSION task contract");
+        }
+    }
+
+    private TaskSourceType resolveShellSourceType(TaskShellCreateRequestDto dto, TaskContract contract) {
         if (dto.getSourceType() != null) {
             return dto.getSourceType();
         }
-        return TaskSourceType.STREAM;
+        return contract == TaskContract.SESSION ? TaskSourceType.STREAM : TaskSourceType.BATCH;
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -792,7 +844,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
-        TaskSourceType sourceType = resolveShellSourceType(dto);
+        TaskContract contract = dto.getContract();
+        TaskSourceType sourceType = resolveShellSourceType(dto, contract);
         return createTaskRecord(
                 dto,
                 sourceType,
