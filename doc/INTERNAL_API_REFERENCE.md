@@ -651,8 +651,8 @@ Purpose:
 
 Contract rules:
 
-- request uses the legacy create-shaped debug DTO only on this internal route
-- exactly one input item is required
+- request uses an internal debug-only invocation DTO on this route
+- exactly one item is required
 - `mode`, when provided, must be `SINGLE_RUN`
 - uses the same ingest guardrails as public append
 - creates shell, appends the one item, seals, approves, and waits for a

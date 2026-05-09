@@ -2032,7 +2032,7 @@ class MassSdkTest {
                     .eventCode("bot.command")
                     .payloadType(PayloadType.TEXT)
                     .batchSize(1)
-                    .build(), List.of("/start"), 3, false);
+                    .build(), List.of(Map.of("text", "/start")), 3, false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppCatalogTest", task.getProject());

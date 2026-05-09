@@ -7,7 +7,7 @@ import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.ApiSecurityScenario;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.api.model.task.TaskCreateApiRequest;
+import com.xa.mass.api.model.task.InternalDebugTaskInvocationApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.model.ProjectRef;
@@ -78,14 +78,14 @@ public class InternalDebugTaskInvocationController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestParam(required = false) Long timeoutMs,
             HttpServletRequest httpRequest,
-            @RequestBody TaskCreateApiRequest requestBody) {
+            @RequestBody InternalDebugTaskInvocationApiRequest requestBody) {
         if (syncBridge == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, "Sync task API is not available in this runtime profile"));
         }
         try {
             validateKnownFields(requestBody, "sync task invocation");
             validateSyncRequest(requestBody);
-            validateIngestGuardrails(requestBody.getInputs());
+            validateIngestGuardrails(requestBody.getItems());
 
             long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
             String correlationId = UUID.randomUUID().toString();
@@ -103,12 +103,12 @@ public class InternalDebugTaskInvocationController {
                 PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
-                        operator
+                    operator
                 ));
             }
 
             taskAdmin.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
-                    .items(requestBody.getInputs())
+                    .items(requestBody.getItems())
                     .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                     .build());
             taskAdmin.sealTask(task.getTid());
@@ -145,7 +145,7 @@ public class InternalDebugTaskInvocationController {
         }
     }
 
-    private void validateKnownFields(TaskCreateApiRequest requestBody, String operationName) {
+    private void validateKnownFields(InternalDebugTaskInvocationApiRequest requestBody, String operationName) {
         if (requestBody == null) {
             throw new IllegalArgumentException("task request body is required");
         }
@@ -155,13 +155,13 @@ public class InternalDebugTaskInvocationController {
         }
     }
 
-    private void validateSyncRequest(TaskCreateApiRequest requestBody) {
+    private void validateSyncRequest(InternalDebugTaskInvocationApiRequest requestBody) {
         if (requestBody.getMode() != null && requestBody.getMode() != TaskMode.SINGLE_RUN) {
             throw new IllegalArgumentException("Sync task requires SINGLE_RUN mode, got: " + requestBody.getMode());
         }
-        List<Object> inputs = requestBody.getInputs();
-        if (inputs == null || inputs.size() != 1) {
-            throw new IllegalArgumentException("Sync task requires exactly one input item");
+        List<Object> items = requestBody.getItems();
+        if (items == null || items.size() != 1) {
+            throw new IllegalArgumentException("Sync task requires exactly one item");
         }
     }
 
@@ -201,7 +201,7 @@ public class InternalDebugTaskInvocationController {
 
     private ApiAuthorizationService.AuthorizedSubmitterTaskCreate resolveSubmitterTaskCreate(String apiKeyHeader,
                                                                                              String authorizationHeader,
-                                                                                             TaskCreateApiRequest requestBody) {
+                                                                                             InternalDebugTaskInvocationApiRequest requestBody) {
         try {
             return apiAuthorizationService.resolveAuthorizedSubmitterTaskCreate(
                     apiKeyHeader,
@@ -226,7 +226,7 @@ public class InternalDebugTaskInvocationController {
         UserRef.requireUserId(userId);
     }
 
-    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskCreateApiRequest requestBody,
+    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(InternalDebugTaskInvocationApiRequest requestBody,
                                                                     String resolvedProject,
                                                                     String resolvedUserId,
                                                                     String syncKey) {

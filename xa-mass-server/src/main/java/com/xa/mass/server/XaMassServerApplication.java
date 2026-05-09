@@ -7,8 +7,11 @@ import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -163,6 +166,27 @@ public class XaMassServerApplication {
         );
     }
 
+    @Bean
+    @Profile("dev")
+    public TaskStorage taskStorage(JdbcStorageRuntime jdbcStorageRuntime) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            return jdbcStorageRuntime.taskStorage();
+        }
+        return new InMemoryTaskStorage();
+    }
+
+    @Bean
+    @Profile("dev")
+    public TaskDetailStore taskDetailStore(JdbcStorageRuntime jdbcStorageRuntime, TaskStorage taskStorage) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            return jdbcStorageRuntime.taskDetailStore();
+        }
+        if (taskStorage instanceof TaskDetailStore detailStore) {
+            return detailStore;
+        }
+        throw new IllegalStateException("taskStorage does not implement TaskDetailStore: " + taskStorage.getClass().getName());
+    }
+
     @Bean(destroyMethod = "shutdown")
     @Profile("dev")
     public TaskWorkRuntime taskWorkRuntime() {
@@ -178,6 +202,8 @@ public class XaMassServerApplication {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
+                                                          TaskStorage taskStorage,
+                                                          TaskDetailStore taskDetailStore,
                                                           ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
@@ -218,7 +244,9 @@ public class XaMassServerApplication {
                             .workerThreads(workerThreads)
                             .assignmentRetryDelayMillis(assignmentRetryDelayMillis)
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
-                            .taskMessageLeaseSeconds(taskMessageLeaseSeconds);
+                            .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
+                            .taskStorage(taskStorage)
+                            .taskDetailStore(taskDetailStore);
                     TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);
                     ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
@@ -226,9 +254,7 @@ public class XaMassServerApplication {
                         engine.executionEventSink(executionEventSink);
                     }
                     if (jdbcStorageRuntime.isEnabled()) {
-                        engine.taskStorage(jdbcStorageRuntime.taskStorage())
-                                .taskDetailStore(jdbcStorageRuntime.taskDetailStore())
-                                .workerStorage(jdbcStorageRuntime.workerStorage())
+                        engine.workerStorage(jdbcStorageRuntime.workerStorage())
                                 .ruleStorage(jdbcStorageRuntime.ruleStorage());
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();

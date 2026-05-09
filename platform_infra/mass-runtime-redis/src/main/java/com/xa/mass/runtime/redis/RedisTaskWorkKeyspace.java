@@ -32,6 +32,10 @@ public final class RedisTaskWorkKeyspace {
     public static final String FIELD_LEASE_RETRY_COUNT = "retryCount";
     public static final String FIELD_LEASE_EXPIRE_AT_MILLIS = "leaseExpireAtMillis";
     public static final String FIELD_LEASED_AT_MILLIS = "leasedAtMillis";
+    public static final String FIELD_FINAL_STATUS = "status";
+    public static final String FIELD_FINAL_ERROR_CODE = "errorCode";
+    public static final String FIELD_FINAL_RETRY_COUNT = "retryCount";
+    public static final String FIELD_FINAL_COMPLETED_AT_MILLIS = "completedAtMillis";
 
     public static final String COUNTER_TOTAL_COUNT = "totalCount";
     public static final String COUNTER_READY_COUNT = "readyCount";
@@ -77,6 +81,10 @@ public final class RedisTaskWorkKeyspace {
         return namespaced("lease:expiry");
     }
 
+    public String recentFinalReceiptsZset() {
+        return namespaced("recent-final");
+    }
+
     public String runtimeStatsHash() {
         return namespaced("stats");
     }
@@ -107,6 +115,14 @@ public final class RedisTaskWorkKeyspace {
 
     public String taskMembersSet(String taskId) {
         return taskPrefix(taskId) + ":members";
+    }
+
+    public String taskRecentFinalReceiptSet(String taskId) {
+        return taskPrefix(taskId) + ":recent-final";
+    }
+
+    public String taskRecentFinalReceiptHash(String taskId, String messageId) {
+        return taskPrefix(taskId) + ":recent-final:" + requireToken(messageId, "messageId");
     }
 
     public String taskStatsHash(String taskId) {

@@ -4,7 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkFinalStatus;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -47,6 +49,7 @@ import java.util.function.Supplier;
 public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
+    private static final int DEFAULT_MAX_RECENT_FINAL_RECEIPTS = 10_000;
     private static final long DEFAULT_LOCK_TIMEOUT_MILLIS = 5_000L;
     private static final long DEFAULT_LOCK_LEASE_MILLIS = 10_000L;
     private static final long LOCK_RETRY_SLEEP_MILLIS = 10L;
@@ -60,6 +63,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     private final RedisTaskWorkKeyspace keyspace;
     private final Supplier<Instant> clock;
     private final int maxQueuedItems;
+    private final int maxRecentFinalReceipts;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -111,6 +115,10 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         this.keyspace = Objects.requireNonNull(keyspace, "keyspace");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.maxQueuedItems = maxQueuedItems;
+        this.maxRecentFinalReceipts = Integer.getInteger(
+                "xa.mass.runtime.recentFinalReceiptMaxEntries",
+                DEFAULT_MAX_RECENT_FINAL_RECEIPTS
+        );
         this.ownsClient = ownsClient;
     }
 
@@ -213,6 +221,18 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
         try {
             return withRuntimeLock(() -> Optional.ofNullable(loadWork(taskId, messageId)));
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+        if (isBlank(taskId) || isBlank(messageId)) {
+            return Optional.empty();
+        }
+        try {
+            return withRuntimeLock(() -> Optional.ofNullable(loadRecentFinalReceipt(taskId, messageId)));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
@@ -335,6 +355,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                             keyspace.readyTasksZset(),
                             keyspace.delayedWorkZset(),
                             keyspace.leaseExpiryZset(),
+                            keyspace.recentFinalReceiptsZset(),
                             keyspace.taskRegistrySet()
                     );
                     return null;
@@ -357,6 +378,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (workExists(item.taskId(), item.messageId()) || leaseExists(item.taskId(), item.messageId())) {
             return WorkEnqueueOutcome.duplicate(item, "work item already exists");
         }
+        deleteRecentFinalReceiptLocked(item.taskId(), item.messageId());
         int maxReadyItemsPerTask = options == null
                 ? WorkEnqueueOptions.DEFAULT.maxReadyItemsPerTask()
                 : options.maxReadyItemsPerTask();
@@ -496,6 +518,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
         }
 
+        int finalRetryCount = Math.max(0, lease.retryCount());
         removeLeaseLocked(lease);
         decrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
         decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
@@ -504,6 +527,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (result.success()) {
             deleteWorkLocked(result.taskId(), result.messageId());
             incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_SUCCESS_COUNT, 1L);
+            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.SUCCESS, finalRetryCount);
             return ResultApplyOutcome.success(result);
         }
 
@@ -527,8 +551,10 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         deleteWorkLocked(result.taskId(), result.messageId());
         if (result.expired()) {
             incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_EXPIRED_COUNT, 1L);
+            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.EXPIRED, finalRetryCount);
         } else {
             incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_FAILED_COUNT, 1L);
+            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.FAILED, finalRetryCount);
         }
         return ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
     }
@@ -589,12 +615,16 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             commands.del(workHash, keyspace.taskLeaseHash(taskId, messageId));
             commands.zrem(keyspace.delayedWorkZset(), keyspace.workMember(taskId, messageId));
         }
+        for (String messageId : commands.smembers(keyspace.taskRecentFinalReceiptSet(taskId))) {
+            deleteRecentFinalReceiptLocked(taskId, messageId);
+        }
 
         commands.del(
                 keyspace.taskReadyQueue(taskId),
                 keyspace.taskDelayedZset(taskId),
                 keyspace.taskActiveSet(taskId),
                 keyspace.taskMembersSet(taskId),
+                keyspace.taskRecentFinalReceiptSet(taskId),
                 keyspace.taskStatsHash(taskId)
         );
         commands.zrem(keyspace.readyTasksZset(), taskId);
@@ -714,6 +744,62 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     private void deleteWorkLocked(String taskId, String messageId) {
         commands.del(keyspace.taskWorkHash(taskId, messageId));
         commands.srem(keyspace.taskMembersSet(taskId), messageId);
+    }
+
+    private void writeRecentFinalReceiptLocked(TaskWorkResult result,
+                                               TaskWorkFinalStatus status,
+                                               int retryCount) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_STATUS, status.name());
+        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_ERROR_CODE, nullToEmpty(result.errorCode()));
+        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_RETRY_COUNT, Integer.toString(Math.max(0, retryCount)));
+        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_COMPLETED_AT_MILLIS, instantToString(result.completedAt()));
+        commands.hset(keyspace.taskRecentFinalReceiptHash(result.taskId(), result.messageId()), fields);
+        commands.sadd(keyspace.taskRecentFinalReceiptSet(result.taskId()), result.messageId());
+        commands.zadd(
+                keyspace.recentFinalReceiptsZset(),
+                toScore(result.completedAt() != null ? result.completedAt() : clock.get()),
+                keyspace.workMember(result.taskId(), result.messageId())
+        );
+        trimRecentFinalReceiptsLocked();
+    }
+
+    private RecentFinalWorkReceipt loadRecentFinalReceipt(String taskId, String messageId) {
+        Map<String, String> fields = commands.hgetall(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
+        if (fields == null || fields.isEmpty()) {
+            return null;
+        }
+        String statusName = emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_STATUS));
+        if (statusName == null) {
+            return null;
+        }
+        return new RecentFinalWorkReceipt(
+                taskId,
+                messageId,
+                TaskWorkFinalStatus.valueOf(statusName),
+                emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_ERROR_CODE)),
+                parseInt(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_RETRY_COUNT)),
+                parseInstant(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_COMPLETED_AT_MILLIS))
+        );
+    }
+
+    private void deleteRecentFinalReceiptLocked(String taskId, String messageId) {
+        commands.del(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
+        commands.srem(keyspace.taskRecentFinalReceiptSet(taskId), messageId);
+        commands.zrem(keyspace.recentFinalReceiptsZset(), keyspace.workMember(taskId, messageId));
+    }
+
+    private void trimRecentFinalReceiptsLocked() {
+        long receiptCount = commands.zcard(keyspace.recentFinalReceiptsZset());
+        long overflow = receiptCount - Math.max(1, maxRecentFinalReceipts);
+        if (overflow <= 0) {
+            return;
+        }
+        List<String> eldest = commands.zrange(keyspace.recentFinalReceiptsZset(), 0, overflow - 1);
+        for (String member : eldest) {
+            RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
+            deleteRecentFinalReceiptLocked(ref.taskId(), ref.messageId());
+        }
     }
 
     private void writeWorkHash(TaskWorkEnvelope item) {

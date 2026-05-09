@@ -26,6 +26,7 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
@@ -669,6 +670,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     java.util.Optional<TaskWorkEnvelope> getTaskWork(String taskId, String messageId) {
         return taskWorkRuntime.getWork(taskId, messageId);
+    }
+
+    java.util.Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+        return taskWorkRuntime.getRecentFinalReceipt(taskId, messageId);
     }
 
     @Override

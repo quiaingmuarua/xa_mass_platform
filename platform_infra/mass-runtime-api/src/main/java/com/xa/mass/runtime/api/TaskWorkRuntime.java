@@ -74,6 +74,18 @@ public interface TaskWorkRuntime {
         return Optional.empty();
     }
 
+    /**
+     * Returns a bounded runtime-owned final receipt after a message has
+     * already left queue and lease ownership.
+     *
+     * <p>This recovery read exists so duplicate/late callback handling can
+     * remain runtime-first without forcing compatibility projection lookups on
+     * the accepted hot path.</p>
+     */
+    default Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+        return Optional.empty();
+    }
+
     boolean hasReadyWork(String taskId);
 
     boolean hasActiveLeaseForWorker(String taskId, String workerId);

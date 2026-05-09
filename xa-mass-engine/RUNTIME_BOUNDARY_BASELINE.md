@@ -43,6 +43,8 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - `claimReady(...)` is the exclusive runtime claim path
 - `applyResult(...)` is the only runtime result convergence path
 - `pollExpiredLeases(...)` reports runtime expiry truth
+- `getRecentFinalReceipt(...)` is the bounded duplicate/late callback recovery
+  read after queue and lease ownership have already been released
 - `discardTask(...)` removes runtime residue without redefining storage truth
 - engine -> transport handoff now carries runtime-native dispatch bindings built
   from claimed runtime work plus active attempt ownership; transport must not
@@ -76,6 +78,9 @@ Engine hot paths must treat these runtime semantics as authoritative:
   runtime-synchronized message fields first; trace must not force
   compatibility-model materialization or a hot-path latest-attempt projection
   lookup
+- when queue work and active lease have already been removed, the accepted
+  duplicate/late callback path should prefer bounded runtime final receipts
+  over compatibility projection reads; projection remains fallback residue only
 - result-side active-lease repair may derive an in-memory runtime message view
   directly from runtime lease truth plus bounded projection residue; it must
   not require routing back through legacy compatibility overlay helpers just to

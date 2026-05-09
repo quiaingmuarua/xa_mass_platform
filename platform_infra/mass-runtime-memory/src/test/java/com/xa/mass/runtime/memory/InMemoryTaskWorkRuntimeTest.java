@@ -80,6 +80,8 @@ class InMemoryTaskWorkRuntimeTest {
         assertEquals(1, runtime.stats("task-1").finalCount());
         assertEquals(0, runtime.stats("task-1").inflightCount());
         assertFalse(runtime.hasActiveLeaseForWorker("task-1", "worker-1"));
+        assertEquals(com.xa.mass.runtime.api.TaskWorkFinalStatus.SUCCESS,
+                runtime.getRecentFinalReceipt("task-1", "msg-1").orElseThrow().status());
     }
 
     @Test

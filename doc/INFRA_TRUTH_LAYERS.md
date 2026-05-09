@@ -49,6 +49,9 @@ upserted afterward as bounded residue, but they do not decide whether a leased
 work item is valid.
 Result-side trace emission follows the same rule: emit from runtime-owned
 message/lease state first, then repair bounded projection residue if needed.
+Recent duplicate receipts for already-finalized work belong to bounded runtime
+state as well; they are not an excuse to promote message projection back into
+mainline callback acceptance.
 
 ## 3. Current Repo Reality
 

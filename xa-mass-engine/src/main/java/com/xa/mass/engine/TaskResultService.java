@@ -10,6 +10,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.util.TraceEventLogger.TaskMessageTraceView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
@@ -22,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -32,14 +32,11 @@ class TaskResultService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskResultService.class);
     static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
-    private static final int DEFAULT_RECENT_FINAL_MESSAGE_CACHE_MAX_ENTRIES = 10_000;
 
     private final TaskManager taskManager;
     private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
-    private final int recentFinalMessageCacheMaxEntries;
-    private final Map<RuntimeMessageKey, RuntimeMessageView> recentFinalMessages;
 
     TaskResultService(TaskManager taskManager,
                       TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
@@ -49,16 +46,6 @@ class TaskResultService {
         this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
-        this.recentFinalMessageCacheMaxEntries = Integer.getInteger(
-                "xa.mass.engine.recentFinalMessageCacheMaxEntries",
-                DEFAULT_RECENT_FINAL_MESSAGE_CACHE_MAX_ENTRIES
-        );
-        this.recentFinalMessages = new LinkedHashMap<>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<RuntimeMessageKey, RuntimeMessageView> eldest) {
-                return size() > TaskResultService.this.recentFinalMessageCacheMaxEntries;
-            }
-        };
     }
 
     TaskMessageMutationOutcome expireTaskMessage(String taskId, String messageId) {
@@ -143,9 +130,6 @@ class TaskResultService {
         );
         persistTaskMessageProjection(taskId, expiredSummary,
                 "persist expiry compatibility summary");
-        if (!retryScheduled) {
-            rememberRecentFinalMessage(expiredSummary);
-        }
         Task freshTask = taskManager.getTask(taskId);
         RuntimeMessageView currentSummary = expiredSummary;
         if (retryScheduled) {
@@ -239,7 +223,7 @@ class TaskResultService {
             RuntimeMessageView recentFinalMessage = recentFinalMessage(taskId, messageId);
             if (recentFinalMessage != null) {
                 traceEventLogger.callbackIgnoredDuplicate(recentFinalMessage.toTraceView(),
-                        "task message already final in recent runtime result cache with status " + recentFinalMessage.status());
+                        "task message already final in recent runtime receipt with status " + recentFinalMessage.status());
                 logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
                         messageId, taskId, recentFinalMessage.status());
                 return TaskMessageMutationOutcome.acceptedNoop();
@@ -532,7 +516,6 @@ class TaskResultService {
                 "mark attempt success");
         persistTaskMessageProjection(taskId, successSummary,
                 "persist success compatibility summary");
-        rememberRecentFinalMessage(successSummary);
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, successSummary, activeAttempt,
@@ -691,7 +674,6 @@ class TaskResultService {
 
         persistTaskMessageProjection(taskId, failureSummary,
                 "persist exhausted-failure compatibility summary");
-        rememberRecentFinalMessage(failureSummary);
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, failureSummary, activeAttempt,
@@ -822,21 +804,9 @@ class TaskResultService {
         if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
             return null;
         }
-        synchronized (recentFinalMessages) {
-            return recentFinalMessages.get(new RuntimeMessageKey(taskId, messageId));
-        }
-    }
-
-    private void rememberRecentFinalMessage(RuntimeMessageView finalMessage) {
-        if (finalMessage == null || !finalMessage.isCompleted()) {
-            return;
-        }
-        synchronized (recentFinalMessages) {
-            recentFinalMessages.put(
-                    new RuntimeMessageKey(finalMessage.taskId(), finalMessage.messageId()),
-                    finalMessage
-            );
-        }
+        return taskManager.getRecentFinalReceipt(taskId, messageId)
+                .map(RuntimeMessageView::fromRecentFinalReceipt)
+                .orElse(null);
     }
 
     private String normalizeDispatchSubmitFailureDetail(String detail) {
@@ -949,9 +919,6 @@ class TaskResultService {
         boolean progressDirty() {
             return progressDirty;
         }
-    }
-
-    private record RuntimeMessageKey(String taskId, String messageId) {
     }
 
     private record ActiveRuntimeProjection(RuntimeMessageView messageState, AttemptProjectionView activeAttempt) {
@@ -1208,6 +1175,46 @@ class TaskResultService {
                     projection.finalReason(),
                     projection.payloadRef(),
                     projection.output() == null ? null : new java.util.LinkedHashMap<>(projection.output())
+            );
+        }
+
+        static RuntimeMessageView fromRecentFinalReceipt(RecentFinalWorkReceipt receipt) {
+            if (receipt == null) {
+                return null;
+            }
+            LocalDateTime completedAt = receipt.completedAt() == null
+                    ? LocalDateTime.now()
+                    : LocalDateTime.ofInstant(receipt.completedAt(), java.time.ZoneId.systemDefault());
+            TaskMessageProjectionStatus status = switch (receipt.status()) {
+                case SUCCESS -> TaskMessageProjectionStatus.SUCCESS;
+                case FAILED -> TaskMessageProjectionStatus.FAILED;
+                case EXPIRED -> TaskMessageProjectionStatus.EXPIRED;
+            };
+            TaskMessageProjectionFinalReason finalReason = switch (receipt.status()) {
+                case SUCCESS -> TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
+                case FAILED -> TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
+                case EXPIRED -> TaskMessageProjectionFinalReason.LEASE_EXPIRED;
+            };
+            return new RuntimeMessageView(
+                    receipt.messageId(),
+                    receipt.taskId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    status,
+                    null,
+                    completedAt,
+                    completedAt,
+                    null,
+                    completedAt,
+                    Math.max(0, receipt.retryCount()),
+                    Math.max(0, receipt.retryCount()),
+                    null,
+                    receipt.errorCode(),
+                    finalReason,
+                    null,
+                    null
             );
         }
 

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = false)
-public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
+public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldRequest {
 
     private String userId;
     private String project;
@@ -20,10 +20,9 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private TaskMode mode;
     private PayloadType payloadType;
     private Map<String, Object> sharedConfig;
-    private List<Object> inputs;
+    private List<Object> items;
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
-    private boolean openEnded;
     private int maxRuntimeSeconds;
     private TaskSourceType sourceType;
     private TaskWorkloadClass workloadClass;
@@ -85,12 +84,12 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
         this.sharedConfig = sharedConfig;
     }
 
-    public List<Object> getInputs() {
-        return inputs;
+    public List<Object> getItems() {
+        return items;
     }
 
-    public void setInputs(List<Object> inputs) {
-        this.inputs = inputs;
+    public void setItems(List<Object> items) {
+        this.items = items;
     }
 
     public int getBatchSize() {
@@ -107,14 +106,6 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
         this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
-    }
-
-    public boolean isOpenEnded() {
-        return openEnded;
-    }
-
-    public void setOpenEnded(boolean openEnded) {
-        this.openEnded = openEnded;
     }
 
     public int getMaxRuntimeSeconds() {

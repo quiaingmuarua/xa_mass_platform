@@ -708,41 +708,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return sharedConfig;
     }
 
-    private List<com.xa.mass.sdk.model.MassInput> resolveTextInputs(Map<String, Object> payload) {
-        Object texts = payload.get("texts");
-        if (texts instanceof List<?> values && !values.isEmpty()) {
-            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
-            for (Object value : values) {
-                inputs.add(new TextInput(value == null ? "" : String.valueOf(value)));
-            }
-            return inputs;
-        }
-        Object text = payload.get("text");
-        if (text != null) {
-            return List.of(new TextInput(String.valueOf(text)));
-        }
-        return List.of(new TextInput(""));
-    }
-
-    private List<com.xa.mass.sdk.model.MassInput> resolveJsonInputs(Map<String, Object> payload) {
-        Object rawInputs = payload.get("inputs");
-        if (rawInputs instanceof List<?> values && !values.isEmpty()) {
-            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
-            for (Object value : values) {
-                inputs.add(new JsonInput(readMap(value)));
-            }
-            return inputs;
-        }
-        Map<String, Object> input = new LinkedHashMap<>(payload);
-        input.remove("sharedConfig");
-        input.remove("inputs");
-        input.remove("request");
-        if (input.isEmpty()) {
-            input = Map.of();
-        }
-        return List.of(new JsonInput(input));
-    }
-
     private WorkerRegistration resolveWorkerRegistration(CoreEventRequest request) {
         Object embedded = request.getPayload().get("request");
         if (embedded instanceof WorkerRegistration registration) {
@@ -811,53 +776,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
-    private boolean booleanEvent(String eventCode, Map<String, Object> payload) {
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(eventCode)
-                .payload(payload)
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
-        return Boolean.TRUE.equals(response.getData());
-    }
-
-    private void requireSuccessfulEventResponse(EventResponse response) {
-        if (response != null && response.isSuccess()) {
-            return;
-        }
-        String code = response == null ? null : response.getCode();
-        String message = response == null ? "event dispatch failed" : response.getMessage();
-        if ("BAD_REQUEST".equalsIgnoreCase(code)) {
-            throw new IllegalArgumentException(message);
-        }
-        if ("FORBIDDEN".equalsIgnoreCase(code)) {
-            throw new SecurityException(message);
-        }
-        throw new IllegalStateException(message);
-    }
-
     private PrincipalContext internalPrincipal(String userId) {
         return PrincipalContext.internalService("sdk-internal", userId);
-    }
-
-    private TaskMode parseTaskMode(String rawValue, EventDefinition definition) {
-        if (rawValue != null && !rawValue.isBlank()) {
-            return TaskMode.valueOf(rawValue.trim().toUpperCase());
-        }
-        if (definition != null && !definition.getTaskModes().isEmpty()) {
-            return definition.getTaskModes().get(0);
-        }
-        return TaskMode.SINGLE_RUN;
-    }
-
-    private PayloadType parsePayloadType(String rawValue, EventDefinition definition) {
-        if (rawValue != null && !rawValue.isBlank()) {
-            return PayloadType.valueOf(rawValue.trim().toUpperCase());
-        }
-        if (definition != null && !definition.getPayloadTypes().isEmpty()) {
-            return definition.getPayloadTypes().get(0);
-        }
-        return PayloadType.JSON;
     }
 
     private String readRequiredString(Map<String, Object> payload, String field) {

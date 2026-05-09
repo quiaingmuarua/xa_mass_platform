@@ -134,6 +134,8 @@ class RedisTaskWorkRuntimeTest {
         assertTrue(commands.zrange(keyspace.leaseExpiryZset(), 0, -1).isEmpty());
         assertNull(commands.hget(keyspace.taskLeaseHash("task-lease", "msg-1"), RedisTaskWorkKeyspace.FIELD_LEASE_TOKEN));
         assertTrue(commands.smembers(keyspace.taskMembersSet("task-lease")).isEmpty());
+        assertEquals(com.xa.mass.runtime.api.TaskWorkFinalStatus.SUCCESS,
+                runtime.getRecentFinalReceipt("task-lease", "msg-1").orElseThrow().status());
     }
 
     @Test

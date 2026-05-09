@@ -108,7 +108,7 @@ class ApiAuthInterceptorTest {
                                 {
                                   "taskName":"sdk-sync-task",
                                   "eventCode":"crawler.fetch-page",
-                                  "inputs":[{"url":"https://example.test"}]
+                                  "items":[{"url":"https://example.test"}]
                                 }
                                 """))
                 .andExpect(status().isUnauthorized())
@@ -125,7 +125,7 @@ class ApiAuthInterceptorTest {
                                 {
                                   "taskName":"sdk-sync-task",
                                   "eventCode":"crawler.fetch-page",
-                                  "inputs":[{"url":"https://example.test"}]
+                                  "items":[{"url":"https://example.test"}]
                                 }
                                 """))
                 .andExpect(status().isOk())

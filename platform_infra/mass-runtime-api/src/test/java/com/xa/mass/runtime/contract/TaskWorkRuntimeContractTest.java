@@ -185,6 +185,19 @@ public abstract class TaskWorkRuntimeContractTest {
     }
 
     @Test
+    void getRecentFinalReceipt_returnsBoundedRuntimeFinalReceiptAfterFinalization() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork claimed = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+
+        runtime.applyResult(TaskWorkResult.success("t1", "m1", claimed.leaseToken(), "done", Map.of()));
+
+        assertThat(runtime.getRecentFinalReceipt("t1", "m1"))
+                .get()
+                .extracting("taskId", "messageId", "status", "retryCount")
+                .containsExactly("t1", "m1", com.xa.mass.runtime.api.TaskWorkFinalStatus.SUCCESS, 0);
+    }
+
+    @Test
     void applyResult_withStaleToken_returnsStaleLeaseNotException() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("t1", targets("w1"), 1, 30);

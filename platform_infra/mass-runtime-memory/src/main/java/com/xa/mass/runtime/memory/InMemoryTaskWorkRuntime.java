@@ -2,10 +2,12 @@ package com.xa.mass.runtime.memory;
 
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkFinalStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
@@ -22,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,11 +46,13 @@ import java.util.function.Supplier;
 public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
+    private static final int DEFAULT_MAX_RECENT_FINAL_RECEIPTS = 10_000;
 
     private final Map<String, ArrayDeque<WorkKey>> readyByTask = new HashMap<>();
     private final Map<WorkKey, TaskWorkEnvelope> workByKey = new HashMap<>();
     private final Map<String, Set<WorkKey>> workKeysByTask = new HashMap<>();
     private final Map<WorkKey, ActiveLeaseRecord> leaseByKey = new HashMap<>();
+    private final Map<String, Set<WorkKey>> recentFinalKeysByTask = new HashMap<>();
     private final Map<String, Set<WorkKey>> activeByWorker = new HashMap<>();
     private final Map<String, Set<WorkKey>> activeByTask = new HashMap<>();
     private final Map<String, Set<WorkKey>> delayedByTask = new HashMap<>();
@@ -67,7 +72,9 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
     private final AtomicLong discardedItems = new AtomicLong();
     private final AtomicLong shutdownClearedItems = new AtomicLong();
     private final int maxQueuedItems;
+    private final int maxRecentFinalReceipts;
     private final Supplier<Instant> clock;
+    private final LinkedHashMap<WorkKey, RecentFinalWorkReceipt> recentFinalReceipts;
     private long readyItems;
     private long delayedItems;
 
@@ -85,6 +92,20 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         }
         this.maxQueuedItems = maxQueuedItems;
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.maxRecentFinalReceipts = Integer.getInteger(
+                "xa.mass.runtime.recentFinalReceiptMaxEntries",
+                DEFAULT_MAX_RECENT_FINAL_RECEIPTS
+        );
+        this.recentFinalReceipts = new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<WorkKey, RecentFinalWorkReceipt> eldest) {
+                boolean remove = size() > InMemoryTaskWorkRuntime.this.maxRecentFinalReceipts;
+                if (remove && eldest != null) {
+                    unregisterRecentFinalReceiptKey(eldest.getKey());
+                }
+                return remove;
+            }
+        };
     }
 
     @Override
@@ -99,6 +120,8 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         if (workByKey.containsKey(key) || leaseByKey.containsKey(key)) {
             return WorkEnqueueOutcome.duplicate(item, "work item already exists");
         }
+        recentFinalReceipts.remove(key);
+        unregisterRecentFinalReceiptKey(key);
         int maxReadyItemsPerTask = options == null
                 ? WorkEnqueueOptions.DEFAULT.maxReadyItemsPerTask()
                 : options.maxReadyItemsPerTask();
@@ -259,6 +282,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             return ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
         }
 
+        int finalRetryCount = Math.max(0, lease.retryCount());
         removeLease(key, lease);
         MutableTaskStats taskStats = mutableStats(result.taskId());
         if (taskStats.inflightCount > 0) {
@@ -269,6 +293,7 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         if (result.success()) {
             removeWorkKey(key);
             taskStats.successCount++;
+            rememberRecentFinalReceipt(key, result, TaskWorkFinalStatus.SUCCESS, finalRetryCount);
             return ResultApplyOutcome.success(result);
         }
 
@@ -296,8 +321,10 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
 
         if (result.expired()) {
             taskStats.expiredCount++;
+            rememberRecentFinalReceipt(key, result, TaskWorkFinalStatus.EXPIRED, finalRetryCount);
         } else {
             taskStats.failedCount++;
+            rememberRecentFinalReceipt(key, result, TaskWorkFinalStatus.FAILED, finalRetryCount);
         }
         removeWorkKey(key);
         return ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
@@ -355,6 +382,14 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             return Optional.empty();
         }
         return Optional.ofNullable(workByKey.get(new WorkKey(taskId, messageId)));
+    }
+
+    @Override
+    public synchronized Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+        if (isBlank(taskId) || isBlank(messageId)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(recentFinalReceipts.get(new WorkKey(taskId, messageId)));
     }
 
     @Override
@@ -443,6 +478,12 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                 discarded++;
             }
         }
+        Set<WorkKey> recentFinalKeys = recentFinalKeysByTask.remove(taskId);
+        if (recentFinalKeys != null) {
+            for (WorkKey key : recentFinalKeys) {
+                recentFinalReceipts.remove(key);
+            }
+        }
 
         statsByTask.remove(taskId);
         if (discarded > 0) {
@@ -461,6 +502,8 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         workByKey.clear();
         workKeysByTask.clear();
         leaseByKey.clear();
+        recentFinalKeysByTask.clear();
+        recentFinalReceipts.clear();
         activeByWorker.clear();
         activeByTask.clear();
         delayedByTask.clear();
@@ -526,6 +569,20 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         workKeysByTask.computeIfAbsent(key.taskId(), ignored -> new HashSet<>()).add(key);
     }
 
+    private void registerRecentFinalReceiptKey(WorkKey key) {
+        recentFinalKeysByTask.computeIfAbsent(key.taskId(), ignored -> new HashSet<>()).add(key);
+    }
+
+    private void unregisterRecentFinalReceiptKey(WorkKey key) {
+        Set<WorkKey> taskKeys = recentFinalKeysByTask.get(key.taskId());
+        if (taskKeys != null) {
+            taskKeys.remove(key);
+            if (taskKeys.isEmpty()) {
+                recentFinalKeysByTask.remove(key.taskId());
+            }
+        }
+    }
+
     private void removeWorkKey(WorkKey key) {
         workByKey.remove(key);
         Set<WorkKey> taskKeys = workKeysByTask.get(key.taskId());
@@ -535,6 +592,21 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                 workKeysByTask.remove(key.taskId());
             }
         }
+    }
+
+    private void rememberRecentFinalReceipt(WorkKey key,
+                                            TaskWorkResult result,
+                                            TaskWorkFinalStatus status,
+                                            int retryCount) {
+        recentFinalReceipts.put(key, new RecentFinalWorkReceipt(
+                result.taskId(),
+                result.messageId(),
+                status,
+                result.errorCode(),
+                Math.max(0, retryCount),
+                result.completedAt()
+        ));
+        registerRecentFinalReceiptKey(key);
     }
 
     private void registerDelayedKey(WorkKey key) {

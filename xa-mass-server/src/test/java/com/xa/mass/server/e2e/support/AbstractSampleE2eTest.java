@@ -6,14 +6,13 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.starter.MassApplication;
-import com.xa.mass.starter.MassEngine;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -53,6 +52,15 @@ public abstract class AbstractSampleE2eTest {
 
     @Autowired(required = false)
     protected MassSdkApplication app;
+
+    @Autowired
+    protected TaskStorage taskStorage;
+
+    @Autowired
+    protected TaskDetailStore taskDetailStore;
+
+    @Autowired
+    protected TaskWorkRuntime taskWorkRuntime;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -470,49 +478,11 @@ public abstract class AbstractSampleE2eTest {
     }
 
     private TaskDetailStore resolveTaskDetailStore() {
-        Object config = resolveEngineConfig();
-        try {
-            java.lang.reflect.Method taskDetailStoreMethod = config.getClass().getMethod("getTaskDetailStore");
-            Object taskDetailStore = taskDetailStoreMethod.invoke(config);
-            if (!(taskDetailStore instanceof TaskDetailStore detailStore)) {
-                throw new IllegalStateException("Task detail store is unavailable for test compatibility residue views");
-            }
-            return detailStore;
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Task compatibility residue views are unavailable for tests", e);
-        }
+        return taskDetailStore;
     }
 
     private TaskWorkRuntime resolveTaskWorkRuntime() {
-        Object config = resolveEngineConfig();
-        try {
-            java.lang.reflect.Method taskWorkRuntimeMethod = config.getClass().getMethod("getTaskWorkRuntime");
-            Object taskWorkRuntime = taskWorkRuntimeMethod.invoke(config);
-            if (!(taskWorkRuntime instanceof TaskWorkRuntime runtime)) {
-                throw new IllegalStateException("Task work runtime is unavailable for test runtime views");
-            }
-            return runtime;
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Task work runtime is unavailable for tests", e);
-        }
-    }
-
-    private Object resolveEngineConfig() {
-        if (app == null) {
-            throw new IllegalStateException("MassSdkApplication is not available for compatibility residue test views");
-        }
-        try {
-            java.lang.reflect.Field delegateField = MassSdkApplication.class.getDeclaredField("delegate");
-            delegateField.setAccessible(true);
-            MassApplication delegate = (MassApplication) delegateField.get(app);
-            MassEngine engine = delegate.getEngine();
-            if (engine == null) {
-                throw new IllegalStateException("Mass engine is unavailable for test compatibility residue views");
-            }
-            return readField(engine, "config", Object.class);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Task compatibility residue views are unavailable for tests", e);
-        }
+        return taskWorkRuntime;
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
@@ -527,7 +497,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected boolean updateStoredTask(Task task) {
-        return requireDelegate().getEngine().getConfig().getTaskCommandService().updateTask(task);
+        return taskStorage.updateTask(task);
     }
 
     protected <T extends SampleWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
@@ -721,21 +691,6 @@ public abstract class AbstractSampleE2eTest {
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
         requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
-    }
-
-    private MassApplication requireDelegate() {
-        assertNotNull(app, "MassSdkApplication is required");
-        return readField(app, "delegate", MassApplication.class);
-    }
-
-    private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
-        try {
-            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return fieldType.cast(field.get(target));
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
