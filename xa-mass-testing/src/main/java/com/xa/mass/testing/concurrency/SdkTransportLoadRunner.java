@@ -349,7 +349,6 @@ public final class SdkTransportLoadRunner {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                         .eventCode(TASK_EVENT_CODE)
                         .items(request.items())
-                        .defaultMsgMaxRetryCount(request.defaultMsgMaxRetryCount())
                         .build());
             }
             if (!request.keepIntakeOpen()) {

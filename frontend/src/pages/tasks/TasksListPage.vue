@@ -198,12 +198,12 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Intake mode">
+            <el-form-item label="Keep intake open">
               <el-switch
-                v-model="createForm.openEnded"
+                v-model="createForm.keepIntakeOpen"
                 inline-prompt
                 active-text="Open"
-                inactive-text="Sealed"
+                inactive-text="Seal"
               />
             </el-form-item>
           </el-col>
@@ -290,7 +290,7 @@ const createForm = reactive({
   project: '',
   eventCode: '',
   batchSize: 1,
-  openEnded: false,
+  keepIntakeOpen: false,
   maxRuntimeSeconds: 0,
   itemsText: '{"target":"alpha"}\n{"target":"beta"}',
   sharedConfigText: '{}',
@@ -380,7 +380,7 @@ function resetCreateForm(): void {
   createForm.project = projectOptions.value[0] ?? ''
   createForm.eventCode = starterEventCode.value || ''
   createForm.batchSize = 1
-  createForm.openEnded = false
+  createForm.keepIntakeOpen = false
   createForm.maxRuntimeSeconds = 0
   createForm.itemsText = '{"target":"alpha"}\n{"target":"beta"}'
   createForm.sharedConfigText = '{}'
@@ -425,7 +425,7 @@ function applyCreateDraftFromQuery(): void {
   createForm.project = starter.projectCode
   createForm.eventCode = starter.eventCode || ''
   createForm.batchSize = starter.batchSize
-  createForm.openEnded = starter.openEnded
+  createForm.keepIntakeOpen = starter.keepIntakeOpen
   createForm.maxRuntimeSeconds = starter.maxRuntimeSeconds
   createForm.itemsText = stringifyStarterItems(starter.items)
   createForm.sharedConfigText = stringifyStarterSharedConfig(
@@ -439,12 +439,12 @@ async function handleCreate(): Promise<void> {
 
   let shellRequest: TaskShellCreateRequest
   let appendRequest: TaskItemBatchAppendRequest
-  let openEnded: boolean
+  let keepIntakeOpen: boolean
   try {
     const draft = buildCreateDraft()
     shellRequest = draft.shellRequest
     appendRequest = draft.appendRequest
-    openEnded = draft.openEnded
+    keepIntakeOpen = draft.keepIntakeOpen
   } catch (error) {
     createErrorMessage.value = toErrorMessage(error, 'Task request is invalid.')
     return
@@ -454,7 +454,7 @@ async function handleCreate(): Promise<void> {
   try {
     const result = await createTaskShell(shellRequest)
     await appendTaskItems(result.taskId, appendRequest)
-    if (!openEnded) {
+    if (!keepIntakeOpen) {
       await sealTask(result.taskId)
     }
     ElMessage.success(result.message)
@@ -474,7 +474,7 @@ async function handleCreate(): Promise<void> {
 function buildCreateDraft(): {
   shellRequest: TaskShellCreateRequest
   appendRequest: TaskItemBatchAppendRequest
-  openEnded: boolean
+  keepIntakeOpen: boolean
 } {
   const project = createForm.project.trim()
   const eventCode = createForm.eventCode.trim()
@@ -505,7 +505,7 @@ function buildCreateDraft(): {
       eventCode,
       items,
     },
-    openEnded: createForm.openEnded,
+    keepIntakeOpen: createForm.keepIntakeOpen,
   }
 }
 

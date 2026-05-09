@@ -258,7 +258,7 @@ public final class TaskWorkloadMixSmokeRunner {
             if (!request.inputs().isEmpty()) {
                 taskCommands.appendTaskItems(task.getTid(), request.inputs(), request.defaultMsgMaxRetryCount());
             }
-            if (!request.openEnded()) {
+            if (!request.keepIntakeOpen()) {
                 require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
             }
             return task;
@@ -267,7 +267,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
                                       int defaultMsgMaxRetryCount,
-                                      boolean openEnded) {
+                                      boolean keepIntakeOpen) {
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {

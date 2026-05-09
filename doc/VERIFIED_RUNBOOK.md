@@ -161,7 +161,7 @@ Worker and worker-context truth:
 
 Open-ended and targeted worker debug:
 
-- `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
+- `Task.intakeStatus` is the append-window truth.
 - `POST /api/v1/tasks/{taskId}/items` appends inputs only while intake is open.
 - `POST /api/v1/tasks/{taskId}:seal` closes intake and resumes normal terminal convergence.
 - worker debug/test flows use `/internal/v1/debug/task-invocations:sync` for one-item sync execution, or the normal shell-create + append flow for standard task runs.

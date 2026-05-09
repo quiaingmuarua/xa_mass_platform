@@ -140,10 +140,10 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
             assertEquals(1, finalTask.getTaskSuccessNumber());
-        } else if (finalMessage.status() == TaskMessageProjectionStatus.EXPIRED) {
+        } else if (finalMessage.status() == TaskMessageProjectionStatus.FAILED) {
             assertEquals(1, logicallyFinalCount.get());
             assertEquals(1, terminalCount.get());
-            assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, finalMessage.finalReason());
+            assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, finalMessage.finalReason());
             assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
             assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, finalTask.getTerminalReason());
             assertEquals(0, finalTask.getTaskSuccessNumber());

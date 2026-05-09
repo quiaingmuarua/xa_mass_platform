@@ -24,7 +24,7 @@
     "body": {
       "project": "crawlerApp",
       "userId": "sample-launcher",
-      "openEnded": true,
+      "keepIntakeOpen": true,
       "sourceRef": "sample-stock-quote-stream",
       "sharedConfig": {
         "routingCode": "us",

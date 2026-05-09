@@ -54,7 +54,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createdTask = task(beforeAudit);
         assertEquals("NEW", createdTask.get("status"));
         assertEquals("SEALED", createdTask.get("intakeStatus"));
-        assertEquals(Boolean.FALSE, createdTask.get("openEnded"));
+        assertEquals(false, createdTask.containsKey("openEnded"));
 
         Map<String, Object> auditResponse = exchange(
                 "/api/v1/tasks/" + taskId + ":approve",

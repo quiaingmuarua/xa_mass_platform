@@ -41,7 +41,7 @@ Core lifecycle:
 - `pause -> resume`
 - `approve -> assign -> running -> terminate -> delete`
 - `running -> pause -> callback -> terminal`
-- `openEnded/session -> complete current messages -> remain non-terminal even after seal -> explicit terminate`
+- `SESSION task -> complete current messages -> remain non-terminal even after seal -> explicit terminate`
 
 Robustness:
 
@@ -58,6 +58,7 @@ Assignment and capacity:
 - assignment skips dispatch if the task left `READY` during matching
 - each dispatch creates attempt state that remains consistent with message projection
 - retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
+- `BATCH` lease expiry consumes retry budget as attempt loss; exhausted budget closes the item as failure rather than logical timeout
 
 Worker and context:
 

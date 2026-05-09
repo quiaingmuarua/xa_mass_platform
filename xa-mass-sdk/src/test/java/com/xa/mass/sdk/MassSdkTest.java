@@ -875,7 +875,7 @@ class MassSdkTest {
                 .build();
 
         Assertions.assertThrows(IllegalStateException.class,
-                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), null, List.of(), 3, false));
+                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), null, List.of(), false));
         assertEngineOperationsFailFast(app);
     }
 
@@ -1207,7 +1207,7 @@ class MassSdkTest {
         Task result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
-        ), 5, true);
+        ), true);
 
         assertSame(hydratedTask, result);
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
@@ -1522,7 +1522,7 @@ class MassSdkTest {
         Task result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
                 Map.of("url", "https://example.test/page-1"),
                 Map.of("url", "https://example.test/page-2")
-        ), 2, true);
+        ), true);
 
         assertSame(hydratedTask, result);
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
@@ -1978,7 +1978,7 @@ class MassSdkTest {
                     .project("botAppExecutableTest")
                     .sourceRef("custom-project-task")
                     .batchSize(1)
-                    .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), 3, false);
+                    .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppExecutableTest", task.getProject());
@@ -2019,7 +2019,7 @@ class MassSdkTest {
                     .project("botAppCatalogTest")
                     .sourceRef("bot-command-task")
                     .batchSize(1)
-                    .build(), "bot.command", List.of(Map.of("text", "/start")), 3, false);
+                    .build(), "bot.command", List.of(Map.of("text", "/start")), false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppCatalogTest", task.getProject());
@@ -2691,7 +2691,7 @@ class MassSdkTest {
                     .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
                     .batchSize(1)
-                    .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), 3, false);
+                    .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), false);
 
             assertTrue(app.approveTask(task.getTid()));
 
@@ -3069,7 +3069,6 @@ class MassSdkTest {
                                                      MassTaskShellCreateRequest request,
                                                      String eventCode,
                                                      List<Object> items,
-                                                     int defaultMsgMaxRetryCount,
                                                      boolean keepIntakeOpen) {
         Objects.requireNonNull(app, "app");
         Objects.requireNonNull(request, "request");

@@ -530,6 +530,9 @@ public final class TraceEventLogger {
                              String workerId,
                              String workerContextId,
                              String batchId,
+                             MessageStatus fromStatus,
+                             MessageStatus toStatus,
+                             String errorCode,
                              String trigger,
                              String source,
                              String reason) {
@@ -543,13 +546,13 @@ public final class TraceEventLogger {
                         .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
                         .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
                         .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
-                .transition(enumName(taskMsg.status()), MessageStatus.EXPIRED.name(), reason)
-                .outcome(false, taskMsg.errorCode(), reason)
+                .transition(enumName(fromStatus), enumName(toStatus), reason)
+                .outcome(false, errorCode != null ? errorCode : taskMsg.errorCode(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
                         "reason", reason,
-                        "result", "EXPIRED",
+                        "result", enumName(toStatus),
                         "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
                 ))
                 .build());

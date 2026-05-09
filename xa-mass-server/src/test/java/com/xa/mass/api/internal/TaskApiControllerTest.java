@@ -230,10 +230,6 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemsRejectsRemovedRetrySeedField() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setProject("demoApp");
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
                         .content("""

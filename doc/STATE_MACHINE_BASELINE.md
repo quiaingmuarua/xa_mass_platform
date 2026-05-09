@@ -87,7 +87,7 @@ Must hold:
 - automatic message-driven terminal closure only happens for `BATCH` tasks after intake has been sealed
 - `SESSION` tasks may close intake with `sealTask`, but draining current work is still not sufficient for automatic terminal closure
 - `intakeStatus=OPEN` may still close only for explicit stop reasons that allow open-intake closure: `MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, or `RETRY_BUDGET_EXHAUSTED`
-- `openEnded` is a compatibility field; `intakeStatus` is the active lifecycle truth
+- `intakeStatus` is the active append-window lifecycle truth
 
 ## 4. Message Projection Status
 
@@ -98,7 +98,7 @@ States:
 - `RUNNING`: executing
 - `SUCCESS`: final success
 - `FAILED`: final non-success
-- `EXPIRED`: final non-success caused by timeout/cancel after assignment
+- `EXPIRED`: final non-success caused by timeout/cancel after assignment; this remains the stable logical outcome mainly for `SESSION` work and terminal-control overlays, not for `BATCH` lease-retry exhaustion
 
 Allowed transitions:
 
@@ -106,17 +106,17 @@ Allowed transitions:
 - `ASSIGNED -> RUNNING/FAILED/EXPIRED`
 - `RUNNING -> SUCCESS/FAILED/EXPIRED`
 - `FAILED -> INIT` (retry reset only; `SUCCESS` is never reset)
-- `EXPIRED -> INIT` (retry reset only; `SUCCESS` is never reset)
+- `EXPIRED -> INIT` (`SESSION`-style retry reset only; `BATCH` lease expiry does not use `EXPIRED` as its logical retry base)
 
 Current entry points:
 
 - runtime claim + dispatch bind: `INIT -> ASSIGNED`
 - callback write-back: `RUNNING -> SUCCESS/FAILED`
-- expiry: `ASSIGNED/RUNNING -> EXPIRED`
+- expiry: `SESSION` compatibility view may converge `ASSIGNED/RUNNING -> EXPIRED`
 - terminal task compatibility overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
   - bounded reads project `INIT -> FAILED`
   - bounded reads project `ASSIGNED/RUNNING -> EXPIRED`
-- retry reset: `FAILED/EXPIRED -> INIT` when retry budget remains; stale latest-attempt projection fields (`latestAttemptWorkerId`, `latestAttemptWorkerContextId`, `latestAttemptBatchId`, `assignedTime`) are cleared on reset
+- retry reset: logical work returns to `INIT` when retry budget remains; this is usually `FAILED -> INIT` for retryable failures and `SESSION` expiry, while `BATCH` lease expiry resets directly from live runtime truth without treating `EXPIRED` as the logical mainline state
 
 Must hold:
 
@@ -126,6 +126,7 @@ Must hold:
 - `taskMessageAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
 - `taskMessageLogicallyFinal` must only fire when the logical message view is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical message view to `INIT`; it must not publish logically-final semantics
+- `BATCH` lease expiry has no stable logical timeout meaning while the task is still live: it either resets `INIT` when runtime retry budget remains or finalizes as `FAILED + RETRY_EXHAUSTED` when the budget is exhausted
 - worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but the latest attempt/message projection is missing, engine repairs that compatibility state from runtime before continuing
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - during the current WorkRuntime slice, result handling applies against the runtime active lease and runtime retry budget before mutating the compatibility projection
@@ -230,10 +231,10 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
 - **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
   the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireTaskMessage(...)`). This always marks the
   concrete compatibility attempt `EXPIRED` and publishes
-  `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset
-  `EXPIRED -> INIT`, `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without
-  `taskMessageLogicallyFinal`. If retry budget is exhausted, the logical message stays `EXPIRED` and
-  `taskMessageLogicallyFinal` is published.
+  `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
+  `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without `taskMessageLogicallyFinal`. When retry
+  budget is exhausted, `SESSION` keeps logical `EXPIRED`, while `BATCH` finalizes as `FAILED + RETRY_EXHAUSTED`
+  because lease loss is treated as an attempt failure mode rather than a stable per-item timeout contract.
 - **Max task runtime**: non-terminal tasks with `maxRuntimeSeconds > 0` are indexed by their
   runtime deadline and polled through `TaskStorage.pollExpiredMaxRuntimeTasks(...)`; expired
   tasks are terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`. Set

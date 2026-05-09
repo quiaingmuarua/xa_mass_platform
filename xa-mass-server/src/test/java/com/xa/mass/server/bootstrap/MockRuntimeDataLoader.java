@@ -167,7 +167,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                         .items(new ArrayList<>(dto.getInputs()))
                         .build());
             }
-            if (!dto.isOpenEnded()) {
+            if (!dto.isKeepIntakeOpen()) {
                 runtime.sealTask(task.getTid());
             }
         }
@@ -339,8 +339,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         private java.util.Map<String, Object> sharedConfig;
         private java.util.List<java.util.Map<String, Object>> inputs;
         private int batchSize;
-        private int defaultMsgMaxRetryCount = 3;
-        private boolean openEnded;
+        private boolean keepIntakeOpen;
         private int maxRuntimeSeconds;
         private TaskSourceType sourceType;
         private TaskWorkloadClass workloadClass;
@@ -394,20 +393,12 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             this.batchSize = batchSize;
         }
 
-        public int getDefaultMsgMaxRetryCount() {
-            return defaultMsgMaxRetryCount;
+        public boolean isKeepIntakeOpen() {
+            return keepIntakeOpen;
         }
 
-        public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
-            this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
-        }
-
-        public boolean isOpenEnded() {
-            return openEnded;
-        }
-
-        public void setOpenEnded(boolean openEnded) {
-            this.openEnded = openEnded;
+        public void setKeepIntakeOpen(boolean keepIntakeOpen) {
+            this.keepIntakeOpen = keepIntakeOpen;
         }
 
         public int getMaxRuntimeSeconds() {

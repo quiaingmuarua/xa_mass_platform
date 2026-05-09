@@ -3,7 +3,7 @@ export interface TaskStarterDraft {
     eventCode?: string
     taskName: string
     batchSize: number
-    openEnded: boolean
+    keepIntakeOpen: boolean
     maxRuntimeSeconds: number
     sharedConfig: Record<string, unknown>
     items: Array<Record<string, unknown>>
@@ -13,7 +13,7 @@ export interface TaskStarterDraft {
 interface TaskStarterOverride {
     taskName?: string
     batchSize?: number
-    openEnded?: boolean
+    keepIntakeOpen?: boolean
     maxRuntimeSeconds?: number
     sharedConfig?: Record<string, unknown>
     items?: Array<Record<string, unknown>>
@@ -29,7 +29,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'demoApp',
         taskName: 'Run demo dispatch task',
         batchSize: 1,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
             textContent: 'hello from control console',
@@ -75,7 +75,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'testApp',
         taskName: 'Run smoke validation',
         batchSize: 1,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 60,
         sharedConfig: {
             textContent: 'smoke',
@@ -99,7 +99,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'otherApp',
         taskName: 'Run other app dispatch task',
         batchSize: 1,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
             objective: 'validate secondary project flow',
@@ -132,7 +132,8 @@ export function resolveTaskStarterDraft(
         eventCode,
         taskName: override?.taskName ?? definition.taskName,
         batchSize: override?.batchSize ?? definition.batchSize,
-        openEnded: override?.openEnded ?? definition.openEnded,
+        keepIntakeOpen:
+            override?.keepIntakeOpen ?? definition.keepIntakeOpen,
         maxRuntimeSeconds:
             override?.maxRuntimeSeconds ?? definition.maxRuntimeSeconds,
         sharedConfig: {
@@ -166,7 +167,7 @@ function buildFallbackStarter(projectCode: string): TaskStarterDefinition {
         projectCode: resolvedProjectCode,
         taskName: `New ${resolvedProjectCode} task`,
         batchSize: 1,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {},
         items: [{ target: 'alpha' }, { target: 'beta' }],

@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -33,6 +34,7 @@ class TaskResultService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskResultService.class);
     static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
+    private static final String LEASE_EXPIRED_ERROR_CODE = "LEASE_EXPIRED";
 
     private final TaskManager taskManager;
     private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
@@ -87,9 +89,7 @@ class TaskResultService {
                     "task message status " + messageState.status() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
             return TaskMessageMutationOutcome.rejected();
         }
-        // Once a worker has started executing the message, lease expiry must
-        // converge to one final outcome instead of re-queueing the same work.
-        boolean retryRequestedByPolicy = fromStatus == MessageStatus.ASSIGNED;
+        boolean retryRequestedByPolicy = shouldRetryExpiredLease(task, fromStatus);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryRequestedByPolicy);
         ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
                 false, expiryDetail, null, null, retryRequestedByPolicy, true);
@@ -108,37 +108,11 @@ class TaskResultService {
                 persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
                         "mark attempt expired"));
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
-        RuntimeMessageView expiredSummary = summarizeExpired(messageState, expiryDetail);
-        traceEventLogger.leaseExpired(
-                expiredSummary.toTraceView(),
-                activeAttempt.attemptId(),
-                activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
-                activeAttempt.batchId(),
-                "EXPIRE_TASK_MESSAGE",
-                "TaskManager",
-                expiryDetail
-        );
-        traceEventLogger.taskMsgStatusTransition(
-                expiredSummary.toTraceView(),
-                activeAttempt.attemptId(),
-                activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
-                activeAttempt.batchId(),
-                fromStatus,
-                expiredSummary.status(),
-                "EXPIRE_TASK_MESSAGE",
-                "TaskManager",
-                expiryDetail
-        );
-        final RuntimeMessageView capturedExpiredSummary = expiredSummary;
-        taskManager.submitProjectionWrite(() ->
-                persistTaskMessageProjection(taskId, capturedExpiredSummary,
-                        "persist expiry compatibility summary"));
         Task freshTask = taskManager.getTask(taskId);
-        RuntimeMessageView currentSummary = expiredSummary;
+        RuntimeMessageView currentSummary;
+        RuntimeMessageView logicallyFinalSummary = null;
         if (retryScheduled) {
-            RuntimeMessageView retrySummary = summarizeRetryReset(expiredSummary);
+            RuntimeMessageView retrySummary = summarizeRetryReset(messageState);
             traceEventLogger.taskMsgRetryReset(retrySummary.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
@@ -151,7 +125,39 @@ class TaskResultService {
                     persistTaskMessageProjection(taskId, capturedRetrySummary,
                             "persist expiry retry-reset compatibility summary"));
             currentSummary = retrySummary;
+        } else {
+            logicallyFinalSummary = summarizeLeaseExpiryFinal(task, messageState, expiryDetail);
+            traceEventLogger.taskMsgStatusTransition(
+                    logicallyFinalSummary.toTraceView(),
+                    activeAttempt.attemptId(),
+                    activeAttempt.workerId(),
+                    activeAttempt.workerContextId(),
+                    activeAttempt.batchId(),
+                    fromStatus,
+                    logicallyFinalSummary.status(),
+                    "EXPIRE_TASK_MESSAGE",
+                    "TaskManager",
+                    expiryDetail
+            );
+            final RuntimeMessageView capturedFinalSummary = logicallyFinalSummary;
+            taskManager.submitProjectionWrite(() ->
+                    persistTaskMessageProjection(taskId, capturedFinalSummary,
+                            "persist expiry compatibility summary"));
+            currentSummary = logicallyFinalSummary;
         }
+        traceEventLogger.leaseExpired(
+                messageState.toTraceView(),
+                activeAttempt.attemptId(),
+                activeAttempt.workerId(),
+                activeAttempt.workerContextId(),
+                activeAttempt.batchId(),
+                fromStatus,
+                currentSummary.status(),
+                currentSummary.errorCode(),
+                "EXPIRE_TASK_MESSAGE",
+                "TaskManager",
+                expiryDetail
+        );
         if (freshTask != null && activeAttempt != null) {
             publishAttemptClosed(freshTask, currentSummary, activeAttempt,
                     "EXPIRE_TASK_MESSAGE", retryScheduled
@@ -159,7 +165,7 @@ class TaskResultService {
                             : expiryDetail);
         }
         if (!retryScheduled && freshTask != null) {
-            publishMessageLogicallyFinal(freshTask, expiredSummary, activeAttempt,
+            publishMessageLogicallyFinal(freshTask, logicallyFinalSummary, activeAttempt,
                     "EXPIRE_TASK_MESSAGE", expiryDetail);
         }
         LogUtils.logOperationSuccess(expiryDetail, 0);
@@ -195,7 +201,7 @@ class TaskResultService {
 
         if (task.getStatus().isFinal()) {
             ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
-            RuntimeMessageView recentFinalMessage = recentFinalMessage(taskId, messageId);
+            RuntimeMessageView recentFinalMessage = recentFinalMessage(task, taskId, messageId);
             if (isManualOrPolicyTerminalStop(task)) {
                 TaskMessageTraceView lateView = recentFinalMessage != null
                         ? recentFinalMessage.toTraceView()
@@ -225,7 +231,7 @@ class TaskResultService {
 
         if (!ctx.hasLeaseSnapshot()) {
             // No active lease at apply time — duplicate or late callback.
-            RuntimeMessageView recentFinal = recentFinalMessage(taskId, messageId);
+            RuntimeMessageView recentFinal = recentFinalMessage(task, taskId, messageId);
             if (recentFinal != null) {
                 traceEventLogger.callbackIgnoredDuplicate(recentFinal.toTraceView(),
                         "task message already final in recent runtime receipt with status " + recentFinal.status());
@@ -705,6 +711,15 @@ class TaskResultService {
         return base.completeExpiry(detail, base.errorCode());
     }
 
+    private RuntimeMessageView summarizeLeaseExpiryFinal(Task task,
+                                                         RuntimeMessageView base,
+                                                         String detail) {
+        if (isBatchTask(task)) {
+            return summarizeRetryExhaustedFailure(base, detail, LEASE_EXPIRED_ERROR_CODE, null);
+        }
+        return summarizeExpired(base, detail);
+    }
+
     private RuntimeMessageView summarizeRetryReset(RuntimeMessageView failedView) {
         return failedView.resetForRetry();
     }
@@ -861,6 +876,14 @@ class TaskResultService {
         return retryPolicy.workRetryDelayMillis();
     }
 
+    private boolean shouldRetryExpiredLease(Task task, MessageStatus fromStatus) {
+        return isBatchTask(task) || fromStatus == MessageStatus.ASSIGNED;
+    }
+
+    private boolean isBatchTask(Task task) {
+        return task != null && task.getContract() == TaskContract.BATCH;
+    }
+
     private boolean isManualOrPolicyTerminalStop(Task task) {
         if (task == null || task.getTerminalReason() == null) {
             return false;
@@ -869,12 +892,12 @@ class TaskResultService {
         return terminalReason == TaskTerminalReason.MANUAL_CANCELLED || terminalReason.isPolicyDrivenStop();
     }
 
-    private RuntimeMessageView recentFinalMessage(String taskId, String messageId) {
+    private RuntimeMessageView recentFinalMessage(Task task, String taskId, String messageId) {
         if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
             return null;
         }
         return taskManager.getRecentFinalReceipt(taskId, messageId)
-                .map(RuntimeMessageView::fromRecentFinalReceipt)
+                .map(receipt -> RuntimeMessageView.fromRecentFinalReceipt(task, receipt))
                 .orElse(null);
     }
 
@@ -1220,22 +1243,27 @@ class TaskResultService {
             );
         }
 
-        static RuntimeMessageView fromRecentFinalReceipt(RecentFinalWorkReceipt receipt) {
+        static RuntimeMessageView fromRecentFinalReceipt(Task task, RecentFinalWorkReceipt receipt) {
             if (receipt == null) {
                 return null;
             }
             LocalDateTime completedAt = receipt.completedAt() == null
                     ? LocalDateTime.now()
                     : LocalDateTime.ofInstant(receipt.completedAt(), java.time.ZoneId.systemDefault());
+            boolean batchLeaseExpiryFinalizedAsFailure = task != null
+                    && task.getContract() == TaskContract.BATCH
+                    && receipt.status() == com.xa.mass.runtime.api.TaskWorkFinalStatus.EXPIRED;
             MessageStatus status = switch (receipt.status()) {
                 case SUCCESS -> MessageStatus.SUCCESS;
                 case FAILED -> MessageStatus.FAILED;
-                case EXPIRED -> MessageStatus.EXPIRED;
+                case EXPIRED -> batchLeaseExpiryFinalizedAsFailure ? MessageStatus.FAILED : MessageStatus.EXPIRED;
             };
             MessageFinalReason finalReason = switch (receipt.status()) {
                 case SUCCESS -> MessageFinalReason.BUSINESS_SUCCESS;
                 case FAILED -> MessageFinalReason.RETRY_EXHAUSTED;
-                case EXPIRED -> MessageFinalReason.LEASE_EXPIRED;
+                case EXPIRED -> batchLeaseExpiryFinalizedAsFailure
+                        ? MessageFinalReason.RETRY_EXHAUSTED
+                        : MessageFinalReason.LEASE_EXPIRED;
             };
             return new RuntimeMessageView(
                     receipt.messageId(),

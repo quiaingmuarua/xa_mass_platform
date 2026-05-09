@@ -130,7 +130,7 @@ Read them to verify three things quickly:
 - per-item runtime truth stays on the runtime ingress item and dispatch/result
   flow; bounded compatibility projection may retain payload summary or
   `payloadRef`
-- `Task.intakeStatus` is the append-window truth; `openEnded` is compatibility projection only
+- `Task.intakeStatus` is the append-window truth; the legacy boolean intake projection has been removed from the task model
 - public contracts do not define a dedicated routing-code field
 - engine-provided message/attempt reads remain bounded compatibility helpers
 

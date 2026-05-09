@@ -218,6 +218,8 @@ The canonical model must be able to represent these flows:
 - session shells may drain their current runtime work set without emitting `TASK_TERMINAL_CLOSED`; explicit or policy-driven closure remains the terminal trigger
 - task progress reconciliation snapshots
 - message projection: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
+  - `EXPIRED` remains a session/control-path logical state; `BATCH` lease expiry may still emit `LEASE_EXPIRED`
+    attempt trace but converges the logical message through retry reset or `FAILED + RETRY_EXHAUSTED`
 - attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
 - worker-context reservation / occupation / release transitions
@@ -228,6 +230,8 @@ The canonical model must be able to represent these flows:
 - callback accepted / duplicate / late / rejected
 - resource release success / failure
 - lease expiry
+  - always records attempt/lease loss
+  - does not imply that `BATCH` logical message truth becomes stably `EXPIRED`
 - worker online / offline reachability changes
 - validation and reconciliation decisions
 

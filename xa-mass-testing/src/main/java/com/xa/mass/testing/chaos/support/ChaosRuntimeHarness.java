@@ -221,7 +221,6 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
             app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
-                    .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                     .build());
         }
         if (!keepIntakeOpen) {

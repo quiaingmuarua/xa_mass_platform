@@ -40,21 +40,16 @@ class TaskAggregateFieldsTest {
     }
 
     @Test
-    void openEndedCompatibilityProjectionTracksIntakeStatus() {
+    void intakeStatusIsTheCanonicalAppendWindowTruth() {
         Task task = new Task("task-4", "aggregate", "demoApp", 1, java.util.Map.of("textContent", "hello"), UserRef.of("user-4"));
 
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED, task.getIntakeStatus());
-        assertFalse(task.isOpenEnded());
-
-        task.setOpenEnded(true);
-
+        task.setIntakeStatus(com.xa.mass.base.enums.task.TaskIntakeStatus.OPEN);
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.OPEN, task.getIntakeStatus());
-        assertTrue(task.isOpenEnded());
 
         task.setIntakeStatus(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED);
 
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED, task.getIntakeStatus());
-        assertFalse(task.isOpenEnded());
     }
 
     @Test

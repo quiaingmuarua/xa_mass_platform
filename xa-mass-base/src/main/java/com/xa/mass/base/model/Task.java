@@ -195,28 +195,6 @@ public class Task {
         this.sharedConfig = sharedConfig == null ? new HashMap<>() : new HashMap<>(sharedConfig);
     }
 
-    /**
-     * Compatibility accessor for older API/demo payloads.
-     *
-     * <p>Runtime lifecycle truth lives in {@link #getIntakeStatus()}.
-     * Keep this accessor only so existing JSON/UI consumers can continue to
-     * read a boolean projection during the transition period.
-     */
-    public boolean isOpenEnded() {
-        return intakeStatus == TaskIntakeStatus.OPEN;
-    }
-
-    /**
-     * Compatibility setter for create/update binding.
-     *
-     * <p>Do not treat this as an independent persisted truth. It only maps the
-     * boolean compatibility flag onto the real lifecycle field
-     * {@link #intakeStatus}.
-     */
-    public void setOpenEnded(boolean openEnded) {
-        setIntakeStatus(openEnded ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
-    }
-
     public TaskHoldReason getHoldReason() {
         return holdReason;
     }

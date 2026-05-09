@@ -1511,7 +1511,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection finalProjection =
                 taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
         assertNotNull(finalProjection);
-        assertEquals(TaskMessageProjectionStatus.EXPIRED, finalProjection.status());
+        assertEquals(TaskMessageProjectionStatus.FAILED, finalProjection.status());
     }
 
     @Test
@@ -1666,7 +1666,10 @@ class TaskManagerLifecycleTest {
 
         Task updatedTask = taskManager.getTask(task.getTid());
         TaskDetailStore.TaskMessageProjection updatedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageProjection(taskManager,
+                        task.getTid(),
+                        message.messageId(),
+                        TaskMessageProjectionStatus.SUCCESS);
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
@@ -2501,7 +2504,7 @@ class TaskManagerLifecycleTest {
     // ---- Bug2: expired message projection -> expireTaskMessage ----
 
     @Test
-    void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
+    void expireAssignedBatchMessageWithoutRetryBudgetFinalizesAsFailureAndTaskAutoCompletes() {
         Task task = createTask(buildRequest("expire-msg", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2510,12 +2513,19 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         assignMessage(task, message);
 
-        assertTrue(taskManager.expireTaskMessage(task.getTid(), message.messageId()));
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.expireTaskMessage(task.getTid(), message.messageId()));
+            capture.assertHasEvent("LEASE_EXPIRED", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.messageId().equals(mdc.get("messageId"))
+                            && "FAILED".equals(mdc.get("toStatus"))
+                            && "FAILED".equals(mdc.get("result")));
+        }
 
         TaskDetailStore.TaskMessageProjection updated =
                 taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-        assertEquals(TaskMessageProjectionStatus.EXPIRED, updated.status());
-        assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, updated.finalReason());
+        assertEquals(TaskMessageProjectionStatus.FAILED, updated.status());
+        assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, updated.finalReason());
 
         // All messages are final, so the task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
@@ -2524,8 +2534,11 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void expireRunningMessageTransitionsToExpired() {
-        Task task = createTask(buildRequest("expire-running", List.of("alpha"), 0));
+    void expireRunningSessionMessageTransitionsToExpired() {
+        TaskCreateSpec request = buildRequest("expire-running", List.of("alpha"), 0);
+        request.setSourceType(TaskSourceType.STREAM);
+        request.setOpenEnded(true);
+        Task task = createTask(request);
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
         taskManager.updateTask(task);
@@ -2539,7 +2552,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void expireWithRuntimeLeaseRepairsInitProjectionAndExpires() {
+    void expireWithRuntimeLeaseRepairsInitProjectionAndFinalizesBatchFailure() {
         Task task = createTask(buildRequest("expire-runtime-lease-repair", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2565,8 +2578,8 @@ class TaskManagerLifecycleTest {
                 taskManager.getVisibleTaskMessageProjection(task.getTid(), initialMessage.messageId());
         TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
                 taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), initialMessage.messageId());
-        assertEquals(TaskMessageProjectionStatus.EXPIRED, updatedMessage.status());
-        assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, updatedMessage.finalReason());
+        assertEquals(TaskMessageProjectionStatus.FAILED, updatedMessage.status());
+        assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, updatedMessage.finalReason());
         assertNotNull(latestAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.EXPIRED, latestAttempt.status());
     }

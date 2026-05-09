@@ -138,10 +138,9 @@ async function seedTasks(taskSpecs) {
       await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskSubmitterKey, {
         eventCode: requestBody.eventCode,
         items: requestBody.items,
-        defaultMsgMaxRetryCount: requestBody.defaultMsgMaxRetryCount ?? 0,
       });
     }
-    if (!requestBody.openEnded) {
+    if (!requestBody.keepIntakeOpen) {
       await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:seal`, taskSubmitterKey, null);
     }
     if (taskSpec.approve && taskId) {

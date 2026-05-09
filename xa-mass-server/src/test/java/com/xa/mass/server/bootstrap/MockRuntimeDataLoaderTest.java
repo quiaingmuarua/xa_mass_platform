@@ -302,8 +302,7 @@ class MockRuntimeDataLoaderTest {
                         "target": "target-a"
                       }
                     ],
-                    "batchSize": 1,
-                    "defaultMsgMaxRetryCount": 3
+                    "batchSize": 1
                   }
                 ]
                 """;

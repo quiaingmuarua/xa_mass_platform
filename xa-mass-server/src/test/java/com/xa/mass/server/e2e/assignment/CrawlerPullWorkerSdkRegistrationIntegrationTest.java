@@ -104,7 +104,6 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
                             .build(),
                     "crawler.fetch-page",
                     List.of(Map.of("url", "https://example.test/page-1")),
-                    3,
                     false
             );
 
@@ -151,7 +150,6 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
     private com.xa.mass.base.model.Task createShellWithOptionalItems(MassTaskShellCreateRequest request,
                                                                      String eventCode,
                                                                      List<Object> items,
-                                                                     int defaultMsgMaxRetryCount,
                                                                      boolean keepIntakeOpen) {
         com.xa.mass.base.model.Task task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {

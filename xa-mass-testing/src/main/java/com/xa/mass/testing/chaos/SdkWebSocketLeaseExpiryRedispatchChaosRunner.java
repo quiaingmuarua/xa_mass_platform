@@ -330,7 +330,6 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                         .eventCode(TASK_EVENT_CODE)
                         .items(items)
-                        .defaultMsgMaxRetryCount(defaultMsgMaxRetryCount)
                         .build());
             }
             if (!keepIntakeOpen) {
