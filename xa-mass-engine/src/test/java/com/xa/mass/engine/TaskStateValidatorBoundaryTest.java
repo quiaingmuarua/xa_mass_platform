@@ -25,7 +25,7 @@ class TaskStateValidatorBoundaryTest {
         TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
         TaskStateValidator validator = new TaskStateValidator(
                 runtime,
-                projectionAccess(detailStore, runtime),
+                detailStore,
                 new com.xa.mass.engine.util.TraceEventLogger(null)
         );
 
@@ -67,7 +67,7 @@ class TaskStateValidatorBoundaryTest {
         );
         TaskStateValidator validator = new TaskStateValidator(
                 runtime,
-                projectionAccess(detailStore, runtime),
+                detailStore,
                 new com.xa.mass.engine.util.TraceEventLogger(null)
         );
 
@@ -76,18 +76,6 @@ class TaskStateValidatorBoundaryTest {
         assertTrue(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertEquals(1, detailStore.projectionAuditReads.get());
-    }
-
-    private static TaskCompatibilityProjectionAccess projectionAccess(TrackingTaskDetailStore detailStore,
-                                                                      CountingStateRuntimePort runtime) {
-        return new TaskCompatibilityProjectionAccess(
-                detailStore,
-                runtime::getTask,
-                (taskId, messageId) -> Optional.empty(),
-                (taskId, messageId) -> Optional.empty(),
-                taskId -> List.of(),
-                taskId -> TaskWorkStats.EMPTY
-        );
     }
 
     private static Task sampleTask() {

@@ -8,6 +8,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.util.ArrayList;
@@ -20,14 +21,14 @@ import java.util.List;
 class TaskStateValidator {
 
     private final TaskStateRuntimePort stateRuntime;
-    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
+    private final TaskDetailStore taskDetailStore;
     private final TraceEventLogger traceEventLogger;
 
     TaskStateValidator(TaskStateRuntimePort stateRuntime,
-                       TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
+                       TaskDetailStore taskDetailStore,
                        TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
-        this.compatibilityProjectionAccess = compatibilityProjectionAccess;
+        this.taskDetailStore = taskDetailStore;
         this.traceEventLogger = traceEventLogger;
     }
 
@@ -170,7 +171,7 @@ class TaskStateValidator {
     private boolean auditTaskMessageProjection(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskCompatibilityProjectionAccess.MessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
+        for (TaskDetailStore.TaskMessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
             if (messageProjection == null) {
                 continue;
             }
@@ -178,12 +179,14 @@ class TaskStateValidator {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
             }
             if (isCompleted(messageProjection)
-                    && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(messageProjection)) {
+                    && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(
+                    messageProjection.status(),
+                    messageProjection.finalReason())) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
-            TaskCompatibilityProjectionAccess.AttemptStats attemptStats =
+            TaskDetailStore.TaskMessageAttemptStats attemptStats =
                     getTaskMessageAttemptStats(taskId, messageProjection.messageId());
-            long activeAttemptCount = attemptStats.activeAttempts();
+            long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
                 violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
@@ -191,7 +194,7 @@ class TaskStateValidator {
             if (hasActiveAttempt && isCompleted(messageProjection)) {
                 violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
             }
-            boolean allAttemptsFinal = attemptStats.totalAttempts() > 0 && activeAttemptCount == 0;
+            boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
                     && !isCompleted(messageProjection)
                     && messageProjection.status() != TaskMessageProjectionStatus.INIT) {
@@ -243,16 +246,22 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private java.util.List<TaskCompatibilityProjectionAccess.MessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
-        return compatibilityProjectionAccess.getTaskMessageProjectionsForAudit(taskId);
+    private java.util.List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
+        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
+        if (total <= 0) {
+            return List.of();
+        }
+        return taskDetailStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
     }
 
-    private TaskCompatibilityProjectionAccess.AttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return compatibilityProjectionAccess.getTaskMessageAttemptStats(taskId, messageId);
+    private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private boolean isCompleted(TaskCompatibilityProjectionAccess.MessageProjection messageProjection) {
-        return messageProjection != null && messageProjection.isCompleted();
+    private boolean isCompleted(TaskDetailStore.TaskMessageProjection messageProjection) {
+        return messageProjection != null
+                && messageProjection.status() != null
+                && messageProjection.status().isFinal();
     }
 
 }

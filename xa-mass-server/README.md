@@ -194,19 +194,26 @@ Example request body:
   "sharedConfig": {
     "targetWorkerId": "it-worker-0"
   },
-  "inputs": [
+  "batchSize": 1
+}
+```
+
+Append the debug payload separately through `POST /api/v1/tasks/{taskId}/items`, for example:
+
+```json
+{
+  "items": [
     {
       "millis": 500
     }
-  ],
-  "batchSize": 1
+  ]
 }
 ```
 
 Observability:
 
 - debug submissions return `taskId`
-- targeted debug tasks can be inspected through normal task detail plus internal or test-only compatibility views when deeper residue inspection is needed
+- targeted debug tasks should be inspected through normal task detail plus explicit internal/debug diagnostics when deeper residue inspection is needed
 - `mock.disconnect` is designed to close the worker after its task result is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
 

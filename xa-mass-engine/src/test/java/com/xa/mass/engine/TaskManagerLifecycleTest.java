@@ -1295,6 +1295,36 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void latestActiveAttemptCompatibilityViewDoesNotReadMessageProjectionOnHotPath() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-active-attempt-view-no-message-read", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-active-no-msg", "worker-context-active-no-msg", "batch-active-no-msg", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        TaskDetailStore.TaskMessageAttemptProjection activeAttempt =
+                taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId());
+
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "active attempt compatibility view should synthesize from runtime lease without reading message projection residue");
+        assertNotNull(activeAttempt);
+        assertEquals(TaskMessageAttemptProjectionStatus.DISPATCHED, activeAttempt.status());
+    }
+
+    @Test
     void activeAttemptCompatibilityAuditViewRecoversRuntimeAttemptWhenAttemptProjectionIsMissing() {
         taskStorage = new InMemoryTaskStorage();
         taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
@@ -1330,6 +1360,37 @@ class TaskManagerLifecycleTest {
         assertEquals("worker-audit-view", activeAttempt.workerId());
         assertEquals("worker-context-audit-view", activeAttempt.workerContextId());
         assertEquals("batch-audit-view", activeAttempt.batchId());
+    }
+
+    @Test
+    void activeAttemptCompatibilityAuditViewDoesNotReadMessageProjectionOnRecoveryPath() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-attempt-audit-no-message-read", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(new WorkerClaimTarget("worker-audit-no-msg", "worker-context-audit-no-msg", "batch-audit-no-msg", 1)),
+                1,
+                taskManager.getTaskMessageLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        assertTrue(taskStorage.getTaskMessageAttemptProjections(task.getTid(), message.messageId()).isEmpty());
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        List<TaskDetailStore.TaskMessageAttemptProjection> visibleAttempts =
+                taskManager.getVisibleAttemptProjectionRecords(task.getTid(), message.messageId());
+
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "attempt audit recovery should synthesize active attempt from runtime lease without reading message projection residue");
+        assertEquals(1, visibleAttempts.size());
+        assertEquals(TaskMessageAttemptProjectionStatus.DISPATCHED, visibleAttempts.getFirst().status());
     }
 
     @Test

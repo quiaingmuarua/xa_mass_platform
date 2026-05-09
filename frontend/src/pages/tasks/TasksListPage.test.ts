@@ -74,7 +74,7 @@ describe('TasksListPage', () => {
                         project: string
                         batchSize: number
                         sharedConfigText: string
-                        inputsText: string
+                        itemsText: string
                     }
                     starterGuidance: string[]
                 }
@@ -89,7 +89,7 @@ describe('TasksListPage', () => {
         expect(setupState.createForm.sharedConfigText).toContain(
             'hello from demo.dispatch',
         )
-        expect(setupState.createForm.inputsText).toContain('"recipient":"alpha"')
+        expect(setupState.createForm.itemsText).toContain('"recipient":"alpha"')
         expect(setupState.starterGuidance.length).toBeGreaterThan(0)
     })
 })

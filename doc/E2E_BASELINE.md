@@ -48,7 +48,7 @@ Robustness:
 - duplicate callback replay is idempotent
 - late callback after manual terminal closure is ignored
 - mixed results close with `MIXED_MESSAGE_RESULTS`
-- task detail exposes shell aggregate fields such as `intakeStatus`, while item-level `finalReason` remains available only through bounded compatibility/test views
+- task detail exposes shell aggregate fields such as `intakeStatus`; item-level terminal residue is not part of the public detail contract
 
 Assignment and capacity:
 

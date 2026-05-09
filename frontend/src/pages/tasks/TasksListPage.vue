@@ -116,7 +116,7 @@
         type="info"
         :closable="false"
         :title="`Metadata starter context: ${starterEventCode}`"
-        description="Task shell create accepts eventCode directly. Keep sharedConfig and item inputs payload-opaque, and only provide fields your runtime contract actually consumes."
+        description="Task shell create accepts eventCode directly. Keep sharedConfig and item payloads opaque, and only provide fields your runtime contract actually consumes."
       />
 
       <el-alert
@@ -219,9 +219,9 @@
           </el-col>
         </el-row>
 
-        <el-form-item label="Inputs" required>
+        <el-form-item label="Items" required>
           <el-input
-            v-model="createForm.inputsText"
+            v-model="createForm.itemsText"
             type="textarea"
             :rows="8"
             placeholder='One JSON object per line, for example:
@@ -230,7 +230,7 @@
           />
           <div class="field-hint">
             One work item per line. Each line must be a JSON object and will be
-            sent as `inputs`.
+            sent through the item ingest API.
           </div>
         </el-form-item>
 
@@ -275,7 +275,7 @@ import type {
   TaskShellCreateRequest,
 } from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
-import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
+import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 const router = useRouter()
 const route = useRoute()
@@ -303,7 +303,7 @@ const createForm = reactive({
   defaultMsgMaxRetryCount: 3,
   openEnded: false,
   maxRuntimeSeconds: 0,
-  inputsText: '{"target":"alpha"}\n{"target":"beta"}',
+  itemsText: '{"target":"alpha"}\n{"target":"beta"}',
   sharedConfigText: '{}',
 })
 
@@ -394,7 +394,7 @@ function resetCreateForm(): void {
   createForm.defaultMsgMaxRetryCount = 3
   createForm.openEnded = false
   createForm.maxRuntimeSeconds = 0
-  createForm.inputsText = '{"target":"alpha"}\n{"target":"beta"}'
+  createForm.itemsText = '{"target":"alpha"}\n{"target":"beta"}'
   createForm.sharedConfigText = '{}'
   starterGuidance.value = []
 }
@@ -441,7 +441,7 @@ function applyCreateDraftFromQuery(): void {
   createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
   createForm.openEnded = starter.openEnded
   createForm.maxRuntimeSeconds = starter.maxRuntimeSeconds
-  createForm.inputsText = stringifyStarterInputs(starter.inputs)
+  createForm.itemsText = stringifyStarterItems(starter.items)
   createForm.sharedConfigText = stringifyStarterSharedConfig(
     starter.sharedConfig,
   )
@@ -504,7 +504,7 @@ function buildCreateDraft(): {
     throw new Error('Project is required.')
   }
 
-  const inputs = parseInputLines(createForm.inputsText)
+  const items = parseItemLines(createForm.itemsText)
   const sharedConfig = parseJsonObject(
     createForm.sharedConfigText,
     'Shared config',
@@ -526,7 +526,7 @@ function buildCreateDraft(): {
       maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
     },
     appendRequest: {
-      items: inputs,
+      items,
       defaultMsgMaxRetryCount: Math.max(
         0,
         Number(createForm.defaultMsgMaxRetryCount) || 0,
@@ -536,14 +536,14 @@ function buildCreateDraft(): {
   }
 }
 
-function parseInputLines(value: string): Array<Record<string, unknown>> {
+function parseItemLines(value: string): Array<Record<string, unknown>> {
   const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
 
   if (lines.length === 0) {
-    throw new Error('Inputs must contain at least one JSON object line.')
+    throw new Error('Items must contain at least one JSON object line.')
   }
 
   return lines.map((line, index) => {
@@ -551,11 +551,11 @@ function parseInputLines(value: string): Array<Record<string, unknown>> {
     try {
       parsed = JSON.parse(line)
     } catch {
-      throw new Error(`Input line ${index + 1} is not valid JSON.`)
+      throw new Error(`Item line ${index + 1} is not valid JSON.`)
     }
 
     if (!isPlainRecord(parsed)) {
-      throw new Error(`Input line ${index + 1} must be a JSON object.`)
+      throw new Error(`Item line ${index + 1} must be a JSON object.`)
     }
 
     return parsed

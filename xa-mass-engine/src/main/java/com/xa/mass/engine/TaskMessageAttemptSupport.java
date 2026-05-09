@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 /**
  * Narrow helper for runtime attempt correlation and compatibility validation.
@@ -43,22 +44,20 @@ public final class TaskMessageAttemptSupport {
     }
 
     @CompatibilityProjectionOnly
-    static boolean isTaskMessageFinalReasonCompatible(TaskCompatibilityProjectionAccess.MessageProjection messageProjection) {
-        if (messageProjection == null
-                || messageProjection.status() == null
-                || !messageProjection.status().isFinal()
-                || messageProjection.finalReason() == null) {
+    static boolean isTaskMessageFinalReasonCompatible(TaskMessageProjectionStatus status,
+                                                      TaskMessageProjectionFinalReason finalReason) {
+        if (status == null || !status.isFinal() || finalReason == null) {
             return false;
         }
-        return switch (messageProjection.status()) {
-            case SUCCESS -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
-            case FAILED -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.BUSINESS_FAILED
-                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
-                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
-            case EXPIRED -> messageProjection.finalReason() == TaskMessageProjectionFinalReason.TIMEOUT
-                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.WORKER_LOST
-                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
-                    || messageProjection.finalReason() == TaskMessageProjectionFinalReason.LEASE_EXPIRED;
+        return switch (status) {
+            case SUCCESS -> finalReason == TaskMessageProjectionFinalReason.BUSINESS_SUCCESS;
+            case FAILED -> finalReason == TaskMessageProjectionFinalReason.BUSINESS_FAILED
+                    || finalReason == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || finalReason == TaskMessageProjectionFinalReason.RETRY_EXHAUSTED;
+            case EXPIRED -> finalReason == TaskMessageProjectionFinalReason.TIMEOUT
+                    || finalReason == TaskMessageProjectionFinalReason.WORKER_LOST
+                    || finalReason == TaskMessageProjectionFinalReason.MANUAL_CANCELLED
+                    || finalReason == TaskMessageProjectionFinalReason.LEASE_EXPIRED;
             default -> false;
         };
     }

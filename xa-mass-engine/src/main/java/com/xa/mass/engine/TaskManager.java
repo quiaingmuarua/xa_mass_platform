@@ -129,7 +129,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.stateValidator = new TaskStateValidator(
                 this,
-                compatibilityProjectionAccess,
+                requiredTaskDetailStore,
                 traceEventLogger
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;

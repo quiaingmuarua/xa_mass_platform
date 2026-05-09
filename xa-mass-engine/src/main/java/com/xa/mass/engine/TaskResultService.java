@@ -264,12 +264,6 @@ class TaskResultService {
             return TaskMessageMutationOutcome.rejected();
         }
 
-        if (!activeAttempt.projectCallbackAccepted()) {
-            logger.warn("Cannot advance attempt {} for task message {} from status {}",
-                    activeAttempt.attemptId(), messageId, activeAttempt.status());
-            return TaskMessageMutationOutcome.rejected();
-        }
-
         ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
                 success, detail, errorCode, output, !success, false);
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
@@ -1015,17 +1009,6 @@ class TaskResultService {
 
         Map<String, Object> output() {
             return output;
-        }
-
-        boolean projectCallbackAccepted() {
-            if (status == null) {
-                return false;
-            }
-            if (status.isFinal()) {
-                return true;
-            }
-            status = TaskMessageAttemptProjectionStatus.RUNNING;
-            return true;
         }
 
         boolean projectExpired(TaskMessageAttemptProjectionFinalReason nextFinalReason, String nextErrorMessage) {

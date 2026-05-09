@@ -17,8 +17,6 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -53,7 +51,7 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskDiagnosticOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
@@ -70,6 +68,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final EventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, EventHandler> eventHandlerCache;
     private final ProjectEventCatalog sdkMetadataCatalogView;
+    private final TaskDiagnosticOperations taskDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
@@ -102,6 +101,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEvent,
                 this::getEventsForProject
         );
+        this.taskDiagnostics = new TaskDiagnosticOperations() {
+            @Override
+            public Object validateTaskState(String taskId) {
+                return requireStartedTaskQueries().validateTaskState(taskId);
+            }
+
+            @Override
+            public Object resolveTaskState(String taskId) {
+                return requireStartedTaskQueries().resolveTaskState(taskId);
+            }
+        };
         this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
@@ -208,14 +218,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
-    @Override
-    public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return requireStartedTaskQueries().resolveTaskState(taskId);
-    }
-
-    @Override
-    public TaskStateValidationResult validateTaskState(String taskId) {
-        return requireStartedTaskQueries().validateTaskState(taskId);
+    public TaskDiagnosticOperations taskDiagnostics() {
+        return taskDiagnostics;
     }
 
     @Override

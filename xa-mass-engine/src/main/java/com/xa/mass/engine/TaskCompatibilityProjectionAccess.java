@@ -273,19 +273,6 @@ final class TaskCompatibilityProjectionAccess {
         }
     }
 
-    AttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return AttemptStats.from(taskDetailStore.getTaskMessageAttemptStats(taskId, messageId));
-    }
-
-    @CompatibilityProjectionOnly
-    List<MessageProjection> getTaskMessageProjectionsForAudit(String taskId) {
-        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
-        if (total <= 0) {
-            return List.of();
-        }
-        return readStoredMessageProjections(taskId, Math.toIntExact(total));
-    }
-
     MessageProjection getStoredCompatibilityMessageProjection(String taskId, String messageId) {
         return MessageProjection.fromStorage(
                 taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null)
@@ -384,22 +371,14 @@ final class TaskCompatibilityProjectionAccess {
         }
         int attemptNo = Math.max(1, activeLease.retryCount() + 1);
         String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
-        MessageProjection storedProjection = getStoredCompatibilityMessageProjection(taskId, messageId);
-        boolean runningAttempt = isProjectedRunningAttempt(storedProjection, attemptId);
         LocalDateTime leaseExpireTime = activeLease.leaseExpireAt() != null
                 ? LocalDateTime.ofInstant(activeLease.leaseExpireAt(), ZoneId.systemDefault())
                 : null;
         LocalDateTime dispatchTime = activeLease.leasedAt() != null
                 ? LocalDateTime.ofInstant(activeLease.leasedAt(), ZoneId.systemDefault())
                 : null;
-        LocalDateTime ackTime = runningAttempt
-                ? storedProjection != null ? storedProjection.assignedTime() : dispatchTime
-                : null;
-        LocalDateTime startTime = runningAttempt
-                ? storedProjection != null ? storedProjection.startTime() : dispatchTime
-                : null;
         LocalDateTime createTime = dispatchTime;
-        LocalDateTime updateTime = startTime != null ? startTime : ackTime != null ? ackTime : dispatchTime;
+        LocalDateTime updateTime = dispatchTime;
         return new RuntimeActiveAttemptView(
                 attemptId,
                 taskId,
@@ -408,13 +387,11 @@ final class TaskCompatibilityProjectionAccess {
                 activeLease.workerId(),
                 activeLease.workerContextId(),
                 activeLease.batchId(),
-                runningAttempt
-                        ? TaskMessageAttemptProjectionStatus.RUNNING.name()
-                        : TaskMessageAttemptProjectionStatus.DISPATCHED.name(),
+                TaskMessageAttemptProjectionStatus.DISPATCHED.name(),
                 leaseExpireTime,
                 dispatchTime,
-                ackTime,
-                startTime,
+                null,
+                null,
                 createTime,
                 updateTime
         );
@@ -446,16 +423,6 @@ final class TaskCompatibilityProjectionAccess {
                 activeAttempt.createTime(),
                 activeAttempt.updateTime()
         );
-    }
-
-    private boolean isProjectedRunningAttempt(MessageProjection storedProjection, String runtimeAttemptId) {
-        if (storedProjection == null || storedProjection.status() != TaskMessageProjectionStatus.RUNNING) {
-            return false;
-        }
-        if (runtimeAttemptId == null || runtimeAttemptId.isBlank()) {
-            return false;
-        }
-        return runtimeAttemptId.equals(storedProjection.latestAttemptId());
     }
 
     private String enumName(Enum<?> value) {
@@ -739,27 +706,6 @@ final class TaskCompatibilityProjectionAccess {
                     errorMessage,
                     errorCode,
                     output
-            );
-        }
-    }
-
-    @CompatibilityProjectionOnly
-    record AttemptStats(long totalAttempts,
-                        long activeAttempts,
-                        long runningAttempts,
-                        long failedAttempts,
-                        long expiredAttempts) {
-
-        static AttemptStats from(TaskDetailStore.TaskMessageAttemptStats stats) {
-            if (stats == null) {
-                return new AttemptStats(0, 0, 0, 0, 0);
-            }
-            return new AttemptStats(
-                    stats.getTotalAttempts(),
-                    stats.getActiveAttempts(),
-                    stats.getRunningAttempts(),
-                    stats.getFailedAttempts(),
-                    stats.getExpiredAttempts()
             );
         }
     }

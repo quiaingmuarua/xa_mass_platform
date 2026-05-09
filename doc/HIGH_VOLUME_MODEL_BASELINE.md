@@ -30,7 +30,7 @@ Already true in current code:
 - task cancellation no longer synchronously rewrites every queued compatibility
   message row; terminal task/message reads overlay the bounded final view
   instead of turning cancel into a per-message CRUD sweep
-- bounded `validateTaskState(...)` no longer needs full message scans; deep projection checks are now an explicit audit path instead of the default validation meaning
+- bounded task-state validation no longer needs full message scans; deep projection checks are now an explicit audit path instead of the default validation meaning
 - engine -> transport dispatch now carries a runtime-native binding built from
   claimed runtime work instead of transporting persisted message-projection input as the
   mainline dispatch carrier

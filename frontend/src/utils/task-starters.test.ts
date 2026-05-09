@@ -1,4 +1,4 @@
-import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
+import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 describe('task starter drafts', () => {
     it('resolves an explicit event starter for known projects', () => {
@@ -9,7 +9,7 @@ describe('task starter drafts', () => {
 
         expect(draft.taskName).toBe('Demo dispatch')
         expect(draft.sharedConfig.objective).toBe('run generic dispatch payload')
-        expect(draft.inputs[0].recipient).toBe('alpha')
+        expect(draft.items[0].recipient).toBe('alpha')
     })
 
     it('falls back to a generic starter for unknown projects', () => {
@@ -18,7 +18,7 @@ describe('task starter drafts', () => {
         })
 
         expect(draft.taskName).toBe('New customApp task')
-        expect(draft.inputs).toHaveLength(2)
+        expect(draft.items).toHaveLength(2)
         expect(draft.guidance[0]).toContain('generic fallback starter')
     })
 
@@ -31,6 +31,6 @@ describe('task starter drafts', () => {
         expect(stringifyStarterSharedConfig(draft.sharedConfig)).toContain(
             'textContent',
         )
-        expect(stringifyStarterInputs(draft.inputs)).toContain('recipient')
+        expect(stringifyStarterItems(draft.items)).toContain('recipient')
     })
 })

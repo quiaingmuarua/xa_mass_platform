@@ -544,7 +544,7 @@ import type {EventCapability, EventInvocationModel, ProjectMetadata, SdkEventDef
 import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
-import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
+import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 const ALL_PROJECTS = 'ALL'
 const TAG_LIMIT = 4
@@ -854,7 +854,7 @@ const selectedProjectStarterSharedConfigText = computed(() =>
 )
 const selectedProjectStarterInputsText = computed(() =>
   selectedProjectStarter.value
-    ? stringifyStarterInputs(selectedProjectStarter.value.inputs)
+    ? stringifyStarterItems(selectedProjectStarter.value.items)
     : '',
 )
 const selectedEventStarterSharedConfigText = computed(() =>
@@ -864,7 +864,7 @@ const selectedEventStarterSharedConfigText = computed(() =>
 )
 const selectedEventStarterInputsText = computed(() =>
   selectedEventStarter.value
-    ? stringifyStarterInputs(selectedEventStarter.value.inputs)
+    ? stringifyStarterItems(selectedEventStarter.value.items)
     : '',
 )
 const draftProjectCodeForSelectedEvent = computed(() => {
