@@ -174,13 +174,13 @@ class RedisRuntimeTraceIntegrationTest {
         );
 
         assertEquals(ResultApplyStatus.SUCCESS_APPLIED, runtimeStatus);
-        assertFalse(handled);
+        assertTrue(handled);
         TaskDetailStore.TaskMessageProjection updated =
                 compatibilityMessageSnapshotView(fixture.task().getTid(), fixture.message().messageId());
         assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
         assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
 
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
         assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
     }
 
@@ -188,6 +188,7 @@ class RedisRuntimeTraceIntegrationTest {
     void callbackOnAlreadyTerminalTaskIsIgnoredAsLateAndEmitsLateTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-late-callback-trace", 0);
         fixture.task().setStatus(TaskStatus.TERMINAL);
+        fixture.task().setTerminalReason(com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED);
         taskStorage.updateTask(fixture.task());
 
         boolean handled = resultFacade.handleTaskMessageResult(

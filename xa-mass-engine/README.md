@@ -24,6 +24,9 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
+- `src/main/java/com/xa/mass/engine/TaskProjectionStateAuditor.java`
+  only when you are intentionally working on explicit full-scan compatibility
+  projection diagnostics
 - `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
   only when you are intentionally working on test-only bounded projection
   overlays or residue audit helpers
@@ -79,6 +82,8 @@ Keep these facts fixed unless the owning global baselines change:
   owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow message/attempt residue reads back into it
+- `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
+  compatibility projection audit belongs to `TaskProjectionStateAuditor`
 - `TaskDetailStore.TaskMessageProjection` and
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the

@@ -51,7 +51,9 @@ Result-side trace emission follows the same rule: emit from runtime-owned
 message/lease state first, then repair bounded projection residue if needed.
 Recent duplicate receipts for already-finalized work belong to bounded runtime
 state as well; they are not an excuse to promote message projection back into
-mainline callback acceptance.
+mainline callback acceptance. If runtime no longer has an active lease and no
+recent final receipt exists, callback acceptance must not fall back to message
+projection residue to recover a second acceptance truth.
 
 ## 3. Current Repo Reality
 

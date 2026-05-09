@@ -1,8 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
-
 /**
  * Engine event payload for a closed execution attempt.
  */
@@ -14,8 +11,8 @@ public record TaskMessageAttemptClosedEvent(
         String workerId,
         String workerContextId,
         String batchId,
-        TaskMessageAttemptProjectionStatus status,
-        TaskMessageAttemptProjectionFinalReason finalReason
+        TaskMessageCompatibilityState.AttemptStatus status,
+        TaskMessageCompatibilityState.AttemptFinalReason finalReason
 ) {
 
     public static TaskMessageAttemptClosedEvent from(String taskId,
@@ -25,8 +22,8 @@ public record TaskMessageAttemptClosedEvent(
                                                      String workerId,
                                                      String workerContextId,
                                                      String batchId,
-                                                     TaskMessageAttemptProjectionStatus status,
-                                                     TaskMessageAttemptProjectionFinalReason finalReason) {
+                                                     TaskMessageCompatibilityState.AttemptStatus status,
+                                                     TaskMessageCompatibilityState.AttemptFinalReason finalReason) {
         return new TaskMessageAttemptClosedEvent(
                 taskId,
                 messageId,

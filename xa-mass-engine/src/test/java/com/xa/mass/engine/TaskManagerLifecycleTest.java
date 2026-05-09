@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1123,6 +1124,45 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMessageProjectionStatus.INIT, persistedMessage.status());
         assertEquals(TaskMessageAttemptProjectionStatus.DISPATCHED,
                 taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId()).status());
+    }
+
+    @Test
+    void callbackDoesNotAcceptFinalProjectionWithoutRuntimeReceiptOrLease() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-result-final-projection-no-runtime-truth", List.of("alpha", "beta")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        TaskDetailStore.TaskMessageProjection projectionOnlySuccess = ProjectionTestSupport.markSuccess(
+                message,
+                Map.of("status", "SUCCESS"),
+                TaskMessageProjectionFinalReason.BUSINESS_SUCCESS
+        );
+        assertTrue(taskManager.upsertTaskMessageProjectionRecord(
+                task.getTid(),
+                projectionOnlySuccess
+        ));
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done"));
+            capture.assertHasEvent("CALLBACK_REJECTED_NO_ACTIVE_LEASE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.messageId().equals(mdc.get("messageId"))
+                            && "INIT".equals(mdc.get("taskMsgStatus")));
+        }
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "no-active-lease callback rejection should not consult final compatibility projection residue");
+
+        TaskDetailStore.TaskMessageProjection persistedMessage =
+                taskManager.getStoredTaskMessageRecord(task.getTid(), message.messageId());
+        assertEquals(TaskMessageProjectionStatus.SUCCESS, persistedMessage.status());
+        assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
     }
 
     @Test

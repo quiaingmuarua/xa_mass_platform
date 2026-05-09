@@ -192,7 +192,7 @@ class TaskResultService {
             if (isManualOrPolicyTerminalStop(task)) {
                 TaskMessageTraceView lateView = recentFinalMessage != null
                         ? recentFinalMessage.toTraceView()
-                        : resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
+                        : resolveTraceTaskMessageView(taskId, messageId, activeLease);
                 traceEventLogger.callbackIgnoredLate(lateView,
                         "task already terminal in status " + task.getStatus());
                 logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
@@ -201,7 +201,7 @@ class TaskResultService {
             }
             TaskMessageTraceView duplicateView = recentFinalMessage != null
                     ? recentFinalMessage.toTraceView()
-                    : resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
+                    : resolveTraceTaskMessageView(taskId, messageId, activeLease);
             traceEventLogger.callbackIgnoredDuplicate(duplicateView,
                     "task already terminal after result convergence in status " + task.getStatus());
             logger.info("Ignoring duplicate result for terminal task {}, msg {} still in status {}",
@@ -213,7 +213,7 @@ class TaskResultService {
         TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
             if (runtimeWork != null) {
-                TaskMessageTraceView noLeaseRuntimeView = resolveTraceTaskMessageView(taskId, messageId, null, null);
+                TaskMessageTraceView noLeaseRuntimeView = resolveTraceTaskMessageView(taskId, messageId, null);
                 traceEventLogger.callbackRejectedNoActiveLease(
                         noLeaseRuntimeView,
                         "callback arrived without any active runtime lease"
@@ -229,17 +229,7 @@ class TaskResultService {
                         messageId, taskId, recentFinalMessage.status());
                 return TaskMessageMutationOutcome.acceptedNoop();
             }
-            RuntimeMessageView storedProjection = RuntimeMessageView.from(
-                    taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null)
-            );
-            if (storedProjection != null && storedProjection.isCompleted()) {
-                traceEventLogger.callbackIgnoredDuplicate(storedProjection.toTraceView(),
-                        "task message already final in status " + storedProjection.status());
-                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                        messageId, taskId, storedProjection.status());
-                return TaskMessageMutationOutcome.acceptedNoop();
-            }
-            TaskMessageTraceView noLeaseView = resolveTraceTaskMessageView(taskId, messageId, storedProjection, null);
+            TaskMessageTraceView noLeaseView = resolveTraceTaskMessageView(taskId, messageId, null);
             traceEventLogger.callbackRejectedNoActiveLease(
                     noLeaseView,
                     "callback arrived without any active runtime lease"
@@ -365,11 +355,7 @@ class TaskResultService {
 
     private TaskMessageTraceView resolveTraceTaskMessageView(String taskId,
                                                              String messageId,
-                                                             RuntimeMessageView storedProjection,
                                                              ActiveLeaseRecord activeLease) {
-        if (storedProjection != null) {
-            return storedProjection.toTraceView();
-        }
         RuntimeMessageView recovered = materializeRuntimeMessageView(
                 taskId,
                 messageId,
@@ -730,7 +716,7 @@ class TaskResultService {
             return;
         }
         try {
-            if (taskDetailStore.upsertTaskMessageProjection(taskId, taskMsg.toStorageProjection())) {
+            if (taskDetailStore.upsertTaskMessageProjection(taskId, toTaskMessageProjectionRecord(taskMsg))) {
                 return;
             }
         } catch (RuntimeException e) {
@@ -754,12 +740,54 @@ class TaskResultService {
             taskDetailStore.upsertTaskMessageAttemptProjection(
                     taskId,
                     messageId,
-                    attempt.toStorageProjection()
+                    toTaskMessageAttemptProjectionRecord(attempt)
             );
         } catch (RuntimeException e) {
             logger.warn("Failed to upsert compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
                     taskId, messageId, attempt.attemptId(), action, e);
         }
+    }
+
+    private TaskDetailStore.TaskMessageProjection toTaskMessageProjectionRecord(RuntimeMessageView taskMsg) {
+        return new TaskDetailStore.TaskMessageProjection(
+                taskMsg.messageId(),
+                taskMsg.taskId(),
+                null,
+                taskMsg.payloadRef(),
+                taskMsg.status(),
+                taskMsg.assignedTime(),
+                taskMsg.createTime(),
+                taskMsg.updateTime(),
+                taskMsg.startTime(),
+                taskMsg.completeTime(),
+                taskMsg.retryCount(),
+                taskMsg.maxRetryCount(),
+                taskMsg.errorMessage(),
+                taskMsg.errorCode(),
+                taskMsg.finalReason(),
+                taskMsg.output() == null ? null : new java.util.LinkedHashMap<>(taskMsg.output()),
+                taskMsg.latestAttemptId(),
+                taskMsg.latestAttemptWorkerId(),
+                taskMsg.latestAttemptWorkerContextId(),
+                taskMsg.latestAttemptBatchId()
+        );
+    }
+
+    private TaskDetailStore.TaskMessageAttemptProjection toTaskMessageAttemptProjectionRecord(AttemptProjectionView attempt) {
+        return new TaskDetailStore.TaskMessageAttemptProjection(
+                attempt.attemptId(),
+                attempt.taskId(),
+                attempt.messageId(),
+                attempt.attemptNo(),
+                attempt.workerId(),
+                attempt.workerContextId(),
+                attempt.batchId(),
+                attempt.status(),
+                attempt.finalReason(),
+                attempt.errorMessage(),
+                attempt.errorCode(),
+                attempt.output()
+        );
     }
 
     private boolean isCallbackAcceptableMessageState(TaskMessageProjectionStatus taskMsgStatus) {
@@ -1038,23 +1066,6 @@ class TaskResultService {
             return output;
         }
 
-        TaskDetailStore.TaskMessageAttemptProjection toStorageProjection() {
-            return new TaskDetailStore.TaskMessageAttemptProjection(
-                    attemptId,
-                    taskId,
-                    messageId,
-                    attemptNo,
-                    workerId,
-                    workerContextId,
-                    batchId,
-                    status,
-                    finalReason,
-                    errorMessage,
-                    errorCode,
-                    output
-            );
-        }
-
         boolean projectExpired(TaskMessageAttemptProjectionFinalReason nextFinalReason, String nextErrorMessage) {
             if (status == null || status.isFinal()) {
                 return false;
@@ -1182,34 +1193,6 @@ class TaskResultService {
             );
         }
 
-        @CompatibilityProjectionOnly
-        static RuntimeMessageView from(TaskDetailStore.TaskMessageProjection projection) {
-            if (projection == null) {
-                return null;
-            }
-            return new RuntimeMessageView(
-                    projection.messageId(),
-                    projection.taskId(),
-                    projection.latestAttemptId(),
-                    projection.latestAttemptWorkerId(),
-                    projection.latestAttemptWorkerContextId(),
-                    projection.latestAttemptBatchId(),
-                    projection.status(),
-                    projection.assignedTime(),
-                    projection.createTime(),
-                    projection.updateTime(),
-                    projection.startTime(),
-                    projection.completeTime(),
-                    projection.retryCount(),
-                    projection.maxRetryCount(),
-                    projection.errorMessage(),
-                    projection.errorCode(),
-                    projection.finalReason(),
-                    projection.payloadRef(),
-                    projection.output() == null ? null : new java.util.LinkedHashMap<>(projection.output())
-            );
-        }
-
         static RuntimeMessageView fromRecentFinalReceipt(RecentFinalWorkReceipt receipt) {
             if (receipt == null) {
                 return null;
@@ -1252,31 +1235,6 @@ class TaskResultService {
 
         private boolean isCompleted() {
             return status != null && status.isFinal();
-        }
-
-        TaskDetailStore.TaskMessageProjection toStorageProjection() {
-            return new TaskDetailStore.TaskMessageProjection(
-                    messageId,
-                    taskId,
-                    null,
-                    payloadRef,
-                    status,
-                    assignedTime,
-                    createTime,
-                    updateTime,
-                    startTime,
-                    completeTime,
-                    retryCount,
-                    maxRetryCount,
-                    errorMessage,
-                    errorCode,
-                    finalReason,
-                    output == null ? null : new java.util.LinkedHashMap<>(output),
-                    latestAttemptId,
-                    latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
-                    latestAttemptBatchId
-            );
         }
 
         private RuntimeMessageView reopenForActiveLease(ActiveLeaseRecord activeLease) {

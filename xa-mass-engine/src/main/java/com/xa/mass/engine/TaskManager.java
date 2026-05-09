@@ -70,6 +70,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
     private final TaskStateValidator stateValidator;
+    private final TaskProjectionStateAuditor projectionStateAuditor;
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
@@ -123,8 +124,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.stateValidator = new TaskStateValidator(
                 this,
-                requiredTaskDetailStore,
                 traceEventLogger
+        );
+        this.projectionStateAuditor = new TaskProjectionStateAuditor(
+                stateValidator,
+                requiredTaskDetailStore
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;
         this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
@@ -512,7 +516,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      */
     @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
+        return withTaskLock(taskId, () -> projectionStateAuditor.auditTaskProjectionState(taskId));
     }
 
     TaskScheduler getScheduler() {
@@ -692,7 +696,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 taskId,
                 ingressItem.projectedInput(),
                 ingressItem.payloadRef(),
-                com.xa.mass.storage.api.projection.TaskMessageProjectionStatus.INIT,
+                TaskMessageCompatibilityState.MessageStatus.INIT.toProjection(),
                 null,
                 null,
                 null,

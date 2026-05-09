@@ -25,7 +25,6 @@ class TaskStateValidatorBoundaryTest {
         TrackingTaskDetailStore detailStore = new TrackingTaskDetailStore();
         TaskStateValidator validator = new TaskStateValidator(
                 runtime,
-                detailStore,
                 new com.xa.mass.engine.util.TraceEventLogger(null)
         );
 
@@ -67,11 +66,11 @@ class TaskStateValidatorBoundaryTest {
         );
         TaskStateValidator validator = new TaskStateValidator(
                 runtime,
-                detailStore,
                 new com.xa.mass.engine.util.TraceEventLogger(null)
         );
+        TaskProjectionStateAuditor auditor = new TaskProjectionStateAuditor(validator, detailStore);
 
-        TaskStateValidationResult result = validator.auditTaskProjectionState("task-1");
+        TaskStateValidationResult result = auditor.auditTaskProjectionState("task-1");
 
         assertTrue(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());

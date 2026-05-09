@@ -8,67 +8,56 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Validates runtime task state and, when requested explicitly, audits the
- * persisted compatibility message projection for deeper consistency issues.
+ * Validates runtime task state without scanning compatibility projection
+ * residue.
  */
 class TaskStateValidator {
 
     private final TaskStateRuntimePort stateRuntime;
-    private final TaskDetailStore taskDetailStore;
     private final TraceEventLogger traceEventLogger;
 
     TaskStateValidator(TaskStateRuntimePort stateRuntime,
-                       TaskDetailStore taskDetailStore,
                        TraceEventLogger traceEventLogger) {
         this.stateRuntime = stateRuntime;
-        this.taskDetailStore = taskDetailStore;
         this.traceEventLogger = traceEventLogger;
     }
 
     TaskStateValidationResult validateTaskState(String taskId) {
-        return validateTaskState(taskId, false);
-    }
-
-    TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return validateTaskState(taskId, true);
-    }
-
-    private TaskStateValidationResult validateTaskState(String taskId, boolean projectionAudit) {
-        Task task = getTask(taskId);
-        if (task == null) {
-            TaskStateValidationResult result = new TaskStateValidationResult(
-                    false,
-                    false,
-                    null,
-                    null,
-                    0,
-                    0,
-                    0,
-                    0,
-                    projectionAudit
-                            ? TaskStateValidationResult.Scope.PROJECTION_AUDIT
-                            : TaskStateValidationResult.Scope.RUNTIME,
-                    List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND)
-            );
+        RuntimeValidationSnapshot snapshot = computeRuntimeValidation(taskId);
+        TaskStateValidationResult result = snapshot.toResult(TaskStateValidationResult.Scope.RUNTIME);
+        if (!result.isValid() || result.isNeedsResolution()) {
             emitTaskStateValidationSummary(
                     taskId,
                     result,
-                    "task not found",
-                    projectionAudit ? "AUDIT_TASK_PROJECTION_STATE" : "VALIDATE_TASK_STATE"
+                    result.isNeedsResolution()
+                            ? "task requires explicit terminal reconciliation"
+                            : snapshot.task() == null
+                            ? "task not found"
+                            : "task validation found invariant violations",
+                    "VALIDATE_TASK_STATE"
             );
-            return result;
+        }
+        return result;
+    }
+
+    RuntimeValidationSnapshot computeRuntimeValidation(String taskId) {
+        Task task = getTask(taskId);
+        if (task == null) {
+            return new RuntimeValidationSnapshot(
+                    null,
+                    TaskWorkStats.EMPTY,
+                    List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND),
+                    false
+            );
         }
 
         TaskWorkStats stats = getTaskWorkStats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
-
         if (task.getTaskEligibleNumber() < 0) {
             violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_ELIGIBLE_COUNT);
         }
@@ -138,77 +127,13 @@ class TaskStateValidator {
 
         boolean needsResolution = !finalStatus
                 && evaluateTerminalPolicy(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
-        if (projectionAudit) {
-            needsResolution = needsResolution || auditTaskMessageProjection(taskId, violations);
-        }
-        TaskStateValidationResult result = new TaskStateValidationResult(
-                violations.isEmpty(),
-                needsResolution,
-                task.getStatus(),
-                task.getTerminalReason(),
-                stats.totalCount(),
-                stats.successCount(),
-                stats.failedCount(),
-                stats.processingCount(),
-                projectionAudit
-                        ? TaskStateValidationResult.Scope.PROJECTION_AUDIT
-                        : TaskStateValidationResult.Scope.RUNTIME,
-                List.copyOf(violations)
-        );
-        if (!result.isValid() || result.isNeedsResolution()) {
-            emitTaskStateValidationSummary(
-                    taskId,
-                    result,
-                    result.isNeedsResolution()
-                            ? "task requires explicit terminal reconciliation"
-                            : "task validation found invariant violations",
-                    projectionAudit ? "AUDIT_TASK_PROJECTION_STATE" : "VALIDATE_TASK_STATE"
-            );
-        }
-        return result;
+        return new RuntimeValidationSnapshot(task, stats, List.copyOf(violations), needsResolution);
     }
 
-    private boolean auditTaskMessageProjection(String taskId,
-                                               List<TaskStateValidationResult.ViolationCode> violations) {
-        boolean attemptNeedsResolution = false;
-        for (TaskDetailStore.TaskMessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
-            if (messageProjection == null) {
-                continue;
-            }
-            if (isCompleted(messageProjection) && messageProjection.finalReason() == null) {
-                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
-            }
-            if (isCompleted(messageProjection)
-                    && !TaskMessageAttemptSupport.isTaskMessageFinalReasonCompatible(
-                    messageProjection.status(),
-                    messageProjection.finalReason())) {
-                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
-            }
-            TaskDetailStore.TaskMessageAttemptStats attemptStats =
-                    getTaskMessageAttemptStats(taskId, messageProjection.messageId());
-            long activeAttemptCount = attemptStats.getActiveAttempts();
-            boolean hasActiveAttempt = activeAttemptCount > 0;
-            if (activeAttemptCount > 1) {
-                violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
-            }
-            if (hasActiveAttempt && isCompleted(messageProjection)) {
-                violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
-            }
-            boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
-            if (allAttemptsFinal
-                    && !isCompleted(messageProjection)
-                    && messageProjection.status() != TaskMessageProjectionStatus.INIT) {
-                attemptNeedsResolution = true;
-                violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
-            }
-        }
-        return attemptNeedsResolution;
-    }
-
-    private void emitTaskStateValidationSummary(String taskId,
-                                                TaskStateValidationResult validationResult,
-                                                String reason,
-                                                String trigger) {
+    void emitTaskStateValidationSummary(String taskId,
+                                        TaskStateValidationResult validationResult,
+                                        String reason,
+                                        String trigger) {
         String violationSummary = validationResult.getViolations().stream()
                 .map(Enum::name)
                 .reduce((left, right) -> left + "," + right)
@@ -246,23 +171,30 @@ class TaskStateValidator {
     }
 
     @CompatibilityProjectionOnly
-    private java.util.List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
-        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
-        if (total <= 0) {
-            return List.of();
+    record RuntimeValidationSnapshot(Task task,
+                                     TaskWorkStats stats,
+                                     List<TaskStateValidationResult.ViolationCode> violations,
+                                     boolean needsResolution) {
+
+        RuntimeValidationSnapshot {
+            stats = stats == null ? TaskWorkStats.EMPTY : stats;
+            violations = violations == null ? List.of() : List.copyOf(violations);
         }
-        return taskDetailStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
-    }
 
-    private TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+        TaskStateValidationResult toResult(TaskStateValidationResult.Scope scope) {
+            return new TaskStateValidationResult(
+                    violations.isEmpty(),
+                    needsResolution,
+                    task != null ? task.getStatus() : null,
+                    task != null ? task.getTerminalReason() : null,
+                    stats.totalCount(),
+                    stats.successCount(),
+                    stats.failedCount(),
+                    stats.processingCount(),
+                    scope,
+                    violations
+            );
+        }
     }
-
-    private boolean isCompleted(TaskDetailStore.TaskMessageProjection messageProjection) {
-        return messageProjection != null
-                && messageProjection.status() != null
-                && messageProjection.status().isFinal();
-    }
-
 }
 

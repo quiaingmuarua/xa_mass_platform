@@ -78,9 +78,10 @@ Engine hot paths must treat these runtime semantics as authoritative:
   runtime-synchronized message fields first; trace must not force
   compatibility-model materialization or a hot-path latest-attempt projection
   lookup
-- when queue work and active lease have already been removed, the accepted
-  duplicate/late callback path should prefer bounded runtime final receipts
-  over compatibility projection reads; projection remains fallback residue only
+- when queue work and active lease have already been removed, accepted
+  duplicate/late callback handling must rely on bounded runtime final receipts;
+  compatibility projection reads must not redefine callback acceptance after
+  runtime ownership has been released
 - result-side active-lease repair may derive an in-memory runtime message view
   directly from runtime lease truth plus bounded projection residue; it must
   not require routing back through legacy compatibility overlay helpers just to
