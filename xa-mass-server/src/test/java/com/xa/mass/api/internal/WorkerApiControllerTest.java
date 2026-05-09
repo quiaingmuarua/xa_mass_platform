@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -12,6 +11,7 @@ import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +36,7 @@ class WorkerApiControllerTest {
     private WorkerQueryOperations workerQueries;
 
     @Mock
-    private TransportOperations transportOperations;
+    private TransportDebugOperations transportDebugOperations;
 
     private MockMvc mockMvc;
     private ProjectEventCatalogRegistry metadataCatalog;
@@ -59,7 +59,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, transportOperations))
+                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, transportDebugOperations))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -81,7 +81,7 @@ class WorkerApiControllerTest {
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
-        when(transportOperations.listSessions()).thenReturn(List.of(Map.of(
+        when(transportDebugOperations.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
                         "active", true,

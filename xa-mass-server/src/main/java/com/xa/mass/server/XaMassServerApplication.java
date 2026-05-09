@@ -14,6 +14,7 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
@@ -297,6 +298,13 @@ public class XaMassServerApplication {
     public PrincipalDirectory serverPrincipalDirectory(DefaultOperatorPrincipalDirectory operatorPrincipalDirectory,
                                                        MassSdkApplication app) {
         return new CompositePrincipalDirectory(List.of(operatorPrincipalDirectory, app));
+    }
+
+    @Bean
+    @Primary
+    @Profile("dev")
+    public TransportDebugOperations serverTransportDebugOperations(MassSdkApplication app) {
+        return app.transportDebug();
     }
 
     private static List<String> describeConfiguredTransportAdapters(String webSocketUri,

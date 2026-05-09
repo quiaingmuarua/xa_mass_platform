@@ -183,6 +183,7 @@ The returned `MassSdkApplication` exposes:
 - lifecycle: `start()`, `stop()`, `isRunning()`
 - mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
+- transport/session/queue raw diagnostics are internal/operator-only through `app.transportDebug()`; they are not part of the stable embedding mainline
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
@@ -199,7 +200,7 @@ Current SDK contracts:
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
-| removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
+| removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
 For embedded runtime wiring, keep the mainline on storage/runtime contracts
@@ -321,11 +322,11 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 `EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
-are surfaced through `getQueueDetail().runtimeExecutors` and the Boot-shell
-`/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
-`getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
+are surfaced through the internal/operator-only `app.transportDebug().getQueueDetail()`
+view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
+`app.transportDebug().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
 replacement. Realtime direct-send counters are intentionally separate under
-`getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
+`app.transportDebug().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.

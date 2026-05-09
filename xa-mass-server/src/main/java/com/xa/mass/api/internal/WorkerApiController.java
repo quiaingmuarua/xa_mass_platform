@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.sdk.TransportOperations;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,35 +24,35 @@ public class WorkerApiController {
 
     private final WorkerQueryOperations workerQueries;
     private final SdkMetadataCatalog metadataCatalog;
-    private final TransportOperations transportOperations;
+    private final TransportDebugOperations transportDebugOperations;
 
     public WorkerApiController(WorkerQueryOperations workerQueries) {
-        this(workerQueries, (SdkMetadataCatalog) null, (TransportOperations) null);
+        this(workerQueries, (SdkMetadataCatalog) null, (TransportDebugOperations) null);
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
                                SdkMetadataCatalog metadataCatalog,
-                               TransportOperations transportOperations) {
+                               TransportDebugOperations transportDebugOperations) {
         this.workerQueries = workerQueries;
         this.metadataCatalog = metadataCatalog;
-        this.transportOperations = transportOperations;
+        this.transportDebugOperations = transportDebugOperations;
     }
 
     @Autowired
     public WorkerApiController(WorkerQueryOperations workerQueries,
                                ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
-                               ObjectProvider<TransportOperations> transportOperationsProvider) {
+                               ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
         this(
                 workerQueries,
                 metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
-                transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
+                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
         );
     }
 
     @GetMapping("/workers")
     public ApiResponse<Map<String, Object>> listWorkers() {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> toWorkerItem(

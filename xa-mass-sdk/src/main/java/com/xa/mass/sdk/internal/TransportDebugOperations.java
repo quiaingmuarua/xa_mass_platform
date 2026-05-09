@@ -1,9 +1,14 @@
-package com.xa.mass.sdk;
+package com.xa.mass.sdk.internal;
 
 import java.util.List;
 import java.util.Map;
 
-public interface TransportOperations {
+/**
+ * Internal/operator-only transport diagnostics and raw side-channel access.
+ *
+ * <p>This surface is intentionally outside the stable SDK mainline.
+ */
+public interface TransportDebugOperations {
 
     List<Map<String, Object>> listSessions();
 

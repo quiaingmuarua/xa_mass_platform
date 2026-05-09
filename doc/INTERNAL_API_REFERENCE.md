@@ -470,7 +470,7 @@ kernel truth.
 
 Response notes:
 
-- returns queue/detail diagnostics from `TransportOperations.getQueueDetail()`
+- returns queue/detail diagnostics from the SDK internal transport debug handle
 - operator diagnostic surface only
 
 ### 5.2 Queue Metrics

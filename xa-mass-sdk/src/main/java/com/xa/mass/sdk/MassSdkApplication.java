@@ -1,6 +1,5 @@
 package com.xa.mass.sdk;
 
-import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -17,6 +16,8 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -31,12 +32,11 @@ import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.event.EventDefinitionRegistry;
 import com.xa.mass.sdk.event.EventHandler;
 import com.xa.mass.sdk.model.*;
+import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -55,9 +55,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
-        RuleOperations, TransportOperations {
-
-    private static final Gson GSON = new Gson();
+        RuleOperations {
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
@@ -69,6 +67,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final Map<String, EventHandler> eventHandlerCache;
     private final ProjectEventCatalog sdkMetadataCatalogView;
     private final TaskDiagnosticOperations taskDiagnostics;
+    private final TransportDebugOperations transportDebugOperations;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
@@ -101,17 +100,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEvent,
                 this::getEventsForProject
         );
-        this.taskDiagnostics = new TaskDiagnosticOperations() {
-            @Override
-            public Object validateTaskState(String taskId) {
-                return requireStartedTaskQueries().validateTaskState(taskId);
-            }
-
-            @Override
-            public Object resolveTaskState(String taskId) {
-                return requireStartedTaskQueries().resolveTaskState(taskId);
-            }
-        };
+        this.taskDiagnostics = new DefaultTaskDiagnosticOperations(this::requireStartedTaskQueries);
+        this.transportDebugOperations = new DefaultTransportDebugOperations(delegate);
         this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
@@ -162,19 +152,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean approveTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_APPROVE, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().approveTask(requireTaskId(taskId));
     }
 
     public boolean rejectTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_REJECT, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().rejectTask(requireTaskId(taskId));
     }
 
     public boolean blockTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_BLOCK, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().blockTask(requireTaskId(taskId));
     }
 
     public boolean pauseTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_PAUSE, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().pauseTask(requireTaskId(taskId));
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
@@ -188,38 +178,38 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean resumeTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_RESUME, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().resumeTask(requireTaskId(taskId));
     }
 
     public boolean cancelTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_CANCEL, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().cancelTask(requireTaskId(taskId));
     }
 
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return booleanEvent(PlatformEventCodes.TASK_TERMINATE, Map.of(
-                "taskId", taskId,
-                "reason", reason == null ? TaskTerminalReason.MANUAL_CANCELLED.name() : reason.name()
-        ));
+        return requireStartedTaskCommands().terminateTask(
+                requireTaskId(taskId),
+                reason == null ? TaskTerminalReason.MANUAL_CANCELLED : reason
+        );
     }
 
     @Override
     public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
-        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
-        if (task == null) {
-            throw new IllegalArgumentException("Task not found: " + taskId);
-        }
-        List<Map<String, Object>> converted = convertAppendItems(task, request.getItems());
+        List<Map<String, Object>> converted = requireAppendItems(request.getItems());
         int retrySeed = request.getDefaultMsgMaxRetryCount() == null ? 3 : request.getDefaultMsgMaxRetryCount();
-        return requireStartedTaskCommands().appendTaskItems(task.getTid(), converted, retrySeed);
+        return requireStartedTaskCommands().appendTaskItems(requireTaskId(taskId), converted, retrySeed);
     }
 
     public boolean sealTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().sealTask(requireTaskId(taskId));
     }
 
     public TaskDiagnosticOperations taskDiagnostics() {
         return taskDiagnostics;
+    }
+
+    public TransportDebugOperations transportDebug() {
+        return transportDebugOperations;
     }
 
     @Override
@@ -255,23 +245,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public void registerWorker(WorkerRegistration request) {
         requireStartedEngine();
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.WORKER_REGISTER)
-                .payload(Map.of("request", request))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
+        WorkerRegistration registration = normalizeWorkerRegistration(request);
+        requireStartedWorkerStorage().addWorker(SdkResourceMapper.toWorker(registration));
     }
 
     @Override
     public void registerWorkerContext(WorkerContextRegistration request) {
         requireStartedEngine();
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.WORKER_CONTEXT_REGISTER)
-                .payload(Map.of("request", request))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
+        requireStartedWorkerStorage().addWorkerContext(SdkResourceMapper.toWorkerContext(
+                Objects.requireNonNull(request, "request")
+        ));
     }
 
     @Override
@@ -490,104 +473,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private void registerControlPlaneEventHandlers() {
         registerPlatformEvent(
-                PlatformEventCodes.WORKER_REGISTER,
-                "Platform Worker Register",
-                "Register a worker identity and capability record.",
-                (request, principal) -> {
-                    WorkerRegistration registration = resolveWorkerRegistration(request);
-                    requireStartedWorkerStorage().addWorker(SdkResourceMapper.toWorker(registration));
-                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
-                }
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.WORKER_CONTEXT_REGISTER,
-                "Platform Worker Context Register",
-                "Register a worker execution context.",
-                (request, principal) -> {
-                    WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
-                    requireStartedWorkerStorage().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
-                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
-                }
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_APPROVE,
-                "Platform Task Approve",
-                "Approve a task and move it into scheduling.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().approveTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_REJECT,
-                "Platform Task Reject",
-                "Reject a task and block it before scheduling.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().rejectTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_BLOCK,
-                "Platform Task Block",
-                "Block an active or ready task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().blockTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_PAUSE,
-                "Platform Task Pause",
-                "Pause a running or ready task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().pauseTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_RESUME,
-                "Platform Task Resume",
-                "Resume a paused task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().resumeTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_CANCEL,
-                "Platform Task Cancel",
-                "Cancel a task and close it to terminal.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().cancelTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_TERMINATE,
-                "Platform Task Terminate",
-                "Terminate a task with an explicit terminal reason.",
-                (request, principal) -> CoreEventResponse.success(
-                                requireStartedTaskCommands().terminateTask(
-                                        readRequiredString(request.getPayload(), "taskId"),
-                                TaskTerminalReason.valueOf(readString(request.getPayload(), "reason", TaskTerminalReason.MANUAL_CANCELLED.name()))
-                        ),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_APPEND_ITEMS,
-                "Platform Task Append Items",
-                "Append more inputs to an open-intake task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().appendTaskItems(
-                                readRequiredString(request.getPayload(), "taskId"),
-                                readInputMaps(request.getPayload().get("inputs"))
-                        ),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_SEAL,
-                "Platform Task Seal",
-                "Seal an open-intake task against further appends.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().sealTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
                 PlatformEventCodes.META_PROJECTS_LIST,
                 "Platform Meta Projects List",
                 "List registered SDK projects.",
@@ -799,63 +684,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "No runtime event handler registered for event: " + definition.getCode(),
                 request.getRequestId()
         );
-    }
-
-    private List<Map<String, Object>> convertAppendItems(Task task, List<Object> rawItems) {
-        PayloadType payloadType = resolveTaskShellPayloadType(task);
-        if (payloadType == null) {
-            return rawItems == null ? List.of() : rawItems.stream()
-                    .map(this::mapInputWithoutDeclaredPayloadType)
-                    .toList();
-        }
-        if (rawItems == null || rawItems.isEmpty()) {
-            return List.of();
-        }
-        return rawItems.stream()
-                .map(rawItem -> toTaskPayloadInput(rawItem, payloadType))
-                .toList();
-    }
-
-    private Map<String, Object> toTaskPayloadInput(Object rawItem, PayloadType payloadType) {
-        return switch (payloadType) {
-            case TEXT -> {
-                if (!(rawItem instanceof String text)) {
-                    throw new IllegalArgumentException("TEXT payloadType requires string items");
-                }
-                yield new TextInput(text).toTaskMsgInput();
-            }
-            case JSON -> {
-                if (!(rawItem instanceof Map<?, ?> rawMap)) {
-                    throw new IllegalArgumentException("JSON payloadType requires object items");
-                }
-                yield stringObjectMap(rawMap);
-            }
-        };
-    }
-
-    private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawItem) {
-        if (rawItem instanceof String text) {
-            return new TextInput(text).toTaskMsgInput();
-        }
-        if (rawItem instanceof Map<?, ?> rawMap) {
-            return stringObjectMap(rawMap);
-        }
-        throw new IllegalArgumentException("Unsupported input item type: " + rawItem);
-    }
-
-    private PayloadType resolveTaskShellPayloadType(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
-            return null;
-        }
-        Object sdkMetadata = task.getSharedConfig().get("_sdk");
-        if (!(sdkMetadata instanceof Map<?, ?> sdkMetadataMap)) {
-            return null;
-        }
-        Object payloadType = sdkMetadataMap.get("payloadType");
-        if (!(payloadType instanceof String payloadTypeName) || payloadTypeName.isBlank()) {
-            return null;
-        }
-        return PayloadType.valueOf(payloadTypeName);
     }
 
     private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
@@ -1139,17 +967,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             normalized.add(ProjectRegistry.require(value.trim()).getCode());
         }
         return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
-    }
-
-    private List<Map<String, Object>> readInputMaps(Object value) {
-        if (!(value instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> inputs = new ArrayList<>(list.size());
-        for (Object item : list) {
-            inputs.add(readMap(item));
-        }
-        return List.copyOf(inputs);
     }
 
     private String firstNonBlank(String left, String right) {
@@ -1438,99 +1255,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         ruleStorage.addRules(List.copyOf(rules));
     }
 
-    @Override
-    public List<Map<String, Object>> listSessions() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointInspector == null) {
-            return data;
-        }
-
-        Map<String, List<WorkerEndpointSnapshot>> grouped = new HashMap<>();
-        for (WorkerEndpointSnapshot snapshot : endpointInspector.listWorkerEndpoints()) {
-            grouped.computeIfAbsent(snapshot.getWorkerId(), ignored -> new ArrayList<>()).add(snapshot);
-        }
-        grouped.forEach((workerId, endpoints) -> {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("workerId", workerId);
-            List<Map<String, Object>> connections = new ArrayList<>();
-            endpoints.forEach(snapshot -> {
-                Map<String, Object> connectionInfo = new LinkedHashMap<>();
-                connectionInfo.put("active", snapshot.isActive());
-                connectionInfo.put("endpointId", snapshot.getEndpointId());
-                connectionInfo.put("routeKey", snapshot.getRouteKey());
-                connectionInfo.put("adapterId", snapshot.getAdapterId());
-                connections.add(connectionInfo);
-            });
-            entry.put("connections", connections);
-            data.add(entry);
-        });
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> getSessionStats() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointRegistry != null) {
-            data.put("activeConnections", endpointRegistry.getActiveConnectionCount());
-            if (endpointInspector != null) {
-                List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
-                data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
-                Map<String, Long> activeConnectionsByAdapter = new LinkedHashMap<>();
-                snapshots.stream()
-                        .filter(WorkerEndpointSnapshot::isActive)
-                        .forEach(snapshot -> activeConnectionsByAdapter.merge(
-                                snapshot.getAdapterId(),
-                                1L,
-                                Long::sum
-                        ));
-                data.put("activeConnectionsByAdapter", activeConnectionsByAdapter);
-            } else {
-                data.put("workerCount", 0L);
-                data.put("activeConnectionsByAdapter", Map.of());
-            }
-        } else {
-            data.put("activeConnections", 0);
-            data.put("workerCount", 0L);
-            data.put("activeConnectionsByAdapter", Map.of());
-        }
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> enqueueRawMessage(Map<String, Object> request) {
-        Object workerId = request.get("workerId");
-        if (!(workerId instanceof String workerIdText) || workerIdText.isBlank()) {
-            return Map.of("success", false, "msg", "workerId is required");
-        }
-        Object rawJson = request.get("rawJson");
-        String payload = rawJson instanceof String rawText ? rawText : GSON.toJson(request);
-        boolean accepted = delegate.sendRawTransportMessage(
-                workerIdText.trim(),
-                payload,
-                UUID.randomUUID().toString()
-        );
-        if (!accepted) {
-            return Map.of("success", false, "msg", "no transport side-channel accepted a unique active worker route");
-        }
-        return Map.of("success", true, "msg", "message enqueued");
-    }
-
-    @Override
-    public Map<String, Object> getQueueDetail() {
-        return delegate.getTransportQueueDetail();
-    }
-
-    @Override
-    public Map<String, Object> getQueueMetrics() {
-        return Map.of(
-                "inputQueueRate", 0,
-                "outputQueueRate", 0
-        );
-    }
-
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
@@ -1580,15 +1304,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Rule storage is unavailable for this SDK application");
         }
         return ruleStorage;
-    }
-
-    private WorkerEndpointRegistry resolveEndpointRegistry() {
-        return delegate.getEndpointRegistry();
-    }
-
-    private WorkerEndpointInspector resolveEndpointInspector() {
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
-        return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
     }
 
     private Map<String, Object> copyMap(Map<String, Object> source) {
@@ -1644,5 +1359,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Mass engine has not been started");
         }
         return engine;
+    }
+
+    private List<Map<String, Object>> requireAppendItems(List<Object> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>(items.size());
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                throw new IllegalArgumentException("SDK append items must be JSON object maps");
+            }
+            normalized.add(stringObjectMap(rawMap));
+        }
+        return List.copyOf(normalized);
     }
 }

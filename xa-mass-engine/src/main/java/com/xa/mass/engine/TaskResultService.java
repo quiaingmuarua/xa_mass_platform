@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -31,11 +32,14 @@ class TaskResultService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskResultService.class);
     static final String DISPATCH_SUBMIT_FAILED_ERROR_CODE = "DISPATCH_SUBMIT_FAILED";
+    private static final int DEFAULT_RECENT_FINAL_MESSAGE_CACHE_MAX_ENTRIES = 10_000;
 
     private final TaskManager taskManager;
     private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
+    private final int recentFinalMessageCacheMaxEntries;
+    private final Map<RuntimeMessageKey, RuntimeMessageView> recentFinalMessages;
 
     TaskResultService(TaskManager taskManager,
                       TaskCompatibilityProjectionAccess compatibilityProjectionAccess,
@@ -45,6 +49,16 @@ class TaskResultService {
         this.compatibilityProjectionAccess = compatibilityProjectionAccess;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
+        this.recentFinalMessageCacheMaxEntries = Integer.getInteger(
+                "xa.mass.engine.recentFinalMessageCacheMaxEntries",
+                DEFAULT_RECENT_FINAL_MESSAGE_CACHE_MAX_ENTRIES
+        );
+        this.recentFinalMessages = new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<RuntimeMessageKey, RuntimeMessageView> eldest) {
+                return size() > TaskResultService.this.recentFinalMessageCacheMaxEntries;
+            }
+        };
     }
 
     TaskMessageMutationOutcome expireTaskMessage(String taskId, String messageId) {
@@ -129,6 +143,9 @@ class TaskResultService {
         );
         persistTaskMessageProjection(taskId, expiredSummary,
                 "persist expiry compatibility summary");
+        if (!retryScheduled) {
+            rememberRecentFinalMessage(expiredSummary);
+        }
         Task freshTask = taskManager.getTask(taskId);
         RuntimeMessageView currentSummary = expiredSummary;
         if (retryScheduled) {
@@ -186,27 +203,24 @@ class TaskResultService {
 
         if (task.getStatus().isFinal()) {
             ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+            RuntimeMessageView recentFinalMessage = recentFinalMessage(taskId, messageId);
             if (isManualOrPolicyTerminalStop(task)) {
-                TaskMessageTraceView lateView = resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
+                TaskMessageTraceView lateView = recentFinalMessage != null
+                        ? recentFinalMessage.toTraceView()
+                        : resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
                 traceEventLogger.callbackIgnoredLate(lateView,
                         "task already terminal in status " + task.getStatus());
                 logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
                         taskId, messageId, lateView.status());
                 return TaskMessageMutationOutcome.acceptedNoop();
             }
-            RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
-            if (storedProjection != null && storedProjection.isCompleted()) {
-                traceEventLogger.callbackIgnoredDuplicate(storedProjection.toTraceView(),
-                        "task message already final in status " + storedProjection.status());
-                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                        messageId, taskId, storedProjection.status());
-                return TaskMessageMutationOutcome.acceptedNoop();
-            }
-            TaskMessageTraceView lateView = resolveTraceTaskMessageView(taskId, messageId, storedProjection, activeLease);
-            traceEventLogger.callbackIgnoredLate(lateView,
-                    "task already terminal in status " + task.getStatus());
-            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                    taskId, messageId, lateView.status());
+            TaskMessageTraceView duplicateView = recentFinalMessage != null
+                    ? recentFinalMessage.toTraceView()
+                    : resolveTraceTaskMessageView(taskId, messageId, null, activeLease);
+            traceEventLogger.callbackIgnoredDuplicate(duplicateView,
+                    "task already terminal after result convergence in status " + task.getStatus());
+            logger.info("Ignoring duplicate result for terminal task {}, msg {} still in status {}",
+                    taskId, messageId, duplicateView.status());
             return TaskMessageMutationOutcome.acceptedNoop();
         }
 
@@ -222,7 +236,17 @@ class TaskResultService {
                 logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
                 return TaskMessageMutationOutcome.rejected();
             }
-            RuntimeMessageView storedProjection = getStoredTaskMessageProjectionView(taskId, messageId);
+            RuntimeMessageView recentFinalMessage = recentFinalMessage(taskId, messageId);
+            if (recentFinalMessage != null) {
+                traceEventLogger.callbackIgnoredDuplicate(recentFinalMessage.toTraceView(),
+                        "task message already final in recent runtime result cache with status " + recentFinalMessage.status());
+                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                        messageId, taskId, recentFinalMessage.status());
+                return TaskMessageMutationOutcome.acceptedNoop();
+            }
+            RuntimeMessageView storedProjection = RuntimeMessageView.from(
+                    compatibilityProjectionAccess.getStoredCompatibilityMessageProjection(taskId, messageId)
+            );
             if (storedProjection != null && storedProjection.isCompleted()) {
                 traceEventLogger.callbackIgnoredDuplicate(storedProjection.toTraceView(),
                         "task message already final in status " + storedProjection.status());
@@ -508,6 +532,7 @@ class TaskResultService {
                 "mark attempt success");
         persistTaskMessageProjection(taskId, successSummary,
                 "persist success compatibility summary");
+        rememberRecentFinalMessage(successSummary);
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, successSummary, activeAttempt,
@@ -666,6 +691,7 @@ class TaskResultService {
 
         persistTaskMessageProjection(taskId, failureSummary,
                 "persist exhausted-failure compatibility summary");
+        rememberRecentFinalMessage(failureSummary);
         Task updatedTask = taskManager.getTask(taskId);
         if (updatedTask != null) {
             publishAttemptClosed(updatedTask, failureSummary, activeAttempt,
@@ -792,9 +818,25 @@ class TaskResultService {
         return terminalReason == TaskTerminalReason.MANUAL_CANCELLED || terminalReason.isPolicyDrivenStop();
     }
 
-    @CompatibilityProjectionOnly
-    private RuntimeMessageView getStoredTaskMessageProjectionView(String taskId, String messageId) {
-        return compatibilityProjectionAccess.getStoredRuntimeMessageProjectionView(taskId, messageId);
+    private RuntimeMessageView recentFinalMessage(String taskId, String messageId) {
+        if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        synchronized (recentFinalMessages) {
+            return recentFinalMessages.get(new RuntimeMessageKey(taskId, messageId));
+        }
+    }
+
+    private void rememberRecentFinalMessage(RuntimeMessageView finalMessage) {
+        if (finalMessage == null || !finalMessage.isCompleted()) {
+            return;
+        }
+        synchronized (recentFinalMessages) {
+            recentFinalMessages.put(
+                    new RuntimeMessageKey(finalMessage.taskId(), finalMessage.messageId()),
+                    finalMessage
+            );
+        }
     }
 
     private String normalizeDispatchSubmitFailureDetail(String detail) {
@@ -907,6 +949,9 @@ class TaskResultService {
         boolean progressDirty() {
             return progressDirty;
         }
+    }
+
+    private record RuntimeMessageKey(String taskId, String messageId) {
     }
 
     private record ActiveRuntimeProjection(RuntimeMessageView messageState, AttemptProjectionView activeAttempt) {

@@ -2,11 +2,11 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +30,7 @@ public class SdkMetadataController {
 
     private final SdkMetadataCatalog metadataCatalog;
     private final WorkerQueryOperations workerQueries;
-    private final TransportOperations transportOperations;
+    private final TransportDebugOperations transportDebugOperations;
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog) {
         this(metadataCatalog, (WorkerQueryOperations) null, null);
@@ -39,11 +39,11 @@ public class SdkMetadataController {
     @Autowired
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  ObjectProvider<WorkerQueryOperations> workerQueriesProvider,
-                                 ObjectProvider<TransportOperations> transportOperationsProvider) {
+                                 ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
         this(
                 metadataCatalog,
                 workerQueriesProvider == null ? null : workerQueriesProvider.getIfAvailable(),
-                transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
+                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
         );
     }
 
@@ -54,10 +54,10 @@ public class SdkMetadataController {
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  WorkerQueryOperations workerQueries,
-                                 TransportOperations transportOperations) {
+                                 TransportDebugOperations transportDebugOperations) {
         this.metadataCatalog = metadataCatalog;
         this.workerQueries = workerQueries;
-        this.transportOperations = transportOperations;
+        this.transportDebugOperations = transportDebugOperations;
     }
 
     @GetMapping("/projects")
@@ -106,7 +106,7 @@ public class SdkMetadataController {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
         Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {

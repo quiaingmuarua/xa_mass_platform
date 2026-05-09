@@ -1831,6 +1831,61 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void runningTaskDuplicateCallbackUsesRuntimeFinalReceiptWithoutProjectionRead() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-running-duplicate-runtime-final-receipt", List.of("alpha", "beta")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        List<TaskDetailStore.TaskMessageProjection> messages = taskManager.getTaskMessageRecords(task.getTid());
+        messages.forEach(msg -> assignMessage(task, msg));
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).messageId(), true, "done-once"));
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).messageId(), false, "boom-twice"));
+            capture.assertHasEvent("CALLBACK_IGNORED_DUPLICATE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && messages.get(0).messageId().equals(mdc.get("messageId")));
+        }
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "recent runtime final receipts should absorb duplicate callbacks without re-reading message projection residue");
+        assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
+    }
+
+    @Test
+    void terminalDuplicateCallbackDoesNotReadMessageProjectionResidue() {
+        TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
+        taskStorage = trackingStorage;
+        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+
+        Task task = createTask(buildRequest("task-terminal-duplicate-no-projection-read", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        assignMessage(task, message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done-once"));
+        trackingStorage.taskMessageProjectionReadCount.set(0);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), false, "boom-twice"));
+            capture.assertHasEvent("CALLBACK_IGNORED_DUPLICATE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.messageId().equals(mdc.get("messageId")));
+        }
+        assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
+                "terminal duplicate callbacks should not re-read message projection residue on the accepted path");
+    }
+
+    @Test
     void mixedFinalTaskMessagesProduceMixedTerminalReason() {
         Task task = createTask(buildRequest("task-result-mixed", List.of("alpha", "beta"), 0));
         taskManager.approveTask(task.getTid());

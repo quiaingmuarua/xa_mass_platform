@@ -86,19 +86,6 @@ final class TaskCompatibilityProjectionAccess {
         return new SnapshotPage(boundedLimit, truncated, boundedProjected.size());
     }
 
-    boolean visitTaskMessage(String taskId,
-                             String messageId,
-                             MessageVisitor visitor) {
-        MessageProjection projection = getVisibleCompatibilityMessageProjection(taskId, messageId);
-        if (projection == null) {
-            return false;
-        }
-        if (visitor != null) {
-            emitMessageProjection(projection, visitor);
-        }
-        return true;
-    }
-
     void visitTaskMessageAttemptViews(String taskId,
                                       String messageId,
                                       AttemptVisitor visitor) {
@@ -166,10 +153,6 @@ final class TaskCompatibilityProjectionAccess {
                 ),
                 action
         );
-    }
-
-    TaskResultService.RuntimeMessageView getStoredRuntimeMessageProjectionView(String taskId, String messageId) {
-        return TaskResultService.RuntimeMessageView.from(getStoredCompatibilityMessageProjection(taskId, messageId));
     }
 
     boolean upsertTaskMessageProjection(String taskId,

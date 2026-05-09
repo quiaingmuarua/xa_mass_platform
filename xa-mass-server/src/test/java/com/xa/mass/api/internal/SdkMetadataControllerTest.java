@@ -2,11 +2,11 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SdkMetadataControllerTest {
 
     private MockMvc mockMvc;
-    private TransportOperations transportOperations;
+    private TransportDebugOperations transportDebugOperations;
 
     @BeforeEach
     void setUp() {
@@ -68,8 +68,8 @@ class SdkMetadataControllerTest {
         when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
-        transportOperations = mock(TransportOperations.class);
-        when(transportOperations.listSessions()).thenReturn(List.of(
+        transportDebugOperations = mock(TransportDebugOperations.class);
+        when(transportDebugOperations.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
                         "workerId", "crawler-worker-1",
                         "connections", java.util.List.of(java.util.Map.of(
@@ -90,7 +90,7 @@ class SdkMetadataControllerTest {
                 )
         ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new SdkMetadataController(catalog, workerQueries, transportOperations)
+                new SdkMetadataController(catalog, workerQueries, transportDebugOperations)
         ).build();
     }
 

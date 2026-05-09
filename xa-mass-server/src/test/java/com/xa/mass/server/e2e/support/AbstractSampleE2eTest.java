@@ -134,7 +134,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected TaskStateValidationResult validateTaskState(String taskId) {
-        return (TaskStateValidationResult) requireSdkApp().taskDiagnostics().validateTaskState(taskId);
+        return requireSdkApp().taskDiagnostics().validateTaskState(taskId);
     }
 
     protected List<String> violations(TaskStateValidationResult validation) {

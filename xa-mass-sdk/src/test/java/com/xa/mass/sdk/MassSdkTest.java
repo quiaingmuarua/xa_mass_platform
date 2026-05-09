@@ -365,7 +365,7 @@ class MassSdkTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> app.listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
+                waitUntil(() -> app.transportDebug().listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
                         "sdk socket hello should register an active socket session");
             }
         } finally {
@@ -930,9 +930,11 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> queueDetail = app.getQueueDetail();
-        Map<String, Object> sessionStats = app.getSessionStats();
-        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}"));
+        Map<String, Object> queueDetail = app.transportDebug().getQueueDetail();
+        Map<String, Object> sessionStats = app.transportDebug().getSessionStats();
+        Map<String, Object> enqueueResult = app.transportDebug().enqueueRawMessage(
+                Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
+        );
 
         assertEquals(2, queueDetail.get("inputQueueSize"));
         assertEquals(5, queueDetail.get("outputQueueSize"));
@@ -982,8 +984,8 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        List<Map<String, Object>> sessions = app.listSessions();
-        Map<String, Object> sessionStats = app.getSessionStats();
+        List<Map<String, Object>> sessions = app.transportDebug().listSessions();
+        Map<String, Object> sessionStats = app.transportDebug().getSessionStats();
 
         assertEquals(1, sessions.size());
         @SuppressWarnings("unchecked")
@@ -1002,7 +1004,7 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of(
+        Map<String, Object> enqueueResult = app.transportDebug().enqueueRawMessage(Map.of(
                 "workerId", "worker-debug-2",
                 "rawJson", "{\"eventCode\":\"platform.direct\"}"
         ));
@@ -1024,10 +1026,10 @@ class MassSdkTest {
             app.start();
 
             assertTrue(app.isRunning());
-            assertEquals(false, app.getQueueDetail().get("transporterAvailable"));
-        assertEquals(-1, app.getQueueDetail().get("inputQueueSize"));
-        assertEquals(-1, app.getQueueDetail().get("outputQueueSize"));
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
+            assertEquals(false, app.transportDebug().getQueueDetail().get("transporterAvailable"));
+        assertEquals(-1, app.transportDebug().getQueueDetail().get("inputQueueSize"));
+        assertEquals(-1, app.transportDebug().getQueueDetail().get("outputQueueSize"));
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.transportDebug().getQueueDetail().get("deliveryDiagnostics");
         assertEquals(true, deliveryDiagnostics.get("available"));
         assertEquals(0, deliveryDiagnostics.get("queuedItems"));
         assertEquals(0, deliveryDiagnostics.get("queueCount"));
@@ -1047,7 +1049,7 @@ class MassSdkTest {
         assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
         assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
         assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
@@ -1068,7 +1070,7 @@ class MassSdkTest {
         try {
             app.start();
 
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.transportDebug().getQueueDetail().get("deliveryDiagnostics");
         assertEquals(true, deliveryDiagnostics.get("available"));
         assertEquals(7, deliveryDiagnostics.get("maxQueuedItems"));
         assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
@@ -1091,7 +1093,7 @@ class MassSdkTest {
         try {
             app.start();
 
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
             assertEquals(17, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(3, ((Map<?, ?>) runtimeExecutors.get("event")).get("maxPendingTasks"));
         } finally {
@@ -1160,7 +1162,7 @@ class MassSdkTest {
         try {
             app.start();
             assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
             assertEquals(1L, ((Map<?, ?>) runtimeExecutors.get("event")).get("completedTasks"));
             app.stop();
@@ -1236,7 +1238,6 @@ class MassSdkTest {
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), 5);
-        verify(taskQueryService, times(2)).getTask("task-001");
     }
 
     @Test
@@ -1552,39 +1553,35 @@ class MassSdkTest {
                 Map.of("url", "https://example.test/page-1"),
                 Map.of("url", "https://example.test/page-2")
         ), 2);
-        verify(taskQueryService, times(2)).getTask("task-stream-001");
     }
 
     @Test
-    void appendTaskItemsUsesStoredTaskShellPayloadContract() {
+    void appendTaskItemsPassesMapPayloadThroughWithoutShellInspection() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
-        TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        Task task = new Task();
-        task.setTid("task-text-001");
-        task.setSharedConfig(Map.of("_sdk", Map.of("payloadType", "TEXT")));
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(taskQueryService.getTask("task-text-001")).thenReturn(task);
         when(taskCommandService.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        int added = app.appendTaskItems("task-text-001", MassTaskItemBatchAppendRequest.builder()
-                .items(List.of("hello", "world"))
+        int added = app.appendTaskItems("task-map-001", MassTaskItemBatchAppendRequest.builder()
+                .items(List.of(
+                        Map.of("target", "hello"),
+                        Map.of("target", "world")
+                ))
                 .defaultMsgMaxRetryCount(4)
                 .build());
 
         assertEquals(2, added);
-        verify(taskCommandService).appendTaskItems("task-text-001", List.of(
-                Map.of("type", "text", "text", "hello"),
-                Map.of("type", "text", "text", "world")
+        verify(taskCommandService).appendTaskItems("task-map-001", List.of(
+                Map.of("target", "hello"),
+                Map.of("target", "world")
         ), 4);
     }
 
@@ -2759,27 +2756,19 @@ class MassSdkTest {
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
-        TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        Task textTask = new Task();
-        textTask.setTid("task-text-002");
-        textTask.setSharedConfig(Map.of("_sdk", Map.of("payloadType", "TEXT")));
-        Task jsonTask = new Task();
-        jsonTask.setTid("task-json-002");
-        jsonTask.setSharedConfig(Map.of("_sdk", Map.of("payloadType", "JSON")));
-
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(taskQueryService.getTask("task-text-002")).thenReturn(textTask);
-        when(taskQueryService.getTask("task-json-002")).thenReturn(jsonTask);
         when(taskCommandService.appendTaskItems(any(), any(), any(Integer.class))).thenReturn(2);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        app.appendTaskItems("task-text-002", MassTaskItemBatchAppendRequest.builder()
-                .items(List.of("hello", "world"))
+        app.appendTaskItems("task-map-002", MassTaskItemBatchAppendRequest.builder()
+                .items(List.of(
+                        Map.of("target", "hello"),
+                        Map.of("target", "world")
+                ))
                 .defaultMsgMaxRetryCount(4)
                 .build());
         app.appendTaskItems("task-json-002", MassTaskItemBatchAppendRequest.builder()
@@ -2787,9 +2776,9 @@ class MassSdkTest {
                 .defaultMsgMaxRetryCount(2)
                 .build());
 
-        verify(taskCommandService).appendTaskItems("task-text-002", List.of(
-                Map.of("type", "text", "text", "hello"),
-                Map.of("type", "text", "text", "world")
+        verify(taskCommandService).appendTaskItems("task-map-002", List.of(
+                Map.of("target", "hello"),
+                Map.of("target", "world")
         ), 4);
         verify(taskCommandService).appendTaskItems("task-json-002", List.of(
                 Map.of("target", "https://example.test")
@@ -2809,6 +2798,11 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "updateTask", Task.class);
         assertMissingMethod(MassSdkApplication.class, "updateWorker", Worker.class);
         assertMissingMethod(MassSdkApplication.class, "publishTaskEvents");
+        assertMissingMethod(MassSdkApplication.class, "listSessions");
+        assertMissingMethod(MassSdkApplication.class, "getSessionStats");
+        assertMissingMethod(MassSdkApplication.class, "enqueueRawMessage", Map.class);
+        assertMissingMethod(MassSdkApplication.class, "getQueueDetail");
+        assertMissingMethod(MassSdkApplication.class, "getQueueMetrics");
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
@@ -2821,6 +2815,7 @@ class MassSdkTest {
         assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.WorkerOperations"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TransportOperations"));
     }
 
     @Test

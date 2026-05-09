@@ -1,5 +1,8 @@
 package com.xa.mass.sdk;
 
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
+
 /**
  * Diagnostic-only task state inspection surface.
  *
@@ -9,7 +12,7 @@ package com.xa.mass.sdk;
  */
 public interface TaskDiagnosticOperations {
 
-    Object validateTaskState(String taskId);
+    TaskStateValidationResult validateTaskState(String taskId);
 
-    Object resolveTaskState(String taskId);
+    TaskStateResolutionResult resolveTaskState(String taskId);
 }
