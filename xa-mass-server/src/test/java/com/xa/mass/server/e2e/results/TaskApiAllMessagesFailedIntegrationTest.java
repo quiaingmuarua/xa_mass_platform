@@ -1,4 +1,4 @@
-package com.xa.mass.server.e2e.results;
+﻿package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
@@ -29,8 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>This complements the chaos probe {@code SdkPollingAllMessagesFailedChaosRunner} which
  * exercises the same path at the SDK embedded-runtime layer. The Boot-shell path adds:
- * Spring wiring, HTTP controller → engine dispatch, WebSocket transport, and full HTTP
- * callback ingestion — the full cross-module chain.
+ * Spring wiring, HTTP controller to engine dispatch, WebSocket transport, and full HTTP
+ * callback ingestion across the full cross-module chain.
  *
  * <p>Key distinction from {@link TaskApiFailureResultIntegrationTest}: that test configures
  * {@code sample.client.retry-attempts=1}, so messages exhaust retries and close with
@@ -73,7 +73,7 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
                 "Second sample worker failed to connect"
         );
         try {
-            // Create a 2-message task with maxRetryCount=0 — each message gets exactly one attempt.
+            // Create a 2-message task with maxRetryCount=0 so each message gets exactly one attempt.
             Map<String, Object> createBody = Map.of(
                     "project", "demoApp",
                     "sharedConfig", Map.of("textContent", "all messages failed e2e", "routingCode", "us"),
@@ -106,7 +106,7 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(firstDispatch, "First worker did not receive a dispatch");
             assertNotNull(secondDispatch, "Second worker did not receive a dispatch");
 
-            // Both workers submit explicit FAILED results — no retries available.
+            // Both workers submit explicit FAILED results with no retries available.
             firstClient.sendResult(firstDispatch, "FAILED", "all-failed-test");
             secondClient.sendResult(secondDispatch, "FAILED", "all-failed-test");
 
@@ -171,3 +171,5 @@ class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
+
+

@@ -85,7 +85,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
                 "requestId", requestId,
                 "symbol", "NVDA",
                 "market", "NASDAQ"
-        )), 3));
+        ))));
         assertApiOk(sealTask(taskId));
         assertApiOk(approveTask(taskId));
 
@@ -148,3 +148,4 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
                 + ", lastTask=" + matched);
     }
 }
+

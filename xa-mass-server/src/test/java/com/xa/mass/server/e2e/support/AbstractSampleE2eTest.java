@@ -182,8 +182,7 @@ public abstract class AbstractSampleE2eTest {
                 "demo.dispatch",
                 targets.stream()
                         .map(target -> Map.<String, Object>of("target", target))
-                        .toList(),
-                3
+                        .toList()
         );
         assertApiOk(ingestResponse);
         Map<String, Object> sealResponse = sealTask(taskId);
@@ -761,3 +760,4 @@ public abstract class AbstractSampleE2eTest {
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
 }
+

@@ -184,7 +184,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 "requestId", initialRequestId,
                 "symbol", "AAPL",
                 "market", "NASDAQ"
-        )), 0));
+        ))));
 
         assertApiOk(approveTask(taskId));
 
@@ -282,3 +282,4 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         return null;
     }
 }
+

@@ -79,7 +79,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(
                     Map.of("target", "target-a"),
                     Map.of("target", "target-b")
-            ), 0));
+            )));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> approveResponse = approveTask(taskId);
@@ -164,4 +164,5 @@ class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
+
 

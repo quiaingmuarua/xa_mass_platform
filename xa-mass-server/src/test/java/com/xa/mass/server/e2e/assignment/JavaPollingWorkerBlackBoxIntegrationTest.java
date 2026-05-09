@@ -87,7 +87,7 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
             assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
-                    List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page")), 3));
+                    List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page"))));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> approveResponse = approveTask(taskId);
@@ -182,3 +182,4 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         return rule;
     }
 }
+
