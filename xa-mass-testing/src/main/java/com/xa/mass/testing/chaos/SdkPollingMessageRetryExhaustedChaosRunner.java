@@ -174,11 +174,20 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                                     + EXPECTED_ATTEMPTS_PER_MESSAGE + " attempts, got " + attempts.size());
 
                     for (CompatibilityAttemptView attempt : attempts) {
-                        ChaosSupport.require("FAILED".equals(attempt.status()),
-                                "attempt " + attempt.attemptId() + " should be FAILED, got " + attempt.status());
-                        ChaosSupport.require("BUSINESS_FAILURE".equals(attempt.finalReason()),
-                                "attempt " + attempt.attemptId()
-                                        + " finalReason should be BUSINESS_FAILURE, got " + attempt.finalReason());
+                        boolean finalAttempt = attempt.attemptNo() == EXPECTED_ATTEMPTS_PER_MESSAGE;
+                        if (finalAttempt) {
+                            ChaosSupport.require("FAILED".equals(attempt.status()),
+                                    "final attempt " + attempt.attemptId() + " should be FAILED, got " + attempt.status());
+                            ChaosSupport.require("BUSINESS_FAILURE".equals(attempt.finalReason()),
+                                    "final attempt " + attempt.attemptId()
+                                            + " finalReason should be BUSINESS_FAILURE, got " + attempt.finalReason());
+                        } else {
+                            ChaosSupport.require("REVOKED".equals(attempt.status()),
+                                    "retryable attempt " + attempt.attemptId() + " should be REVOKED, got " + attempt.status());
+                            ChaosSupport.require("REVOKED_FOR_RETRY".equals(attempt.finalReason()),
+                                    "retryable attempt " + attempt.attemptId()
+                                            + " finalReason should be REVOKED_FOR_RETRY, got " + attempt.finalReason());
+                        }
                     }
                 }
 

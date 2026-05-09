@@ -15,7 +15,7 @@ public record TaskOutcomeSnapshot(String taskId,
         map.put("status", status);
         map.put("terminalReason", terminalReason);
         map.put("messages", messages.stream().map(MessageOutcomeSnapshot::toMap).toList());
-        return Map.copyOf(map);
+        return map;
     }
 
     public record MessageOutcomeSnapshot(String messageId,
@@ -32,7 +32,7 @@ public record TaskOutcomeSnapshot(String taskId,
             map.put("retryCount", retryCount);
             map.put("latestAttemptWorkerId", latestAttemptWorkerId);
             map.put("attempts", attempts.stream().map(AttemptOutcomeSnapshot::toMap).toList());
-            return Map.copyOf(map);
+            return map;
         }
     }
 
@@ -67,7 +67,7 @@ public record TaskOutcomeSnapshot(String taskId,
             map.put("status", status);
             map.put("finalReason", finalReason);
             map.put("leaseExpireTime", leaseExpireTime);
-            return Map.copyOf(map);
+            return map;
         }
     }
 }

@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Wait for the task to reach {@code TERMINAL}.</li>
  *   <li>Assert: {@code SUCCESS_COUNT} messages are {@code SUCCESS} with
  *       {@code finalReason=BUSINESS_SUCCESS}, {@code FAIL_COUNT} messages are {@code FAILED}
- *       with {@code finalReason=BUSINESS_FAILED}, and the task
+ *       with {@code finalReason=RETRY_EXHAUSTED}, and the task
  *       {@code terminalReason=MIXED_MESSAGE_RESULTS}.</li>
  * </ol>
  *
@@ -115,8 +115,9 @@ public final class SdkPollingMixedResultsChaosRunner {
                 );
 
                 // Build fail flags: first SUCCESS_COUNT messages succeed, rest fail.
-                // The "shouldFail" input field drives the worker decision so correctness
-                // is based on message content rather than poll order.
+                // The worker still reads shouldFail from dispatch payload, but the bounded
+                // compatibility projection no longer guarantees full input echo. Validate by
+                // converged status/finalReason counts instead of projection payload residue.
                 List<Boolean> failFlags = buildFailFlags();
                 Task task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.multiMessageWithFailFlags(
                         "sdk-chaos",
@@ -151,20 +152,17 @@ public final class SdkPollingMixedResultsChaosRunner {
                 int observedSuccess = 0;
                 int observedFailed = 0;
                 for (CompatibilityMessageView msg : messages) {
-                    boolean shouldFail = Boolean.TRUE.equals(
-                            msg.input() != null ? msg.input().get("shouldFail") : null);
-                    if (shouldFail) {
-                        ChaosSupport.require("FAILED".equals(msg.status()),
-                                "message " + msg.messageId() + " with shouldFail=true should be FAILED, got " + msg.status());
-                        ChaosSupport.require("BUSINESS_FAILED".equals(msg.finalReason()),
-                                "message " + msg.messageId() + " finalReason should be BUSINESS_FAILED, got " + msg.finalReason());
-                        observedFailed++;
-                    } else {
-                        ChaosSupport.require("SUCCESS".equals(msg.status()),
-                                "message " + msg.messageId() + " with shouldFail=false should be SUCCESS, got " + msg.status());
+                    if ("SUCCESS".equals(msg.status())) {
                         ChaosSupport.require("BUSINESS_SUCCESS".equals(msg.finalReason()),
                                 "message " + msg.messageId() + " finalReason should be BUSINESS_SUCCESS, got " + msg.finalReason());
                         observedSuccess++;
+                    } else if ("FAILED".equals(msg.status())) {
+                        ChaosSupport.require("RETRY_EXHAUSTED".equals(msg.finalReason()),
+                                "message " + msg.messageId() + " finalReason should be RETRY_EXHAUSTED, got " + msg.finalReason());
+                        observedFailed++;
+                    } else {
+                        ChaosSupport.require(false,
+                                "message " + msg.messageId() + " should converge to SUCCESS or FAILED, got " + msg.status());
                     }
                     ChaosSupport.require(msg.retryCount() == 0,
                             "message " + msg.messageId() + " retryCount should be 0 (no retries configured)");

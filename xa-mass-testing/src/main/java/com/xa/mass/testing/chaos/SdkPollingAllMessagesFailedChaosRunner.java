@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Create a sealed task with {@code MESSAGE_COUNT} messages, {@code maxRetryCount=0}.</li>
  *   <li>Start one polling worker that always submits failure.</li>
  *   <li>Wait for the task to reach {@code TERMINAL}.</li>
- *   <li>Assert: every message is {@code FAILED} with {@code finalReason=BUSINESS_FAILED},
+ *   <li>Assert: every message is {@code FAILED} with {@code finalReason=RETRY_EXHAUSTED},
  *       every attempt is {@code FAILED} with {@code finalReason=BUSINESS_FAILURE},
  *       and the task {@code terminalReason=ALL_MESSAGES_FAILED}.</li>
  * </ol>
@@ -134,8 +134,8 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                 for (CompatibilityMessageView msg : messages) {
                     ChaosSupport.require("FAILED".equals(msg.status()),
                             "message " + msg.messageId() + " should be FAILED, got " + msg.status());
-                    ChaosSupport.require("BUSINESS_FAILED".equals(msg.finalReason()),
-                            "message " + msg.messageId() + " finalReason should be BUSINESS_FAILED, got " + msg.finalReason());
+                    ChaosSupport.require("RETRY_EXHAUSTED".equals(msg.finalReason()),
+                            "message " + msg.messageId() + " finalReason should be RETRY_EXHAUSTED, got " + msg.finalReason());
                     ChaosSupport.require(msg.retryCount() == 0,
                             "message " + msg.messageId() + " retryCount should be 0 (no retries configured)");
 
