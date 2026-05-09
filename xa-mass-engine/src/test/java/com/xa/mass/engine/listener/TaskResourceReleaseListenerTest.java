@@ -2,6 +2,8 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.TaskMessageCompatibilityState.AttemptFinalReason;
+import com.xa.mass.engine.TaskMessageCompatibilityState.AttemptStatus;
 import com.xa.mass.engine.TaskMessageAttemptClosedEvent;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
@@ -11,9 +13,6 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -108,7 +107,7 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+        TaskMessageAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
@@ -120,17 +119,7 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
-                "task-1",
-                "msg-1",
-                closedAttempt.attemptId(),
-                closedAttempt.attemptNo(),
-                closedAttempt.workerId(),
-                closedAttempt.workerContextId(),
-                closedAttempt.batchId(),
-                closedAttempt.status(),
-                closedAttempt.finalReason()
-        ));
+        listener.onTaskMessageAttemptClosed(task, closedAttempt);
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -143,7 +132,7 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+        TaskMessageAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
@@ -155,17 +144,7 @@ class TaskResourceReleaseListenerTest {
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
-                "task-1",
-                "msg-1",
-                closedAttempt.attemptId(),
-                closedAttempt.attemptNo(),
-                closedAttempt.workerId(),
-                closedAttempt.workerContextId(),
-                closedAttempt.batchId(),
-                closedAttempt.status(),
-                closedAttempt.finalReason()
-        ));
+        listener.onTaskMessageAttemptClosed(task, closedAttempt);
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
@@ -178,22 +157,12 @@ class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
-        TaskDetailStore.TaskMessageAttemptProjection closedAttempt =
+        TaskMessageAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
         when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
 
-        listener.onTaskMessageAttemptClosed(task, TaskMessageAttemptClosedEvent.from(
-                "task-1",
-                "msg-1",
-                closedAttempt.attemptId(),
-                closedAttempt.attemptNo(),
-                closedAttempt.workerId(),
-                closedAttempt.workerContextId(),
-                closedAttempt.batchId(),
-                closedAttempt.status(),
-                closedAttempt.finalReason()
-        ));
+        listener.onTaskMessageAttemptClosed(task, closedAttempt);
 
         verify(workerManager, never()).unlockWorker("worker-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -224,24 +193,21 @@ class TaskResourceReleaseListenerTest {
         verify(workerManager).unlockWorker("worker-1");
     }
 
-    private TaskDetailStore.TaskMessageAttemptProjection closedAttempt(String taskId,
-                                                                       String messageId,
-                                                                       String attemptId,
-                                                                       String workerId,
-                                                                       String workerContextId) {
-        return new TaskDetailStore.TaskMessageAttemptProjection(
-                attemptId,
+    private TaskMessageAttemptClosedEvent closedAttempt(String taskId,
+                                                        String messageId,
+                                                        String attemptId,
+                                                        String workerId,
+                                                        String workerContextId) {
+        return TaskMessageAttemptClosedEvent.from(
                 taskId,
                 messageId,
+                attemptId,
                 1,
                 workerId,
                 workerContextId,
                 null,
-                TaskMessageAttemptProjectionStatus.SUCCEEDED,
-                TaskMessageAttemptProjectionFinalReason.SUCCESS,
-                null,
-                null,
-                null
+                AttemptStatus.SUCCEEDED,
+                AttemptFinalReason.SUCCESS
         );
     }
 

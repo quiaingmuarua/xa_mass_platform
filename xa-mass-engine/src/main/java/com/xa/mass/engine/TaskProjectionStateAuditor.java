@@ -18,12 +18,12 @@ import java.util.List;
 final class TaskProjectionStateAuditor {
 
     private final TaskStateValidator runtimeValidator;
-    private final TaskDetailStore taskDetailStore;
+    private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
 
     TaskProjectionStateAuditor(TaskStateValidator runtimeValidator,
-                               TaskDetailStore taskDetailStore) {
+                               TaskCompatibilityProjectionStore compatibilityProjectionStore) {
         this.runtimeValidator = runtimeValidator;
-        this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionStore = compatibilityProjectionStore;
     }
 
     TaskStateValidationResult auditTaskProjectionState(String taskId) {
@@ -79,7 +79,7 @@ final class TaskProjectionStateAuditor {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskDetailStore.TaskMessageAttemptStats attemptStats =
-                    taskDetailStore.getTaskMessageAttemptStats(taskId, messageProjection.messageId());
+                    compatibilityProjectionStore.getTaskMessageAttemptStats(taskId, messageProjection.messageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
@@ -101,11 +101,11 @@ final class TaskProjectionStateAuditor {
     }
 
     private List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
-        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
+        long total = compatibilityProjectionStore.countTaskMessageProjections(taskId);
         if (total <= 0) {
             return List.of();
         }
-        return taskDetailStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
+        return compatibilityProjectionStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
     }
 
     private boolean isCompleted(TaskDetailStore.TaskMessageProjection messageProjection) {

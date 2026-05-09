@@ -104,6 +104,12 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - latest-attempt compatibility fallback for audit-row closure during transition
 - bounded shell/debug reads
 - focused tests and audit helpers
+- engine-native residue state should live in engine-owned types such as
+  `TaskMessageCompatibilityState`; storage projection enums stay at conversion
+  edges instead of acting as the native runtime/result state model
+- bounded projection upsert/read wiring may live in an engine-internal owner
+  such as `TaskCompatibilityProjectionStore` so runtime orchestrators do not
+  each become partial `TaskDetailStore` record owners
 - engine code should depend on this seam directly through the smallest needed
   runtime or service ports; do not reintroduce pass-through projection bridges
   that add no ownership boundary

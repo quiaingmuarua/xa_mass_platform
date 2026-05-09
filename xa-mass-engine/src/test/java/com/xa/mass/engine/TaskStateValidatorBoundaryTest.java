@@ -68,7 +68,10 @@ class TaskStateValidatorBoundaryTest {
                 runtime,
                 new com.xa.mass.engine.util.TraceEventLogger(null)
         );
-        TaskProjectionStateAuditor auditor = new TaskProjectionStateAuditor(validator, detailStore);
+        TaskProjectionStateAuditor auditor = new TaskProjectionStateAuditor(
+                validator,
+                new TaskCompatibilityProjectionStore(detailStore)
+        );
 
         TaskStateValidationResult result = auditor.auditTaskProjectionState("task-1");
 

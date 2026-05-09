@@ -13,13 +13,13 @@ import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
  * projection enums as its native state model. Conversion to storage projection
  * types happens only at persistence and diagnostic boundaries.</p>
  */
-final class TaskMessageCompatibilityState {
+public final class TaskMessageCompatibilityState {
 
     private TaskMessageCompatibilityState() {
     }
 
-    static boolean isFinalReasonCompatible(MessageStatus status,
-                                           MessageFinalReason finalReason) {
+    public static boolean isFinalReasonCompatible(MessageStatus status,
+                                                  MessageFinalReason finalReason) {
         if (status == null || !status.isFinal() || finalReason == null) {
             return false;
         }
@@ -36,7 +36,7 @@ final class TaskMessageCompatibilityState {
         };
     }
 
-    enum MessageStatus {
+    public enum MessageStatus {
         INIT,
         ASSIGNED,
         RUNNING,
@@ -44,24 +44,24 @@ final class TaskMessageCompatibilityState {
         FAILED,
         EXPIRED;
 
-        boolean isFinal() {
+        public boolean isFinal() {
             return this == SUCCESS || this == FAILED || this == EXPIRED;
         }
 
-        boolean isProcessing() {
+        public boolean isProcessing() {
             return this == ASSIGNED || this == RUNNING;
         }
 
-        TaskMessageProjectionStatus toProjection() {
+        public TaskMessageProjectionStatus toProjection() {
             return TaskMessageProjectionStatus.valueOf(name());
         }
 
-        static MessageStatus fromProjection(TaskMessageProjectionStatus status) {
+        public static MessageStatus fromProjection(TaskMessageProjectionStatus status) {
             return status == null ? null : MessageStatus.valueOf(status.name());
         }
     }
 
-    enum MessageFinalReason {
+    public enum MessageFinalReason {
         BUSINESS_SUCCESS,
         BUSINESS_FAILED,
         TIMEOUT,
@@ -70,16 +70,16 @@ final class TaskMessageCompatibilityState {
         LEASE_EXPIRED,
         RETRY_EXHAUSTED;
 
-        TaskMessageProjectionFinalReason toProjection() {
+        public TaskMessageProjectionFinalReason toProjection() {
             return TaskMessageProjectionFinalReason.valueOf(name());
         }
 
-        static MessageFinalReason fromProjection(TaskMessageProjectionFinalReason finalReason) {
+        public static MessageFinalReason fromProjection(TaskMessageProjectionFinalReason finalReason) {
             return finalReason == null ? null : MessageFinalReason.valueOf(finalReason.name());
         }
     }
 
-    enum AttemptStatus {
+    public enum AttemptStatus {
         CREATED,
         LEASED,
         DISPATCHED,
@@ -90,24 +90,24 @@ final class TaskMessageCompatibilityState {
         EXPIRED,
         REVOKED;
 
-        boolean isFinal() {
+        public boolean isFinal() {
             return this == SUCCEEDED || this == FAILED || this == EXPIRED || this == REVOKED;
         }
 
-        boolean isActive() {
+        public boolean isActive() {
             return !isFinal();
         }
 
-        TaskMessageAttemptProjectionStatus toProjection() {
+        public TaskMessageAttemptProjectionStatus toProjection() {
             return TaskMessageAttemptProjectionStatus.valueOf(name());
         }
 
-        static AttemptStatus fromProjection(TaskMessageAttemptProjectionStatus status) {
+        public static AttemptStatus fromProjection(TaskMessageAttemptProjectionStatus status) {
             return status == null ? null : AttemptStatus.valueOf(status.name());
         }
     }
 
-    enum AttemptFinalReason {
+    public enum AttemptFinalReason {
         SUCCESS,
         BUSINESS_FAILURE,
         TIMEOUT,
@@ -116,11 +116,11 @@ final class TaskMessageCompatibilityState {
         LEASE_EXPIRED,
         REVOKED_FOR_RETRY;
 
-        TaskMessageAttemptProjectionFinalReason toProjection() {
+        public TaskMessageAttemptProjectionFinalReason toProjection() {
             return TaskMessageAttemptProjectionFinalReason.valueOf(name());
         }
 
-        static AttemptFinalReason fromProjection(TaskMessageAttemptProjectionFinalReason finalReason) {
+        public static AttemptFinalReason fromProjection(TaskMessageAttemptProjectionFinalReason finalReason) {
             return finalReason == null ? null : AttemptFinalReason.valueOf(finalReason.name());
         }
     }

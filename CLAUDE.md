@@ -51,6 +51,8 @@ xa-mass-testing/scripts/run-perf-smokes.sh
 
 **Windows note:** on mixed-drive workspaces, surefire is configured with `useManifestOnlyJar=false` and `-Djdk.net.URLClassPath.disableClassPathURLCheck=true` to avoid false missing-class errors.
 
+**Java baseline:** JDK 21 with virtual threads routed through explicit runtime abstractions (`VirtualThreadRuntimeTaskExecutor`).
+
 ## Verified Runtime Ports
 
 - `server.port=8088` — backend-hosted control console and JSON APIs
@@ -58,6 +60,18 @@ xa-mass-testing/scripts/run-perf-smokes.sh
 - `mass.socket.port=18089` — socket transport adapter (when `mass.socket.enabled=true`)
 
 Boot entry: `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java`
+
+## Fast Code Verification Path
+
+Before inferring architecture from doc vocabulary, read these five files:
+
+1. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java` — orchestration facade and composition root
+2. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskLifecycleService.java` — lifecycle transitions
+3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java` — result convergence
+4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java` — runtime queue/lease contract
+5. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java` — storage-edge compatibility residue shapes
+
+Verify three things quickly: (1) runtime admission goes through `TaskWorkRuntime`, not a message-CRUD mainline; (2) result convergence is runtime-first with compatibility projection as best-effort residue; (3) bounded message/attempt reads live behind explicit compatibility surfaces, not as the default query model.
 
 ## Architecture Overview
 
@@ -102,15 +116,19 @@ Do not collapse layers. Missing trace implementation does not make trace-shaped 
 Engine entry: `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 
 Key classes:
-- `TaskManager` — engine-internal orchestration facade (not the default cross-module API)
+- `TaskManager` — engine-internal orchestration facade and composition root (not the default cross-module API)
 - `TaskConcurrencyCoordinator` — task/message locking and coalesced progress reconciliation
-- `TaskRuntimeBridge` — bridges into `TaskWorkRuntime` (enqueue, claim, lease, discard/apply)
 - `TaskCommandService` / `TaskQueryService` — shell/admin mutation and inspection flows
 - `TaskResultIngestFacade` — transport/runtime result ingress entry point
+- `TaskCompatibilityProjectionStore` — engine-internal owner for bounded `TaskDetailStore` projection residue; keeps storage-edge construction out of runtime orchestrators
+- `TaskProjectionStateAuditor` — explicit full-scan compatibility projection diagnostics; only for audit/diagnostic work, not hot paths
+- `TaskMessageCompatibilityState` — engine-owned enums for message/attempt residue state; converts to storage projection types only at persistence boundaries
 - `WorkerManager` — worker management; cross-module callers that only need lookup should depend on `WorkerStorage` directly
 - `RuleManager` — rule evaluation; cross-module callers that only need rule definitions should depend on `RuleStorage` directly
 
 **Cross-module callers must not default to `TaskManager`.** Prefer `TaskCommandService`, `TaskQueryService`, `TaskResultIngestFacade`, `TaskEventService`, and runtime ports.
+
+**`@CompatibilityProjectionOnly`** marks classes whose purpose is bounded projection residue. They must not be used on hot paths or as native runtime state owners.
 
 ### Transport Internals
 

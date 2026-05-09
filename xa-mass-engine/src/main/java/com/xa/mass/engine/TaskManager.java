@@ -64,7 +64,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
-    private final TaskDetailStore taskDetailStore;
+    private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -113,7 +113,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
-        this.taskDetailStore = requiredTaskDetailStore;
+        this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
@@ -128,7 +128,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.projectionStateAuditor = new TaskProjectionStateAuditor(
                 stateValidator,
-                requiredTaskDetailStore
+                compatibilityProjectionStore
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;
         this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
@@ -149,7 +149,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.resultService = new TaskResultService(
                 this,
-                requiredTaskDetailStore,
+                compatibilityProjectionStore,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -392,7 +392,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 throw new IllegalStateException("task work enqueue failed: status="
                         + outcome.status() + ", reason=" + outcome.reason());
             }
-            if (!upsertRuntimeIngressProjection(task.getTid(), ingressItem)) {
+            if (!compatibilityProjectionStore.upsertRuntimeIngressAccepted(ingressItem)) {
                 logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
                         ingressItem.taskId(), ingressItem.messageId());
             }
@@ -685,41 +685,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskWorkRuntime.applyResult(result);
-    }
-
-    private boolean upsertRuntimeIngressProjection(String taskId, RuntimeTaskIngressItem ingressItem) {
-        if (ingressItem == null) {
-            return false;
-        }
-        TaskDetailStore.TaskMessageProjection projection = new TaskDetailStore.TaskMessageProjection(
-                ingressItem.messageId(),
-                taskId,
-                ingressItem.projectedInput(),
-                ingressItem.payloadRef(),
-                TaskMessageCompatibilityState.MessageStatus.INIT.toProjection(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                ingressItem.retryCount(),
-                ingressItem.maxRetryCount(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        try {
-            return taskDetailStore.upsertTaskMessageProjection(taskId, projection);
-        } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during runtime ingress accepted",
-                    taskId, ingressItem.messageId(), e);
-            return false;
-        }
     }
 
     @Override

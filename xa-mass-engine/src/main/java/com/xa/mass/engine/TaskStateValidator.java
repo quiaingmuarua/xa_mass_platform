@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
@@ -170,7 +169,6 @@ class TaskStateValidator {
         return stateRuntime.evaluateTerminalPolicy(task, stats);
     }
 
-    @CompatibilityProjectionOnly
     record RuntimeValidationSnapshot(Task task,
                                      TaskWorkStats stats,
                                      List<TaskStateValidationResult.ViolationCode> violations,
