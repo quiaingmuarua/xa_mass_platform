@@ -6,6 +6,14 @@ This file fixes the intended Redis ownership model for the future
 `TaskWorkRuntime` implementation so the runtime path can grow without
 reintroducing scans, engine-local Redis logic, or conflicting queue truth.
 
+Current implementation note:
+
+- hot-path mutations now converge through Redis-scripted atomic operations for
+  `enqueue`, `claimReady`, `applyResult`, `pollExpiredLeases`, and
+  `discardTask`
+- delayed promotion and read-side visibility checks still use bounded command
+  flows around the same keyspace truth
+
 Use with:
 
 - [README.md](./README.md)

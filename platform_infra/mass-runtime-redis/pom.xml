@@ -51,6 +51,18 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-base</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>mass-storage-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
             <artifactId>mass-storage-memory</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>

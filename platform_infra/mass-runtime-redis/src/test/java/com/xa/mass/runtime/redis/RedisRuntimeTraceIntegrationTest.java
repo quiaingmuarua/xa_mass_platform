@@ -244,7 +244,7 @@ class RedisRuntimeTraceIntegrationTest {
         dto.setUserId("agent");
         dto.setBatchSize(1);
         Task task = taskCommands.createTaskShell(dto);
-        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha")), maxRetryCount);
+        taskCommands.appendTaskItems(task.getTid(), List.<Map<String, Object>>of(Map.of("target", "alpha")), maxRetryCount);
         assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);

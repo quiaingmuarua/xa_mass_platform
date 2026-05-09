@@ -143,6 +143,17 @@ public abstract class TaskWorkRuntimeContractTest {
                 .containsExactlyInAnyOrder("w1", "w2");
     }
 
+    @Test
+    void readyTaskIds_returnsMultipleReadyTasks_withoutScanningOneTaskPerItem() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(item("t2", "m2"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(item("t2", "m3"), WorkEnqueueOptions.DEFAULT);
+
+        assertThat(runtime.readyTaskIds(10))
+                .containsExactlyInAnyOrder("t1", "t2");
+        assertThat(runtime.readyTaskIds(1)).hasSize(1);
+    }
+
     // ── apply result ──────────────────────────────────────────────────────────
 
     @Test
@@ -242,6 +253,18 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(runtime.stats("t1").delayedCount()).isZero();
     }
 
+    @Test
+    void retryableFailure_doesNotCreateRecentFinalReceipt_beforeLogicalFinality() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+
+        runtime.applyResult(
+                TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true)
+        );
+
+        assertThat(runtime.getRecentFinalReceipt("t1", "m1")).isEmpty();
+    }
+
     // ── lease expiry ──────────────────────────────────────────────────────────
 
     @Test
@@ -313,6 +336,30 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(item("t2", "m2"), WorkEnqueueOptions.DEFAULT);
         runtime.discardTask("t1");
         assertThat(runtime.hasReadyWork("t2")).isTrue();
+    }
+
+    @Test
+    void discardTask_clearsRecentFinalReceiptsForThatTask() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork claimed = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
+        runtime.applyResult(TaskWorkResult.success("t1", "m1", claimed.leaseToken(), "done", Map.of()));
+
+        assertThat(runtime.getRecentFinalReceipt("t1", "m1")).isPresent();
+
+        runtime.discardTask("t1");
+
+        assertThat(runtime.getRecentFinalReceipt("t1", "m1")).isEmpty();
+    }
+
+    @Test
+    void stats_remainConsistent_forHighVolumeSingleTask() {
+        for (int i = 0; i < 200; i++) {
+            runtime.enqueue(item("bulk", "m" + i), WorkEnqueueOptions.DEFAULT);
+        }
+
+        assertThat(runtime.readyTaskIds(10)).containsExactly("bulk");
+        assertThat(runtime.stats("bulk").readyCount()).isEqualTo(200);
+        assertThat(runtime.stats().readyItems()).isEqualTo(200);
     }
 
     @Test

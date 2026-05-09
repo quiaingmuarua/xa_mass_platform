@@ -18,7 +18,12 @@ the default verified runtime mainline.
 - this module is intentionally not the bootstrap default
 - the intended Redis keyspace and hot-path index model lives in
   [REDIS_RUNTIME_BASELINE.md](./REDIS_RUNTIME_BASELINE.md)
-- current implementation keeps one runtime-scoped Redis mutex instead of Lua-scripted fine-grained claim/apply paths; this is current implementation truth, not the target hot-path shape
+- current implementation keeps queue/lease/result hot-path mutations inside
+  Redis-scripted atomic operations for `enqueue`, `claimReady`, `applyResult`,
+  `pollExpiredLeases`, and `discardTask`
+- bounded delayed promotion and stats/query reads still use straightforward
+  Redis commands around that hot-path truth; further fine-grained optimization
+  remains future work, not a second runtime contract
 
 ## Guardrails
 

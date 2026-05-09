@@ -188,6 +188,44 @@ class RedisTaskWorkRuntimeTest {
     }
 
     @Test
+    void discardTask_clearsTaskBoundedIndexesWithoutTouchingOtherTask() {
+        runtime.enqueue(item("task-a", "msg-ready"), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(delayedItem("task-a", "msg-delayed", now.get().plusSeconds(30)), WorkEnqueueOptions.DEFAULT);
+        runtime.enqueue(item("task-b", "msg-foreign"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork claimed = runtime.claimReady(
+                "task-a",
+                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                1,
+                45
+        ).get(0);
+        runtime.applyResult(TaskWorkResult.success("task-a", claimed.messageId(), claimed.leaseToken(), "done", Map.of()));
+
+        long discarded = runtime.discardTask("task-a");
+
+        assertEquals(1L, discarded);
+        assertEquals(0, commands.exists(
+                keyspace.taskReadyQueue("task-a"),
+                keyspace.taskDelayedZset("task-a"),
+                keyspace.taskMembersSet("task-a"),
+                keyspace.taskStatsHash("task-a")
+        ));
+        assertTrue(commands.smembers(keyspace.taskRegistrySet()).contains("task-b"));
+        assertTrue(runtime.hasReadyWork("task-b"));
+        assertTrue(runtime.getRecentFinalReceipt("task-a", claimed.messageId()).isEmpty());
+    }
+
+    @Test
+    void highVolumeSingleTaskKeepsTaskLevelReadyIndexCompact() {
+        for (int i = 0; i < 200; i++) {
+            runtime.enqueue(item("bulk-task", "msg-" + i), WorkEnqueueOptions.DEFAULT);
+        }
+
+        assertEquals(List.of("bulk-task"), runtime.readyTaskIds(10));
+        assertEquals(200L, runtime.stats("bulk-task").readyCount());
+        assertEquals(1L, commands.zcard(keyspace.readyTasksZset()));
+    }
+
+    @Test
     void competingRuntimeInstancesClaimOnlyOneCopyOfTheSameWork() throws Exception {
         runtime.enqueue(item("task-race", "msg-1"), WorkEnqueueOptions.DEFAULT);
 

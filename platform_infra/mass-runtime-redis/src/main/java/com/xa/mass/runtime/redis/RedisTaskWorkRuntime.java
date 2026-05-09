@@ -6,19 +6,20 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
-import com.xa.mass.runtime.api.TaskWorkFinalStatus;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkFinalStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.SetArgs;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 
@@ -41,21 +42,357 @@ import java.util.function.Supplier;
  * Redis-backed {@link TaskWorkRuntime} implementation for local and embedded
  * runtime use.
  *
- * <p>This first slice keeps one explicit runtime mutex so XA Mass can use real
- * Redis queue/lease truth without reintroducing engine-local runtime state.
- * The lock keeps semantics coherent while the module converges toward finer
- * Lua-scripted hot paths.</p>
+ * <p>The hot-path mutating operations are script-backed so queue, delayed,
+ * lease, and counter ownership live in Redis as one runtime truth instead of
+ * depending on a process-local coarse lock.</p>
  */
 public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
     private static final int DEFAULT_MAX_RECENT_FINAL_RECEIPTS = 10_000;
-    private static final long DEFAULT_LOCK_TIMEOUT_MILLIS = 5_000L;
-    private static final long DEFAULT_LOCK_LEASE_MILLIS = 10_000L;
-    private static final long LOCK_RETRY_SLEEP_MILLIS = 10L;
     private static final Gson GSON = new Gson();
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
+
+    private static final String ENQUEUE_SCRIPT = String.join("\n",
+            "local taskId = ARGV[1]",
+            "local messageId = ARGV[2]",
+            "local eventCode = ARGV[3]",
+            "local payloadJson = ARGV[4]",
+            "local payloadRef = ARGV[5]",
+            "local retryCount = ARGV[6]",
+            "local maxRetryCount = ARGV[7]",
+            "local shardKey = ARGV[8]",
+            "local nextVisibleAtMillis = tonumber(ARGV[9])",
+            "local createdAtMillis = tonumber(ARGV[10])",
+            "local nowMillis = tonumber(ARGV[11])",
+            "local maxReadyPerTask = tonumber(ARGV[12])",
+            "local maxQueuedItems = tonumber(ARGV[13])",
+            "local workMember = ARGV[14]",
+            "if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[2]) == 1 then",
+            "  return 'DUPLICATE'",
+            "end",
+            "local taskReady = tonumber(redis.call('HGET', KEYS[5], 'readyCount') or '0')",
+            "if taskReady >= maxReadyPerTask then",
+            "  redis.call('HINCRBY', KEYS[6], 'backpressureRejectedItems', 1)",
+            "  return 'BACKPRESSURE_TASK'",
+            "end",
+            "local globalReady = tonumber(redis.call('HGET', KEYS[6], 'readyCount') or '0')",
+            "local globalDelayed = tonumber(redis.call('HGET', KEYS[6], 'delayedCount') or '0')",
+            "if globalReady + globalDelayed >= maxQueuedItems then",
+            "  redis.call('HINCRBY', KEYS[6], 'backpressureRejectedItems', 1)",
+            "  return 'BACKPRESSURE_GLOBAL'",
+            "end",
+            "redis.call('DEL', KEYS[11])",
+            "redis.call('SREM', KEYS[12], messageId)",
+            "redis.call('ZREM', KEYS[13], workMember)",
+            "redis.call('HSET', KEYS[1],",
+            "  'eventCode', eventCode,",
+            "  'payloadJson', payloadJson,",
+            "  'payloadRef', payloadRef,",
+            "  'retryCount', retryCount,",
+            "  'maxRetryCount', maxRetryCount,",
+            "  'shardKey', shardKey,",
+            "  'nextVisibleAtMillis', nextVisibleAtMillis > 0 and tostring(nextVisibleAtMillis) or '',",
+            "  'createdAtMillis', tostring(createdAtMillis))",
+            "redis.call('SADD', KEYS[3], taskId)",
+            "redis.call('SADD', KEYS[4], messageId)",
+            "redis.call('HINCRBY', KEYS[5], 'totalCount', 1)",
+            "redis.call('HINCRBY', KEYS[6], 'enqueuedItems', 1)",
+            "if nextVisibleAtMillis > nowMillis then",
+            "  redis.call('ZADD', KEYS[7], nextVisibleAtMillis, workMember)",
+            "  redis.call('ZADD', KEYS[8], nextVisibleAtMillis, messageId)",
+            "  redis.call('HINCRBY', KEYS[5], 'delayedCount', 1)",
+            "  redis.call('HINCRBY', KEYS[6], 'delayedCount', 1)",
+            "else",
+            "  redis.call('RPUSH', KEYS[9], messageId)",
+            "  local existingReadyScore = redis.call('ZSCORE', KEYS[10], taskId)",
+            "  if (not existingReadyScore) or tonumber(existingReadyScore) > createdAtMillis then",
+            "    redis.call('ZADD', KEYS[10], createdAtMillis, taskId)",
+            "  end",
+            "  redis.call('HINCRBY', KEYS[5], 'readyCount', 1)",
+            "  redis.call('HINCRBY', KEYS[6], 'readyCount', 1)",
+            "end",
+            "return 'ENQUEUED'"
+    );
+
+    private static final String CLAIM_READY_SCRIPT = String.join("\n",
+            "local readyQueue = KEYS[1]",
+            "local taskDelayed = KEYS[2]",
+            "local readyTasks = KEYS[3]",
+            "local delayedWork = KEYS[4]",
+            "local taskActive = KEYS[5]",
+            "local leaseExpiry = KEYS[6]",
+            "local taskStats = KEYS[7]",
+            "local runtimeStats = KEYS[8]",
+            "local taskId = ARGV[1]",
+            "local taskPrefix = ARGV[2]",
+            "local namespace = ARGV[3]",
+            "local nowMillis = tonumber(ARGV[4])",
+            "local leaseExpireAtMillis = tonumber(ARGV[5])",
+            "local dueCount = tonumber(ARGV[6])",
+            "local slotCount = tonumber(ARGV[7])",
+            "local function work_member(messageId)",
+            "  return tostring(string.len(taskId)) .. ':' .. taskId .. messageId",
+            "end",
+            "local function worker_active(workerId)",
+            "  return namespace .. ':worker:' .. workerId .. ':active'",
+            "end",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local function maybe_upsert_ready_score()",
+            "  local headMessageId = redis.call('LINDEX', readyQueue, 0)",
+            "  if not headMessageId then",
+            "    redis.call('ZREM', readyTasks, taskId)",
+            "    return",
+            "  end",
+            "  local headCreatedAt = tonumber(redis.call('HGET', taskPrefix .. ':work:' .. headMessageId, 'createdAtMillis') or '0')",
+            "  local existing = redis.call('ZSCORE', readyTasks, taskId)",
+            "  if (not existing) or tonumber(existing) > headCreatedAt then",
+            "    redis.call('ZADD', readyTasks, headCreatedAt, taskId)",
+            "  end",
+            "end",
+            "local argCursor = 8",
+            "for i = 1, dueCount do",
+            "  local messageId = ARGV[argCursor]",
+            "  local member = ARGV[argCursor + 1]",
+            "  argCursor = argCursor + 2",
+            "  redis.call('ZREM', taskDelayed, messageId)",
+            "  redis.call('ZREM', delayedWork, member)",
+            "  local workHash = taskPrefix .. ':work:' .. messageId",
+            "  local leaseHash = taskPrefix .. ':lease:' .. messageId",
+            "  if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
+            "    local nextVisibleAtMillis = tonumber(redis.call('HGET', workHash, 'nextVisibleAtMillis') or '0')",
+            "    if nextVisibleAtMillis > nowMillis then",
+            "      redis.call('ZADD', taskDelayed, nextVisibleAtMillis, messageId)",
+            "      redis.call('ZADD', delayedWork, nextVisibleAtMillis, member)",
+            "    else",
+            "      redis.call('RPUSH', readyQueue, messageId)",
+            "      decr_non_negative(taskStats, 'delayedCount', 1)",
+            "      decr_non_negative(runtimeStats, 'delayedCount', 1)",
+            "      redis.call('HINCRBY', taskStats, 'readyCount', 1)",
+            "      redis.call('HINCRBY', runtimeStats, 'readyCount', 1)",
+            "      local createdAtMillis = tonumber(redis.call('HGET', workHash, 'createdAtMillis') or '0')",
+            "      local existing = redis.call('ZSCORE', readyTasks, taskId)",
+            "      if (not existing) or tonumber(existing) > createdAtMillis then",
+            "        redis.call('ZADD', readyTasks, createdAtMillis, taskId)",
+            "      end",
+            "    end",
+            "  end",
+            "end",
+            "local claimed = {}",
+            "for slot = 1, slotCount do",
+            "  local workerBase = argCursor + ((slot - 1) * 4)",
+            "  local workerId = ARGV[workerBase]",
+            "  local workerContextId = ARGV[workerBase + 1]",
+            "  local batchId = ARGV[workerBase + 2]",
+            "  local leaseToken = ARGV[workerBase + 3]",
+            "  local messageId = redis.call('LPOP', readyQueue)",
+            "  while messageId do",
+            "    decr_non_negative(taskStats, 'readyCount', 1)",
+            "    decr_non_negative(runtimeStats, 'readyCount', 1)",
+            "    local workHash = taskPrefix .. ':work:' .. messageId",
+            "    local leaseHash = taskPrefix .. ':lease:' .. messageId",
+            "    if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
+            "      local retryCount = tonumber(redis.call('HGET', workHash, 'retryCount') or '0')",
+            "      local eventCode = redis.call('HGET', workHash, 'eventCode') or ''",
+            "      local payloadJson = redis.call('HGET', workHash, 'payloadJson') or ''",
+            "      local payloadRef = redis.call('HGET', workHash, 'payloadRef') or ''",
+            "      local workMember = work_member(messageId)",
+            "      redis.call('HSET', leaseHash,",
+            "        'leaseToken', leaseToken,",
+            "        'workerId', workerId,",
+            "        'workerContextId', workerContextId,",
+            "        'batchId', batchId,",
+            "        'payloadRef', payloadRef,",
+            "        'retryCount', tostring(retryCount),",
+            "        'leaseExpireAtMillis', tostring(leaseExpireAtMillis),",
+            "        'leasedAtMillis', tostring(nowMillis))",
+            "      redis.call('SADD', taskActive, workMember)",
+            "      redis.call('SADD', worker_active(workerId), workMember)",
+            "      redis.call('ZADD', leaseExpiry, leaseExpireAtMillis, workMember)",
+            "      redis.call('HINCRBY', taskStats, 'inflightCount', 1)",
+            "      redis.call('HINCRBY', runtimeStats, 'inflightCount', 1)",
+            "      redis.call('HINCRBY', runtimeStats, 'claimedItems', 1)",
+            "      table.insert(claimed, messageId)",
+            "      table.insert(claimed, leaseToken)",
+            "      table.insert(claimed, workerId)",
+            "      table.insert(claimed, workerContextId)",
+            "      table.insert(claimed, batchId)",
+            "      table.insert(claimed, eventCode)",
+            "      table.insert(claimed, payloadJson)",
+            "      table.insert(claimed, payloadRef)",
+            "      table.insert(claimed, tostring(retryCount))",
+            "      break",
+            "    end",
+            "    messageId = redis.call('LPOP', readyQueue)",
+            "  end",
+            "  if not messageId then",
+            "    break",
+            "  end",
+            "end",
+            "maybe_upsert_ready_score()",
+            "return claimed"
+    );
+
+    private static final String APPLY_RESULT_SCRIPT = String.join("\n",
+            "local taskId = ARGV[1]",
+            "local messageId = ARGV[2]",
+            "local workMember = ARGV[3]",
+            "local providedLeaseToken = ARGV[4]",
+            "local nowMillis = tonumber(ARGV[5])",
+            "local completedAtMillis = tonumber(ARGV[6])",
+            "local success = ARGV[7] == '1'",
+            "local expired = ARGV[8] == '1'",
+            "local retryable = ARGV[9] == '1'",
+            "local retryVisibleAtMillis = tonumber(ARGV[10])",
+            "local errorCode = ARGV[11]",
+            "local finalStatus = ARGV[12]",
+            "local taskPrefix = ARGV[13]",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local leaseToken = redis.call('HGET', KEYS[2], 'leaseToken')",
+            "if not leaseToken or leaseToken == '' then",
+            "  redis.call('HINCRBY', KEYS[8], 'duplicateResultItems', 1)",
+            "  return {'NO_ACTIVE_LEASE'}",
+            "end",
+            "if providedLeaseToken ~= '' and leaseToken ~= providedLeaseToken then",
+            "  redis.call('HINCRBY', KEYS[8], 'staleResultItems', 1)",
+            "  return {'STALE_LEASE'}",
+            "end",
+            "local workerId = redis.call('HGET', KEYS[2], 'workerId') or ''",
+            "local retryCount = tonumber(redis.call('HGET', KEYS[2], 'retryCount') or '0')",
+            "redis.call('DEL', KEYS[2])",
+            "redis.call('SREM', KEYS[4], workMember)",
+            "if workerId ~= '' then",
+            "  redis.call('SREM', KEYS[3] .. workerId .. ':active', workMember)",
+            "end",
+            "redis.call('ZREM', KEYS[5], workMember)",
+            "decr_non_negative(KEYS[7], 'inflightCount', 1)",
+            "decr_non_negative(KEYS[8], 'inflightCount', 1)",
+            "redis.call('HINCRBY', KEYS[8], 'resultAppliedItems', 1)",
+            "if success then",
+            "  redis.call('DEL', KEYS[1])",
+            "  redis.call('SREM', KEYS[6], messageId)",
+            "  redis.call('HINCRBY', KEYS[7], 'successCount', 1)",
+            "  redis.call('HSET', KEYS[9], 'status', finalStatus, 'errorCode', errorCode, 'retryCount', tostring(retryCount), 'completedAtMillis', tostring(completedAtMillis))",
+            "  redis.call('SADD', KEYS[10], messageId)",
+            "  redis.call('ZADD', KEYS[11], completedAtMillis, workMember)",
+            "  return {'SUCCESS_APPLIED', tostring(retryCount)}",
+            "end",
+            "local itemRetryCount = tonumber(redis.call('HGET', KEYS[1], 'retryCount') or '-1')",
+            "local itemMaxRetryCount = tonumber(redis.call('HGET', KEYS[1], 'maxRetryCount') or '-1')",
+            "if retryable and itemRetryCount >= 0 and itemRetryCount < itemMaxRetryCount then",
+            "  local nextRetryCount = itemRetryCount + 1",
+            "  redis.call('HSET', KEYS[1], 'retryCount', tostring(nextRetryCount), 'nextVisibleAtMillis', retryVisibleAtMillis > nowMillis and tostring(retryVisibleAtMillis) or '')",
+            "  if retryVisibleAtMillis > nowMillis then",
+            "    redis.call('ZADD', KEYS[12], retryVisibleAtMillis, workMember)",
+            "    redis.call('ZADD', KEYS[13], retryVisibleAtMillis, messageId)",
+            "    redis.call('HINCRBY', KEYS[7], 'delayedCount', 1)",
+            "    redis.call('HINCRBY', KEYS[8], 'delayedCount', 1)",
+            "  else",
+            "    redis.call('RPUSH', KEYS[14], messageId)",
+            "    local createdAtMillis = tonumber(redis.call('HGET', KEYS[1], 'createdAtMillis') or '0')",
+            "    local existing = redis.call('ZSCORE', KEYS[15], taskId)",
+            "    if (not existing) or tonumber(existing) > createdAtMillis then",
+            "      redis.call('ZADD', KEYS[15], createdAtMillis, taskId)",
+            "    end",
+            "    redis.call('HINCRBY', KEYS[7], 'readyCount', 1)",
+            "    redis.call('HINCRBY', KEYS[8], 'readyCount', 1)",
+            "  end",
+            "  return {'RETRY_SCHEDULED', tostring(nextRetryCount)}",
+            "end",
+            "redis.call('DEL', KEYS[1])",
+            "redis.call('SREM', KEYS[6], messageId)",
+            "if expired then",
+            "  redis.call('HINCRBY', KEYS[7], 'expiredCount', 1)",
+            "else",
+            "  redis.call('HINCRBY', KEYS[7], 'failedCount', 1)",
+            "end",
+            "redis.call('HSET', KEYS[9], 'status', finalStatus, 'errorCode', errorCode, 'retryCount', tostring(retryCount), 'completedAtMillis', tostring(completedAtMillis))",
+            "redis.call('SADD', KEYS[10], messageId)",
+            "redis.call('ZADD', KEYS[11], completedAtMillis, workMember)",
+            "return {'FAILURE_FINALIZED', tostring(retryCount)}"
+    );
+
+    private static final String POLL_EXPIRED_LEASES_SCRIPT = String.join("\n",
+            "local due = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, ARGV[2])",
+            "for _, member in ipairs(due) do",
+            "  redis.call('ZREM', KEYS[1], member)",
+            "end",
+            "return due"
+    );
+
+    private static final String DISCARD_TASK_SCRIPT = String.join("\n",
+            "local taskId = ARGV[1]",
+            "local taskPrefix = ARGV[2]",
+            "local namespace = ARGV[3]",
+            "local memberCount = tonumber(ARGV[4])",
+            "local recentFinalCount = tonumber(ARGV[5])",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local activeMembers = redis.call('SMEMBERS', KEYS[2])",
+            "for _, member in ipairs(activeMembers) do",
+            "  local workerId = ''",
+            "  local leaseHash = taskPrefix .. ':lease:'",
+            "  local separator = string.find(member, ':')",
+            "  if separator then",
+            "    local taskLen = tonumber(string.sub(member, 1, separator - 1))",
+            "    local messageId = string.sub(member, separator + taskLen + 1)",
+            "    leaseHash = leaseHash .. messageId",
+            "    workerId = redis.call('HGET', leaseHash, 'workerId') or ''",
+            "  end",
+            "  redis.call('DEL', leaseHash)",
+            "  if workerId ~= '' then",
+            "    redis.call('SREM', namespace .. ':worker:' .. workerId .. ':active', member)",
+            "  end",
+            "  redis.call('ZREM', KEYS[3], member)",
+            "end",
+            "local discarded = 0",
+            "local cursor = 6",
+            "for i = 1, memberCount do",
+            "  local messageId = ARGV[cursor]",
+            "  local workMember = ARGV[cursor + 1]",
+            "  cursor = cursor + 2",
+            "  local workHash = taskPrefix .. ':work:' .. messageId",
+            "  if redis.call('EXISTS', workHash) == 1 then",
+            "    discarded = discarded + 1",
+            "  end",
+            "  redis.call('DEL', workHash, taskPrefix .. ':lease:' .. messageId)",
+            "  redis.call('ZREM', KEYS[4], workMember)",
+            "  redis.call('ZREM', KEYS[5], messageId)",
+            "end",
+            "for i = 1, recentFinalCount do",
+            "  local messageId = ARGV[cursor]",
+            "  cursor = cursor + 1",
+            "  redis.call('DEL', taskPrefix .. ':recent-final:' .. messageId)",
+            "end",
+            "local readyCount = tonumber(redis.call('HGET', KEYS[6], 'readyCount') or '0')",
+            "local delayedCount = tonumber(redis.call('HGET', KEYS[6], 'delayedCount') or '0')",
+            "local inflightCount = tonumber(redis.call('HGET', KEYS[6], 'inflightCount') or '0')",
+            "redis.call('DEL', KEYS[1], KEYS[2], KEYS[5], KEYS[6], KEYS[7], KEYS[8])",
+            "redis.call('ZREM', KEYS[9], taskId)",
+            "redis.call('SREM', KEYS[10], taskId)",
+            "decr_non_negative(KEYS[11], 'readyCount', readyCount)",
+            "decr_non_negative(KEYS[11], 'delayedCount', delayedCount)",
+            "decr_non_negative(KEYS[11], 'inflightCount', inflightCount)",
+            "if discarded > 0 then",
+            "  redis.call('HINCRBY', KEYS[11], 'discardedItems', discarded)",
+            "end",
+            "return tostring(discarded)"
+    );
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
@@ -127,8 +464,17 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get()) {
             return WorkEnqueueOutcome.unavailable(item, "work runtime is stopped");
         }
+        if (item == null || isBlank(item.taskId()) || isBlank(item.messageId())) {
+            return WorkEnqueueOutcome.invalid(item, "taskId and messageId must not be blank");
+        }
         try {
-            return withRuntimeLock(() -> enqueueLocked(item, options));
+            WorkEnqueueStatus status = enqueueAtomic(item, options == null ? WorkEnqueueOptions.DEFAULT : options);
+            return switch (status) {
+                case ENQUEUED -> WorkEnqueueOutcome.enqueued(item);
+                case DUPLICATE -> WorkEnqueueOutcome.duplicate(item, "work item already exists");
+                case BACKPRESSURE_REJECTED -> WorkEnqueueOutcome.backpressureRejected(item, "task or runtime backlog is full");
+                default -> WorkEnqueueOutcome.failed(item, "unexpected enqueue status");
+            };
         } catch (RuntimeException ex) {
             return WorkEnqueueOutcome.unavailable(item, "redis runtime is unavailable: " + ex.getMessage());
         }
@@ -140,10 +486,8 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return List.of();
         }
         try {
-            return withRuntimeLock(() -> {
-                promoteDueDelayedLocked(clock.get(), limit);
-                return loadReadyTaskIdsLocked(limit);
-            });
+            promoteDueDelayedLocked(clock.get(), limit);
+            return loadReadyTaskIds(limit);
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -160,7 +504,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return List.of();
         }
         try {
-            return withRuntimeLock(() -> claimReadyLocked(taskId, workers, options));
+            return claimReadyAtomic(taskId, workers, options);
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -171,8 +515,11 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (!running.get()) {
             return ResultApplyOutcome.failed(result, "work runtime is stopped");
         }
+        if (result == null || isBlank(result.taskId()) || isBlank(result.messageId())) {
+            return ResultApplyOutcome.invalid(result, "taskId and messageId must not be blank");
+        }
         try {
-            return withRuntimeLock(() -> applyResultLocked(result));
+            return applyResultAtomic(result);
         } catch (RuntimeException ex) {
             return ResultApplyOutcome.failed(result, "redis runtime is unavailable: " + ex.getMessage());
         }
@@ -184,7 +531,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return List.of();
         }
         try {
-            return withRuntimeLock(() -> pollExpiredLeasesLocked(limit, now == null ? clock.get() : now));
+            return pollExpiredLeasesAtomic(limit, now == null ? clock.get() : now);
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -196,7 +543,15 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return List.of();
         }
         try {
-            return withRuntimeLock(() -> activeLeasesLocked(taskId));
+            List<ActiveLeaseRecord> leases = new ArrayList<>();
+            for (String member : commands.smembers(keyspace.taskActiveSet(taskId))) {
+                RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
+                ActiveLeaseRecord lease = loadLease(ref.taskId(), ref.messageId());
+                if (lease != null) {
+                    leases.add(lease);
+                }
+            }
+            return List.copyOf(leases);
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -208,7 +563,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return Optional.empty();
         }
         try {
-            return withRuntimeLock(() -> Optional.ofNullable(loadLease(taskId, messageId)));
+            return Optional.ofNullable(loadLease(taskId, messageId));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
@@ -220,7 +575,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return Optional.empty();
         }
         try {
-            return withRuntimeLock(() -> Optional.ofNullable(loadWork(taskId, messageId)));
+            return Optional.ofNullable(loadWork(taskId, messageId));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
@@ -232,7 +587,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return Optional.empty();
         }
         try {
-            return withRuntimeLock(() -> Optional.ofNullable(loadRecentFinalReceipt(taskId, messageId)));
+            return Optional.ofNullable(loadRecentFinalReceipt(taskId, messageId));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
@@ -244,10 +599,8 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return false;
         }
         try {
-            return withRuntimeLock(() -> {
-                promoteDueDelayedForTaskLocked(taskId, clock.get());
-                return ensureReadyQueueVisibleLocked(taskId);
-            });
+            promoteDueDelayedForTaskLocked(taskId, clock.get());
+            return ensureReadyQueueVisible(taskId);
         } catch (RuntimeException ex) {
             return false;
         }
@@ -259,15 +612,13 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return false;
         }
         try {
-            return withRuntimeLock(() -> {
-                for (String member : commands.smembers(keyspace.workerActiveSet(workerId))) {
-                    RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
-                    if (taskId.equals(ref.taskId()) && loadLease(ref.taskId(), ref.messageId()) != null) {
-                        return true;
-                    }
+            for (String member : commands.smembers(keyspace.workerActiveSet(workerId))) {
+                RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
+                if (taskId.equals(ref.taskId()) && loadLease(ref.taskId(), ref.messageId()) != null) {
+                    return true;
                 }
-                return false;
-            });
+            }
+            return false;
         } catch (RuntimeException ex) {
             return false;
         }
@@ -275,17 +626,12 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
 
     @Override
     public TaskWorkStats stats(String taskId) {
-        if (!running.get()) {
-            return TaskWorkStats.EMPTY;
-        }
-        if (isBlank(taskId)) {
+        if (!running.get() || isBlank(taskId)) {
             return TaskWorkStats.EMPTY;
         }
         try {
-            return withRuntimeLock(() -> {
-                promoteDueDelayedForTaskLocked(taskId, clock.get());
-                return loadTaskStats(taskId);
-            });
+            promoteDueDelayedForTaskLocked(taskId, clock.get());
+            return loadTaskStats(taskId);
         } catch (RuntimeException ex) {
             return TaskWorkStats.EMPTY;
         }
@@ -294,32 +640,30 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     @Override
     public TaskWorkRuntimeStats stats() {
         if (!running.get()) {
-            return new TaskWorkRuntimeStats(0, 0, 0, 0, maxQueuedItems, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return emptyRuntimeStats();
         }
         try {
-            return withRuntimeLock(() -> {
-                promoteDueDelayedLocked(clock.get(), 256);
-                Map<String, String> runtimeStats = commands.hgetall(keyspace.runtimeStatsHash());
-                return new TaskWorkRuntimeStats(
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_READY_COUNT)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT)),
-                        Math.toIntExact(commands.zcard(keyspace.readyTasksZset())),
-                        maxQueuedItems,
-                        oldestReadyAgeMillisLocked(),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_ENQUEUED_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_CLAIMED_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_RESULT_APPLIED_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DUPLICATE_RESULT_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_STALE_RESULT_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_EXPIRED_LEASE_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DISCARDED_ITEMS)),
-                        parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS))
-                );
-            });
+            promoteDueDelayedLocked(clock.get(), 256);
+            Map<String, String> runtimeStats = commands.hgetall(keyspace.runtimeStatsHash());
+            return new TaskWorkRuntimeStats(
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_READY_COUNT)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT)),
+                    Math.toIntExact(commands.zcard(keyspace.readyTasksZset())),
+                    maxQueuedItems,
+                    oldestReadyAgeMillis(),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_ENQUEUED_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_CLAIMED_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_RESULT_APPLIED_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DUPLICATE_RESULT_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_STALE_RESULT_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_EXPIRED_LEASE_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_DISCARDED_ITEMS)),
+                    parseLong(runtimeStats.get(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS))
+            );
         } catch (RuntimeException ex) {
-            return new TaskWorkRuntimeStats(0, 0, 0, 0, maxQueuedItems, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return emptyRuntimeStats();
         }
     }
 
@@ -329,7 +673,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return 0L;
         }
         try {
-            return withRuntimeLock(() -> discardTaskLocked(taskId));
+            return discardTaskAtomic(taskId);
         } catch (RuntimeException ex) {
             return 0L;
         }
@@ -343,23 +687,20 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
         try {
             try {
-                withRuntimeLock(() -> {
-                    long cleared = 0L;
-                    for (String taskId : commands.smembers(keyspace.taskRegistrySet())) {
-                        cleared += discardTaskLocked(taskId);
-                    }
-                    if (cleared > 0) {
-                        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS, cleared);
-                    }
-                    commands.del(
-                            keyspace.readyTasksZset(),
-                            keyspace.delayedWorkZset(),
-                            keyspace.leaseExpiryZset(),
-                            keyspace.recentFinalReceiptsZset(),
-                            keyspace.taskRegistrySet()
-                    );
-                    return null;
-                });
+                long cleared = 0L;
+                for (String taskId : commands.smembers(keyspace.taskRegistrySet())) {
+                    cleared += discardTaskAtomic(taskId);
+                }
+                if (cleared > 0) {
+                    incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS, cleared);
+                }
+                commands.del(
+                        keyspace.readyTasksZset(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.leaseExpiryZset(),
+                        keyspace.recentFinalReceiptsZset(),
+                        keyspace.taskRegistrySet()
+                );
             } catch (RuntimeException ignored) {
                 // Redis is already unavailable; local shutdown still needs to release resources.
             }
@@ -368,208 +709,190 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
     }
 
-    private WorkEnqueueOutcome enqueueLocked(TaskWorkEnvelope item, WorkEnqueueOptions options) {
-        if (!running.get()) {
-            return WorkEnqueueOutcome.unavailable(item, "work runtime is stopped");
-        }
-        if (item == null || isBlank(item.taskId()) || isBlank(item.messageId())) {
-            return WorkEnqueueOutcome.invalid(item, "taskId and messageId must not be blank");
-        }
-        if (workExists(item.taskId(), item.messageId()) || leaseExists(item.taskId(), item.messageId())) {
-            return WorkEnqueueOutcome.duplicate(item, "work item already exists");
-        }
-        deleteRecentFinalReceiptLocked(item.taskId(), item.messageId());
-        int maxReadyItemsPerTask = options == null
-                ? WorkEnqueueOptions.DEFAULT.maxReadyItemsPerTask()
-                : options.maxReadyItemsPerTask();
-        TaskWorkStats taskStats = loadTaskStats(item.taskId());
-        if (taskStats.readyCount() >= maxReadyItemsPerTask) {
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS, 1L);
-            return WorkEnqueueOutcome.backpressureRejected(item, "task ready backlog is full");
-        }
-        long globalQueued = runtimeGauge(RedisTaskWorkKeyspace.COUNTER_READY_COUNT)
-                + runtimeGauge(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT);
-        if (globalQueued >= maxQueuedItems) {
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_BACKPRESSURE_REJECTED_ITEMS, 1L);
-            return WorkEnqueueOutcome.backpressureRejected(item, "engine work backlog is full");
-        }
-
-        writeWorkHash(item);
-        commands.sadd(keyspace.taskRegistrySet(), item.taskId());
-        commands.sadd(keyspace.taskMembersSet(item.taskId()), item.messageId());
-        incrementTaskCounter(item.taskId(), RedisTaskWorkKeyspace.COUNTER_TOTAL_COUNT, 1L);
-        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_ENQUEUED_ITEMS, 1L);
-
+    private WorkEnqueueStatus enqueueAtomic(TaskWorkEnvelope item, WorkEnqueueOptions options) {
         Instant now = clock.get();
-        if (item.nextVisibleAt() != null && item.nextVisibleAt().isAfter(now)) {
-            moveToDelayedLocked(item.taskId(), item.messageId(), item.nextVisibleAt(), item.createdAt(), false);
-        } else {
-            moveToReadyLocked(item.taskId(), item.messageId(), item.createdAt(), false);
-        }
-        return WorkEnqueueOutcome.enqueued(item);
+        Object outcome = commands.eval(
+                ENQUEUE_SCRIPT,
+                ScriptOutputType.VALUE,
+                keys(
+                        keyspace.taskWorkHash(item.taskId(), item.messageId()),
+                        keyspace.taskLeaseHash(item.taskId(), item.messageId()),
+                        keyspace.taskRegistrySet(),
+                        keyspace.taskMembersSet(item.taskId()),
+                        keyspace.taskStatsHash(item.taskId()),
+                        keyspace.runtimeStatsHash(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskDelayedZset(item.taskId()),
+                        keyspace.taskReadyQueue(item.taskId()),
+                        keyspace.readyTasksZset(),
+                        keyspace.taskRecentFinalReceiptHash(item.taskId(), item.messageId()),
+                        keyspace.taskRecentFinalReceiptSet(item.taskId()),
+                        keyspace.recentFinalReceiptsZset()
+                ),
+                values(
+                        item.taskId(),
+                        item.messageId(),
+                        nullToEmpty(item.eventCode()),
+                        serializeMap(item.payload()),
+                        nullToEmpty(item.payloadRef()),
+                        Integer.toString(item.retryCount()),
+                        Integer.toString(item.maxRetryCount()),
+                        nullToEmpty(item.shardKey()),
+                        Long.toString(item.nextVisibleAt() == null ? 0L : item.nextVisibleAt().toEpochMilli()),
+                        Long.toString(item.createdAt().toEpochMilli()),
+                        Long.toString(now.toEpochMilli()),
+                        Integer.toString(options.maxReadyItemsPerTask()),
+                        Integer.toString(maxQueuedItems),
+                        keyspace.workMember(item.taskId(), item.messageId())
+                )
+        );
+        String status = stringValue(outcome);
+        return switch (status) {
+            case "ENQUEUED" -> WorkEnqueueStatus.ENQUEUED;
+            case "DUPLICATE" -> WorkEnqueueStatus.DUPLICATE;
+            case "BACKPRESSURE_TASK", "BACKPRESSURE_GLOBAL" -> WorkEnqueueStatus.BACKPRESSURE_REJECTED;
+            default -> WorkEnqueueStatus.FAILED;
+        };
     }
 
-    private List<String> loadReadyTaskIdsLocked(int limit) {
-        List<String> visible = new ArrayList<>(limit);
-        for (String taskId : commands.zrange(keyspace.readyTasksZset(), 0, Math.max(0, limit - 1))) {
-            if (visible.size() >= limit) {
-                break;
-            }
-            if (ensureReadyQueueVisibleLocked(taskId)) {
-                visible.add(taskId);
-            }
-        }
-        return List.copyOf(visible);
-    }
-
-    private List<ClaimedTaskWork> claimReadyLocked(String taskId,
+    private List<ClaimedTaskWork> claimReadyAtomic(String taskId,
                                                    List<WorkerClaimTarget> workers,
                                                    TaskWorkClaimOptions options) {
-        promoteDueDelayedForTaskLocked(taskId, clock.get());
-        if (!ensureReadyQueueVisibleLocked(taskId)) {
+        List<WorkerClaimTarget> claimPlan = buildClaimPlan(workers, options.maxItems());
+        if (claimPlan.isEmpty()) {
             return List.of();
         }
-        List<WorkerCapacity> capacities = workers.stream()
-                .filter(worker -> worker != null && !isBlank(worker.workerId()) && worker.capacity() > 0)
-                .map(WorkerCapacity::new)
-                .toList();
-        if (capacities.isEmpty()) {
-            return List.of();
+        Instant now = clock.get();
+        Instant leaseExpireAt = now.plusSeconds(Math.max(1L, options.leaseSeconds()));
+        List<String> dueMessageIds = commands.zrangebyscore(
+                keyspace.taskDelayedZset(taskId),
+                Range.create(0D, (double) now.toEpochMilli()),
+                io.lettuce.core.Limit.create(0, claimPlan.size())
+        );
+        List<String> args = new ArrayList<>();
+        args.add(taskId);
+        args.add(keyspace.taskPrefix(taskId));
+        args.add(keyspace.namespace());
+        args.add(Long.toString(now.toEpochMilli()));
+        args.add(Long.toString(leaseExpireAt.toEpochMilli()));
+        args.add(Integer.toString(dueMessageIds.size()));
+        args.add(Integer.toString(claimPlan.size()));
+        for (String messageId : dueMessageIds) {
+            args.add(messageId);
+            args.add(keyspace.workMember(taskId, messageId));
         }
-
-        List<ClaimedTaskWork> claimed = new ArrayList<>(Math.min(options.maxItems(), capacities.size()));
-        Instant leasedAt = clock.get();
-        Instant leaseExpireAt = leasedAt.plusSeconds(Math.max(1L, options.leaseSeconds()));
-        int cursor = 0;
-        while (claimed.size() < options.maxItems() && ensureReadyQueueVisibleLocked(taskId)) {
-            WorkerCapacity capacity = nextCapacity(capacities, cursor);
-            if (capacity == null) {
-                break;
-            }
-            cursor = (capacities.indexOf(capacity) + 1) % capacities.size();
-            String messageId = commands.lpop(keyspace.taskReadyQueue(taskId));
-            if (isBlank(messageId)) {
-                commands.zrem(keyspace.readyTasksZset(), taskId);
-                break;
-            }
-            TaskWorkEnvelope item = loadWork(taskId, messageId);
-            if (item == null || leaseExists(taskId, messageId)) {
-                continue;
-            }
-            decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-            decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-
+        List<String> leaseTokens = new ArrayList<>(claimPlan.size());
+        for (WorkerClaimTarget target : claimPlan) {
             String leaseToken = UUID.randomUUID().toString();
-            ActiveLeaseRecord lease = new ActiveLeaseRecord(
-                    taskId,
-                    messageId,
-                    leaseToken,
-                    capacity.target.workerId(),
-                    capacity.target.workerContextId(),
-                    capacity.target.batchId(),
-                    item.payloadRef(),
-                    item.retryCount(),
-                    leaseExpireAt,
-                    leasedAt
-            );
-            writeLeaseHash(lease);
-            String workMember = keyspace.workMember(taskId, messageId);
-            commands.sadd(keyspace.taskActiveSet(taskId), workMember);
-            commands.sadd(keyspace.workerActiveSet(lease.workerId()), workMember);
-            commands.zadd(keyspace.leaseExpiryZset(), toScore(leaseExpireAt), workMember);
-            incrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_CLAIMED_ITEMS, 1L);
+            leaseTokens.add(leaseToken);
+            args.add(target.workerId());
+            args.add(nullToEmpty(target.workerContextId()));
+            args.add(nullToEmpty(target.batchId()));
+            args.add(leaseToken);
+        }
+        List<Object> rawClaimed = evalMulti(
+                CLAIM_READY_SCRIPT,
+                keys(
+                        keyspace.taskReadyQueue(taskId),
+                        keyspace.taskDelayedZset(taskId),
+                        keyspace.readyTasksZset(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskActiveSet(taskId),
+                        keyspace.leaseExpiryZset(),
+                        keyspace.taskStatsHash(taskId),
+                        keyspace.runtimeStatsHash()
+                ),
+                args
+        );
+        if (rawClaimed.isEmpty()) {
+            return List.of();
+        }
+        List<ClaimedTaskWork> claimed = new ArrayList<>(rawClaimed.size() / 9);
+        for (int i = 0; i + 8 < rawClaimed.size(); i += 9) {
             claimed.add(new ClaimedTaskWork(
                     taskId,
-                    messageId,
-                    leaseToken,
-                    lease.workerId(),
-                    lease.workerContextId(),
-                    lease.batchId(),
-                    item.eventCode(),
-                    item.payload(),
-                    item.payloadRef(),
-                    item.retryCount(),
+                    stringValue(rawClaimed.get(i)),
+                    stringValue(rawClaimed.get(i + 1)),
+                    stringValue(rawClaimed.get(i + 2)),
+                    emptyToNull(stringValue(rawClaimed.get(i + 3))),
+                    emptyToNull(stringValue(rawClaimed.get(i + 4))),
+                    emptyToNull(stringValue(rawClaimed.get(i + 5))),
+                    deserializeMap(stringValue(rawClaimed.get(i + 6))),
+                    emptyToNull(stringValue(rawClaimed.get(i + 7))),
+                    parseInt(stringValue(rawClaimed.get(i + 8))),
                     leaseExpireAt
             ));
-        }
-        if (commands.llen(keyspace.taskReadyQueue(taskId)) <= 0) {
-            commands.zrem(keyspace.readyTasksZset(), taskId);
         }
         return List.copyOf(claimed);
     }
 
-    private ResultApplyOutcome applyResultLocked(TaskWorkResult result) {
-        if (!running.get()) {
-            return ResultApplyOutcome.failed(result, "work runtime is stopped");
+    private ResultApplyOutcome applyResultAtomic(TaskWorkResult result) {
+        Instant now = clock.get();
+        Instant completedAt = result.completedAt() == null ? now : result.completedAt();
+        String finalStatus = result.success()
+                ? TaskWorkFinalStatus.SUCCESS.name()
+                : result.expired() ? TaskWorkFinalStatus.EXPIRED.name() : TaskWorkFinalStatus.FAILED.name();
+        List<Object> raw = evalMulti(
+                APPLY_RESULT_SCRIPT,
+                keys(
+                        keyspace.taskWorkHash(result.taskId(), result.messageId()),
+                        keyspace.taskLeaseHash(result.taskId(), result.messageId()),
+                        keyspace.namespace() + ":worker:",
+                        keyspace.taskActiveSet(result.taskId()),
+                        keyspace.leaseExpiryZset(),
+                        keyspace.taskMembersSet(result.taskId()),
+                        keyspace.taskStatsHash(result.taskId()),
+                        keyspace.runtimeStatsHash(),
+                        keyspace.taskRecentFinalReceiptHash(result.taskId(), result.messageId()),
+                        keyspace.taskRecentFinalReceiptSet(result.taskId()),
+                        keyspace.recentFinalReceiptsZset(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskDelayedZset(result.taskId()),
+                        keyspace.taskReadyQueue(result.taskId()),
+                        keyspace.readyTasksZset()
+                ),
+                values(
+                        result.taskId(),
+                        result.messageId(),
+                        keyspace.workMember(result.taskId(), result.messageId()),
+                        nullToEmpty(result.leaseToken()),
+                        Long.toString(now.toEpochMilli()),
+                        Long.toString(completedAt.toEpochMilli()),
+                        result.success() ? "1" : "0",
+                        result.expired() ? "1" : "0",
+                        result.retryable() ? "1" : "0",
+                        Long.toString(result.retryVisibleAt() == null ? 0L : result.retryVisibleAt().toEpochMilli()),
+                        nullToEmpty(result.errorCode()),
+                        finalStatus,
+                        keyspace.taskPrefix(result.taskId())
+                )
+        );
+        String status = raw.isEmpty() ? "" : stringValue(raw.get(0));
+        if ("SUCCESS_APPLIED".equals(status) || "FAILURE_FINALIZED".equals(status)) {
+            trimRecentFinalReceipts();
         }
-        if (result == null || isBlank(result.taskId()) || isBlank(result.messageId())) {
-            return ResultApplyOutcome.invalid(result, "taskId and messageId must not be blank");
-        }
-
-        ActiveLeaseRecord lease = loadLease(result.taskId(), result.messageId());
-        if (lease == null) {
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DUPLICATE_RESULT_ITEMS, 1L);
-            return ResultApplyOutcome.noActiveLease(result, "no active lease for result");
-        }
-        if (!isBlank(result.leaseToken()) && !result.leaseToken().equals(lease.leaseToken())) {
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_STALE_RESULT_ITEMS, 1L);
-            return ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
-        }
-
-        int finalRetryCount = Math.max(0, lease.retryCount());
-        removeLeaseLocked(lease);
-        decrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
-        decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, 1L);
-        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_RESULT_APPLIED_ITEMS, 1L);
-
-        if (result.success()) {
-            deleteWorkLocked(result.taskId(), result.messageId());
-            incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_SUCCESS_COUNT, 1L);
-            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.SUCCESS, finalRetryCount);
-            return ResultApplyOutcome.success(result);
-        }
-
-        TaskWorkEnvelope item = loadWork(result.taskId(), result.messageId());
-        boolean canRetry = result.retryable()
-                && item != null
-                && item.retryCount() < item.maxRetryCount();
-        if (canRetry) {
-            Instant now = clock.get();
-            Instant nextVisibleAt = resolveNextRetryVisibleAt(result, now);
-            TaskWorkEnvelope retry = item.withRetry(item.retryCount() + 1, nextVisibleAt);
-            writeWorkHash(retry);
-            if (nextVisibleAt.isAfter(now)) {
-                moveToDelayedLocked(retry.taskId(), retry.messageId(), nextVisibleAt, retry.createdAt(), false);
-            } else {
-                moveToReadyLocked(retry.taskId(), retry.messageId(), retry.createdAt(), false);
-            }
-            return ResultApplyOutcome.retryScheduled(result, "retry budget allows re-dispatch");
-        }
-
-        deleteWorkLocked(result.taskId(), result.messageId());
-        if (result.expired()) {
-            incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_EXPIRED_COUNT, 1L);
-            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.EXPIRED, finalRetryCount);
-        } else {
-            incrementTaskCounter(result.taskId(), RedisTaskWorkKeyspace.COUNTER_FAILED_COUNT, 1L);
-            writeRecentFinalReceiptLocked(result, TaskWorkFinalStatus.FAILED, finalRetryCount);
-        }
-        return ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
+        return switch (status) {
+            case "SUCCESS_APPLIED" -> ResultApplyOutcome.success(result);
+            case "RETRY_SCHEDULED" -> ResultApplyOutcome.retryScheduled(result, "retry budget allows re-dispatch");
+            case "FAILURE_FINALIZED" -> ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
+            case "STALE_LEASE" -> ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
+            case "NO_ACTIVE_LEASE" -> ResultApplyOutcome.noActiveLease(result, "no active lease for result");
+            default -> ResultApplyOutcome.failed(result, "unexpected applyResult status");
+        };
     }
 
-    private List<ActiveLeaseRecord> pollExpiredLeasesLocked(int limit, Instant now) {
-        List<ActiveLeaseRecord> expired = new ArrayList<>(limit);
-        for (String member : commands.zrangebyscore(
-                keyspace.leaseExpiryZset(),
-                Range.create(0D, toScore(now)),
-                io.lettuce.core.Limit.create(0, limit))) {
-            if (expired.size() >= limit) {
-                break;
-            }
-            commands.zrem(keyspace.leaseExpiryZset(), member);
-            RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
+    private List<ActiveLeaseRecord> pollExpiredLeasesAtomic(int limit, Instant now) {
+        List<Object> raw = evalMulti(
+                POLL_EXPIRED_LEASES_SCRIPT,
+                keys(keyspace.leaseExpiryZset()),
+                values(Long.toString(now.toEpochMilli()), Integer.toString(limit))
+        );
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+        List<ActiveLeaseRecord> expired = new ArrayList<>(raw.size());
+        for (Object memberValue : raw) {
+            RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(stringValue(memberValue));
             ActiveLeaseRecord lease = loadLease(ref.taskId(), ref.messageId());
             if (lease != null) {
                 expired.add(lease);
@@ -581,62 +904,39 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         return List.copyOf(expired);
     }
 
-    private List<ActiveLeaseRecord> activeLeasesLocked(String taskId) {
-        List<ActiveLeaseRecord> leases = new ArrayList<>();
-        for (String member : commands.smembers(keyspace.taskActiveSet(taskId))) {
-            RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
-            ActiveLeaseRecord lease = loadLease(ref.taskId(), ref.messageId());
-            if (lease != null) {
-                leases.add(lease);
-            }
-        }
-        return List.copyOf(leases);
-    }
-
-    private long discardTaskLocked(String taskId) {
-        TaskWorkStats stats = loadTaskStats(taskId);
+    private long discardTaskAtomic(String taskId) {
         Set<String> members = commands.smembers(keyspace.taskMembersSet(taskId));
-        Set<String> activeMembers = commands.smembers(keyspace.taskActiveSet(taskId));
-        long discarded = 0L;
-
-        for (String activeMember : activeMembers) {
-            RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(activeMember);
-            ActiveLeaseRecord lease = loadLease(ref.taskId(), ref.messageId());
-            if (lease != null) {
-                removeLeaseLocked(lease);
-            }
-        }
-
+        Set<String> recentFinalMembers = commands.smembers(keyspace.taskRecentFinalReceiptSet(taskId));
+        List<String> args = new ArrayList<>();
+        args.add(taskId);
+        args.add(keyspace.taskPrefix(taskId));
+        args.add(keyspace.namespace());
+        args.add(Integer.toString(members.size()));
+        args.add(Integer.toString(recentFinalMembers.size()));
         for (String messageId : members) {
-            String workHash = keyspace.taskWorkHash(taskId, messageId);
-            if (commands.exists(workHash) > 0) {
-                discarded++;
-            }
-            commands.del(workHash, keyspace.taskLeaseHash(taskId, messageId));
-            commands.zrem(keyspace.delayedWorkZset(), keyspace.workMember(taskId, messageId));
+            args.add(messageId);
+            args.add(keyspace.workMember(taskId, messageId));
         }
-        for (String messageId : commands.smembers(keyspace.taskRecentFinalReceiptSet(taskId))) {
-            deleteRecentFinalReceiptLocked(taskId, messageId);
-        }
-
-        commands.del(
-                keyspace.taskReadyQueue(taskId),
-                keyspace.taskDelayedZset(taskId),
-                keyspace.taskActiveSet(taskId),
-                keyspace.taskMembersSet(taskId),
-                keyspace.taskRecentFinalReceiptSet(taskId),
-                keyspace.taskStatsHash(taskId)
+        args.addAll(recentFinalMembers);
+        Object outcome = commands.eval(
+                DISCARD_TASK_SCRIPT,
+                ScriptOutputType.VALUE,
+                keys(
+                        keyspace.taskReadyQueue(taskId),
+                        keyspace.taskActiveSet(taskId),
+                        keyspace.leaseExpiryZset(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskDelayedZset(taskId),
+                        keyspace.taskStatsHash(taskId),
+                        keyspace.taskMembersSet(taskId),
+                        keyspace.taskRecentFinalReceiptSet(taskId),
+                        keyspace.readyTasksZset(),
+                        keyspace.taskRegistrySet(),
+                        keyspace.runtimeStatsHash()
+                ),
+                args.toArray(String[]::new)
         );
-        commands.zrem(keyspace.readyTasksZset(), taskId);
-        commands.srem(keyspace.taskRegistrySet(), taskId);
-
-        decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, stats.readyCount());
-        decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, stats.delayedCount());
-        decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_INFLIGHT_COUNT, stats.inflightCount());
-        if (discarded > 0) {
-            incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DISCARDED_ITEMS, discarded);
-        }
-        return discarded;
+        return parseLong(stringValue(outcome));
     }
 
     private void promoteDueDelayedLocked(Instant now, int batchSize) {
@@ -644,7 +944,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         while (remaining > 0) {
             List<String> due = commands.zrangebyscore(
                     keyspace.delayedWorkZset(),
-                    Range.create(0D, toScore(now)),
+                    Range.create(0D, (double) now.toEpochMilli()),
                     io.lettuce.core.Limit.create(0, remaining)
             );
             if (due.isEmpty()) {
@@ -652,7 +952,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             }
             for (String member : due) {
                 RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
-                if (promoteDelayedMemberLocked(ref.taskId(), ref.messageId(), now)) {
+                if (promoteDelayedMember(ref.taskId(), ref.messageId(), member, now)) {
                     remaining--;
                     if (remaining == 0) {
                         return;
@@ -663,58 +963,46 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     private void promoteDueDelayedForTaskLocked(String taskId, Instant now) {
-        for (String messageId : commands.zrangebyscore(keyspace.taskDelayedZset(taskId), 0, toScore(now))) {
-            promoteDelayedMemberLocked(taskId, messageId, now);
+        for (String messageId : commands.zrangebyscore(keyspace.taskDelayedZset(taskId), 0, now.toEpochMilli())) {
+            promoteDelayedMember(taskId, messageId, keyspace.workMember(taskId, messageId), now);
         }
     }
 
-    private boolean promoteDelayedMemberLocked(String taskId, String messageId, Instant now) {
+    private boolean promoteDelayedMember(String taskId, String messageId, String workMember, Instant now) {
         TaskWorkEnvelope item = loadWork(taskId, messageId);
-        String member = keyspace.workMember(taskId, messageId);
-        commands.zrem(keyspace.delayedWorkZset(), member);
+        commands.zrem(keyspace.delayedWorkZset(), workMember);
         commands.zrem(keyspace.taskDelayedZset(taskId), messageId);
         if (item == null || leaseExists(taskId, messageId)) {
             return false;
         }
         if (item.nextVisibleAt() != null && item.nextVisibleAt().isAfter(now)) {
-            commands.zadd(keyspace.delayedWorkZset(), toScore(item.nextVisibleAt()), member);
+            commands.zadd(keyspace.delayedWorkZset(), toScore(item.nextVisibleAt()), workMember);
             commands.zadd(keyspace.taskDelayedZset(taskId), toScore(item.nextVisibleAt()), messageId);
             return false;
         }
         decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
         decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
-        moveToReadyLocked(taskId, messageId, item.createdAt(), true);
+        commands.rpush(keyspace.taskReadyQueue(taskId), messageId);
+        upsertReadyTaskScore(taskId, item.createdAt());
+        incrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
+        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
         return true;
     }
 
-    private void moveToReadyLocked(String taskId, String messageId, Instant createdAt, boolean fromDelayed) {
-        commands.rpush(keyspace.taskReadyQueue(taskId), messageId);
-        upsertReadyTaskScore(taskId, createdAt);
-        incrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-        if (fromDelayed) {
-            return;
+    private List<String> loadReadyTaskIds(int limit) {
+        List<String> visible = new ArrayList<>(limit);
+        for (String taskId : commands.zrange(keyspace.readyTasksZset(), 0, Math.max(0, limit - 1))) {
+            if (visible.size() >= limit) {
+                break;
+            }
+            if (ensureReadyQueueVisible(taskId)) {
+                visible.add(taskId);
+            }
         }
+        return List.copyOf(visible);
     }
 
-    private void moveToDelayedLocked(String taskId,
-                                     String messageId,
-                                     Instant nextVisibleAt,
-                                     Instant createdAt,
-                                     boolean fromReady) {
-        String member = keyspace.workMember(taskId, messageId);
-        commands.zadd(keyspace.delayedWorkZset(), toScore(nextVisibleAt), member);
-        commands.zadd(keyspace.taskDelayedZset(taskId), toScore(nextVisibleAt), messageId);
-        incrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
-        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
-        if (fromReady) {
-            decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-            decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-            upsertReadyTaskScore(taskId, createdAt);
-        }
-    }
-
-    private boolean ensureReadyQueueVisibleLocked(String taskId) {
+    private boolean ensureReadyQueueVisible(String taskId) {
         while (commands.llen(keyspace.taskReadyQueue(taskId)) > 0) {
             String messageId = commands.lindex(keyspace.taskReadyQueue(taskId), 0);
             if (isBlank(messageId)) {
@@ -728,68 +1016,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                 }
             }
             commands.lpop(keyspace.taskReadyQueue(taskId));
+            decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
+            decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
         }
         commands.zrem(keyspace.readyTasksZset(), taskId);
         return false;
     }
 
-    private void removeLeaseLocked(ActiveLeaseRecord lease) {
-        String workMember = keyspace.workMember(lease.taskId(), lease.messageId());
-        commands.del(keyspace.taskLeaseHash(lease.taskId(), lease.messageId()));
-        commands.srem(keyspace.taskActiveSet(lease.taskId()), workMember);
-        commands.srem(keyspace.workerActiveSet(lease.workerId()), workMember);
-        commands.zrem(keyspace.leaseExpiryZset(), workMember);
-    }
-
-    private void deleteWorkLocked(String taskId, String messageId) {
-        commands.del(keyspace.taskWorkHash(taskId, messageId));
-        commands.srem(keyspace.taskMembersSet(taskId), messageId);
-    }
-
-    private void writeRecentFinalReceiptLocked(TaskWorkResult result,
-                                               TaskWorkFinalStatus status,
-                                               int retryCount) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_STATUS, status.name());
-        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_ERROR_CODE, nullToEmpty(result.errorCode()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_RETRY_COUNT, Integer.toString(Math.max(0, retryCount)));
-        fields.put(RedisTaskWorkKeyspace.FIELD_FINAL_COMPLETED_AT_MILLIS, instantToString(result.completedAt()));
-        commands.hset(keyspace.taskRecentFinalReceiptHash(result.taskId(), result.messageId()), fields);
-        commands.sadd(keyspace.taskRecentFinalReceiptSet(result.taskId()), result.messageId());
-        commands.zadd(
-                keyspace.recentFinalReceiptsZset(),
-                toScore(result.completedAt() != null ? result.completedAt() : clock.get()),
-                keyspace.workMember(result.taskId(), result.messageId())
-        );
-        trimRecentFinalReceiptsLocked();
-    }
-
-    private RecentFinalWorkReceipt loadRecentFinalReceipt(String taskId, String messageId) {
-        Map<String, String> fields = commands.hgetall(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
-        if (fields == null || fields.isEmpty()) {
-            return null;
-        }
-        String statusName = emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_STATUS));
-        if (statusName == null) {
-            return null;
-        }
-        return new RecentFinalWorkReceipt(
-                taskId,
-                messageId,
-                TaskWorkFinalStatus.valueOf(statusName),
-                emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_ERROR_CODE)),
-                parseInt(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_RETRY_COUNT)),
-                parseInstant(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_COMPLETED_AT_MILLIS))
-        );
-    }
-
-    private void deleteRecentFinalReceiptLocked(String taskId, String messageId) {
-        commands.del(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
-        commands.srem(keyspace.taskRecentFinalReceiptSet(taskId), messageId);
-        commands.zrem(keyspace.recentFinalReceiptsZset(), keyspace.workMember(taskId, messageId));
-    }
-
-    private void trimRecentFinalReceiptsLocked() {
+    private void trimRecentFinalReceipts() {
         long receiptCount = commands.zcard(keyspace.recentFinalReceiptsZset());
         long overflow = receiptCount - Math.max(1, maxRecentFinalReceipts);
         if (overflow <= 0) {
@@ -798,21 +1032,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         List<String> eldest = commands.zrange(keyspace.recentFinalReceiptsZset(), 0, overflow - 1);
         for (String member : eldest) {
             RedisTaskWorkKeyspace.WorkRef ref = keyspace.parseWorkMember(member);
-            deleteRecentFinalReceiptLocked(ref.taskId(), ref.messageId());
+            deleteRecentFinalReceipt(ref.taskId(), ref.messageId());
         }
     }
 
-    private void writeWorkHash(TaskWorkEnvelope item) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put(RedisTaskWorkKeyspace.FIELD_EVENT_CODE, nullToEmpty(item.eventCode()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_PAYLOAD_JSON, serializeMap(item.payload()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_PAYLOAD_REF, nullToEmpty(item.payloadRef()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_RETRY_COUNT, Integer.toString(item.retryCount()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_MAX_RETRY_COUNT, Integer.toString(item.maxRetryCount()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_SHARD_KEY, nullToEmpty(item.shardKey()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_NEXT_VISIBLE_AT_MILLIS, instantToString(item.nextVisibleAt()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_CREATED_AT_MILLIS, instantToString(item.createdAt()));
-        commands.hset(keyspace.taskWorkHash(item.taskId(), item.messageId()), fields);
+    private void deleteRecentFinalReceipt(String taskId, String messageId) {
+        commands.del(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
+        commands.srem(keyspace.taskRecentFinalReceiptSet(taskId), messageId);
+        commands.zrem(keyspace.recentFinalReceiptsZset(), keyspace.workMember(taskId, messageId));
     }
 
     private TaskWorkEnvelope loadWork(String taskId, String messageId) {
@@ -834,19 +1061,6 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         );
     }
 
-    private void writeLeaseHash(ActiveLeaseRecord lease) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_TOKEN, lease.leaseToken());
-        fields.put(RedisTaskWorkKeyspace.FIELD_WORKER_ID, nullToEmpty(lease.workerId()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_WORKER_CONTEXT_ID, nullToEmpty(lease.workerContextId()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_BATCH_ID, nullToEmpty(lease.batchId()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_PAYLOAD_REF, nullToEmpty(lease.payloadRef()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_RETRY_COUNT, Integer.toString(lease.retryCount()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_LEASE_EXPIRE_AT_MILLIS, instantToString(lease.leaseExpireAt()));
-        fields.put(RedisTaskWorkKeyspace.FIELD_LEASED_AT_MILLIS, instantToString(lease.leasedAt()));
-        commands.hset(keyspace.taskLeaseHash(lease.taskId(), lease.messageId()), fields);
-    }
-
     private ActiveLeaseRecord loadLease(String taskId, String messageId) {
         Map<String, String> fields = commands.hgetall(keyspace.taskLeaseHash(taskId, messageId));
         if (fields == null || fields.isEmpty()) {
@@ -866,6 +1080,25 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         );
     }
 
+    private RecentFinalWorkReceipt loadRecentFinalReceipt(String taskId, String messageId) {
+        Map<String, String> fields = commands.hgetall(keyspace.taskRecentFinalReceiptHash(taskId, messageId));
+        if (fields == null || fields.isEmpty()) {
+            return null;
+        }
+        String statusName = emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_STATUS));
+        if (statusName == null) {
+            return null;
+        }
+        return new RecentFinalWorkReceipt(
+                taskId,
+                messageId,
+                TaskWorkFinalStatus.valueOf(statusName),
+                emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_ERROR_CODE)),
+                parseInt(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_RETRY_COUNT)),
+                parseInstant(fields.get(RedisTaskWorkKeyspace.FIELD_FINAL_COMPLETED_AT_MILLIS))
+        );
+    }
+
     private TaskWorkStats loadTaskStats(String taskId) {
         Map<String, String> fields = commands.hgetall(keyspace.taskStatsHash(taskId));
         if (fields == null || fields.isEmpty()) {
@@ -882,24 +1115,15 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         );
     }
 
-    private void incrementTaskCounter(String taskId, String counter, long delta) {
-        if (delta != 0L) {
-            commands.hincrby(keyspace.taskStatsHash(taskId), counter, delta);
-        }
-    }
-
-    private void decrementTaskCounter(String taskId, String counter, long delta) {
-        if (delta <= 0L) {
-            return;
-        }
-        long current = parseLong(commands.hget(keyspace.taskStatsHash(taskId), counter));
-        long next = Math.max(0L, current - delta);
-        commands.hset(keyspace.taskStatsHash(taskId), counter, Long.toString(next));
-    }
-
     private void incrementRuntimeCounter(String counter, long delta) {
         if (delta != 0L) {
             commands.hincrby(keyspace.runtimeStatsHash(), counter, delta);
+        }
+    }
+
+    private void incrementTaskCounter(String taskId, String counter, long delta) {
+        if (delta != 0L) {
+            commands.hincrby(keyspace.taskStatsHash(taskId), counter, delta);
         }
     }
 
@@ -907,24 +1131,19 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (delta <= 0L) {
             return;
         }
-        long current = runtimeGauge(counter);
-        long next = Math.max(0L, current - delta);
-        commands.hset(keyspace.runtimeStatsHash(), counter, Long.toString(next));
+        long current = parseLong(commands.hget(keyspace.runtimeStatsHash(), counter));
+        commands.hset(keyspace.runtimeStatsHash(), counter, Long.toString(Math.max(0L, current - delta)));
     }
 
-    private long runtimeGauge(String counter) {
-        return parseLong(commands.hget(keyspace.runtimeStatsHash(), counter));
-    }
-
-    private void upsertReadyTaskScore(String taskId, Instant createdAt) {
-        double createdScore = toScore(createdAt);
-        Double existing = commands.zscore(keyspace.readyTasksZset(), taskId);
-        if (existing == null || createdScore < existing) {
-            commands.zadd(keyspace.readyTasksZset(), createdScore, taskId);
+    private void decrementTaskCounter(String taskId, String counter, long delta) {
+        if (delta <= 0L) {
+            return;
         }
+        long current = parseLong(commands.hget(keyspace.taskStatsHash(taskId), counter));
+        commands.hset(keyspace.taskStatsHash(taskId), counter, Long.toString(Math.max(0L, current - delta)));
     }
 
-    private long oldestReadyAgeMillisLocked() {
+    private long oldestReadyAgeMillis() {
         List<String> readyTasks = commands.zrange(keyspace.readyTasksZset(), 0, 0);
         if (readyTasks.isEmpty()) {
             return 0L;
@@ -937,6 +1156,14 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         return Math.max(0L, Duration.between(Instant.ofEpochMilli(oldestCreatedAt), clock.get()).toMillis());
     }
 
+    private void upsertReadyTaskScore(String taskId, Instant createdAt) {
+        double createdScore = toScore(createdAt);
+        Double existing = commands.zscore(keyspace.readyTasksZset(), taskId);
+        if (existing == null || createdScore < existing) {
+            commands.zadd(keyspace.readyTasksZset(), createdScore, taskId);
+        }
+    }
+
     private boolean workExists(String taskId, String messageId) {
         return commands.exists(keyspace.taskWorkHash(taskId, messageId)) > 0;
     }
@@ -945,39 +1172,60 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         return commands.exists(keyspace.taskLeaseHash(taskId, messageId)) > 0;
     }
 
-    private <T> T withRuntimeLock(LockedSupplier<T> supplier) {
-        String token = acquireLock();
-        try {
-            return supplier.get();
-        } finally {
-            releaseLock(token);
-        }
+    private TaskWorkRuntimeStats emptyRuntimeStats() {
+        return new TaskWorkRuntimeStats(0, 0, 0, 0, maxQueuedItems, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
-    private String acquireLock() {
-        String token = UUID.randomUUID().toString();
-        long deadline = System.currentTimeMillis() + DEFAULT_LOCK_TIMEOUT_MILLIS;
-        while (true) {
-            String result = commands.set(lockKey(), token, SetArgs.Builder.nx().px(DEFAULT_LOCK_LEASE_MILLIS));
-            if ("OK".equalsIgnoreCase(result)) {
-                return token;
+    private List<WorkerClaimTarget> buildClaimPlan(List<WorkerClaimTarget> workers, int maxItems) {
+        List<WorkerCapacity> capacities = workers.stream()
+                .filter(worker -> worker != null && !isBlank(worker.workerId()) && worker.capacity() > 0)
+                .map(WorkerCapacity::new)
+                .toList();
+        if (capacities.isEmpty() || maxItems <= 0) {
+            return List.of();
+        }
+        List<WorkerClaimTarget> plan = new ArrayList<>(maxItems);
+        int cursor = 0;
+        while (plan.size() < maxItems) {
+            WorkerCapacity capacity = nextCapacity(capacities, cursor);
+            if (capacity == null) {
+                break;
             }
-            if (System.currentTimeMillis() >= deadline) {
-                throw new IllegalStateException("Timed out acquiring Redis task-work runtime lock");
+            capacity.claimed++;
+            plan.add(capacity.target);
+            cursor = (capacities.indexOf(capacity) + 1) % capacities.size();
+        }
+        return List.copyOf(plan);
+    }
+
+    private WorkerCapacity nextCapacity(List<WorkerCapacity> capacities, int cursor) {
+        for (int i = 0; i < capacities.size(); i++) {
+            WorkerCapacity capacity = capacities.get((cursor + i) % capacities.size());
+            if (capacity.hasCapacity()) {
+                return capacity;
             }
-            sleepQuietly();
         }
+        return null;
     }
 
-    private void releaseLock(String token) {
-        String current = commands.get(lockKey());
-        if (Objects.equals(current, token)) {
-            commands.del(lockKey());
+    private List<Object> evalMulti(String script, String[] keys, String[] values) {
+        Object raw = commands.eval(script, ScriptOutputType.MULTI, keys, values);
+        if (raw instanceof List<?> list) {
+            return new ArrayList<>(list);
         }
+        return List.of();
     }
 
-    private String lockKey() {
-        return keyspace.namespace() + ":lock:runtime";
+    private List<Object> evalMulti(String script, String[] keys, List<String> values) {
+        return evalMulti(script, keys, values.toArray(String[]::new));
+    }
+
+    private String[] keys(String... keys) {
+        return keys;
+    }
+
+    private String[] values(String... values) {
+        return values;
     }
 
     private void closeRedisResources() {
@@ -993,28 +1241,8 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
     }
 
-    private void sleepQuietly() {
-        try {
-            Thread.sleep(LOCK_RETRY_SLEEP_MILLIS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for Redis task-work runtime lock", ex);
-        }
-    }
-
-    private Instant resolveNextRetryVisibleAt(TaskWorkResult result, Instant now) {
-        if (result == null || result.retryVisibleAt() == null || !result.retryVisibleAt().isAfter(now)) {
-            return now;
-        }
-        return result.retryVisibleAt();
-    }
-
     private static double toScore(Instant instant) {
         return instant == null ? 0D : instant.toEpochMilli();
-    }
-
-    private static String instantToString(Instant instant) {
-        return instant == null ? "" : Long.toString(instant.toEpochMilli());
     }
 
     private static Instant parseInstant(String value) {
@@ -1056,6 +1284,10 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         return Integer.parseInt(value);
     }
 
+    private static String stringValue(Object value) {
+        return value == null ? "" : Objects.toString(value, "");
+    }
+
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
@@ -1079,21 +1311,5 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         private boolean hasCapacity() {
             return claimed < target.capacity();
         }
-    }
-
-    private WorkerCapacity nextCapacity(List<WorkerCapacity> capacities, int cursor) {
-        for (int i = 0; i < capacities.size(); i++) {
-            WorkerCapacity capacity = capacities.get((cursor + i) % capacities.size());
-            if (capacity.hasCapacity()) {
-                capacity.claimed++;
-                return capacity;
-            }
-        }
-        return null;
-    }
-
-    @FunctionalInterface
-    private interface LockedSupplier<T> {
-        T get();
     }
 }

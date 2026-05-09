@@ -1,7 +1,5 @@
 package com.xa.mass.runtime.redis;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.Objects;
 
 /**
@@ -134,7 +132,8 @@ public final class RedisTaskWorkKeyspace {
     }
 
     public String workMember(String taskId, String messageId) {
-        return encode(taskId) + ":" + encode(messageId);
+        String normalizedTaskId = requireToken(taskId, "taskId");
+        return normalizedTaskId.length() + ":" + normalizedTaskId + requireToken(messageId, "messageId");
     }
 
     public WorkRef parseWorkMember(String member) {
@@ -143,12 +142,24 @@ public final class RedisTaskWorkKeyspace {
         if (separator <= 0 || separator >= value.length() - 1) {
             throw new IllegalArgumentException("invalid work member: " + member);
         }
-        String encodedTaskId = value.substring(0, separator);
-        String encodedMessageId = value.substring(separator + 1);
-        return new WorkRef(decode(encodedTaskId), decode(encodedMessageId));
+        int taskIdLength;
+        try {
+            taskIdLength = Integer.parseInt(value.substring(0, separator));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("invalid work member: " + member, e);
+        }
+        int taskIdStart = separator + 1;
+        int taskIdEnd = taskIdStart + taskIdLength;
+        if (taskIdLength <= 0 || taskIdEnd >= value.length() + 1 || taskIdEnd > value.length()) {
+            throw new IllegalArgumentException("invalid work member: " + member);
+        }
+        return new WorkRef(
+                value.substring(taskIdStart, taskIdEnd),
+                value.substring(taskIdEnd)
+        );
     }
 
-    private String taskPrefix(String taskId) {
+    public String taskPrefix(String taskId) {
         return namespaced("task:" + requireToken(taskId, "taskId"));
     }
 
@@ -173,21 +184,6 @@ public final class RedisTaskWorkKeyspace {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value;
-    }
-
-    private static String encode(String value) {
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(requireToken(value, "value").getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String decode(String value) {
-        try {
-            byte[] bytes = Base64.getUrlDecoder().decode(requireToken(value, "value"));
-            return new String(bytes, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("invalid encoded member segment", e);
-        }
     }
 
     public record WorkRef(String taskId, String messageId) {
