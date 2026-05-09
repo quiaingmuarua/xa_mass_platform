@@ -11,8 +11,6 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReaso
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -26,13 +24,11 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Engine owner for bounded compatibility message/attempt projection reads and
- * residue writes.
+ * Test-only owner for bounded compatibility projection overlays and audit
+ * views.
  */
 @CompatibilityProjectionOnly
 final class TaskCompatibilityProjectionAccess {
-
-    private static final Logger logger = LoggerFactory.getLogger(TaskCompatibilityProjectionAccess.class);
 
     private final TaskDetailStore taskDetailStore;
     private final Function<String, Task> taskLookup;
@@ -121,139 +117,6 @@ final class TaskCompatibilityProjectionAccess {
         }
         emitRuntimeActiveAttempt(activeAttempt, visitor);
         return true;
-    }
-
-    boolean upsertRuntimeIngressProjection(RuntimeTaskIngressItem ingressItem, String action) {
-        if (ingressItem == null) {
-            return false;
-        }
-        return upsertTaskMessageProjection(
-                ingressItem.taskId(),
-                new MessageProjection(
-                        ingressItem.messageId(),
-                        ingressItem.taskId(),
-                        ingressItem.projectedInput(),
-                        ingressItem.payloadRef(),
-                        TaskMessageProjectionStatus.INIT,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        ingressItem.retryCount(),
-                        ingressItem.maxRetryCount(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
-                ),
-                action
-        );
-    }
-
-    boolean upsertTaskMessageProjection(String taskId,
-                                        TaskResultService.RuntimeMessageView projection,
-                                        String action) {
-        if (projection == null) {
-            return false;
-        }
-        return upsertTaskMessageProjection(
-                taskId,
-                new MessageProjection(
-                        projection.messageId(),
-                        projection.taskId(),
-                        null,
-                        projection.payloadRef(),
-                        projection.status(),
-                        projection.assignedTime(),
-                        projection.createTime(),
-                        projection.updateTime(),
-                        projection.startTime(),
-                        projection.completeTime(),
-                        projection.retryCount(),
-                        projection.maxRetryCount(),
-                        projection.errorMessage(),
-                        projection.errorCode(),
-                        projection.finalReason(),
-                        projection.output(),
-                        projection.latestAttemptId(),
-                        projection.latestAttemptWorkerId(),
-                        projection.latestAttemptWorkerContextId(),
-                        projection.latestAttemptBatchId()
-                ),
-                action
-        );
-    }
-
-    boolean upsertTaskMessageProjection(String taskId,
-                                        MessageProjection projection,
-                                        String action) {
-        if (projection == null) {
-            return false;
-        }
-        return upsertTaskMessageProjectionStorage(taskId, projection, action);
-    }
-
-    private boolean upsertTaskMessageProjectionStorage(String taskId,
-                                                       MessageProjection projection,
-                                                       String action) {
-        if (projection == null) {
-            return false;
-        }
-        try {
-            return taskDetailStore.upsertTaskMessageProjection(taskId, projection.toStorageProjection());
-        } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during {}",
-                    taskId, projection.messageId(), action, e);
-            return false;
-        }
-    }
-
-    void upsertTaskMessageAttemptProjectionBestEffort(String taskId,
-                                                      String messageId,
-                                                      TaskResultService.AttemptProjectionView projection,
-                                                      String action) {
-        if (projection == null) {
-            return;
-        }
-        upsertTaskMessageAttemptProjectionBestEffort(
-                taskId,
-                messageId,
-                new AttemptProjection(
-                        projection.attemptId(),
-                        projection.taskId(),
-                        projection.messageId(),
-                        projection.attemptNo(),
-                        projection.workerId(),
-                        projection.workerContextId(),
-                        projection.batchId(),
-                        projection.status(),
-                        projection.finalReason(),
-                        projection.errorMessage(),
-                        projection.errorCode(),
-                        projection.output()
-                ),
-                action
-        );
-    }
-
-    void upsertTaskMessageAttemptProjectionBestEffort(String taskId,
-                                                      String messageId,
-                                                      AttemptProjection projection,
-                                                      String action) {
-        if (projection == null) {
-            return;
-        }
-        try {
-            taskDetailStore.upsertTaskMessageAttemptProjection(taskId, messageId, projection.toStorageProjection());
-        } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
-                    taskId, messageId, projection.attemptId(), action, e);
-        }
     }
 
     MessageProjection getStoredCompatibilityMessageProjection(String taskId, String messageId) {
@@ -414,15 +277,6 @@ final class TaskCompatibilityProjectionAccess {
 
     private List<MessageProjection> readStoredMessageProjections(String taskId, int limit) {
         return taskDetailStore.getTaskMessageProjections(taskId, limit).stream()
-                .map(MessageProjection::fromStorage)
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    private List<MessageProjection> readStoredMessageProjections(String taskId) {
-        long total = taskDetailStore.getTaskMessageStats(taskId).getTotal();
-        int boundedLimit = total > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) total;
-        return taskDetailStore.getTaskMessageProjections(taskId, boundedLimit).stream()
                 .map(MessageProjection::fromStorage)
                 .filter(Objects::nonNull)
                 .toList();
@@ -675,22 +529,6 @@ final class TaskCompatibilityProjectionAccess {
             );
         }
 
-        TaskDetailStore.TaskMessageAttemptProjection toStorageProjection() {
-            return new TaskDetailStore.TaskMessageAttemptProjection(
-                    attemptId,
-                    taskId,
-                    messageId,
-                    attemptNo,
-                    workerId,
-                    workerContextId,
-                    batchId,
-                    status,
-                    finalReason,
-                    errorMessage,
-                    errorCode,
-                    output
-            );
-        }
     }
 
     @CompatibilityProjectionOnly

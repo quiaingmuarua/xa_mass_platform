@@ -24,9 +24,9 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
-- `src/main/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
-  only when you are intentionally working on engine-internal bounded
-  compatibility residue reads or projection-audit residue
+- `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
+  only when you are intentionally working on test-only bounded projection
+  overlays or residue audit helpers
 - `src/main/java/com/xa/mass/engine/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
@@ -79,13 +79,10 @@ Keep these facts fixed unless the owning global baselines change:
   owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow message/attempt residue reads back into it
-- `TaskCompatibilityProjectionAccess` is the engine-internal residue owner for
-  bounded compatibility reads and explicit projection-audit support
 - `TaskDetailStore.TaskMessageProjection` and
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the
-  compatibility owner path instead of returning them as engine-facing API
-  results
+  engine boundary instead of returning them as engine-facing API results
 - runtime ingest must stay correct when compatibility message-projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes
   are best-effort residue
@@ -109,11 +106,8 @@ Repo-level mainline surfaces:
 
 - shell/admin mutation flows use `TaskCommandService`
 - bounded inspection flows use `TaskQueryService`
-- engine-internal compatibility message/attempt reads stay behind the
-  compatibility projection owner instead of becoming a public engine query
-  surface
-- explicit projection audit stays on the compatibility query path as a
-  diagnostic-only read
+- production engine mainline does not carry a compatibility projection query
+  owner; bounded residue overlays stay in test/internal harnesses only
 - transport/runtime result ingress uses `TaskResultIngestFacade`
 - dispatch-ready bindings and result-ingest seams used across engine, SDK,
   transport runtime, and tests now live in shared base runtime contracts rather

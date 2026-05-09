@@ -48,7 +48,7 @@ import java.util.function.Supplier;
 
 /**
  * Internal engine orchestration facade and composition root for task lifecycle,
- * compatibility projection, and runtime-bridge wiring.
+ * best-effort compatibility residue writes, and runtime-bridge wiring.
  *
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
@@ -64,12 +64,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
+    private final TaskDetailStore taskDetailStore;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
     private final TaskStateValidator stateValidator;
-    private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
@@ -112,6 +112,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        this.taskDetailStore = requiredTaskDetailStore;
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
@@ -119,14 +120,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         this.stateResolver = new TaskStateResolver(
                 this,
                 traceEventLogger
-        );
-        this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
-                requiredTaskDetailStore,
-                this::getTask,
-                this::getActiveLease,
-                this::getTaskWork,
-                this::getActiveLeases,
-                this::getTaskWorkStats
         );
         this.stateValidator = new TaskStateValidator(
                 this,
@@ -152,7 +145,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         );
         this.resultService = new TaskResultService(
                 this,
-                compatibilityProjectionAccess,
+                requiredTaskDetailStore,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -395,7 +388,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 throw new IllegalStateException("task work enqueue failed: status="
                         + outcome.status() + ", reason=" + outcome.reason());
             }
-            if (!compatibilityProjectionAccess.upsertRuntimeIngressProjection(ingressItem, "runtime ingress accepted")) {
+            if (!upsertRuntimeIngressProjection(task.getTid(), ingressItem)) {
                 logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
                         ingressItem.taskId(), ingressItem.messageId());
             }
@@ -638,10 +631,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return traceEventLogger;
     }
 
-    TaskCompatibilityProjectionAccess compatibilityProjectionAccess() {
-        return compatibilityProjectionAccess;
-    }
-
     /**
      * Engine-owned dispatch entry for task-ready and refill-style redispatch.
      *
@@ -692,6 +681,41 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskWorkRuntime.applyResult(result);
+    }
+
+    private boolean upsertRuntimeIngressProjection(String taskId, RuntimeTaskIngressItem ingressItem) {
+        if (ingressItem == null) {
+            return false;
+        }
+        TaskDetailStore.TaskMessageProjection projection = new TaskDetailStore.TaskMessageProjection(
+                ingressItem.messageId(),
+                taskId,
+                ingressItem.projectedInput(),
+                ingressItem.payloadRef(),
+                com.xa.mass.storage.api.projection.TaskMessageProjectionStatus.INIT,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ingressItem.retryCount(),
+                ingressItem.maxRetryCount(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        try {
+            return taskDetailStore.upsertTaskMessageProjection(taskId, projection);
+        } catch (RuntimeException e) {
+            logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during runtime ingress accepted",
+                    taskId, ingressItem.messageId(), e);
+            return false;
+        }
     }
 
     @Override
