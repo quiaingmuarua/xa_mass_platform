@@ -2,8 +2,6 @@ package com.xa.mass.sdk.authz;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalType;
-import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import org.junit.jupiter.api.Test;
 
@@ -21,10 +19,6 @@ class TaskOwnershipSupportTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("sdk-user")
                 .project("demoApp")
-                .taskName("task-a")
-                .eventCode("demo.task")
-                .mode(TaskMode.SINGLE_RUN)
-                .payloadType(PayloadType.JSON)
                 .sharedConfig(Map.of("source", "sdk"))
                 .build();
 
@@ -44,14 +38,10 @@ class TaskOwnershipSupportTest {
     }
 
     @Test
-    void stampMassTaskShellCreateRequestPreservesModeAndPayloadType() {
+    void stampMassTaskShellCreateRequestPreservesSharedConfig() {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("crawler-user")
                 .project("crawlerApp")
-                .taskName("crawler-task")
-                .eventCode("crawler.fetch-page")
-                .mode(TaskMode.STREAMING)
-                .payloadType(PayloadType.JSON)
                 .sharedConfig(Map.of("source", "submitter"))
                 .build();
 
@@ -68,8 +58,6 @@ class TaskOwnershipSupportTest {
         assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
         assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
         assertEquals("submitter", stamped.getSharedConfig().get("source"));
-        assertEquals(TaskMode.STREAMING, stamped.getMode());
-        assertEquals(PayloadType.JSON, stamped.getPayloadType());
     }
 
     @Test
@@ -77,10 +65,6 @@ class TaskOwnershipSupportTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("crawler-user")
                 .project("crawlerApp")
-                .taskName("crawler-task")
-                .eventCode("crawler.fetch-page")
-                .mode(TaskMode.SINGLE_RUN)
-                .payloadType(PayloadType.JSON)
                 .sharedConfig(TaskOwnershipStamp.applyToSharedConfig(
                         Map.of("source", "submitter"),
                         new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)

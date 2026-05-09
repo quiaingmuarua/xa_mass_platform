@@ -62,7 +62,7 @@ public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
         }
 
         List<EventDefinition> resolved = new ArrayList<>();
-        for (String eventCode : project.getEventCodes()) {
+        for (String eventCode : project.getAuthorizedEventCodes()) {
             EventDefinition definition = events.get(eventCode);
             if (definition != null) {
                 resolved.add(definition);

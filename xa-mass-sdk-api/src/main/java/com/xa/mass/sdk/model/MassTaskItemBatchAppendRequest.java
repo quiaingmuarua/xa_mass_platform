@@ -12,16 +12,22 @@ import java.util.List;
  */
 public final class MassTaskItemBatchAppendRequest {
 
+    private final String eventCode;
     private final List<Object> items;
     private final Integer defaultMsgMaxRetryCount;
 
     private MassTaskItemBatchAppendRequest(Builder builder) {
+        this.eventCode = normalizeString(builder.eventCode);
         this.items = unmodifiableItems(builder.items);
         this.defaultMsgMaxRetryCount = builder.defaultMsgMaxRetryCount;
     }
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    public String getEventCode() {
+        return eventCode;
     }
 
     public List<Object> getItems() {
@@ -33,10 +39,16 @@ public final class MassTaskItemBatchAppendRequest {
     }
 
     public static final class Builder {
+        private String eventCode;
         private List<Object> items = Collections.emptyList();
         private Integer defaultMsgMaxRetryCount;
 
         private Builder() {
+        }
+
+        public Builder eventCode(String eventCode) {
+            this.eventCode = eventCode;
+            return this;
         }
 
         public Builder items(List<Object> items) {
@@ -59,5 +71,12 @@ public final class MassTaskItemBatchAppendRequest {
             return Collections.emptyList();
         }
         return Collections.unmodifiableList(new ArrayList<>(source));
+    }
+
+    private static String normalizeString(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

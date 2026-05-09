@@ -174,7 +174,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         validateTaskShellCreateRequest(dto);
         long startTime = System.currentTimeMillis();
         LogUtils.logOperationStart("CREATE_TASK_SHELL", "TaskManager",
-                "taskName", dto.getTaskName(),
                 "project", dto.getProject(),
                 "routingCode", TaskSharedConfig.stringValue(dto.getSharedConfig(), TaskSharedConfig.ROUTING_CODE));
 
@@ -621,6 +620,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         }
         ProjectRef.require(dto.getProject());
         UserRef.requireUserId(dto.getUserId());
+        if (dto.getTenantId() == null || dto.getTenantId().isBlank()) {
+            dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
+        }
+        dto.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
         TaskSourceType sourceType = resolveShellSourceType(dto);
         if (sourceType == TaskSourceType.FILE
                 && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
@@ -775,7 +778,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskWorkEnvelope item = new TaskWorkEnvelope(
                 ingressItem.taskId(),
                 ingressItem.messageId(),
-                task != null ? TaskSharedConfig.sdkEventCode(task) : null,
+                ingressItem.eventCode() != null ? ingressItem.eventCode()
+                        : task != null ? TaskSharedConfig.sdkEventCode(task) : null,
                 ingressItem.inlinePayload(),
                 ingressItem.payloadRef(),
                 ingressItem.retryCount(),
@@ -808,17 +812,16 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
         Task task = new Task(
                 tid,
-                dto.getTaskName(),
+                deriveTaskName(dto, tid, sourceType),
                 dto.getProject(),
                 0,
                 dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                 user
         );
+        task.setTenantId(dto.getTenantId());
         task.setSourceType(sourceType);
-        task.setWorkloadClass(dto.getWorkloadClass());
+        task.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
         task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
-        task.setBatchSize(dto.getBatchSize());
-        task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
         task.setIngestStatus(ingestStatus);
         task.setIntakeStatus(intakeStatus);
         taskStorage.saveTask(task);
@@ -826,7 +829,27 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return task;
     }
 
+    private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId, TaskSourceType sourceType) {
+        String project = dto.getProject() != null ? dto.getProject().trim() : "task";
+        String normalizedSourceType = sourceType != null ? sourceType.name().toLowerCase(java.util.Locale.ROOT) : "stream";
+        String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
+                ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)
+                : "standard";
+        String sourceRef = normalizeSourceRef(dto.getSourceRef());
+        String sourceHint = sourceRef == null ? null : basename(sourceRef);
+        String shortTaskId = taskId.length() <= 8 ? taskId : taskId.substring(0, 8);
+        if (sourceHint != null && !sourceHint.isBlank()) {
+            return project + "-" + normalizedSourceType + "-" + profile + "-" + sourceHint + "-" + shortTaskId;
+        }
+        return project + "-" + normalizedSourceType + "-" + profile + "-" + shortTaskId;
+    }
+
+    private String basename(String value) {
+        String normalized = value.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        String sanitized = leaf.replaceAll("[^A-Za-z0-9._-]", "-");
+        return sanitized.isBlank() ? null : sanitized;
+    }
+
 }
-
-
-

@@ -2,10 +2,8 @@ package com.xa.mass.api.model.task;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.enums.task.TaskSourceType;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.TaskMode;
 
 import java.util.Map;
 
@@ -14,15 +12,9 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
 
     private String userId;
     private String project;
-    private String taskName;
-    private String eventCode;
-    private TaskMode mode;
-    private PayloadType payloadType;
     private Map<String, Object> sharedConfig;
-    private int batchSize;
-    private int maxRuntimeSeconds;
+    private TaskExecutionSpec executionSpec;
     private TaskSourceType sourceType;
-    private TaskWorkloadClass workloadClass;
     private String sourceRef;
 
     public String getUserId() {
@@ -41,38 +33,6 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.project = project;
     }
 
-    public String getTaskName() {
-        return taskName;
-    }
-
-    public void setTaskName(String taskName) {
-        this.taskName = taskName;
-    }
-
-    public String getEventCode() {
-        return eventCode;
-    }
-
-    public void setEventCode(String eventCode) {
-        this.eventCode = eventCode;
-    }
-
-    public TaskMode getMode() {
-        return mode;
-    }
-
-    public void setMode(TaskMode mode) {
-        this.mode = mode;
-    }
-
-    public PayloadType getPayloadType() {
-        return payloadType;
-    }
-
-    public void setPayloadType(PayloadType payloadType) {
-        this.payloadType = payloadType;
-    }
-
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
     }
@@ -81,20 +41,23 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.sharedConfig = sharedConfig;
     }
 
+    public TaskExecutionSpec getExecutionSpec() {
+        return executionSpec;
+    }
+
+    public void setExecutionSpec(TaskExecutionSpec executionSpec) {
+        this.executionSpec = executionSpec;
+    }
+
     public int getBatchSize() {
-        return batchSize;
+        return executionSpec == null ? 0 : executionSpec.getBatchSize();
     }
 
     public void setBatchSize(int batchSize) {
-        this.batchSize = batchSize;
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return maxRuntimeSeconds;
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        this.maxRuntimeSeconds = maxRuntimeSeconds;
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        this.executionSpec.setBatchSize(batchSize);
     }
 
     public TaskSourceType getSourceType() {
@@ -105,12 +68,26 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.sourceType = sourceType;
     }
 
-    public TaskWorkloadClass getWorkloadClass() {
-        return workloadClass;
+    public int getMaxRuntimeSeconds() {
+        return executionSpec == null ? 0 : executionSpec.getMaxRuntimeSeconds();
     }
 
-    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        this.workloadClass = workloadClass;
+    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        this.executionSpec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+    }
+
+    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
+        return executionSpec == null ? null : executionSpec.getWorkloadClass();
+    }
+
+    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        this.executionSpec.setWorkloadClass(workloadClass);
     }
 
     public String getSourceRef() {

@@ -111,8 +111,17 @@ Read them to verify three things quickly:
 
 - task shell creation route: `POST /api/v1/tasks`
 - `project` and `userId` are required business bindings on create
+- shell create runs in single-tenant mode with tenant-aware semantics; current
+  default tenant is `default`
+- `Task.project` is the task-owned business container; capability/event auth is
+  expected to converge on project grant plus explicit ingest declaration rather
+  than task-level event truth
+- `taskName` is a server-derived display field, not a client-provided shell
+  truth field
 - work-item materialization is explicit through `POST /api/v1/tasks/{taskId}/items`
-- `workloadClass` is explicit at create time and defaults to `BULK`
+- `executionSpec` is the task-level execution policy envelope; current defaults
+  remain `profile=STANDARD`, `workloadClass=BULK`, `batchSize=1`,
+  `maxRuntimeSeconds=0`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item runtime truth stays on the runtime ingress item and dispatch/result
   flow; bounded compatibility projection may retain payload summary or

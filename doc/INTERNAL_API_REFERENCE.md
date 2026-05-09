@@ -45,6 +45,8 @@ For verified startup and validation flows, use
 - `eventCode` is the global event/capability identity.
 - `Task.project` and `Task.user` remain first-class core bindings even though
   some API shapes use `project` and `userId`.
+- current runtime is single-tenant, but API/model semantics are tenant-aware;
+  projects resolve under the default tenant `default`
 - framework-owned task-create ownership metadata is persisted in the reserved
   internal envelope `Task.sharedConfig._massSecurity`; HTTP read models expose
   supported ownership state through `data.security`, not the raw reserved
@@ -232,15 +234,9 @@ Supported request fields:
 
 - `userId`
 - `project`
-- `taskName`
-- `eventCode`
-- `mode`
-- `payloadType`
 - `sharedConfig`
-- `batchSize`
-- `maxRuntimeSeconds`
+- `executionSpec`
 - `sourceType`
-- `workloadClass`
 - `sourceRef`
 
 Not supported on this route:
@@ -251,13 +247,13 @@ Not supported on this route:
 
 Contract rules:
 
-- `project`, `userId`, and `taskName` are required after auth scoping is
-  resolved
+- `project` and `userId` are required after auth scoping is resolved
 - unknown JSON fields are rejected
-- when `eventCode` is present, the `project` and `eventCode` must exist in the
-  metadata catalog and the project must declare support for that event
-- `mode` defaults to `SINGLE_RUN`
-- `payloadType` defaults to `JSON`
+- `taskName` is server-derived and persisted on the shell; callers must not
+  provide it
+- `eventCode` is not part of task shell truth and must not be provided on this
+  route
+- omitted `executionSpec` resolves to default task execution policy
 - omitted `sourceType` defaults to `STREAM`
 - public create creates only the task shell and opens normal intake for later
   append/seal flow
@@ -268,16 +264,15 @@ Example request:
 {
   "userId": "agent",
   "project": "demoApp",
-  "taskName": "sdk-crawler",
-  "eventCode": "demo.dispatch",
-  "mode": "SINGLE_RUN",
-  "payloadType": "JSON",
   "sharedConfig": {
     "site": "example"
   },
-  "batchSize": 1,
-  "maxRuntimeSeconds": 60,
-  "workloadClass": "INTERACTIVE"
+  "executionSpec": {
+    "profile": "STANDARD",
+    "workloadClass": "INTERACTIVE",
+    "batchSize": 1,
+    "maxRuntimeSeconds": 60
+  }
 }
 ```
 
@@ -318,7 +313,6 @@ Supported request fields:
 
 - `userId`
 - `project`
-- `taskName`
 - `sharedConfig`
 - `batchSize`
 
@@ -327,6 +321,7 @@ Contract rules:
 - metadata-only update path
 - only `NEW` and `BLOCKED` tasks may be updated
 - omitted fields keep the currently persisted values
+- `taskName` is server-derived and cannot be patched
 - `inputs` and unknown fields are rejected with HTTP `400`
 
 ### 4.5 Delete Task

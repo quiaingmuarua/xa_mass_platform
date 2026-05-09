@@ -7,7 +7,6 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -25,6 +24,7 @@ import java.util.Objects;
  */
 public class Task {
     private String tid;
+    private String tenantId;
     private String taskName;
     private ProjectRef project;
     private TaskStatus status;
@@ -37,7 +37,7 @@ public class Task {
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
     private TaskSourceType sourceType;
-    private TaskWorkloadClass workloadClass;
+    private TaskExecutionSpec executionSpec;
     private TaskIngestStatus ingestStatus;
     private String sourceRef;
     private TaskIntakeStatus intakeStatus;
@@ -46,17 +46,14 @@ public class Task {
     private LocalDateTime updateTime;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
-    private int batchSize;
     private TaskTerminalReason terminalReason;
-    private int maxRuntimeSeconds; // 0 = unlimited; enforced by LeaseExpireWatchdog
 
     public Task() {
         this.status = TaskStatus.NEW;
         this.sourceType = TaskSourceType.BATCH;
-        this.workloadClass = TaskWorkloadClass.BULK;
+        this.executionSpec = new TaskExecutionSpec();
         this.ingestStatus = TaskIngestStatus.SEALED;
         this.intakeStatus = TaskIntakeStatus.SEALED;
-        this.batchSize = 1;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -81,6 +78,14 @@ public class Task {
 
     public void setTid(String tid) {
         this.tid = tid;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getTaskName() {
@@ -229,12 +234,21 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public TaskWorkloadClass getWorkloadClass() {
-        return workloadClass;
+    public TaskExecutionSpec getExecutionSpec() {
+        return executionSpec;
     }
 
-    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        this.workloadClass = workloadClass == null ? TaskWorkloadClass.BULK : workloadClass;
+    public void setExecutionSpec(TaskExecutionSpec executionSpec) {
+        this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
+        return executionSpecOrDefault().getWorkloadClass();
+    }
+
+    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
+        executionSpecOrDefault().setWorkloadClass(workloadClass);
         this.updateTime = LocalDateTime.now();
     }
 
@@ -306,11 +320,11 @@ public class Task {
     }
 
     public int getBatchSize() {
-        return batchSize;
+        return executionSpecOrDefault().getBatchSize();
     }
 
     public void setBatchSize(int batchSize) {
-        this.batchSize = Math.max(batchSize, 1);
+        executionSpecOrDefault().setBatchSize(batchSize);
         this.updateTime = LocalDateTime.now();
     }
 
@@ -323,11 +337,19 @@ public class Task {
     }
 
     public int getMaxRuntimeSeconds() {
-        return maxRuntimeSeconds;
+        return executionSpecOrDefault().getMaxRuntimeSeconds();
     }
 
     public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        this.maxRuntimeSeconds = maxRuntimeSeconds;
+        executionSpecOrDefault().setMaxRuntimeSeconds(maxRuntimeSeconds);
+    }
+
+    public int getDefaultMaxRetryCount() {
+        return executionSpecOrDefault().getDefaultMaxRetryCount();
+    }
+
+    public void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
+        executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
     }
 
     @JsonIgnore
@@ -410,6 +432,13 @@ public class Task {
         this.taskNonSuccessNumber = this.taskEligibleNumber - this.taskSuccessNumber;
     }
 
+    private TaskExecutionSpec executionSpecOrDefault() {
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        return this.executionSpec;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -427,11 +456,12 @@ public class Task {
     public String toString() {
         return "Task{" +
                 "tid='" + tid + '\'' +
+                ", tenantId='" + tenantId + '\'' +
                 ", taskName='" + taskName + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
                 ", sourceType=" + sourceType +
-                ", workloadClass=" + workloadClass +
+                ", executionSpec=" + executionSpec +
                 ", ingestStatus=" + ingestStatus +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
@@ -440,7 +470,6 @@ public class Task {
                 ", minRequiredWorkerCount=" + minRequiredWorkerCount +
                 ", peakAssignedWorkerCount=" + peakAssignedWorkerCount +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
-                ", batchSize=" + batchSize +
                 ", terminalReason=" + terminalReason +
                 '}';
     }

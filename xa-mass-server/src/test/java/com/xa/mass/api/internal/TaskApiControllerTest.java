@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TenantConstants;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -76,12 +78,10 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "workloadClass":"INTERACTIVE",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "batchSize":2
+                                  "executionSpec":{"workloadClass":"INTERACTIVE","batchSize":2}
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -91,12 +91,11 @@ class TaskApiControllerTest {
         ArgumentCaptor<MassTaskShellCreateRequest> captor = ArgumentCaptor.forClass(MassTaskShellCreateRequest.class);
         verify(taskAdmin).createTaskShell(captor.capture());
         MassTaskShellCreateRequest request = captor.getValue();
-        assertEquals("smoke-create", request.getTaskName());
         assertEquals("demoApp", request.getProject());
+        assertEquals(TenantConstants.DEFAULT_TENANT_ID, request.getTenantId());
         assertEquals("agent", request.getUserId());
         assertEquals(2, request.getBatchSize());
         assertEquals(TaskWorkloadClass.INTERACTIVE, request.getWorkloadClass());
-        assertNull(request.getEventCode());
     }
 
     @Test
@@ -105,7 +104,6 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"legacy-create",
                                   "project":"demoApp",
                                   "userId":"agent",
                                   "inputs":[{"target":"alpha"}]
@@ -140,8 +138,7 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"sdk-crawler",
-                                  "eventCode":"crawler.fetch-page"
+                                  "sharedConfig":{"eventCode":"crawler.fetch-page"}
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -245,7 +242,6 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"patched-task",
                                   "batchSize":4
                                 }
                                 """))
@@ -257,6 +253,7 @@ class TaskApiControllerTest {
         Task task = new Task();
         task.setTid(TASK_ID);
         task.setStatus(status);
+        task.setExecutionSpec(new TaskExecutionSpec());
         return task;
     }
 

@@ -15,14 +15,12 @@ public final class MassTaskUpdateRequest {
 
     private final String userId;
     private final String project;
-    private final String taskName;
     private final Map<String, Object> sharedConfig;
     private final Integer batchSize;
 
     private MassTaskUpdateRequest(Builder builder) {
         this.userId = normalizeString(builder.userId);
         this.project = normalizeString(builder.project);
-        this.taskName = normalizeString(builder.taskName);
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
         this.batchSize = builder.batchSize;
     }
@@ -39,8 +37,9 @@ public final class MassTaskUpdateRequest {
         return project;
     }
 
+    @Deprecated(forRemoval = false)
     public String getTaskName() {
-        return taskName;
+        return null;
     }
 
     public Map<String, Object> getSharedConfig() {
@@ -57,14 +56,13 @@ public final class MassTaskUpdateRequest {
         if (!(o instanceof MassTaskUpdateRequest that)) return false;
         return Objects.equals(userId, that.userId)
                 && Objects.equals(project, that.project)
-                && Objects.equals(taskName, that.taskName)
                 && Objects.equals(sharedConfig, that.sharedConfig)
                 && Objects.equals(batchSize, that.batchSize);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(userId, project, taskName, sharedConfig, batchSize);
+        return Objects.hash(userId, project, sharedConfig, batchSize);
     }
 
     @Override
@@ -72,7 +70,6 @@ public final class MassTaskUpdateRequest {
         return "MassTaskUpdateRequest{" +
                 "userId='" + userId + '\'' +
                 ", project='" + project + '\'' +
-                ", taskName='" + taskName + '\'' +
                 ", sharedConfig=" + sharedConfig +
                 ", batchSize=" + batchSize +
                 '}';
@@ -81,7 +78,6 @@ public final class MassTaskUpdateRequest {
     public static final class Builder {
         private String userId;
         private String project;
-        private String taskName;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
         private Integer batchSize;
 
@@ -98,8 +94,8 @@ public final class MassTaskUpdateRequest {
             return this;
         }
 
+        @Deprecated(forRemoval = false)
         public Builder taskName(String taskName) {
-            this.taskName = taskName;
             return this;
         }
 

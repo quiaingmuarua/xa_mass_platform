@@ -10,7 +10,6 @@ public class TaskUpdateApiRequest extends AbstractUnknownFieldRequest {
 
     private String userId;
     private String project;
-    private String taskName;
     private Map<String, Object> sharedConfig;
     private Integer batchSize;
 
@@ -28,14 +27,6 @@ public class TaskUpdateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setProject(String project) {
         this.project = project;
-    }
-
-    public String getTaskName() {
-        return taskName;
-    }
-
-    public void setTaskName(String taskName) {
-        this.taskName = taskName;
     }
 
     public Map<String, Object> getSharedConfig() {

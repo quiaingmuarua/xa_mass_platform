@@ -1,9 +1,7 @@
 package com.xa.mass.sdk.model;
 
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.enums.task.TaskSourceType;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.TaskMode;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -12,30 +10,20 @@ import java.util.Map;
 public final class MassTaskShellCreateRequest {
 
     private final String userId;
+    private final String tenantId;
     private final String project;
-    private final String taskName;
-    private final String eventCode;
-    private final TaskMode mode;
-    private final PayloadType payloadType;
     private final Map<String, Object> sharedConfig;
-    private final int batchSize;
-    private final int maxRuntimeSeconds;
+    private final TaskExecutionSpec executionSpec;
     private final TaskSourceType sourceType;
-    private final TaskWorkloadClass workloadClass;
     private final String sourceRef;
 
     private MassTaskShellCreateRequest(Builder builder) {
         this.userId = builder.userId;
+        this.tenantId = normalizeString(builder.tenantId);
         this.project = builder.project;
-        this.taskName = builder.taskName;
-        this.eventCode = normalizeString(builder.eventCode);
-        this.mode = builder.mode != null ? builder.mode : TaskMode.SINGLE_RUN;
-        this.payloadType = builder.payloadType != null ? builder.payloadType : PayloadType.JSON;
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
-        this.batchSize = builder.batchSize;
-        this.maxRuntimeSeconds = builder.maxRuntimeSeconds;
+        this.executionSpec = TaskExecutionSpec.normalized(builder.executionSpec);
         this.sourceType = builder.sourceType;
-        this.workloadClass = builder.workloadClass;
         this.sourceRef = normalizeString(builder.sourceRef);
     }
 
@@ -47,44 +35,56 @@ public final class MassTaskShellCreateRequest {
         return userId;
     }
 
+    public String getTenantId() {
+        return tenantId;
+    }
+
     public String getProject() {
         return project;
     }
 
+    @Deprecated(forRemoval = false)
     public String getTaskName() {
-        return taskName;
+        return null;
     }
 
+    @Deprecated(forRemoval = false)
     public String getEventCode() {
-        return eventCode;
+        return null;
     }
 
-    public TaskMode getMode() {
-        return mode;
+    @Deprecated(forRemoval = false)
+    public com.xa.mass.sdk.catalog.TaskMode getMode() {
+        return com.xa.mass.sdk.catalog.TaskMode.SINGLE_RUN;
     }
 
-    public PayloadType getPayloadType() {
-        return payloadType;
+    @Deprecated(forRemoval = false)
+    public com.xa.mass.sdk.catalog.PayloadType getPayloadType() {
+        return com.xa.mass.sdk.catalog.PayloadType.JSON;
     }
 
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
     }
 
-    public int getBatchSize() {
-        return batchSize;
+    public TaskExecutionSpec getExecutionSpec() {
+        return executionSpec;
     }
 
-    public int getMaxRuntimeSeconds() {
-        return maxRuntimeSeconds;
+    public int getBatchSize() {
+        return executionSpec.getBatchSize();
     }
 
     public TaskSourceType getSourceType() {
         return sourceType;
     }
 
-    public TaskWorkloadClass getWorkloadClass() {
-        return workloadClass;
+    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
+        return executionSpec.getWorkloadClass();
+    }
+
+    public int getMaxRuntimeSeconds() {
+        return executionSpec.getMaxRuntimeSeconds();
     }
 
     public String getSourceRef() {
@@ -93,16 +93,11 @@ public final class MassTaskShellCreateRequest {
 
     public static final class Builder {
         private String userId;
+        private String tenantId;
         private String project;
-        private String taskName;
-        private String eventCode;
-        private TaskMode mode = TaskMode.SINGLE_RUN;
-        private PayloadType payloadType = PayloadType.JSON;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
-        private int batchSize;
-        private int maxRuntimeSeconds;
+        private TaskExecutionSpec executionSpec;
         private TaskSourceType sourceType;
-        private TaskWorkloadClass workloadClass;
         private String sourceRef;
 
         private Builder() {
@@ -113,28 +108,33 @@ public final class MassTaskShellCreateRequest {
             return this;
         }
 
+        public Builder tenantId(String tenantId) {
+            this.tenantId = tenantId;
+            return this;
+        }
+
         public Builder project(String project) {
             this.project = project;
             return this;
         }
 
+        @Deprecated(forRemoval = false)
         public Builder taskName(String taskName) {
-            this.taskName = taskName;
             return this;
         }
 
+        @Deprecated(forRemoval = false)
         public Builder eventCode(String eventCode) {
-            this.eventCode = eventCode;
             return this;
         }
 
-        public Builder mode(TaskMode mode) {
-            this.mode = mode;
+        @Deprecated(forRemoval = false)
+        public Builder mode(com.xa.mass.sdk.catalog.TaskMode mode) {
             return this;
         }
 
-        public Builder payloadType(PayloadType payloadType) {
-            this.payloadType = payloadType;
+        @Deprecated(forRemoval = false)
+        public Builder payloadType(com.xa.mass.sdk.catalog.PayloadType payloadType) {
             return this;
         }
 
@@ -143,13 +143,16 @@ public final class MassTaskShellCreateRequest {
             return this;
         }
 
-        public Builder batchSize(int batchSize) {
-            this.batchSize = batchSize;
+        public Builder executionSpec(TaskExecutionSpec executionSpec) {
+            this.executionSpec = executionSpec;
             return this;
         }
 
-        public Builder maxRuntimeSeconds(int maxRuntimeSeconds) {
-            this.maxRuntimeSeconds = maxRuntimeSeconds;
+        public Builder batchSize(int batchSize) {
+            if (this.executionSpec == null) {
+                this.executionSpec = new TaskExecutionSpec();
+            }
+            this.executionSpec.setBatchSize(batchSize);
             return this;
         }
 
@@ -158,8 +161,19 @@ public final class MassTaskShellCreateRequest {
             return this;
         }
 
-        public Builder workloadClass(TaskWorkloadClass workloadClass) {
-            this.workloadClass = workloadClass;
+        public Builder workloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
+            if (this.executionSpec == null) {
+                this.executionSpec = new TaskExecutionSpec();
+            }
+            this.executionSpec.setWorkloadClass(workloadClass);
+            return this;
+        }
+
+        public Builder maxRuntimeSeconds(int maxRuntimeSeconds) {
+            if (this.executionSpec == null) {
+                this.executionSpec = new TaskExecutionSpec();
+            }
+            this.executionSpec.setMaxRuntimeSeconds(maxRuntimeSeconds);
             return this;
         }
 

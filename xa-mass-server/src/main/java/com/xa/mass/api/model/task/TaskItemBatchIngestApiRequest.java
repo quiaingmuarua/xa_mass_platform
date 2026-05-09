@@ -8,8 +8,17 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class TaskItemBatchIngestApiRequest extends AbstractUnknownFieldRequest {
 
+    private String eventCode;
     private List<Object> items;
     private int defaultMsgMaxRetryCount = 3;
+
+    public String getEventCode() {
+        return eventCode;
+    }
+
+    public void setEventCode(String eventCode) {
+        this.eventCode = eventCode;
+    }
 
     public List<Object> getItems() {
         return items;

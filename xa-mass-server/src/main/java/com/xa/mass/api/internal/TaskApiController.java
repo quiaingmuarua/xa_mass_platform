@@ -13,13 +13,16 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
-import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.model.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -384,14 +387,14 @@ public class TaskApiController {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", task.getTid());
         item.put("taskName", task.getTaskName());
+        item.put("tenantId", task.getTenantId());
         item.put("project", task.getProject());
         item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
-        item.put("workloadClass", task.getWorkloadClass() != null ? task.getWorkloadClass().name() : null);
+        item.put("executionSpec", task.getExecutionSpec());
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
         item.put("successCount", task.getTaskSuccessNumber());
         item.put("eligibleCount", task.getTaskEligibleNumber());
-        item.put("batchSize", task.getBatchSize());
         item.put("updatedAt", formatDateTime(task.getUpdateTime()));
         item.put("security", taskSecurityViewSupport.toSecurityView(task));
         return item;
@@ -466,25 +469,13 @@ public class TaskApiController {
                                                                     String resolvedProject,
                                                                     String resolvedUserId) {
         requireBusinessBindings(resolvedProject, resolvedUserId);
-        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
-            throw new IllegalArgumentException("taskName is required");
-        }
-        if (requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank()) {
-            validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
-        }
-
         return MassTaskShellCreateRequest.builder()
                 .userId(resolvedUserId)
+                .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
-                .taskName(requestBody.getTaskName())
-                .eventCode(requestBody.getEventCode())
-                .mode(requestBody.getMode() != null ? requestBody.getMode() : TaskMode.SINGLE_RUN)
-                .payloadType(requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON)
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .batchSize(requestBody.getBatchSize())
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .executionSpec(TaskExecutionSpec.normalized(requestBody.getExecutionSpec()))
                 .sourceType(resolveSourceType(requestBody))
-                .workloadClass(requestBody.getWorkloadClass())
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -499,7 +490,6 @@ public class TaskApiController {
         return MassTaskUpdateRequest.builder()
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
-                .taskName(requestBody.getTaskName())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .batchSize(requestBody.getBatchSize())
                 .build();
@@ -508,22 +498,15 @@ public class TaskApiController {
     private boolean isEmptyCreateRequest(TaskShellCreateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
-                && requestBody.getTaskName() == null
-                && requestBody.getEventCode() == null
-                && requestBody.getMode() == null
-                && requestBody.getPayloadType() == null
                 && requestBody.getSharedConfig() == null
-                && requestBody.getBatchSize() == 0
-                && requestBody.getMaxRuntimeSeconds() == 0
+                && requestBody.getExecutionSpec() == null
                 && requestBody.getSourceType() == null
-                && requestBody.getWorkloadClass() == null
                 && requestBody.getSourceRef() == null;
     }
 
     private boolean isEmptyUpdateRequest(TaskUpdateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
-                && requestBody.getTaskName() == null
                 && requestBody.getSharedConfig() == null
                 && requestBody.getBatchSize() == null;
     }
@@ -564,12 +547,12 @@ public class TaskApiController {
                     apiKeyHeader,
                     authorizationHeader,
                     requestBody != null ? requestBody.getProject() : null,
-                    requestBody != null ? requestBody.getEventCode() : null,
+                    null,
                     requestBody != null ? requestBody.getUserId() : null,
                     Map.of(
-                        "taskName", requestBody != null ? String.valueOf(requestBody.getTaskName()) : "",
-                        "mode", requestBody != null ? String.valueOf(requestBody.getMode()) : "",
-                        "payloadType", requestBody != null ? String.valueOf(requestBody.getPayloadType()) : "",
+                        "sourceType", requestBody != null ? String.valueOf(requestBody.getSourceType()) : "",
+                        "executionProfile", requestBody != null && requestBody.getExecutionSpec() != null
+                                ? String.valueOf(requestBody.getExecutionSpec().getProfile()) : "",
                         "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
                     )
             );
@@ -619,9 +602,17 @@ public class TaskApiController {
         if (metadataCatalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
-        if (!projectMetadata.getEventCodes().contains(eventCode)) {
+        if (!projectMetadata.getAuthorizedEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
+    }
+
+    private String resolveProjectTenantId(String projectCode) {
+        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
+        if (projectMetadata == null) {
+            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+        }
+        return projectMetadata.getTenantId();
     }
 
     private void validateIngestGuardrails(List<Object> items) {

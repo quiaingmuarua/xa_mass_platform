@@ -19,16 +19,11 @@ public final class TaskOwnershipSupport {
         TaskOwnershipStamp stamp = TaskOwnershipStamp.fromPrincipal(Objects.requireNonNull(principal, "principal"));
         return MassTaskShellCreateRequest.builder()
                 .userId(request.getUserId())
+                .tenantId(request.getTenantId())
                 .project(request.getProject())
-                .taskName(request.getTaskName())
-                .eventCode(request.getEventCode())
-                .mode(request.getMode())
-                .payloadType(request.getPayloadType())
                 .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
-                .batchSize(request.getBatchSize())
-                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
+                .executionSpec(request.getExecutionSpec())
                 .sourceType(request.getSourceType())
-                .workloadClass(request.getWorkloadClass())
                 .sourceRef(request.getSourceRef())
                 .build();
     }

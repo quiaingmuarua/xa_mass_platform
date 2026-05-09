@@ -195,7 +195,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
-        List<Map<String, Object>> converted = requireAppendItems(request.getItems());
+        List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
         int retrySeed = request.getDefaultMsgMaxRetryCount() == null ? 3 : request.getDefaultMsgMaxRetryCount();
         return requireStartedTaskCommands().appendTaskItems(requireTaskId(taskId), converted, retrySeed);
     }
@@ -218,9 +218,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
         if (task == null) {
             return false;
-        }
-        if (request.getTaskName() != null) {
-            task.setTaskName(request.getTaskName());
         }
         if (request.getProject() != null) {
             task.setProject(request.getProject());
@@ -1281,7 +1278,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return engine;
     }
 
-    private List<Map<String, Object>> requireAppendItems(List<Object> items) {
+    private List<Map<String, Object>> requireAppendItems(List<Object> items, String batchEventCode) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
@@ -1290,7 +1287,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             if (!(item instanceof Map<?, ?> rawMap)) {
                 throw new IllegalArgumentException("SDK append items must be JSON object maps");
             }
-            normalized.add(stringObjectMap(rawMap));
+            Map<String, Object> normalizedMap = stringObjectMap(rawMap);
+            if (batchEventCode != null && !batchEventCode.isBlank() && !normalizedMap.containsKey("eventCode")) {
+                LinkedHashMap<String, Object> merged = new LinkedHashMap<>(normalizedMap);
+                merged.put("eventCode", batchEventCode.trim());
+                normalized.add(Map.copyOf(merged));
+            } else {
+                normalized.add(normalizedMap);
+            }
         }
         return List.copyOf(normalized);
     }

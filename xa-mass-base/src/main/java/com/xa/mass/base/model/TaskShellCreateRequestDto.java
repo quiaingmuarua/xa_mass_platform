@@ -2,7 +2,6 @@ package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.base.enums.task.TaskSourceType;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.Map;
 
@@ -10,13 +9,11 @@ import java.util.Map;
 public class TaskShellCreateRequestDto {
 
     private String userId;
+    private String tenantId;
     private String project;
-    private String taskName;
     private Map<String, Object> sharedConfig;
-    private int batchSize;
-    private int maxRuntimeSeconds = 0;
+    private TaskExecutionSpec executionSpec;
     private TaskSourceType sourceType;
-    private TaskWorkloadClass workloadClass;
     private String sourceRef;
 
     public String getUserId() {
@@ -27,20 +24,30 @@ public class TaskShellCreateRequestDto {
         this.userId = userId;
     }
 
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
+
+    @Deprecated(forRemoval = false)
+    public String getTaskName() {
+        return null;
+    }
+
+    @Deprecated(forRemoval = false)
+    public void setTaskName(String taskName) {
+        // taskName is server-derived; legacy callers are ignored.
+    }
+
     public String getProject() {
         return project;
     }
 
     public void setProject(String project) {
         this.project = project;
-    }
-
-    public String getTaskName() {
-        return taskName;
-    }
-
-    public void setTaskName(String taskName) {
-        this.taskName = taskName;
     }
 
     public Map<String, Object> getSharedConfig() {
@@ -51,20 +58,20 @@ public class TaskShellCreateRequestDto {
         this.sharedConfig = sharedConfig;
     }
 
+    public TaskExecutionSpec getExecutionSpec() {
+        return executionSpec;
+    }
+
+    public void setExecutionSpec(TaskExecutionSpec executionSpec) {
+        this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
+    }
+
     public int getBatchSize() {
-        return batchSize;
+        return executionSpecOrDefault().getBatchSize();
     }
 
     public void setBatchSize(int batchSize) {
-        this.batchSize = batchSize;
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return maxRuntimeSeconds;
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        this.maxRuntimeSeconds = maxRuntimeSeconds;
+        executionSpecOrDefault().setBatchSize(batchSize);
     }
 
     public TaskSourceType getSourceType() {
@@ -75,12 +82,20 @@ public class TaskShellCreateRequestDto {
         this.sourceType = sourceType;
     }
 
-    public TaskWorkloadClass getWorkloadClass() {
-        return workloadClass;
+    public int getMaxRuntimeSeconds() {
+        return executionSpecOrDefault().getMaxRuntimeSeconds();
     }
 
-    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        this.workloadClass = workloadClass;
+    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+        executionSpecOrDefault().setMaxRuntimeSeconds(maxRuntimeSeconds);
+    }
+
+    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
+        return executionSpecOrDefault().getWorkloadClass();
+    }
+
+    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
+        executionSpecOrDefault().setWorkloadClass(workloadClass);
     }
 
     public String getSourceRef() {
@@ -89,5 +104,12 @@ public class TaskShellCreateRequestDto {
 
     public void setSourceRef(String sourceRef) {
         this.sourceRef = sourceRef;
+    }
+
+    private TaskExecutionSpec executionSpecOrDefault() {
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        return this.executionSpec;
     }
 }
