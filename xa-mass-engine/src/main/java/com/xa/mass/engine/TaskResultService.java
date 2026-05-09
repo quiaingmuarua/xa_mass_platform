@@ -17,6 +17,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import org.slf4j.Logger;
@@ -102,8 +103,10 @@ class TaskResultService {
                     + activeAttempt.status(), 0);
             return TaskMessageMutationOutcome.rejected();
         }
-        persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
-                "mark attempt expired");
+        final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
+        taskManager.submitProjectionWrite(() ->
+                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
+                        "mark attempt expired"));
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
         RuntimeMessageView expiredSummary = summarizeExpired(messageState, expiryDetail);
         traceEventLogger.leaseExpired(
@@ -128,8 +131,10 @@ class TaskResultService {
                 "TaskManager",
                 expiryDetail
         );
-        persistTaskMessageProjection(taskId, expiredSummary,
-                "persist expiry compatibility summary");
+        final RuntimeMessageView capturedExpiredSummary = expiredSummary;
+        taskManager.submitProjectionWrite(() ->
+                persistTaskMessageProjection(taskId, capturedExpiredSummary,
+                        "persist expiry compatibility summary"));
         Task freshTask = taskManager.getTask(taskId);
         RuntimeMessageView currentSummary = expiredSummary;
         if (retryScheduled) {
@@ -141,8 +146,10 @@ class TaskResultService {
                     activeAttempt.batchId(),
                     workRetryDelayMillis,
                     "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
-            persistTaskMessageProjection(taskId, retrySummary,
-                    "persist expiry retry-reset compatibility summary");
+            final RuntimeMessageView capturedRetrySummary = retrySummary;
+            taskManager.submitProjectionWrite(() ->
+                    persistTaskMessageProjection(taskId, capturedRetrySummary,
+                            "persist expiry retry-reset compatibility summary"));
             currentSummary = retrySummary;
         }
         if (freshTask != null && activeAttempt != null) {
@@ -179,6 +186,7 @@ class TaskResultService {
                                                        String detail,
                                                        String errorCode,
                                                        Map<String, Object> output) {
+        // Load task ONCE — threaded through to all handlers to avoid repeat storage reads.
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             logger.warn("Cannot handle task message result because task {} was not found", taskId);
@@ -208,80 +216,65 @@ class TaskResultService {
             return TaskMessageMutationOutcome.acceptedNoop();
         }
 
-        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
-        TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
-        if (activeLease == null) {
-            if (runtimeWork != null) {
-                TaskMessageTraceView noLeaseRuntimeView = resolveTraceTaskMessageView(taskId, messageId, null);
-                traceEventLogger.callbackRejectedNoActiveLease(
-                        noLeaseRuntimeView,
-                        "callback arrived without any active runtime lease"
-                );
-                logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
-                return TaskMessageMutationOutcome.rejected();
-            }
-            RuntimeMessageView recentFinalMessage = recentFinalMessage(taskId, messageId);
-            if (recentFinalMessage != null) {
-                traceEventLogger.callbackIgnoredDuplicate(recentFinalMessage.toTraceView(),
-                        "task message already final in recent runtime receipt with status " + recentFinalMessage.status());
+        // Hot path: single atomic runtime call replaces three separate round-trips
+        // (getActiveLease + getWork + applyResult), each of which previously required
+        // its own synchronised runtime acquisition or Redis round-trip.
+        TaskWorkResult workResult = buildWorkResultForCallback(
+                task, taskId, messageId, success, detail, errorCode, output, !success, false);
+        RuntimeResultApplyContext ctx = taskManager.applyTaskWorkResultWithContext(workResult);
+
+        if (!ctx.hasLeaseSnapshot()) {
+            // No active lease at apply time — duplicate or late callback.
+            RuntimeMessageView recentFinal = recentFinalMessage(taskId, messageId);
+            if (recentFinal != null) {
+                traceEventLogger.callbackIgnoredDuplicate(recentFinal.toTraceView(),
+                        "task message already final in recent runtime receipt with status " + recentFinal.status());
                 logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                        messageId, taskId, recentFinalMessage.status());
+                        messageId, taskId, recentFinal.status());
                 return TaskMessageMutationOutcome.acceptedNoop();
             }
             TaskMessageTraceView noLeaseView = resolveTraceTaskMessageView(taskId, messageId, null);
             traceEventLogger.callbackRejectedNoActiveLease(
-                    noLeaseView,
-                    "callback arrived without any active runtime lease"
-            );
-            logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease", messageId, taskId);
+                    noLeaseView, "callback arrived without any active runtime lease");
+            logger.error("Cannot handle task message result because msg {} in task {} has no active runtime lease",
+                    messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
 
-        // Active lease plus runtime work is the authoritative callback base.
-        // Compatibility message residue stays out of the accepted hot path.
+        ResultApplyStatus applyStatus = ctx.outcome().status();
+        if (applyStatus == ResultApplyStatus.STALE_LEASE
+                || applyStatus == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            logger.warn("Rejecting result for task message {} because runtime lease rejected the result with {}",
+                    messageId, applyStatus);
+            return TaskMessageMutationOutcome.rejected();
+        }
+
+        // Reconstruct lease/work snapshots from the context — no extra runtime reads needed.
+        // The context carries all fields the projection pipeline requires.
+        ActiveLeaseRecord syntheticLease = syntheticLeaseFromContext(ctx, taskId, messageId);
+        TaskWorkEnvelope syntheticWork = syntheticWorkFromContext(ctx, taskId, messageId);
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
-                taskId,
-                messageId,
-                activeLease,
-                runtimeWork,
-                "HANDLE_TASK_MESSAGE_RESULT",
-                "runtime active lease defines callback admissibility"
-        );
+                taskId, messageId, syntheticLease, syntheticWork,
+                "HANDLE_TASK_MESSAGE_RESULT", "runtime active lease defines callback admissibility");
         if (activeProjection == null) {
-            logger.warn("Cannot handle task message result because msg {} was not found in task {} and no runtime projection could be recovered",
-                    messageId, taskId);
+            logger.warn("Cannot handle task message result because msg {} was not found in task {} "
+                    + "and no runtime projection could be recovered", messageId, taskId);
             return TaskMessageMutationOutcome.rejected();
         }
         RuntimeMessageView messageState = activeProjection.messageState();
         AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
-        if (!isCallbackAcceptableMessageState(messageState.status())) {
-            traceEventLogger.callbackRejectedInvalidState(messageState.toTraceView(),
-                    "callback arrived while message status is " + messageState.status());
-            logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
-                    messageId, taskId, messageState.status());
-            return TaskMessageMutationOutcome.rejected();
-        }
-
-        ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
-                success, detail, errorCode, output, !success, false);
-        if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
-                || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
-            logger.warn("Rejecting result for task message {} because runtime lease rejected the result with {}",
-                    messageId, workOutcome.status());
-            return TaskMessageMutationOutcome.rejected();
-        }
 
         traceEventLogger.callbackAccepted(
                 messageState.toTraceView(),
                 success ? "success callback received" : "failure callback received");
 
         if (success) {
-            return handleSuccess(taskId, messageState, activeAttempt, detail, output);
+            return handleSuccess(task, taskId, messageState, activeAttempt, detail, output);
         }
-        if (workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED) {
-            return handleRetryableFailure(taskId, messageState, activeAttempt, detail, errorCode, output);
+        if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
+            return handleRetryableFailure(task, taskId, messageState, activeAttempt, detail, errorCode, output);
         }
-        return handleRetryExhaustedFailure(taskId, messageState, activeAttempt, detail, errorCode, output);
+        return handleRetryExhaustedFailure(task, taskId, messageState, activeAttempt, detail, errorCode, output);
     }
 
     TaskMessageMutationOutcome compensateDispatchSubmitFailure(Task task,
@@ -332,6 +325,7 @@ class TaskResultService {
         }
 
         RuntimeMessageView retrySummary = resetForRetryWithoutPublishingAttemptClosure(
+                task,
                 taskId,
                 messageState,
                 activeAttempt,
@@ -345,9 +339,8 @@ class TaskResultService {
         }
 
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
-        Task updatedTask = taskManager.getTask(taskId);
-        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-            requestRetryDispatch(updatedTask, workRetryDelayMillis);
+        if (task != null && !task.getStatus().isFinal()) {
+            requestRetryDispatch(task, workRetryDelayMillis);
         }
         return TaskMessageMutationOutcome.acceptedDirty();
     }
@@ -456,7 +449,8 @@ class TaskResultService {
         return recoverActiveAttemptProjection(taskMsg, activeLease, dispatchBinding.attemptId(), dispatchBinding.attemptNo());
     }
 
-    private TaskMessageMutationOutcome handleSuccess(String taskId,
+    private TaskMessageMutationOutcome handleSuccess(Task task,
+                                                     String taskId,
                                                      RuntimeMessageView taskMsg,
                                                      AttemptProjectionView activeAttempt,
                                                      String detail,
@@ -498,27 +492,35 @@ class TaskResultService {
                 "TaskManager",
                 "task message marked success"
         );
-        persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
-                "mark attempt success");
-        persistTaskMessageProjection(taskId, successSummary,
-                "persist success compatibility summary");
-        Task updatedTask = taskManager.getTask(taskId);
-        if (updatedTask != null) {
-            publishAttemptClosed(updatedTask, successSummary, activeAttempt,
+        // Projection writes are @CompatibilityProjectionOnly residue — submitted async
+        // so they cannot block the runtime callback hot path.
+        final RuntimeMessageView capturedSummary = successSummary;
+        final AttemptProjectionView capturedAttempt = activeAttempt;
+        taskManager.submitProjectionWrite(() -> {
+            persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
+                    "mark attempt success");
+            persistTaskMessageProjection(taskId, capturedSummary,
+                    "persist success compatibility summary");
+        });
+        // Event publishing is kept synchronous — it drives downstream state transitions.
+        if (task != null) {
+            publishAttemptClosed(task, successSummary, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message attempt succeeded");
-            publishMessageLogicallyFinal(updatedTask, successSummary, activeAttempt,
+            publishMessageLogicallyFinal(task, successSummary, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable success");
         }
         return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    private TaskMessageMutationOutcome handleRetryableFailure(String taskId,
+    private TaskMessageMutationOutcome handleRetryableFailure(Task task,
+                                                              String taskId,
                                                               RuntimeMessageView taskMsg,
                                                               AttemptProjectionView activeAttempt,
                                                               String detail,
                                                               String errorCode,
                                                               Map<String, Object> output) {
         RuntimeMessageView retrySummary = resetForRetryWithoutPublishingAttemptClosure(
+                task,
                 taskId,
                 taskMsg,
                 activeAttempt,
@@ -530,20 +532,20 @@ class TaskResultService {
         if (retrySummary == null) {
             return TaskMessageMutationOutcome.rejected();
         }
-        long workRetryDelayMillis = resolveWorkRetryDelayMillis(taskManager.getTask(taskId), true);
-        Task updatedTask = taskManager.getTask(taskId);
-        if (updatedTask != null) {
-            publishAttemptClosed(updatedTask, retrySummary, activeAttempt,
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
+        // Event publishing kept synchronous; use the already-loaded task (no extra storage read).
+        if (task != null) {
+            publishAttemptClosed(task, retrySummary, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "retryable failure closed the current attempt");
-        }
-        updatedTask = taskManager.getTask(taskId);
-        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-            requestRetryDispatch(updatedTask, workRetryDelayMillis);
+            if (!task.getStatus().isFinal()) {
+                requestRetryDispatch(task, workRetryDelayMillis);
+            }
         }
         return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    private RuntimeMessageView resetForRetryWithoutPublishingAttemptClosure(String taskId,
+    private RuntimeMessageView resetForRetryWithoutPublishingAttemptClosure(Task task,
+                                                                            String taskId,
                                                                             RuntimeMessageView taskMsg,
                                                                             AttemptProjectionView activeAttempt,
                                                                             String detail,
@@ -571,8 +573,11 @@ class TaskResultService {
                 "TaskManager",
                 resetReason
         );
-        persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
-                "revoke attempt for retry");
+        // Attempt projection write is @CompatibilityProjectionOnly — submit async.
+        final AttemptProjectionView capturedAttempt = activeAttempt;
+        taskManager.submitProjectionWrite(() ->
+                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
+                        "revoke attempt for retry"));
 
         RuntimeMessageView retryBase = buildRetryResetCompatibilityBaseView(taskMsg, activeAttempt);
         if (retryBase == null) {
@@ -596,7 +601,8 @@ class TaskResultService {
                 "task message marked failed before retry reset"
         );
         RuntimeMessageView retrySummary = summarizeRetryReset(failedView);
-        long workRetryDelayMillis = resolveWorkRetryDelayMillis(taskManager.getTask(taskId), true);
+        // Use already-loaded task — no extra getTask() storage read.
+        long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         traceEventLogger.taskMsgRetryReset(retrySummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
@@ -606,8 +612,11 @@ class TaskResultService {
                 trigger,
                 "TaskManager",
                 resetReason);
-        persistTaskMessageProjection(taskId, retrySummary,
-                "persist retry-reset compatibility summary");
+        // Message projection write is @CompatibilityProjectionOnly — submit async.
+        final RuntimeMessageView capturedRetrySummary = retrySummary;
+        taskManager.submitProjectionWrite(() ->
+                persistTaskMessageProjection(taskId, capturedRetrySummary,
+                        "persist retry-reset compatibility summary"));
         return retrySummary;
     }
 
@@ -625,7 +634,8 @@ class TaskResultService {
         return taskMsg.withAssignedAttempt(activeAttempt);
     }
 
-    private TaskMessageMutationOutcome handleRetryExhaustedFailure(String taskId,
+    private TaskMessageMutationOutcome handleRetryExhaustedFailure(Task task,
+                                                                   String taskId,
                                                                    RuntimeMessageView taskMsg,
                                                                    AttemptProjectionView activeAttempt,
                                                                    String detail,
@@ -640,8 +650,6 @@ class TaskResultService {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.attemptId());
             return TaskMessageMutationOutcome.rejected();
         }
-        persistAttemptProjectionUpsertBestEffort(taskId, messageId, activeAttempt,
-                "mark attempt failure");
 
         MessageStatus beforeFinalStatus = taskMsg.status();
         RuntimeMessageView failureSummary = summarizeRetryExhaustedFailure(taskMsg, detail, errorCode, output);
@@ -658,13 +666,20 @@ class TaskResultService {
                 "task message marked failure"
         );
 
-        persistTaskMessageProjection(taskId, failureSummary,
-                "persist exhausted-failure compatibility summary");
-        Task updatedTask = taskManager.getTask(taskId);
-        if (updatedTask != null) {
-            publishAttemptClosed(updatedTask, failureSummary, activeAttempt,
+        // Projection writes are @CompatibilityProjectionOnly residue — submitted async.
+        final RuntimeMessageView capturedSummary = failureSummary;
+        final AttemptProjectionView capturedAttempt = activeAttempt;
+        taskManager.submitProjectionWrite(() -> {
+            persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
+                    "mark attempt failure");
+            persistTaskMessageProjection(taskId, capturedSummary,
+                    "persist exhausted-failure compatibility summary");
+        });
+        // Event publishing kept synchronous; use the already-loaded task.
+        if (task != null) {
+            publishAttemptClosed(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "retry budget exhausted closed the current attempt");
-            publishMessageLogicallyFinal(updatedTask, failureSummary, activeAttempt,
+            publishMessageLogicallyFinal(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_MESSAGE_RESULT", "task message reached stable failure");
         }
         return TaskMessageMutationOutcome.acceptedDirty();
@@ -726,6 +741,84 @@ class TaskResultService {
     private boolean isCallbackAcceptableMessageState(MessageStatus taskMsgStatus) {
         return taskMsgStatus == MessageStatus.ASSIGNED
                 || taskMsgStatus == MessageStatus.RUNNING;
+    }
+
+    /**
+     * Builds a {@link TaskWorkResult} for engine-internal callback handling.
+     *
+     * <p>The {@code leaseToken} is intentionally omitted (null) because this is
+     * a server-side apply — the engine does not receive a worker-issued token in
+     * the callback path. The runtime skips stale-token validation when the token
+     * field is blank, and the active-lease presence check acts as the gate.</p>
+     */
+    private TaskWorkResult buildWorkResultForCallback(Task task,
+                                                      String taskId,
+                                                      String messageId,
+                                                      boolean success,
+                                                      String detail,
+                                                      String errorCode,
+                                                      Map<String, Object> output,
+                                                      boolean retryable,
+                                                      boolean expired) {
+        TaskWorkResult result;
+        if (success) {
+            result = TaskWorkResult.success(taskId, messageId, null, detail, output);
+        } else if (expired) {
+            result = TaskWorkResult.expired(taskId, messageId, null, detail, retryable);
+        } else {
+            result = TaskWorkResult.failure(taskId, messageId, null, errorCode, detail, output, retryable);
+        }
+        if (retryable) {
+            long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
+            if (workRetryDelayMillis > 0L) {
+                result = result.withRetryVisibleAt(result.completedAt().plusMillis(workRetryDelayMillis));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Reconstructs a minimal {@link ActiveLeaseRecord} from an
+     * {@link RuntimeResultApplyContext} snapshot so the existing projection
+     * pipeline can continue to use lease-based logic without extra runtime reads.
+     */
+    private static ActiveLeaseRecord syntheticLeaseFromContext(RuntimeResultApplyContext ctx,
+                                                               String taskId,
+                                                               String messageId) {
+        return new ActiveLeaseRecord(
+                taskId,
+                messageId,
+                ctx.activeLeaseToken(),
+                ctx.workerId(),
+                ctx.workerContextId(),
+                ctx.batchId(),
+                ctx.payloadRef(),
+                ctx.retryCount(),
+                null,         // leaseExpireAt — not needed for projection
+                ctx.leasedAt()
+        );
+    }
+
+    /**
+     * Reconstructs a minimal {@link TaskWorkEnvelope} from an
+     * {@link RuntimeResultApplyContext} snapshot. Only fields required by the
+     * projection pipeline (retryCount, maxRetryCount, payloadRef) are populated.
+     */
+    private static TaskWorkEnvelope syntheticWorkFromContext(RuntimeResultApplyContext ctx,
+                                                             String taskId,
+                                                             String messageId) {
+        return new TaskWorkEnvelope(
+                taskId,
+                messageId,
+                null,              // eventCode — not needed for projection
+                null,              // payload — not in context
+                ctx.payloadRef(),
+                ctx.retryCount(),
+                ctx.maxRetryCount(),
+                null,              // shardKey
+                null,              // nextVisibleAt
+                java.time.Instant.now()  // createdAt — best approximation without work envelope
+        );
     }
 
     private boolean isExpiryAcceptableMessageState(MessageStatus taskMsgStatus) {

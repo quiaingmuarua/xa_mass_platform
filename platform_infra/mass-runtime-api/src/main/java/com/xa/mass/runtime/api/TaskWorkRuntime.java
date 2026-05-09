@@ -50,6 +50,51 @@ public interface TaskWorkRuntime {
     ResultApplyOutcome applyResult(TaskWorkResult result);
 
     /**
+     * Atomically applies a work result and returns the pre-apply lease and work
+     * snapshot in one call, eliminating separate {@code getActiveLease} and
+     * {@code getWork} round-trips on the hot callback path.
+     *
+     * <p>The default implementation is a non-atomic fallback that reads lease
+     * and work before applying — it is safe for correctness but not for
+     * million-scale throughput. {@code InMemoryTaskWorkRuntime} and
+     * {@code RedisTaskWorkRuntime} both override this with a single atomic
+     * operation (synchronized block / Lua script) so the three reads become
+     * one.</p>
+     *
+     * <p>The returned context carries all fields needed by the engine callback
+     * path without any additional runtime reads:</p>
+     * <ul>
+     *   <li>{@code workerId}, {@code workerContextId}, {@code batchId} — for
+     *       routing and audit;</li>
+     *   <li>{@code activeLeaseToken}, {@code retryCount} — for stale-lease
+     *       detection and retry accounting;</li>
+     *   <li>{@code payloadRef}, {@code maxRetryCount}, {@code leasedAt} — for
+     *       projection and trace population.</li>
+     * </ul>
+     */
+    default RuntimeResultApplyContext applyResultWithContext(TaskWorkResult result) {
+        // Non-atomic fallback: read lease/work BEFORE apply so snapshot is available
+        // even if apply deletes the lease. Implementations override with atomic version.
+        Optional<ActiveLeaseRecord> leaseOpt = getActiveLease(result.taskId(), result.messageId());
+        Optional<TaskWorkEnvelope> workOpt = getWork(result.taskId(), result.messageId());
+        ResultApplyOutcome outcome = applyResult(result);
+        if (leaseOpt.isEmpty()) {
+            return RuntimeResultApplyContext.noLease(outcome);
+        }
+        ActiveLeaseRecord lease = leaseOpt.get();
+        return RuntimeResultApplyContext.withSnapshot(
+                outcome,
+                lease.workerId(),
+                lease.workerContextId(),
+                lease.batchId(),
+                lease.leaseToken(),
+                lease.payloadRef(),
+                lease.retryCount(),
+                workOpt.map(TaskWorkEnvelope::maxRetryCount).orElse(0),
+                lease.leasedAt());
+    }
+
+    /**
      * Returns expired lease records using the provided cutoff time.
      *
      * <p>This reports runtime expiry truth but does not itself finalize the

@@ -6,6 +6,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkFinalStatus;
@@ -323,6 +324,132 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "return {'FAILURE_FINALIZED', tostring(retryCount)}"
     );
 
+    /**
+     * Atomic variant of {@link #APPLY_RESULT_SCRIPT} that captures the full
+     * pre-apply lease and work snapshot before deleting the lease hash.
+     *
+     * <p>Return layout (all as bulk strings inside a Redis multi-bulk reply):
+     * <ol>
+     *   <li>{@code "NO_ACTIVE_LEASE"} — 1 element; no lease was active (duplicate
+     *       / late callback). No further elements.</li>
+     *   <li>All other outcomes — 9 elements:
+     *     <ol>
+     *       <li>status: {@code SUCCESS_APPLIED} / {@code RETRY_SCHEDULED} /
+     *           {@code FAILURE_FINALIZED} / {@code STALE_LEASE}</li>
+     *       <li>workerId</li>
+     *       <li>workerContextId</li>
+     *       <li>batchId</li>
+     *       <li>activeLeaseToken (captured before delete)</li>
+     *       <li>payloadRef</li>
+     *       <li>retryCount (from lease at apply time)</li>
+     *       <li>maxRetryCount (from work hash)</li>
+     *       <li>leasedAtMillis</li>
+     *     </ol>
+     *   </li>
+     * </ol>
+     * The same KEYS and ARGV layout as {@link #APPLY_RESULT_SCRIPT} is used so
+     * both scripts can share the same call-site key/arg construction.</p>
+     */
+    private static final String APPLY_RESULT_WITH_CONTEXT_SCRIPT = String.join("\n",
+            "local taskId = ARGV[1]",
+            "local messageId = ARGV[2]",
+            "local workMember = ARGV[3]",
+            "local providedLeaseToken = ARGV[4]",
+            "local nowMillis = tonumber(ARGV[5])",
+            "local completedAtMillis = tonumber(ARGV[6])",
+            "local success = ARGV[7] == '1'",
+            "local expired = ARGV[8] == '1'",
+            "local retryable = ARGV[9] == '1'",
+            "local retryVisibleAtMillis = tonumber(ARGV[10])",
+            "local errorCode = ARGV[11]",
+            "local finalStatus = ARGV[12]",
+            "local taskPrefix = ARGV[13]",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local leaseToken = redis.call('HGET', KEYS[2], 'leaseToken')",
+            "if not leaseToken or leaseToken == '' then",
+            "  redis.call('HINCRBY', KEYS[8], 'duplicateResultItems', 1)",
+            "  return {'NO_ACTIVE_LEASE'}",
+            "end",
+            "-- Capture full lease snapshot (before any mutation, before potential DEL)",
+            "local workerId = redis.call('HGET', KEYS[2], 'workerId') or ''",
+            "local workerContextId = redis.call('HGET', KEYS[2], 'workerContextId') or ''",
+            "local batchId = redis.call('HGET', KEYS[2], 'batchId') or ''",
+            "local payloadRef = redis.call('HGET', KEYS[2], 'payloadRef') or ''",
+            "local retryCount = tonumber(redis.call('HGET', KEYS[2], 'retryCount') or '0')",
+            "local leasedAtMillis = redis.call('HGET', KEYS[2], 'leasedAtMillis') or '0'",
+            "local maxRetryCount = tonumber(redis.call('HGET', KEYS[1], 'maxRetryCount') or '0')",
+            "local snapshot = {workerId, workerContextId, batchId, leaseToken, payloadRef,",
+            "                   tostring(retryCount), tostring(maxRetryCount), leasedAtMillis}",
+            "if providedLeaseToken ~= '' and leaseToken ~= providedLeaseToken then",
+            "  redis.call('HINCRBY', KEYS[8], 'staleResultItems', 1)",
+            "  local r = {'STALE_LEASE'}",
+            "  for _, v in ipairs(snapshot) do table.insert(r, v) end",
+            "  return r",
+            "end",
+            "redis.call('DEL', KEYS[2])",
+            "redis.call('SREM', KEYS[4], workMember)",
+            "if workerId ~= '' then",
+            "  redis.call('SREM', KEYS[3] .. workerId .. ':active', workMember)",
+            "end",
+            "redis.call('ZREM', KEYS[5], workMember)",
+            "decr_non_negative(KEYS[7], 'inflightCount', 1)",
+            "decr_non_negative(KEYS[8], 'inflightCount', 1)",
+            "redis.call('HINCRBY', KEYS[8], 'resultAppliedItems', 1)",
+            "if success then",
+            "  redis.call('DEL', KEYS[1])",
+            "  redis.call('SREM', KEYS[6], messageId)",
+            "  redis.call('HINCRBY', KEYS[7], 'successCount', 1)",
+            "  redis.call('HSET', KEYS[9], 'status', finalStatus, 'errorCode', errorCode, 'retryCount', tostring(retryCount), 'completedAtMillis', tostring(completedAtMillis))",
+            "  redis.call('SADD', KEYS[10], messageId)",
+            "  redis.call('ZADD', KEYS[11], completedAtMillis, workMember)",
+            "  local r = {'SUCCESS_APPLIED'}",
+            "  for _, v in ipairs(snapshot) do table.insert(r, v) end",
+            "  return r",
+            "end",
+            "local itemRetryCount = tonumber(redis.call('HGET', KEYS[1], 'retryCount') or '-1')",
+            "local itemMaxRetryCount = tonumber(redis.call('HGET', KEYS[1], 'maxRetryCount') or '-1')",
+            "if retryable and itemRetryCount >= 0 and itemRetryCount < itemMaxRetryCount then",
+            "  local nextRetryCount = itemRetryCount + 1",
+            "  redis.call('HSET', KEYS[1], 'retryCount', tostring(nextRetryCount), 'nextVisibleAtMillis', retryVisibleAtMillis > nowMillis and tostring(retryVisibleAtMillis) or '')",
+            "  if retryVisibleAtMillis > nowMillis then",
+            "    redis.call('ZADD', KEYS[12], retryVisibleAtMillis, workMember)",
+            "    redis.call('ZADD', KEYS[13], retryVisibleAtMillis, messageId)",
+            "    redis.call('HINCRBY', KEYS[7], 'delayedCount', 1)",
+            "    redis.call('HINCRBY', KEYS[8], 'delayedCount', 1)",
+            "  else",
+            "    redis.call('RPUSH', KEYS[14], messageId)",
+            "    local createdAtMillis = tonumber(redis.call('HGET', KEYS[1], 'createdAtMillis') or '0')",
+            "    local existing = redis.call('ZSCORE', KEYS[15], taskId)",
+            "    if (not existing) or tonumber(existing) > createdAtMillis then",
+            "      redis.call('ZADD', KEYS[15], createdAtMillis, taskId)",
+            "    end",
+            "    redis.call('HINCRBY', KEYS[7], 'readyCount', 1)",
+            "    redis.call('HINCRBY', KEYS[8], 'readyCount', 1)",
+            "  end",
+            "  local r = {'RETRY_SCHEDULED'}",
+            "  for _, v in ipairs(snapshot) do table.insert(r, v) end",
+            "  return r",
+            "end",
+            "redis.call('DEL', KEYS[1])",
+            "redis.call('SREM', KEYS[6], messageId)",
+            "if expired then",
+            "  redis.call('HINCRBY', KEYS[7], 'expiredCount', 1)",
+            "else",
+            "  redis.call('HINCRBY', KEYS[7], 'failedCount', 1)",
+            "end",
+            "redis.call('HSET', KEYS[9], 'status', finalStatus, 'errorCode', errorCode, 'retryCount', tostring(retryCount), 'completedAtMillis', tostring(completedAtMillis))",
+            "redis.call('SADD', KEYS[10], messageId)",
+            "redis.call('ZADD', KEYS[11], completedAtMillis, workMember)",
+            "local r = {'FAILURE_FINALIZED'}",
+            "for _, v in ipairs(snapshot) do table.insert(r, v) end",
+            "return r"
+    );
+
     private static final String POLL_EXPIRED_LEASES_SCRIPT = String.join("\n",
             "local due = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, ARGV[2])",
             "for _, member in ipairs(due) do",
@@ -522,6 +649,29 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             return applyResultAtomic(result);
         } catch (RuntimeException ex) {
             return ResultApplyOutcome.failed(result, "redis runtime is unavailable: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Atomically applies a work result and returns the pre-apply lease/work
+     * snapshot using a single Lua script execution — no separate round-trips for
+     * lease or work reads on the hot callback path.
+     */
+    @Override
+    public RuntimeResultApplyContext applyResultWithContext(TaskWorkResult result) {
+        if (!running.get()) {
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.failed(result, "work runtime is stopped"));
+        }
+        if (result == null || isBlank(result.taskId()) || isBlank(result.messageId())) {
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.invalid(result, "taskId and messageId must not be blank"));
+        }
+        try {
+            return applyResultWithContextAtomic(result);
+        } catch (RuntimeException ex) {
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.failed(result, "redis runtime is unavailable: " + ex.getMessage()));
         }
     }
 
@@ -879,6 +1029,96 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             case "NO_ACTIVE_LEASE" -> ResultApplyOutcome.noActiveLease(result, "no active lease for result");
             default -> ResultApplyOutcome.failed(result, "unexpected applyResult status");
         };
+    }
+
+    /**
+     * Executes {@link #APPLY_RESULT_WITH_CONTEXT_SCRIPT} and parses the 1- or
+     * 9-element multi-bulk result into a {@link RuntimeResultApplyContext}.
+     *
+     * <p>Response layout (indices into {@code raw}):
+     * <pre>
+     *   [0] status string
+     *   [1] workerId
+     *   [2] workerContextId
+     *   [3] batchId
+     *   [4] activeLeaseToken
+     *   [5] payloadRef
+     *   [6] retryCount
+     *   [7] maxRetryCount
+     *   [8] leasedAtMillis
+     * </pre>
+     * A 1-element response means {@code NO_ACTIVE_LEASE}.</p>
+     */
+    private RuntimeResultApplyContext applyResultWithContextAtomic(TaskWorkResult result) {
+        Instant now = clock.get();
+        Instant completedAt = result.completedAt() == null ? now : result.completedAt();
+        String finalStatus = result.success()
+                ? TaskWorkFinalStatus.SUCCESS.name()
+                : result.expired() ? TaskWorkFinalStatus.EXPIRED.name() : TaskWorkFinalStatus.FAILED.name();
+        // Same KEYS/ARGV layout as applyResultAtomic — script handles the extra reads.
+        List<Object> raw = evalMulti(
+                APPLY_RESULT_WITH_CONTEXT_SCRIPT,
+                keys(
+                        keyspace.taskWorkHash(result.taskId(), result.messageId()),
+                        keyspace.taskLeaseHash(result.taskId(), result.messageId()),
+                        keyspace.namespace() + ":worker:",
+                        keyspace.taskActiveSet(result.taskId()),
+                        keyspace.leaseExpiryZset(),
+                        keyspace.taskMembersSet(result.taskId()),
+                        keyspace.taskStatsHash(result.taskId()),
+                        keyspace.runtimeStatsHash(),
+                        keyspace.taskRecentFinalReceiptHash(result.taskId(), result.messageId()),
+                        keyspace.taskRecentFinalReceiptSet(result.taskId()),
+                        keyspace.recentFinalReceiptsZset(),
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskDelayedZset(result.taskId()),
+                        keyspace.taskReadyQueue(result.taskId()),
+                        keyspace.readyTasksZset()
+                ),
+                values(
+                        result.taskId(),
+                        result.messageId(),
+                        keyspace.workMember(result.taskId(), result.messageId()),
+                        nullToEmpty(result.leaseToken()),
+                        Long.toString(now.toEpochMilli()),
+                        Long.toString(completedAt.toEpochMilli()),
+                        result.success() ? "1" : "0",
+                        result.expired() ? "1" : "0",
+                        result.retryable() ? "1" : "0",
+                        Long.toString(result.retryVisibleAt() == null ? 0L : result.retryVisibleAt().toEpochMilli()),
+                        nullToEmpty(result.errorCode()),
+                        finalStatus,
+                        keyspace.taskPrefix(result.taskId())
+                )
+        );
+        String status = raw.isEmpty() ? "" : stringValue(raw.get(0));
+        // Trim receipts for terminal outcomes, same as applyResultAtomic.
+        if ("SUCCESS_APPLIED".equals(status) || "FAILURE_FINALIZED".equals(status)) {
+            trimRecentFinalReceipts();
+        }
+        ResultApplyOutcome outcome = switch (status) {
+            case "SUCCESS_APPLIED" -> ResultApplyOutcome.success(result);
+            case "RETRY_SCHEDULED" -> ResultApplyOutcome.retryScheduled(result, "retry budget allows re-dispatch");
+            case "FAILURE_FINALIZED" -> ResultApplyOutcome.failureFinalized(result, "retry budget exhausted or result is not retryable");
+            case "STALE_LEASE" -> ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
+            case "NO_ACTIVE_LEASE" -> ResultApplyOutcome.noActiveLease(result, "no active lease for result");
+            default -> ResultApplyOutcome.failed(result, "unexpected applyResultWithContext status: " + status);
+        };
+        // 1-element response = NO_ACTIVE_LEASE (or unexpected): no snapshot available.
+        if (raw.size() < 9) {
+            return RuntimeResultApplyContext.noLease(outcome);
+        }
+        return RuntimeResultApplyContext.withSnapshot(
+                outcome,
+                emptyToNull(stringValue(raw.get(1))),   // workerId
+                emptyToNull(stringValue(raw.get(2))),   // workerContextId
+                emptyToNull(stringValue(raw.get(3))),   // batchId
+                emptyToNull(stringValue(raw.get(4))),   // activeLeaseToken
+                emptyToNull(stringValue(raw.get(5))),   // payloadRef
+                parseInt(stringValue(raw.get(6))),      // retryCount
+                parseInt(stringValue(raw.get(7))),      // maxRetryCount
+                parseInstant(stringValue(raw.get(8)))   // leasedAt
+        );
     }
 
     private List<ActiveLeaseRecord> pollExpiredLeasesAtomic(int limit, Instant now) {

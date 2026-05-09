@@ -3,6 +3,7 @@ package com.xa.mass.runtime.contract;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -215,6 +216,152 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(runtime.applyResult(
                 TaskWorkResult.success("t1", "m1", "stale-token", "done", Map.of())).status())
                 .isEqualTo(ResultApplyStatus.STALE_LEASE);
+    }
+
+    // ── applyResultWithContext ────────────────────────────────────────────────
+
+    @Test
+    void applyResultWithContext_success_returnsSnapshotMatchingLeaseAndWork() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        List<ClaimedTaskWork> claimed = runtime.claimReady(
+                "t1",
+                List.of(new WorkerClaimTarget("w1", "ctx-worker-1", "batch-1", 1)),
+                1, 30);
+        ClaimedTaskWork work = claimed.get(0);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
+        assertThat(ctx.hasLeaseSnapshot()).isTrue();
+        assertThat(ctx.workerId()).isEqualTo("w1");
+        assertThat(ctx.workerContextId()).isEqualTo("ctx-worker-1");
+        assertThat(ctx.batchId()).isEqualTo("batch-1");
+        assertThat(ctx.activeLeaseToken()).isEqualTo(work.leaseToken());
+        assertThat(ctx.retryCount()).isEqualTo(0);
+        assertThat(ctx.maxRetryCount()).isEqualTo(3);
+        assertThat(ctx.leasedAt()).isNotNull();
+    }
+
+    @Test
+    void applyResultWithContext_success_producesIdenticalRuntimeSideEffectsAsApplyResult() {
+        // Enqueue two identical items in two separate runtimes to verify side effects.
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
+
+        // Same post-apply state as applyResult: no active lease, no ready work, success counted.
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
+        assertThat(runtime.hasActiveLeaseForWorker("t1", "w1")).isFalse();
+        assertThat(runtime.hasReadyWork("t1")).isFalse();
+        assertThat(runtime.stats("t1").successCount()).isEqualTo(1);
+    }
+
+    @Test
+    void applyResultWithContext_noActiveLease_returnsNoLeaseContext() {
+        // No enqueue, no claim — no active lease.
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m99", null, "done", Map.of()));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.NO_ACTIVE_LEASE);
+        assertThat(ctx.hasLeaseSnapshot()).isFalse();
+        assertThat(ctx.workerId()).isNull();
+        assertThat(ctx.activeLeaseToken()).isNull();
+    }
+
+    @Test
+    void applyResultWithContext_staleLease_returnsSnapshotWithActualLeaseHolder() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", "stale-token-xyz", "done", Map.of()));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.STALE_LEASE);
+        // Snapshot must still contain the actual lease-holder for diagnostic purposes.
+        assertThat(ctx.hasLeaseSnapshot()).isTrue();
+        assertThat(ctx.workerId()).isEqualTo("w1");
+        assertThat(ctx.activeLeaseToken()).isNotNull().isNotEqualTo("stale-token-xyz");
+    }
+
+    @Test
+    void applyResultWithContext_retryScheduled_returnsSnapshotAndPreRetryRetryCount() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.RETRY_SCHEDULED);
+        assertThat(ctx.hasLeaseSnapshot()).isTrue();
+        assertThat(ctx.workerId()).isEqualTo("w1");
+        // retryCount in context is the count at time of apply (0 for first attempt).
+        assertThat(ctx.retryCount()).isEqualTo(0);
+        assertThat(ctx.maxRetryCount()).isEqualTo(3);
+        // Work is back in the ready queue for the next attempt.
+        assertThat(runtime.hasReadyWork("t1")).isTrue();
+    }
+
+    @Test
+    void applyResultWithContext_failureFinalized_returnsSnapshotAndFinalOutcome() {
+        // Item with maxRetryCount=0 so first failure exhausts budget immediately.
+        runtime.enqueue(
+                new TaskWorkEnvelope("t1", "m1", "demo.event", Map.of(), null, 0, 0, null, null, clock.get()),
+                WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.FAILURE_FINALIZED);
+        assertThat(ctx.hasLeaseSnapshot()).isTrue();
+        assertThat(ctx.workerId()).isEqualTo("w1");
+        assertThat(ctx.maxRetryCount()).isEqualTo(0);
+        assertThat(runtime.stats("t1").failedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void applyResultWithContext_isIdempotentOnSecondCall_returnsNoLeaseContext() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        // First apply — succeeds.
+        runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
+        // Second apply — duplicate, no lease.
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done2", Map.of()));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.NO_ACTIVE_LEASE);
+        assertThat(ctx.hasLeaseSnapshot()).isFalse();
+    }
+
+    @Test
+    void applyResultWithContext_onRetry_retryCountIncrements_acrossAttempts() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work1 = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+
+        // First attempt fails → retry
+        RuntimeResultApplyContext ctx1 = runtime.applyResultWithContext(
+                TaskWorkResult.failure("t1", "m1", work1.leaseToken(), "ERR", "boom", Map.of(), true));
+        assertThat(ctx1.retryCount()).isEqualTo(0);
+        assertThat(ctx1.outcome().status()).isEqualTo(ResultApplyStatus.RETRY_SCHEDULED);
+
+        // Second attempt
+        ClaimedTaskWork work2 = runtime.claimReady(
+                "t1", List.of(new WorkerClaimTarget("w2", "ctx-2", "b2", 1)), 1, 30).get(0);
+        RuntimeResultApplyContext ctx2 = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work2.leaseToken(), "done", Map.of()));
+        assertThat(ctx2.retryCount()).isEqualTo(1);   // second attempt
+        assertThat(ctx2.workerId()).isEqualTo("w2");
+        assertThat(ctx2.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
     }
 
     // ── retry ─────────────────────────────────────────────────────────────────

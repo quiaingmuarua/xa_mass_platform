@@ -28,6 +28,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -78,6 +79,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
+    /**
+     * Async executor for best-effort compatibility projection writes.
+     *
+     * <p>Projection writes are {@link CompatibilityProjectionOnly} residue —
+     * they must not block the runtime callback hot path. Submitting them here
+     * offloads the blocking storage I/O to a virtual-thread pool so the caller
+     * returns as soon as the runtime mutation completes.</p>
+     */
+    private final VirtualThreadRuntimeTaskExecutor projectionWriteExecutor;
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long taskMessageLeaseSeconds = 300L;
 
@@ -136,6 +146,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
+        );
+        this.projectionWriteExecutor = new VirtualThreadRuntimeTaskExecutor(
+                "engine-proj-write-",
+                Integer.getInteger("xa.mass.engine.projectionWriteMaxPendingTasks", 50_000)
         );
         this.dispatchRequestService = new TaskDispatchRequestService(
                 this,
@@ -535,6 +549,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         dispatchRequestService.shutdown();
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
+        projectionWriteExecutor.shutdown();
         taskWorkRuntime.shutdown();
     }
 
@@ -685,6 +700,38 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskWorkRuntime.applyResult(result);
+    }
+
+    /**
+     * Single-call atomic equivalent of three separate runtime round-trips
+     * ({@code getActiveLease} + {@code getWork} + {@code applyResult}).
+     *
+     * <p>Returns the pre-apply lease and work snapshot together with the outcome
+     * so the engine callback path does not need additional runtime reads after
+     * the mutation.</p>
+     */
+    RuntimeResultApplyContext applyTaskWorkResultWithContext(TaskWorkResult result) {
+        return taskWorkRuntime.applyResultWithContext(result);
+    }
+
+    /**
+     * Submits a best-effort compatibility projection write to the async
+     * projection executor.
+     *
+     * <p>The task is dropped (with a warning) if the executor's pending-task
+     * capacity is exhausted. Callers must not treat this as a durable write
+     * path — projection residue is secondary to runtime truth.</p>
+     *
+     * @param task the projection write to execute off the hot path
+     */
+    @CompatibilityProjectionOnly
+    void submitProjectionWrite(Runnable task) {
+        try {
+            projectionWriteExecutor.submit(task);
+        } catch (java.util.concurrent.RejectedExecutionException ex) {
+            logger.warn("Projection write executor at capacity — dropping best-effort projection write: {}",
+                    ex.getMessage());
+        }
     }
 
     @Override

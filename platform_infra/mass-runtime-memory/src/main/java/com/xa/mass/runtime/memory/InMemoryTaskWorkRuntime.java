@@ -5,6 +5,7 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkFinalStatus;
@@ -277,6 +278,60 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
             duplicateResultItems.incrementAndGet();
             return ResultApplyOutcome.noActiveLease(result, "no active lease for result");
         }
+        return applyResultCore(result, key, lease);
+    }
+
+    /**
+     * Atomically applies a work result and returns the pre-apply lease and work
+     * snapshot in a single synchronized operation, eliminating three separate
+     * round-trips for the engine callback hot path.
+     *
+     * <p>All reads (lease lookup, work-envelope lookup) and the result mutation
+     * occur under the same monitor acquisition. Implementations that use a
+     * different concurrency model (e.g., Redis Lua script) also override this
+     * method to preserve the single-operation guarantee.</p>
+     */
+    @Override
+    public synchronized RuntimeResultApplyContext applyResultWithContext(TaskWorkResult result) {
+        if (!running.get()) {
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.failed(result, "work runtime is stopped"));
+        }
+        if (result == null || isBlank(result.taskId()) || isBlank(result.messageId())) {
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.invalid(result, "taskId and messageId must not be blank"));
+        }
+        WorkKey key = new WorkKey(result.taskId(), result.messageId());
+        ActiveLeaseRecord lease = leaseByKey.get(key);
+        if (lease == null) {
+            duplicateResultItems.incrementAndGet();
+            return RuntimeResultApplyContext.noLease(
+                    ResultApplyOutcome.noActiveLease(result, "no active lease for result"));
+        }
+        // Snapshot work envelope before apply — the success path removes it from workByKey.
+        TaskWorkEnvelope workSnapshot = workByKey.get(key);
+        int maxRetryCount = workSnapshot != null ? workSnapshot.maxRetryCount() : 0;
+        ResultApplyOutcome outcome = applyResultCore(result, key, lease);
+        return RuntimeResultApplyContext.withSnapshot(
+                outcome,
+                lease.workerId(),
+                lease.workerContextId(),
+                lease.batchId(),
+                lease.leaseToken(),
+                lease.payloadRef(),
+                lease.retryCount(),
+                maxRetryCount,
+                lease.leasedAt());
+    }
+
+    /**
+     * Core apply logic shared by {@link #applyResult} and
+     * {@link #applyResultWithContext}. Must be called while holding the runtime
+     * monitor. Pre-condition: {@code lease} is non-null.
+     */
+    private ResultApplyOutcome applyResultCore(TaskWorkResult result,
+                                               WorkKey key,
+                                               ActiveLeaseRecord lease) {
         if (!isBlank(result.leaseToken()) && !result.leaseToken().equals(lease.leaseToken())) {
             staleResultItems.incrementAndGet();
             return ResultApplyOutcome.staleLease(result, "result leaseToken does not match active lease");
