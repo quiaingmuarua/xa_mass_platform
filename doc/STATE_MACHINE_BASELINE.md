@@ -231,7 +231,7 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
   the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireLeasedWork(...)`). This always marks the
   concrete compatibility attempt `EXPIRED` and publishes
   `taskWorkAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
-  `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without `taskWorkLogicallyFinal`. When retry
+  `TASK_WORK_RETRY_RESET` is emitted, and redispatch is requested without `taskWorkLogicallyFinal`. When retry
   budget is exhausted, `SESSION` keeps logical `EXPIRED`, while `BATCH` finalizes as `FAILED + RETRY_EXHAUSTED`
   because lease loss is treated as an attempt failure mode rather than a stable per-item timeout contract.
 - **Max task runtime**: non-terminal tasks with `maxRuntimeSeconds > 0` are indexed by their
@@ -258,3 +258,4 @@ Must hold:
 5. worker-context release must target the exact bound `workerContextId`
 6. message final reason must match message status
 7. active attempt and final logical message must not coexist
+

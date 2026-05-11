@@ -1,6 +1,6 @@
 package com.xa.mass.api.config;
 
-import com.xa.mass.base.project.ProjectRegistry;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,10 +11,18 @@ import java.util.List;
 @Component
 public class GlobalConfig {
 
+    private final SdkMetadataCatalog metadataCatalog;
+
+    public GlobalConfig(SdkMetadataCatalog metadataCatalog) {
+        this.metadataCatalog = metadataCatalog;
+    }
+
     /**
      * Return all supported project codes.
      */
     public List<String> getAllProjects() {
-        return ProjectRegistry.listProjectCodes();
+        return metadataCatalog.listProjects().stream()
+                .map(project -> project.getCode())
+                .toList();
     }
 }

@@ -378,13 +378,13 @@ class SimpleTaskDispatchBinderTest {
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             listener.bindDispatches(task, List.of(matched(worker("d1"), wc)));
 
-            capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
+            capture.assertHasEvent("TASK_WORK_ATTEMPT_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && "CREATED".equals(mdc.get("fromStatus"))
                             && "LEASED".equals(mdc.get("toStatus"))
                             && "d1".equals(mdc.get("workerId"))
                             && "tk1".equals(mdc.get("workerContextId")));
-            capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
+            capture.assertHasEvent("TASK_WORK_ATTEMPT_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && "LEASED".equals(mdc.get("fromStatus"))
                             && "DISPATCHED".equals(mdc.get("toStatus"))
@@ -700,6 +700,7 @@ class SimpleTaskDispatchBinderTest {
         }
     }
 }
+
 
 
 

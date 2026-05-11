@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Scenario:
  * <ol>
  *   <li>Create a sealed task with {@code MESSAGE_COUNT} messages. Each message input
- *       carries a {@code "shouldFail"} flag — half are {@code true}, half are {@code false}.
+ *       carries a {@code "shouldFail"} flag - half are {@code true}, half are {@code false}.
  *       {@code maxRetryCount=0} so each message has exactly one attempt.</li>
  *   <li>Start one polling worker that reads the {@code "shouldFail"} flag from the item
  *       input and submits success or failure accordingly.</li>
@@ -183,14 +183,14 @@ public final class SdkPollingMixedResultsChaosRunner {
                 ChaosSupport.require("MIXED_MESSAGE_RESULTS".equals(outcome.terminalReason()),
                         "task terminalReason should be MIXED_MESSAGE_RESULTS, got " + outcome.terminalReason());
 
-                // Trace contract assertions — verify canonical ExecutionEvent stream
+                // Trace contract assertions - verify canonical ExecutionEvent stream
                 TraceEventAssertions.of(traceSink)
                         .forTask(task.getTid())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
                         .requireTerminalReason("MIXED_MESSAGE_RESULTS")
-                        .requireEventType(ExecutionEventType.TASK_MSG_STATUS_TRANSITION)
+                        .requireEventType(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
                         .requireMessageStatusTransitions("SUCCESS", SUCCESS_COUNT)
                         .requireMessageStatusTransitions("FAILED", FAIL_COUNT)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
@@ -427,3 +427,4 @@ public final class SdkPollingMixedResultsChaosRunner {
         }
     }
 }
+

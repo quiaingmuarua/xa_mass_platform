@@ -10,10 +10,7 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.InternalDebugTaskInvocationApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.model.ProjectRef;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -94,12 +91,14 @@ public class InternalDebugTaskInvocationController {
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            Task task;
+            var task = submitterTaskCreate != null
+                    ? taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                    toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
+                            submitterTaskCreate.userId(), correlationId),
+                    submitterTaskCreate.principal()
+            ))
+                    : null;
             if (submitterTaskCreate != null) {
-                task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                        toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId(), correlationId),
-                        submitterTaskCreate.principal()
-                ));
             } else {
                 PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
@@ -222,8 +221,8 @@ public class InternalDebugTaskInvocationController {
     }
 
     private void requireBusinessBindings(String project, String userId) {
-        ProjectRef.require(project);
-        UserRef.requireUserId(userId);
+        requireProjectCode(project);
+        requireUserId(userId);
     }
 
     private MassTaskShellCreateRequest toMassTaskShellCreateRequest(InternalDebugTaskInvocationApiRequest requestBody,
@@ -277,6 +276,20 @@ public class InternalDebugTaskInvocationController {
             throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
         }
         return projectMetadata.getTenantId();
+    }
+
+    private String requireProjectCode(String project) {
+        if (project == null || project.isBlank()) {
+            throw new IllegalArgumentException("project is required");
+        }
+        return project.trim();
+    }
+
+    private String requireUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("userId is required");
+        }
+        return userId.trim();
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

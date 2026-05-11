@@ -105,7 +105,7 @@ public final class TraceEventLogger {
         if (workView == null) {
             return;
         }
-        emit(event(ExecutionEventType.TASK_MSG_STATUS_TRANSITION)
+        emit(event(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
                 .identity(identity -> identity
                         .taskId(workView.taskId())
                         .messageId(workView.messageId())
@@ -141,7 +141,7 @@ public final class TraceEventLogger {
         if (attemptId == null || attemptId.isBlank()) {
             return;
         }
-        emit(event(ExecutionEventType.TASK_MSG_ATTEMPT_STATUS_TRANSITION)
+        emit(event(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
                 .identity(identity -> identity
                         .taskId(taskId)
                         .messageId(messageId)
@@ -181,7 +181,7 @@ public final class TraceEventLogger {
         if (workView == null) {
             return;
         }
-        emit(event(ExecutionEventType.TASK_MSG_RETRY_RESET)
+        emit(event(ExecutionEventType.TASK_WORK_RETRY_RESET)
                 .identity(identity -> identity
                         .taskId(workView.taskId())
                         .messageId(workView.messageId())
@@ -439,7 +439,7 @@ public final class TraceEventLogger {
         if (task == null || workView == null || attemptId == null || attemptId.isBlank()) {
             return;
         }
-        emit(event(ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED)
+        emit(event(ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED)
                 .identity(identity -> identity
                         .taskId(task.getTid())
                         .messageId(workView.messageId())
@@ -474,7 +474,7 @@ public final class TraceEventLogger {
         if (task == null || workView == null) {
             return;
         }
-        emit(event(ExecutionEventType.TASK_MSG_LOGICALLY_FINAL)
+        emit(event(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
                 .identity(identity -> identity
                         .taskId(task.getTid())
                         .messageId(workView.messageId())
@@ -889,3 +889,4 @@ public final class TraceEventLogger {
     ) {
     }
 }
+

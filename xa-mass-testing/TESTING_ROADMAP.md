@@ -91,7 +91,7 @@ Engine hot path
 
 `TASK_TERMINAL_CLOSED` events store `terminalReason` in `attrs["terminalReason"]`, **not** in `transition.reason`. `TraceEventAssertions.requireTerminalReason` handles this correctly.
 
-`TASK_MSG_STATUS_TRANSITION` events store the destination status in `transition.dst` as the enum name (e.g., `"FAILED"`, `"SUCCESS"`).
+`TASK_WORK_STATUS_TRANSITION` events store the destination status in `transition.dst` as the enum name (e.g., `"FAILED"`, `"SUCCESS"`).
 
 ### Existing trace test gap
 
@@ -143,7 +143,7 @@ TraceEventAssertions.of(traceSink)
 
 | Item | Status | Lane | Gap being closed |
 |---|---|---|---|
-| Per-message retry exhaustion chaos probe | ✅ Done | chaos (`xa-mass-testing`) | `SdkPollingMessageRetryExhaustedChaosRunner`: `maxRetryCount=2`, worker always fails, each message burns 3 attempts → `RETRY_EXHAUSTED` message finalization → `ALL_MESSAGES_FAILED`; `TASK_MSG_RETRY_RESET` asserted in trace; wired to `chaos-smokes` CI job |
+| Per-message retry exhaustion chaos probe | ✅ Done | chaos (`xa-mass-testing`) | `SdkPollingMessageRetryExhaustedChaosRunner`: `maxRetryCount=2`, worker always fails, each message burns 3 attempts → `RETRY_EXHAUSTED` message finalization → `ALL_MESSAGES_FAILED`; `TASK_WORK_RETRY_RESET` asserted in trace; wired to `chaos-smokes` CI job |
 | `RETRY_BUDGET_EXHAUSTED` policy implementation | ⛔ Blocked | engine | **No triggering policy exists.** `AllWorkFinalTaskTerminalPolicy` does not emit this reason. Requires a new `RetryBudgetTaskTerminalPolicy`. Tracked in `doc/CURRENT_GAPS.md`. Do not write an E2E test for this until the policy is implemented. |
 | `ALL_MESSAGES_FAILED` Boot-shell E2E | ⏳ Pending | Boot-shell E2E (`xa-mass-server`) | Server-side HTTP path for all-fail result convergence (chaos layer exists + CI gated; HTTP layer missing) |
 | Resume short-circuit Boot-shell E2E | ⏳ Pending | Boot-shell E2E (`xa-mass-server`) | Extend `TaskApiResumeAndCompleteIntegrationTest`: add case where all messages succeed while task is `PAUSED`; verify `resumeTask` returns `TERMINAL` directly |
@@ -172,7 +172,7 @@ TraceEventAssertions.of(traceSink)
 
 | Item | Lane | Scope |
 |---|---|---|
-| Socket chaos: disconnect | chaos (`xa-mass-testing`) | new `SdkSocketDisconnectChaosRunner` — mirror of WS disconnect probe; use `CapturingExecutionEventSink` to assert `LEASE_EXPIRED` and `TASK_MSG_RETRY_RESET` events |
+| Socket chaos: disconnect | chaos (`xa-mass-testing`) | new `SdkSocketDisconnectChaosRunner` — mirror of WS disconnect probe; use `CapturingExecutionEventSink` to assert `LEASE_EXPIRED` and `TASK_WORK_RETRY_RESET` events |
 | Socket chaos: lease-expiry redispatch | chaos (`xa-mass-testing`) | new `SdkSocketLeaseExpiryRedispatchChaosRunner` — mirror of WS lease-expiry probe |
 | JDBC H2 failure + lifecycle coverage | Boot-shell E2E (`xa-mass-server`) | extend `H2ExternalWorkerPollingApiIntegrationTest`: add failure result and cancel-from-RUNNING scenarios on H2 path |
 | Cross-language failure + retry | Boot-shell E2E (`xa-mass-server`) | extend Java and Node black-box tests to submit failure and verify retry + final convergence; current black-box tests only cover success path |
@@ -204,7 +204,7 @@ Every new chaos runner **must**:
    - `requireEventType(TASK_STATUS_TRANSITION)` — verifies state machine events were emitted
    - `requireEventType(TASK_TERMINAL_CLOSED)` — verifies terminal convergence was traced
    - `requireTerminalReason(...)` — verifies the correct terminal reason was captured
-   - Any scenario-specific event types (e.g., `LEASE_EXPIRED` for lease-expiry probes, `TASK_MSG_RETRY_RESET` for retry probes)
+   - Any scenario-specific event types (e.g., `LEASE_EXPIRED` for lease-expiry probes, `TASK_WORK_RETRY_RESET` for retry probes)
 4. Include `"trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTid())` in the `ChaosReportWriter.write` call
 
 This makes every chaos report self-describing: the `trace.byType` section shows exactly which event types were emitted, making post-mortem analysis straightforward without needing to re-run the scenario.

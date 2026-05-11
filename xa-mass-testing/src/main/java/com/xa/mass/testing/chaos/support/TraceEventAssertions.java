@@ -83,18 +83,18 @@ public final class TraceEventAssertions {
     }
 
     /**
-     * Assert that TASK_MSG_STATUS_TRANSITION events for the task contain at least {@code minCount}
+     * Assert that TASK_WORK_STATUS_TRANSITION events for the task contain at least {@code minCount}
      * events where {@code transition.dst} equals the expected destination status.
      */
     public TraceEventAssertions requireMessageStatusTransitions(String dstStatus, int minCount) {
         List<ExecutionEvent> transitions = taskId != null
-                ? sink.eventsOfTypeForTask(ExecutionEventType.TASK_MSG_STATUS_TRANSITION, taskId)
-                : sink.eventsOfType(ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
+                ? sink.eventsOfTypeForTask(ExecutionEventType.TASK_WORK_STATUS_TRANSITION, taskId)
+                : sink.eventsOfType(ExecutionEventType.TASK_WORK_STATUS_TRANSITION);
         long matched = transitions.stream()
                 .filter(e -> e.getTransition() != null && dstStatus.equals(e.getTransition().dst()))
                 .count();
         ChaosSupport.require(matched >= minCount,
-                "expected >= " + minCount + " TASK_MSG_STATUS_TRANSITION → " + dstStatus
+                "expected >= " + minCount + " TASK_WORK_STATUS_TRANSITION → " + dstStatus
                         + taskScope() + " but found " + matched);
         return this;
     }

@@ -1,6 +1,5 @@
 package com.xa.mass.api.sync;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskMessageLogicallyFinalEvent;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.slf4j.Logger;
@@ -10,6 +9,7 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,12 +46,13 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        app.addTaskMessageLogicallyFinalListener(this::onMessageLogicallyFinal);
+        app.addTaskMessageLogicallyFinalListener((task, finalEvent) ->
+                onMessageLogicallyFinal(task == null ? null : task.getSharedConfig(), finalEvent));
         logger.info("SyncTaskResultBridge listener registered");
     }
 
-    private void onMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event) {
-        String correlationId = resolveCorrelationId(task);
+    private void onMessageLogicallyFinal(Map<String, Object> sharedConfig, TaskMessageLogicallyFinalEvent event) {
+        String correlationId = resolveCorrelationId(sharedConfig);
         if (correlationId == null) {
             return;
         }
@@ -61,11 +62,11 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
         }
     }
 
-    private String resolveCorrelationId(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
+    private String resolveCorrelationId(Map<String, Object> sharedConfig) {
+        if (sharedConfig == null || sharedConfig.isEmpty()) {
             return null;
         }
-        Object value = task.getSharedConfig().get(SYNC_KEY);
+        Object value = sharedConfig.get(SYNC_KEY);
         return value instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 

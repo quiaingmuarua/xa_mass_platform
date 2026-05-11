@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Per-message retry-exhaustion end-to-end path (SDK embedded runtime).</li>
  *   <li>{@code TaskMsg.finalReason=RETRY_EXHAUSTED} convergence via the
  *       attempt-count policy in {@code AllWorkFinalTaskTerminalPolicy}.</li>
- *   <li>Trace: {@code TASK_MSG_RETRY_RESET} events are emitted for each retry.</li>
+ *   <li>Trace: {@code TASK_WORK_RETRY_RESET} events are emitted for each retry.</li>
  * </ul>
  */
 public final class SdkPollingMessageRetryExhaustedChaosRunner {
@@ -203,9 +203,9 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
                         .requireTerminalReason("ALL_MESSAGES_FAILED")
-                        .requireEventType(ExecutionEventType.TASK_MSG_STATUS_TRANSITION)
+                        .requireEventType(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
                         // Each retry reset is traced
-                        .requireEventType(ExecutionEventType.TASK_MSG_RETRY_RESET)
+                        .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
 
                 Path reportPath = ChaosReportWriter.write("sdk-polling-retry-exhausted-chaos", Map.of(
@@ -400,3 +400,4 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
         }
     }
 }
+

@@ -116,8 +116,8 @@ class RedisRuntimeTraceIntegrationTest {
         assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
 
         assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_LOGICALLY_FINAL);
         assertTraceContainsTaskEvent(fixture.task().getTid(), ExecutionEventType.TASK_TERMINAL_CLOSED);
     }
 
@@ -227,10 +227,10 @@ class RedisRuntimeTraceIntegrationTest {
         assertEquals(1, runtime.stats(fixture.task().getTid()).readyCount());
 
         assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.LEASE_EXPIRED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_RETRY_RESET);
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
-        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
-        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_RETRY_RESET);
+        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_LOGICALLY_FINAL);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_WORK_STATUS_TRANSITION);
     }
 
     private RunningTaskFixture createAssignedTask(String taskName, int maxRetryCount) {
@@ -401,4 +401,5 @@ class RedisRuntimeTraceIntegrationTest {
         }
     }
 }
+
 

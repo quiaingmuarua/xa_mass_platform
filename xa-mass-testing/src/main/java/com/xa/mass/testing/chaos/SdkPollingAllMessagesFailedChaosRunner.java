@@ -154,14 +154,14 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                 ChaosSupport.require("ALL_MESSAGES_FAILED".equals(outcome.terminalReason()),
                         "task terminalReason should be ALL_MESSAGES_FAILED, got " + outcome.terminalReason());
 
-                // Trace contract assertions — verify canonical ExecutionEvent stream
+                // Trace contract assertions - verify canonical ExecutionEvent stream
                 TraceEventAssertions.of(traceSink)
                         .forTask(task.getTid())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
                         .requireTerminalReason("ALL_MESSAGES_FAILED")
-                        .requireEventType(ExecutionEventType.TASK_MSG_STATUS_TRANSITION)
+                        .requireEventType(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
                         .requireMessageStatusTransitions("FAILED", MESSAGE_COUNT)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
 
@@ -348,3 +348,4 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         }
     }
 }
+

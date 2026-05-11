@@ -5,11 +5,11 @@ public enum ExecutionEventType {
     TASK_STATUS_TRANSITION(EventCategory.TASK, EventSeverity.INFO),
     TASK_TERMINAL_CLOSED(EventCategory.TASK, EventSeverity.INFO),
     TASK_PROGRESS_SNAPSHOT(EventCategory.TASK, EventSeverity.INFO),
-    TASK_MSG_STATUS_TRANSITION(EventCategory.MSG, EventSeverity.INFO),
-    TASK_MSG_ATTEMPT_STATUS_TRANSITION(EventCategory.MSG, EventSeverity.INFO),
-    TASK_MSG_ATTEMPT_CLOSED(EventCategory.MSG, EventSeverity.INFO),
-    TASK_MSG_LOGICALLY_FINAL(EventCategory.MSG, EventSeverity.INFO),
-    TASK_MSG_RETRY_RESET(EventCategory.MSG, EventSeverity.WARN),
+    TASK_WORK_STATUS_TRANSITION(EventCategory.MSG, EventSeverity.INFO),
+    TASK_WORK_ATTEMPT_STATUS_TRANSITION(EventCategory.MSG, EventSeverity.INFO),
+    TASK_WORK_ATTEMPT_CLOSED(EventCategory.MSG, EventSeverity.INFO),
+    TASK_WORK_LOGICALLY_FINAL(EventCategory.MSG, EventSeverity.INFO),
+    TASK_WORK_RETRY_RESET(EventCategory.MSG, EventSeverity.WARN),
     WORKER_CONTEXT_STATUS_TRANSITION(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_LOCK_ACQUIRED(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_LOCK_RELEASED(EventCategory.WORKER, EventSeverity.INFO),
@@ -50,3 +50,4 @@ public enum ExecutionEventType {
         return severity;
     }
 }
+

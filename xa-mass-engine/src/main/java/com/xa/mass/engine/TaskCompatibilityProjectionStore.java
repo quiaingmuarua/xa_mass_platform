@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Engine-internal owner for bounded compatibility projection residue over
@@ -29,7 +30,7 @@ final class TaskCompatibilityProjectionStore {
         if (ingressItem == null) {
             return false;
         }
-        TaskDetailStore.TaskMessageProjection projection = new TaskDetailStore.TaskMessageProjection(
+        TaskDetailStore.TaskMessageProjection workProjection = new TaskDetailStore.TaskMessageProjection(
                 ingressItem.messageId(),
                 ingressItem.taskId(),
                 ingressItem.projectedInput(),
@@ -52,9 +53,9 @@ final class TaskCompatibilityProjectionStore {
                 null
         );
         try {
-            return taskDetailStore.upsertTaskMessageProjection(ingressItem.taskId(), projection);
+            return taskDetailStore.upsertTaskMessageProjection(ingressItem.taskId(), workProjection);
         } catch (RuntimeException e) {
-            logger.warn("Failed to upsert compatibility task message projection for taskId={}, messageId={} during runtime ingress accepted",
+            logger.warn("Failed to upsert compatibility work projection for taskId={}, messageId={} during runtime ingress accepted",
                     ingressItem.taskId(), ingressItem.messageId(), e);
             return false;
         }
@@ -71,11 +72,11 @@ final class TaskCompatibilityProjectionStore {
                 return;
             }
         } catch (RuntimeException e) {
-            logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
+            logger.warn("Compatibility work projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
                     taskId, workSummary.messageId(), action, e);
             return;
         }
-        logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
+        logger.warn("Compatibility work projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
                 taskId, workSummary.messageId(), action);
     }
 
@@ -102,15 +103,19 @@ final class TaskCompatibilityProjectionStore {
         return taskDetailStore.getTaskMessageStats(taskId).getTotal();
     }
 
-    List<TaskDetailStore.TaskMessageProjection> getWorkProjections(String taskId, int limit) {
+    List<WorkProjectionRecord> getWorkProjections(String taskId, int limit) {
         if (limit <= 0) {
             return List.of();
         }
-        return taskDetailStore.getTaskMessageProjections(taskId, limit);
+        return taskDetailStore.getTaskMessageProjections(taskId, limit).stream()
+                .filter(Objects::nonNull)
+                .map(WorkProjectionRecord::fromStorage)
+                .toList();
     }
 
-    TaskDetailStore.TaskMessageAttemptStats getWorkAttemptStats(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+    WorkAttemptStatsView getWorkAttemptStats(String taskId, String messageId) {
+        TaskDetailStore.TaskMessageAttemptStats stats = taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
+        return new WorkAttemptStatsView(stats.getTotalAttempts(), stats.getActiveAttempts());
     }
 
     private TaskDetailStore.TaskMessageProjection toWorkProjectionRecord(TaskResultService.RuntimeWorkSummary workSummary) {
@@ -153,5 +158,25 @@ final class TaskCompatibilityProjectionStore {
                 attempt.errorCode(),
                 attempt.output()
         );
+    }
+
+    record WorkProjectionRecord(String messageId,
+                                TaskWorkProjectionState.MessageStatus status,
+                                TaskWorkProjectionState.MessageFinalReason finalReason) {
+
+        static WorkProjectionRecord fromStorage(TaskDetailStore.TaskMessageProjection projection) {
+            return new WorkProjectionRecord(
+                    projection.messageId(),
+                    TaskWorkProjectionState.MessageStatus.fromProjection(projection.status()),
+                    TaskWorkProjectionState.MessageFinalReason.fromProjection(projection.finalReason())
+            );
+        }
+
+        boolean isFinal() {
+            return status != null && status.isFinal();
+        }
+    }
+
+    record WorkAttemptStatsView(long totalAttempts, long activeAttempts) {
     }
 }

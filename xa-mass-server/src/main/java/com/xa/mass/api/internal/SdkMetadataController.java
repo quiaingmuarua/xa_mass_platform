@@ -1,7 +1,6 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
@@ -92,10 +91,42 @@ public class SdkMetadataController {
 
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
-        List<Worker> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
+        var workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
         List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
-                .map(event -> toEventCapabilityItem(event, workers))
+                .map(event -> {
+                    boolean directRuntime = event.getTaskModes().isEmpty();
+                    List<String> onlineWorkerIds = workers.stream()
+                            .filter(worker -> worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()))
+                            .filter(worker -> worker.getSupportedEventCodes() != null
+                                    && worker.getSupportedEventCodes().contains(event.getCode()))
+                            .map(worker -> worker.getWorkerId())
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .sorted(String::compareToIgnoreCase)
+                            .toList();
+                    List<String> workerIds = workers.stream()
+                            .filter(worker -> worker.getSupportedEventCodes() != null
+                                    && worker.getSupportedEventCodes().contains(event.getCode()))
+                            .map(worker -> worker.getWorkerId())
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .sorted(String::compareToIgnoreCase)
+                            .toList();
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("eventCode", event.getCode());
+                    item.put("eventName", event.getName());
+                    item.put("enabled", event.isEnabled());
+                    item.put("invocationModel", directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED");
+                    item.put("projectCodes", normalizeProjectCodes(event.getProjectCodes()));
+                    item.put("workerIds", workerIds);
+                    item.put("onlineWorkerIds", onlineWorkerIds);
+                    item.put("hasDirectRuntimeHandler", directRuntime);
+                    item.put("hasOnlineWorkerCoverage", !onlineWorkerIds.isEmpty());
+                    item.put("ready", directRuntime || !onlineWorkerIds.isEmpty());
+                    return item;
+                })
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
     }
@@ -108,7 +139,7 @@ public class SdkMetadataController {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
-                .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
@@ -119,9 +150,10 @@ public class SdkMetadataController {
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
                     item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
-                    item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(worker, metadataCatalog));
-                    item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker, connections));
-                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
+                    item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
+                            worker.getSupportedEventCodes(), metadataCatalog));
+                    item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
+                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     item.put("online", worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()));
                     item.put("connections", connections);
@@ -141,44 +173,6 @@ public class SdkMetadataController {
                     .body(ApiResponse.error(404, "Event metadata not found: " + eventCode));
         }
         return ResponseEntity.ok(ApiResponse.success(definition));
-    }
-
-    private Map<String, Object> toEventCapabilityItem(EventDefinition event,
-                                                      List<Worker> workers) {
-        boolean directRuntime = event.getTaskModes().isEmpty();
-        // Event capabilities are keyed by globally unique event codes. Worker
-        // support is therefore derived from supportedEventCodes, while
-        // projectCodes remains scope metadata from the SDK event definition.
-        List<String> onlineWorkerIds = workers.stream()
-                .filter(worker -> worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()))
-                .filter(worker -> worker.getSupportedEventCodes() != null
-                        && worker.getSupportedEventCodes().contains(event.getCode()))
-                .map(Worker::getWorkerId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted(String::compareToIgnoreCase)
-                .toList();
-        List<String> workerIds = workers.stream()
-                .filter(worker -> worker.getSupportedEventCodes() != null
-                        && worker.getSupportedEventCodes().contains(event.getCode()))
-                .map(Worker::getWorkerId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted(String::compareToIgnoreCase)
-                .toList();
-
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("eventCode", event.getCode());
-        item.put("eventName", event.getName());
-        item.put("enabled", event.isEnabled());
-        item.put("invocationModel", directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED");
-        item.put("projectCodes", normalizeProjectCodes(event.getProjectCodes()));
-        item.put("workerIds", workerIds);
-        item.put("onlineWorkerIds", onlineWorkerIds);
-        item.put("hasDirectRuntimeHandler", directRuntime);
-        item.put("hasOnlineWorkerCoverage", !onlineWorkerIds.isEmpty());
-        item.put("ready", directRuntime || !onlineWorkerIds.isEmpty());
-        return item;
     }
 
     private List<String> normalizeProjectCodes(List<String> projectCodes) {

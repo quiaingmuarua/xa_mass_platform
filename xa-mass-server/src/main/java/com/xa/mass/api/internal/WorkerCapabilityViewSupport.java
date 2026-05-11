@@ -1,6 +1,5 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
@@ -42,8 +41,9 @@ final class WorkerCapabilityViewSupport {
         return grouped;
     }
 
-    static List<Map<String, Object>> deriveEventBindings(Worker worker, SdkMetadataCatalog metadataCatalog) {
-        List<String> supportedEventCodes = normalizeStringList(worker == null ? null : worker.getSupportedEventCodes());
+    static List<Map<String, Object>> deriveEventBindings(List<String> supportedEventCodes,
+                                                         SdkMetadataCatalog metadataCatalog) {
+        supportedEventCodes = normalizeStringList(supportedEventCodes);
         if (supportedEventCodes.isEmpty()) {
             return List.of();
         }
@@ -68,12 +68,12 @@ final class WorkerCapabilityViewSupport {
         );
     }
 
-    static String resolveTransportHint(Worker worker, List<Map<String, Object>> connections) {
-        return WorkerTransportHints.normalize(worker == null ? null : worker.getOnlineStrategy());
+    static String resolveTransportHint(String onlineStrategy) {
+        return WorkerTransportHints.normalize(onlineStrategy);
     }
 
-    static String resolveAdapterId(Worker worker, List<Map<String, Object>> connections) {
-        String workerAdapterId = readTrimmed(worker == null ? null : worker.getAdapterId());
+    static String resolveAdapterId(String workerAdapterId, List<Map<String, Object>> connections) {
+        workerAdapterId = readTrimmed(workerAdapterId);
         if (workerAdapterId != null) {
             return workerAdapterId;
         }

@@ -797,12 +797,12 @@ class TaskManagerLifecycleTest {
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+            capture.assertHasEvent("TASK_WORK_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
                             && "ASSIGNED".equals(mdc.get("fromStatus"))
                             && "RUNNING".equals(mdc.get("toStatus")));
-            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+            capture.assertHasEvent("TASK_WORK_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
                             && "RUNNING".equals(mdc.get("fromStatus"))
@@ -946,7 +946,7 @@ class TaskManagerLifecycleTest {
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "boom-once"));
-            capture.assertHasEvent("TASK_MSG_RETRY_RESET", mdc ->
+            capture.assertHasEvent("TASK_WORK_RETRY_RESET", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
                             && "1".equals(mdc.get("retryCount"))
@@ -2181,7 +2181,7 @@ class TaskManagerLifecycleTest {
         assertFalse(result.isValid());
         assertEquals(TaskStateValidationResult.Scope.PROJECTION_AUDIT, result.getScope());
         assertTrue(result.getViolations().contains(
-                TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING));
+                TaskStateValidationResult.ViolationCode.WORK_FINAL_REASON_MISSING));
     }
 
     @Test
@@ -3370,3 +3370,4 @@ class TaskManagerLifecycleTest {
         }
     }
 }
+

@@ -33,7 +33,7 @@ class JsonlExecutionEventSinkTest {
         sink.close();
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
+    // 鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
     private List<String> drainLines() throws IOException, InterruptedException {
         sink.close();
@@ -52,7 +52,7 @@ class JsonlExecutionEventSinkTest {
         return mapper.readTree(lines.get(0));
     }
 
-    // ── tests ─────────────────────────────────────────────────────────────────
+    // 鈹€鈹€ tests 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
     @Test
     void taskStatusTransition_schemaAndTopLevelFields() throws Exception {
@@ -129,7 +129,7 @@ class JsonlExecutionEventSinkTest {
     @Test
     void taskMsgRetryReset_defaultSeverityIsWarn() throws Exception {
         sink.emit(ExecutionEvent.builder()
-                .eventType(ExecutionEventType.TASK_MSG_RETRY_RESET)
+                .eventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
                 .identity(b -> b.messageId("m-1"))
                 .build());
 
@@ -270,7 +270,7 @@ class JsonlExecutionEventSinkTest {
 
     @Test
     void shutdownDrain_doesNotLoseEnqueuedEvents() throws Exception {
-        // Emit an event and immediately close — the event must not be lost.
+        // Emit an event and immediately close - the event must not be lost.
         sink.emit(ExecutionEvent.builder()
                 .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                 .identity(b -> b.taskId("t-drain"))
@@ -286,7 +286,7 @@ class JsonlExecutionEventSinkTest {
 
     @Test
     void emitAfterClose_silentlyDropped() throws Exception {
-        // Emit one event, close, then emit another — the second must not appear in the file.
+        // Emit one event, close, then emit another - the second must not appear in the file.
         sink.emit(ExecutionEvent.builder()
                 .eventType(ExecutionEventType.WORKER_ONLINE)
                 .identity(b -> b.workerId("w-before-close"))
@@ -315,3 +315,4 @@ class JsonlExecutionEventSinkTest {
                 "emit() after close must not write any additional events");
     }
 }
+
