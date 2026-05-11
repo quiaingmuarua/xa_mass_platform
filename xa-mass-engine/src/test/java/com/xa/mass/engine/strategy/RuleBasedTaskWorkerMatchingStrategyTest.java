@@ -9,6 +9,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -149,7 +150,12 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void prefilterRejectsOfflineUnsupportedAndRoutingMismatchCandidatesBeforeRuleEvaluation() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> "worker-offline".equals(workerId)
+                        ? WorkerReachabilityState.OFFLINE
+                        : WorkerReachabilityState.ONLINE
+        );
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -192,7 +198,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker-us", matched.get(0).getWorkerId());
 
         AssignmentRecord offlineRecord = findRecord(recordService, "task-prefilter", "worker-offline");
-        assertEquals("worker unavailable", offlineRecord.getReason());
+        assertEquals("worker transport unreachable", offlineRecord.getReason());
         assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, offlineRecord.getResult());
         assertEquals(0, offlineRecord.getRuleEvaluations().size());
 

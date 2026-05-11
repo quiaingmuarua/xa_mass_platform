@@ -5,6 +5,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityState;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -37,12 +38,16 @@ public class WorkerMatchContext {
 
         ctx.put("workerId", worker.getWorkerId());
         ctx.put("workerStatus", worker.getStatus().name());
+        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
+        ctx.put("transportReachability", reachability.name());
+        ctx.put("isTransportReachable", reachability == WorkerReachabilityState.ONLINE);
         ctx.put("workerGroupId", worker.getWorkerGroupId());
         ctx.put("workerAttributes", worker.getAttributes());
         ctx.put("agentVersion", worker.getAgentVersion());
         ctx.put("supportedProjects", worker.getSupportedProjects());
         ctx.put("supportedEventCodes", worker.getSupportedEventCodes());
-        ctx.put("isWorkerAvailable", worker.isAvailable());
+        ctx.put("isWorkerAvailable",
+                workerManager.isWorkerDispatchEnabled(worker) && reachability == WorkerReachabilityState.ONLINE);
         ctx.put("isWorkerLocked", workerManager.isLocked(worker.getWorkerId()));
 
         if (workerContext != null) {

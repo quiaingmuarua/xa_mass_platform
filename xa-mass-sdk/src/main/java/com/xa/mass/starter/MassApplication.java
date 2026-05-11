@@ -41,6 +41,8 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresence;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,6 +76,7 @@ public class MassApplication {
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
+    private WorkerPresenceStore workerPresenceStore;
     private TransportDeliveryService transportDeliveryService;
     private TaskDispatchHandoff taskDispatchHandoff;
     private TaskDispatchHandoffPump taskDispatchHandoffPump;
@@ -220,6 +223,7 @@ public class MassApplication {
                     transportRuntimeComposition.resolveSystemEventChannel(),
                     engineConfig.getExecutionEventSink()
             );
+            workerPresenceStore = transportRuntimeComposition.resolveWorkerPresenceStore();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
             transportDeliveryService = deliveryService;
@@ -245,6 +249,7 @@ public class MassApplication {
                         endpointRegistry,
                         taskResultIngestChannel,
                         systemEventChannel,
+                        workerPresenceStore,
                         deliveryService,
                         transportRuntimeTaskExecutor
                 );
@@ -257,9 +262,21 @@ public class MassApplication {
                         engineConfig.getWorkerStorage(),
                         taskResultIngestChannel,
                         systemEventChannel,
+                        workerPresenceStore,
                         deliveryService,
                         adapterBindings
                 );
+                engineConfig.setWorkerReachabilityView(workerId -> {
+                    WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
+                    if (presence == null) {
+                        return com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
+                    }
+                    return switch (presence.getPresenceState()) {
+                        case ONLINE -> com.xa.mass.engine.WorkerReachabilityState.ONLINE;
+                        case STALE -> com.xa.mass.engine.WorkerReachabilityState.STALE;
+                        case OFFLINE -> com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
+                    };
+                });
                 taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
                         createTransportDispatchFailureHandler(),
@@ -478,8 +495,13 @@ public class MassApplication {
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getSystemEventChannel(),
+                resolved.getWorkerPresenceStore(),
                 resolved.getTransportHint()
         );
+    }
+
+    public WorkerPresenceStore getWorkerPresenceStore() {
+        return workerPresenceStore;
     }
 
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {

@@ -2,7 +2,6 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
@@ -395,8 +394,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean isWorkerOnline(String workerId) {
-        Worker worker = loadWorker(requireWorkerId(workerId));
-        return worker != null && worker.getStatus() == WorkerStatus.ONLINE;
+        String normalizedWorkerId = requireWorkerId(workerId);
+        if (delegate.getWorkerPresenceStore() != null) {
+            return delegate.getWorkerPresenceStore().isWorkerOnline(normalizedWorkerId);
+        }
+        Worker worker = loadWorker(normalizedWorkerId);
+        return worker != null && worker.getStatus() != null && worker.getStatus().isAvailable();
     }
 
     @Override

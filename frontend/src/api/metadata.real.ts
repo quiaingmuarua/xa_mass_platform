@@ -1,5 +1,10 @@
 import {requestApiData} from '@/api/http'
-import type {EventCapability, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
+import type {
+    EventCapability,
+    ProjectMetadata,
+    ProjectSubmitterMetadata,
+    SdkEventDefinition,
+} from '@/types/metadata'
 
 export async function listProjectMetadataReal(): Promise<ProjectMetadata[]> {
     return requestApiData<ProjectMetadata[]>('/api/v1/meta/projects')
@@ -18,6 +23,14 @@ export async function listProjectEventDefinitionsReal(
 ): Promise<SdkEventDefinition[]> {
     return requestApiData<SdkEventDefinition[]>(
         `/api/v1/meta/projects/${encodeURIComponent(projectCode)}/events`,
+    )
+}
+
+export async function listProjectSubmittersReal(
+    projectCode: string,
+): Promise<ProjectSubmitterMetadata[]> {
+    return requestApiData<ProjectSubmitterMetadata[]>(
+        `/api/v1/meta/projects/${encodeURIComponent(projectCode)}/submitters`,
     )
 }
 

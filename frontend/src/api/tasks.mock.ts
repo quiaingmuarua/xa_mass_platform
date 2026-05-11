@@ -130,6 +130,7 @@ export async function listTasksMock(
     query: TaskListQuery = {},
 ): Promise<TaskListResponse> {
     const normalizedKeyword = query.keyword?.trim().toLowerCase() ?? ''
+    const normalizedProject = query.project?.trim() ?? ''
 
     const filtered = mockTaskList.filter((task) => {
         const matchesKeyword =
@@ -137,9 +138,12 @@ export async function listTasksMock(
             task.taskName.toLowerCase().includes(normalizedKeyword) ||
             task.id.toLowerCase().includes(normalizedKeyword)
 
+        const matchesProject =
+            normalizedProject.length === 0 || task.project === normalizedProject
+
         const matchesStatus = !query.status || task.status === query.status
 
-        return matchesKeyword && matchesStatus
+        return matchesKeyword && matchesProject && matchesStatus
     })
 
     return delay({

@@ -331,8 +331,9 @@ class WorkerManagerTest {
         manager.updateOnlineStatus("w9", false);
 
         listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
-        assertTrue(manager.isWorkerOnline("w9"));
-        assertEquals(WorkerStatus.ONLINE, manager.getWorker("w9").getStatus());
+        assertFalse(manager.isWorkerOnline("w9"));
+        assertNotNull(manager.getWorker("w9").getLastHeartbeat());
+        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
         assertFalse(manager.isWorkerOnline("w9"));
@@ -340,15 +341,16 @@ class WorkerManagerTest {
     }
 
     @Test
-    void workerHeartbeatEventRefreshesLastHeartbeatAndOnlineStatus() {
+    void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingStatus() {
         WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
         manager.addWorker(worker("w10", "us"));
         manager.updateOnlineStatus("w10", false);
 
         listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
 
-        assertTrue(manager.isWorkerOnline("w10"));
+        assertFalse(manager.isWorkerOnline("w10"));
         assertNotNull(manager.getWorker("w10").getLastHeartbeat());
+        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
     }
 
     // ---- helpers ----

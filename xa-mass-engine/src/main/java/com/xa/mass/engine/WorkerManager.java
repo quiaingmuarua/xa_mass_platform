@@ -19,18 +19,23 @@ import java.util.List;
 /**
  * Worker and workerContext access facade for the active engine runtime.
  *
- * <p>Online truth is owned by {@link Worker#getStatus()}. This manager keeps the
- * convenience methods aligned with that single source of truth instead of
- * maintaining a second in-memory online registry.
+ * <p>Transport reachability is read through {@link WorkerReachabilityView},
+ * while the worker model remains the engine-owned control-plane record.
  */
 public class WorkerManager implements WorkerLookupStore {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
 
     private final WorkerStorage workerStorage;
+    private final WorkerReachabilityView reachabilityView;
 
     public WorkerManager(WorkerStorage workerStorage) {
+        this(workerStorage, WorkerReachabilityView.permissive());
+    }
+
+    public WorkerManager(WorkerStorage workerStorage, WorkerReachabilityView reachabilityView) {
         this.workerStorage = workerStorage;
+        this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
     }
 
     public void addWorker(Worker worker) {
@@ -147,9 +152,23 @@ public class WorkerManager implements WorkerLookupStore {
         return worker != null && worker.getStatus() == WorkerStatus.ONLINE;
     }
 
+    public WorkerReachabilityState getWorkerReachability(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        return reachabilityView.getWorkerReachability(workerId);
+    }
+
+    public boolean isWorkerDispatchEnabled(Worker worker) {
+        if (worker == null || worker.getStatus() == null) {
+            return false;
+        }
+        return worker.getStatus() != WorkerStatus.EXPIRED;
+    }
+
     /**
-     * Event listener that keeps worker model state synchronized with transport
-     * connect/disconnect events.
+     * Legacy observer for runtime worker system events. Reachability truth now
+     * lives in transport presence rather than the engine worker model.
      */
     public static class WorkerStatusEventListener {
         private final WorkerManager workerManager;
@@ -160,28 +179,26 @@ public class WorkerManager implements WorkerLookupStore {
 
         @MassSubscribe
         public void onWorkerOnline(WorkerOnlineEvent event) {
-            log.info("Worker online: {}", event.getWorkerId());
-            touchWorkerHeartbeat(event.getWorkerId());
+            recordHeartbeat(event.getWorkerId());
         }
 
         @MassSubscribe
         public void onWorkerHeartbeat(WorkerHeartbeatEvent event) {
-            touchWorkerHeartbeat(event.getWorkerId());
+            recordHeartbeat(event.getWorkerId());
         }
 
         @MassSubscribe
         public void onWorkerOffline(WorkerOfflineEvent event) {
-            workerManager.updateOnlineStatus(event.getWorkerId(), false);
+            log.debug("Worker offline event observed for {}", event.getWorkerId());
         }
 
-        private void touchWorkerHeartbeat(String workerId) {
+        private void recordHeartbeat(String workerId) {
             Worker worker = workerManager.getWorker(workerId);
             if (worker == null) {
-                worker = new Worker();
-                worker.setWorkerId(workerId);
-                workerManager.addWorker(worker);
+                log.debug("Ignoring heartbeat for unregistered worker {}", workerId);
+                return;
             }
-            worker.updateHeartbeat();
+            worker.setLastHeartbeat(java.time.LocalDateTime.now());
             workerManager.updateWorker(worker);
         }
     }

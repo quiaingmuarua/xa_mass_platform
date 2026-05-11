@@ -5,6 +5,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.Objects;
@@ -18,6 +19,7 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
+    private final WorkerPresenceStore workerPresenceStore;
     private final TransportDeliveryService deliveryService;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private TransportBinding transportBinding;
@@ -28,11 +30,13 @@ public final class TransportAdapterBootstrapContext {
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerSystemEventChannel systemEventChannel,
+                                            WorkerPresenceStore workerPresenceStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
@@ -47,6 +51,10 @@ public final class TransportAdapterBootstrapContext {
 
     public WorkerSystemEventChannel getSystemEventChannel() {
         return systemEventChannel;
+    }
+
+    public WorkerPresenceStore getWorkerPresenceStore() {
+        return workerPresenceStore;
     }
 
     public TransportDeliveryService getDeliveryService() {

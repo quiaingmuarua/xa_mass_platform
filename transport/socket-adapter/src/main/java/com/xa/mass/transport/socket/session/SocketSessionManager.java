@@ -4,7 +4,9 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +26,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private volatile WorkerSystemEventChannel systemEventChannel;
+    private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
 
     public SocketSessionManager(String adapterId, WorkerSystemEventChannel systemEventChannel) {
         if (adapterId == null || adapterId.isBlank()) {
@@ -57,6 +60,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
+            workerPresenceStore.markOnline(workerId, adapterId, routeKey, endpointId, "socket connected");
             systemEventChannel.publishWorkerOnline(workerId, "socket connected", null);
         }
     }
@@ -74,6 +78,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
                 binding.routeKey(), binding.workerId(), endpointId);
         if (result.removedCurrentRoute() && systemEventChannel != null) {
+            workerPresenceStore.markOffline(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
             systemEventChannel.publishWorkerOffline(binding.workerId(), "socket disconnected", null);
         }
     }
@@ -156,6 +161,19 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel;
+    }
+
+    public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
+        this.workerPresenceStore = workerPresenceStore != null
+                ? workerPresenceStore
+                : new InMemoryWorkerPresenceStore();
+    }
+
+    public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
+        workerPresenceStore.refreshHeartbeat(workerId, adapterId, routeKey, endpointId, reason);
+        if (systemEventChannel != null) {
+            systemEventChannel.publishWorkerHeartbeat(workerId, reason, traceId);
+        }
     }
 
     private boolean matchesAdapter(String adapterId) {

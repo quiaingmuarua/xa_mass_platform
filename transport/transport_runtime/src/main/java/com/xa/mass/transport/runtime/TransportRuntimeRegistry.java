@@ -6,6 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.worker.TransportRoutingTaskDispatchListener;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
@@ -31,6 +32,7 @@ public final class TransportRuntimeRegistry {
     private final WorkerLookupStore workerLookupStore;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
+    private final WorkerPresenceStore workerPresenceStore;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
@@ -38,10 +40,12 @@ public final class TransportRuntimeRegistry {
     public TransportRuntimeRegistry(WorkerLookupStore workerLookupStore,
                                     TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
+                                    WorkerPresenceStore workerPresenceStore,
                                     List<TransportBinding> bindings) {
         this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");
@@ -110,8 +114,13 @@ public final class TransportRuntimeRegistry {
                 binding.getTransportHint(),
                 binding.getTaskPullChannel(),
                 taskResultIngestChannel,
-                systemEventChannel
+                systemEventChannel,
+                workerPresenceStore
         );
+    }
+
+    public WorkerPresenceStore getWorkerPresenceStore() {
+        return workerPresenceStore;
     }
 
     private Worker requireWorker(String workerId) {

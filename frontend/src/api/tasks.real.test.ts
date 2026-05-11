@@ -49,11 +49,12 @@ describe('tasks.real', () => {
 
         const response = await listTasksReal({
             keyword: 'warm',
+            project: 'demoApp',
             status: 'RUNNING',
         })
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/tasks?keyword=warm&status=RUNNING',
+            '/backend/api/v1/tasks?keyword=warm&project=demoApp&status=RUNNING',
             expect.any(Object),
         )
         expect(response.total).toBe(1)

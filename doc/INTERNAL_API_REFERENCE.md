@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-05-08
+Last updated: 2026-05-11
 
 Status: current global HTTP/API reference.
 
@@ -138,7 +138,21 @@ Returns HTTP `404` when `projectCode` does not exist.
 Returns the full `EventDefinition` list for the project's declared
 `eventCodes`.
 
-### 3.4 List Events
+### 3.4 List Project Submitters
+
+- Method: `GET`
+- Path: `/api/v1/meta/projects/{projectCode}/submitters`
+- Status: `Implemented`
+
+Returns the effective `SubmitterMetadata` list visible for the project scope.
+
+Notes:
+
+- includes both explicitly project-scoped submitters and wildcard/global
+  submitters whose scopes still authorize the project
+- this is a control-plane ownership view; it does not expose raw credentials
+
+### 3.5 List Events
 
 - Method: `GET`
 - Path: `/api/v1/meta/events`
@@ -150,7 +164,7 @@ Notes:
 - `taskModes=[]` means the event is direct runtime discovery/dispatch, not a
   task-backed event
 
-### 3.5 Get Event
+### 3.6 Get Event
 
 - Method: `GET`
 - Path: `/api/v1/meta/events/{eventCode}`
@@ -158,7 +172,7 @@ Notes:
 
 Returns HTTP `404` when `eventCode` does not exist.
 
-### 3.6 List Event Capabilities
+### 3.7 List Event Capabilities
 
 - Method: `GET`
 - Path: `/api/v1/meta/event-capabilities`
@@ -174,7 +188,7 @@ Notes:
 - `ready=true` means either a direct runtime handler exists or at least one
   online worker declares the event
 
-### 3.7 List Worker Capability Snapshots
+### 3.8 List Worker Capability Snapshots
 
 - Method: `GET`
 - Path: `/api/v1/meta/worker-capabilities`
@@ -214,6 +228,7 @@ dispatch.
 Query params:
 
 - `keyword` optional
+- `project` optional, exact project code filter
 - `status` optional
 - `offset` optional, default `0`
 - `limit` optional, default `500`
@@ -223,6 +238,8 @@ Notes:
 - operator callers require normal task-view authorization
 - SDK credential callers may also use this route
 - current SDK list behavior is ownership-scoped
+- project filtering is shell-level ownership filtering, not item-level
+  `eventCode` filtering
 
 ### 4.2 Create Task Shell
 

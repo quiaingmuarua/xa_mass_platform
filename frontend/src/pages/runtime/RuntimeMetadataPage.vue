@@ -216,6 +216,9 @@
                   <el-button type="primary" @click="openTaskDraftForProject()">
                     Start task draft
                   </el-button>
+                  <el-button @click="openProjectDetail()">
+                    Open project
+                  </el-button>
                   <el-button @click="openTaskListForProject()">Open tasks</el-button>
                 </div>
               </template>
@@ -958,6 +961,19 @@ function openTaskDraftForProject(projectCode?: string): void {
     query: {
       create: '1',
       project: starter.projectCode,
+    },
+  })
+}
+
+function openProjectDetail(projectCode?: string): void {
+  const resolvedProjectCode = projectCode ?? selectedProject.value?.code ?? ''
+  if (!resolvedProjectCode) {
+    return
+  }
+  void router.push({
+    name: 'project-detail',
+    params: {
+      projectCode: resolvedProjectCode,
     },
   })
 }

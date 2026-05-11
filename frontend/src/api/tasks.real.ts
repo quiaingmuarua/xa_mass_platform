@@ -25,6 +25,10 @@ export async function listTasksReal(
         searchParams.set('keyword', query.keyword)
     }
 
+    if (query.project) {
+        searchParams.set('project', query.project)
+    }
+
     if (query.status) {
         searchParams.set('status', query.status)
     }

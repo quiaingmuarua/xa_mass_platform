@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-04-29
+Last updated: 2026-05-11
 
 Status: current transport owner handoff.
 
@@ -23,6 +23,9 @@ entry for `transport/`.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
+- worker reachability truth now lives in a transport-owned presence plane.
+  Adapters write `WorkerPresenceStore`; engine consumes a reachability view and
+  must not re-own transport online truth through worker heartbeat folding.
 - `TransportPacket` is the internal flat transport envelope. Dispatch now
   creates packet-backed envelopes before adapter delivery, but worker-facing
   websocket/socket/polling JSON remains unchanged in this phase.
@@ -98,5 +101,5 @@ Acceptance focus:
 
 - dispatch hits the correct adapter by `adapterId`
 - polling `poll` and result submission work
-- realtime direct-send and endpoint online/offline perception work
+- realtime direct-send and presence/online perception work
 - result ingest remains transport-only and does not mutate engine lifecycle directly

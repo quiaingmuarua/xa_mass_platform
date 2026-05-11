@@ -178,13 +178,7 @@ public final class SocketTransportServer implements TransportServer {
                 }
                 if (frameCodec.isHeartbeatFrame(frame)) {
                     String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
-                    if (systemEventChannel != null) {
-                        systemEventChannel.publishWorkerHeartbeat(
-                                boundWorkerId,
-                                "socket heartbeat",
-                                traceId
-                        );
-                    }
+                    sessionManager.recordHeartbeat(boundRouteKey, boundWorkerId, endpointId, "socket heartbeat", traceId);
                     continue;
                 }
                 if (frameCodec.isCanonicalTaskResult(frame)) {

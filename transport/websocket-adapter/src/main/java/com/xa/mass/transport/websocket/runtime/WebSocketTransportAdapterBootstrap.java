@@ -71,6 +71,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
+            sessionManager.setWorkerPresenceStore(context.getWorkerPresenceStore());
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
@@ -80,6 +81,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             () -> new ServerSessionManager(config.getAdapterId())
                     );
             sessionManager.setSystemEventChannel(context.getSystemEventChannel());
+            sessionManager.setWorkerPresenceStore(context.getWorkerPresenceStore());
             return sessionManager;
         }
         throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");

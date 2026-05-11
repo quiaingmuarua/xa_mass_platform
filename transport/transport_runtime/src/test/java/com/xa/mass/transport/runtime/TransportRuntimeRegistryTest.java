@@ -4,6 +4,7 @@ import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,6 +23,7 @@ class TransportRuntimeRegistryTest {
                         mock(WorkerLookupStore.class),
                         mock(TaskResultIngestChannel.class),
                         mock(WorkerSystemEventChannel.class),
+                        new InMemoryWorkerPresenceStore(),
                         List.of(
                                 workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME)),
                                 workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))

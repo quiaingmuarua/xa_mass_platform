@@ -88,18 +88,21 @@ public class TaskApiController {
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                       @RequestParam(required = false) String keyword,
+                                                                      @RequestParam(required = false) String project,
                                                                       @RequestParam(required = false) String status,
                                                                       @RequestParam(defaultValue = "0") int offset,
                                                                       @RequestParam(defaultValue = "500") int limit) {
         try {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
+            String normalizedProject = project == null ? "" : project.trim();
             // push status filter to storage when provided; otherwise use bounded page scan
             List<TaskSummarySnapshot> candidates = status != null
                     ? taskQueries.getTaskSummariesByStatus(status)
                     : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
             List<Map<String, Object>> items = candidates.stream()
                     .filter(task -> canViewTaskSummary(task, submitterViewer))
+                    .filter(task -> matchesProject(task.getProject(), normalizedProject))
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
                             .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -517,6 +520,16 @@ public class TaskApiController {
         return containsIgnoreCase(taskId, normalizedKeyword)
                 || containsIgnoreCase(taskName, normalizedKeyword)
                 || containsIgnoreCase(project, normalizedKeyword);
+    }
+
+    private boolean matchesProject(String taskProject, String normalizedProject) {
+        if (normalizedProject == null || normalizedProject.isBlank()) {
+            return true;
+        }
+        if (taskProject == null || taskProject.isBlank()) {
+            return false;
+        }
+        return taskProject.trim().equalsIgnoreCase(normalizedProject.trim());
     }
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {

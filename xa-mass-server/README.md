@@ -94,6 +94,7 @@ After startup:
 
 - HTTP control console: `http://localhost:8088/`
 - HTTP tasks view: `http://localhost:8088/tasks`
+- HTTP projects view: `http://localhost:8088/resources/projects`
 - HTTP workers view: `http://localhost:8088/resources/workers`
 - HTTP API docs: `http://localhost:8088/doc.html`
 - WebSocket: `ws://localhost:18088/ws`
@@ -103,6 +104,9 @@ Control-console routing note:
 
 - `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
+- project metadata is still read from `/api/v1/meta/projects/**`, but the
+  console now exposes project as a first-class navigation entry through
+  `Resources -> Projects`
 
 ## Dev Demo Bootstrap
 

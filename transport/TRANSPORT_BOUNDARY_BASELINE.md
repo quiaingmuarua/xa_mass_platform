@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-04-29
+Last updated: 2026-05-11
 
 Status: current transport boundary baseline.
 
@@ -19,6 +19,8 @@ over richer but expensive observability state.
 Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
+- worker presence truth keyed by `workerId` with canonical route address
+  `adapterId + routeKey`
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
@@ -46,6 +48,8 @@ Transport should stay centered on these concepts only:
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
+- `WorkerPresenceStore`: shared transport-owned reachability projection with
+  lease-based `ONLINE/STALE/OFFLINE` semantics
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -88,9 +92,14 @@ Concrete adapters own protocol I/O only:
 
 - server/session/endpoint lifecycle for their protocol
 - frame or request/response codec
-- endpoint online/offline perception
+- endpoint connect/disconnect/heartbeat ingress and writes into transport
+  presence
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
+
+Engine may read transport reachability for matching and dispatch eligibility,
+but transport owns the online truth itself. Heartbeat expiry is a transport
+lease rule, not an engine selector heuristic.
 
 ## Model Boundaries
 

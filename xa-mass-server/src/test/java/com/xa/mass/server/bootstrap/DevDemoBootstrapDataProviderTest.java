@@ -57,7 +57,7 @@ class DevDemoBootstrapDataProviderTest {
         assertIterableEquals(List.of("task-11", "task-12"), runtime.rejectedTaskIds);
 
         assertEquals("demo.dispatch", runtime.appendRequests.get(0).getEventCode());
-        assertEquals("demo.dispatch", runtime.appendRequests.get(1).getEventCode());
+        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(1).getEventCode());
         assertEquals("demo.dispatch.gb", runtime.appendRequests.get(2).getEventCode());
         assertEquals("demo.dispatch.gb", runtime.appendRequests.get(3).getEventCode());
 

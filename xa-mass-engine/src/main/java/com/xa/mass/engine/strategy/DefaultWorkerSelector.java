@@ -32,7 +32,7 @@ public class DefaultWorkerSelector implements WorkerSelector {
 
     @Override
     public boolean isWorkerSuitable(Worker worker, Task task) {
-        if (!worker.isAvailable()) {
+        if (worker == null || worker.getStatus() == null || worker.getStatus() == com.xa.mass.base.enums.worker.WorkerStatus.EXPIRED) {
             return false;
         }
         String eventCode = TaskSharedConfig.sdkEventCode(task);
@@ -43,7 +43,7 @@ public class DefaultWorkerSelector implements WorkerSelector {
         if (!sdkEventTask && !worker.supportsProject(task.getProject())) {
             return false;
         }
-        return !worker.isHeartbeatExpired(30);
+        return true;
     }
 
     @Override

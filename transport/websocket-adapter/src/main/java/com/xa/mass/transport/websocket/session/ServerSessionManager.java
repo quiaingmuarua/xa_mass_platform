@@ -4,8 +4,10 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -24,6 +26,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private volatile WorkerSystemEventChannel systemEventChannel = new RuntimeEventBusWorkerSystemEventChannel();
+    private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
 
     public ServerSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
@@ -59,6 +62,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (!wasRouteOnline && hasActiveChannel(routeKey)) {
+            workerPresenceStore.markOnline(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
             systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
         }
     }
@@ -74,6 +78,13 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
             if (result.removedCurrentRoute() && !hasActiveChannel(binding.routeKey())) {
+                workerPresenceStore.markOffline(
+                        binding.workerId(),
+                        adapterId,
+                        binding.routeKey(),
+                        channel.id().asShortText(),
+                        "websocket disconnected"
+                );
                 systemEventChannel.publishWorkerOffline(binding.workerId(), "websocket disconnected", null);
             }
         } else {
@@ -157,6 +168,12 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         this.systemEventChannel = systemEventChannel != null
                 ? systemEventChannel
                 : new RuntimeEventBusWorkerSystemEventChannel();
+    }
+
+    public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
+        this.workerPresenceStore = workerPresenceStore != null
+                ? workerPresenceStore
+                : new InMemoryWorkerPresenceStore();
     }
 
     public String getAdapterId() {

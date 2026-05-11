@@ -1,31 +1,121 @@
-import type {EventCapability, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
+import type {
+    EventCapability,
+    ProjectMetadata,
+    ProjectSubmitterMetadata,
+    SdkEventDefinition,
+} from '@/types/metadata'
 
 const mockProjects: ProjectMetadata[] = [
     {
+        tenantId: 'default',
         code: 'demoApp',
         name: 'Demo App',
         description:
             'General demo project used for orchestration smoke tests and worker readiness checks.',
         enabled: true,
         eventCodes: ['demo.dispatch', 'demo.dispatch.gb'],
+        ownerPrincipalId: 'demo-admin-submitter',
     },
     {
+        tenantId: 'default',
         code: 'crawlerApp',
         name: 'Crawler App',
         description:
             'Crawler-oriented project used to validate generic fetch and parse workloads.',
         enabled: true,
         eventCodes: ['crawler.fetch-page', 'crawler.parse-result'],
+        ownerPrincipalId: 'crawler-admin-submitter',
     },
     {
+        tenantId: 'default',
         code: 'testApp',
         name: 'Test Harness',
         description:
             'Small project used by local and CI validation flows.',
         enabled: true,
         eventCodes: ['test.smoke'],
+        ownerPrincipalId: 'test-admin-submitter',
     },
 ]
+
+const mockProjectSubmitters: Record<string, ProjectSubmitterMetadata[]> = {
+    demoApp: [
+        {
+            principalId: 'demo-app-submitter',
+            principalType: 'SERVICE',
+            keyPrefix: 'demo',
+            userId: 'demo-app-user',
+            projectScope: 'demoApp',
+            permissions: ['task:create'],
+            projectScopes: ['demoApp'],
+            eventScopes: ['demo.dispatch', 'demo.dispatch.gb'],
+            enabled: true,
+            attributes: {
+                label: 'Demo App Submitter',
+            },
+        },
+        {
+            principalId: 'demo-admin-submitter',
+            principalType: 'SERVICE',
+            keyPrefix: 'demo',
+            userId: 'demo-admin',
+            projectScope: null,
+            permissions: ['*'],
+            projectScopes: ['demoApp', 'crawlerApp', 'testApp'],
+            eventScopes: ['*'],
+            enabled: true,
+            attributes: {
+                label: 'Demo Admin Submitter',
+            },
+        },
+    ],
+    crawlerApp: [
+        {
+            principalId: 'crawler-submitter',
+            principalType: 'SERVICE',
+            keyPrefix: 'crawl',
+            userId: 'crawler-user',
+            projectScope: 'crawlerApp',
+            permissions: ['task:create'],
+            projectScopes: ['crawlerApp'],
+            eventScopes: ['crawler.fetch-page', 'crawler.parse-result'],
+            enabled: true,
+            attributes: {
+                label: 'Crawler Submitter',
+            },
+        },
+        {
+            principalId: 'demo-admin-submitter',
+            principalType: 'SERVICE',
+            keyPrefix: 'demo',
+            userId: 'demo-admin',
+            projectScope: null,
+            permissions: ['*'],
+            projectScopes: ['demoApp', 'crawlerApp', 'testApp'],
+            eventScopes: ['*'],
+            enabled: true,
+            attributes: {
+                label: 'Demo Admin Submitter',
+            },
+        },
+    ],
+    testApp: [
+        {
+            principalId: 'test-admin-submitter',
+            principalType: 'SERVICE',
+            keyPrefix: 'test',
+            userId: 'test-user',
+            projectScope: 'testApp',
+            permissions: ['task:create'],
+            projectScopes: ['testApp'],
+            eventScopes: ['test.smoke'],
+            enabled: true,
+            attributes: {
+                label: 'Test Submitter',
+            },
+        },
+    ],
+}
 
 const mockEvents: SdkEventDefinition[] = [
     {
@@ -117,6 +207,17 @@ export async function listProjectEventDefinitionsMock(
         project.eventCodes.includes(event.code),
     )
     return delay(projectEvents)
+}
+
+export async function listProjectSubmittersMock(
+    projectCode: string,
+): Promise<ProjectSubmitterMetadata[]> {
+    const project = mockProjects.find((item) => item.code === projectCode)
+    if (!project) {
+        throw new Error(`Project metadata not found: ${projectCode}`)
+    }
+
+    return delay(mockProjectSubmitters[projectCode] ?? [])
 }
 
 export async function listEventDefinitionsMock(): Promise<SdkEventDefinition[]> {

@@ -1,6 +1,8 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -88,6 +90,25 @@ class ServerSessionManagerShutdownTest {
 
         verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
         assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
+    }
+
+    @Test
+    void sessionsProjectPresenceIntoTransportOwnedStore() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("route-1", presenceStore.getPresence("worker-1").getRouteKey());
+        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+
+        manager.removeSession(channel);
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
     }
 
     @Test

@@ -86,4 +86,46 @@ class TaskApiListControllerTest {
                 .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
                 .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));
     }
+
+    @Test
+    void listTasksFiltersByProject() throws Exception {
+        TaskSummarySnapshot demoTask = new TaskSummarySnapshot(
+                "task-001",
+                "Warm worker pool",
+                "default",
+                "demoApp",
+                "agent",
+                null,
+                "RUNNING",
+                null,
+                new TaskExecutionOptions(),
+                6,
+                10,
+                LocalDateTime.of(2026, 4, 21, 9, 30)
+        );
+        TaskSummarySnapshot opsTask = new TaskSummarySnapshot(
+                "task-002",
+                "Audit queue",
+                "default",
+                "demoOps",
+                "ops-agent",
+                null,
+                "PAUSED",
+                null,
+                new TaskExecutionOptions(),
+                2,
+                8,
+                LocalDateTime.of(2026, 4, 21, 8, 0)
+        );
+
+        when(taskQueries.listTaskSummaries(0, 500)).thenReturn(List.of(demoTask, opsTask));
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .param("project", "demoOps"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value("task-002"))
+                .andExpect(jsonPath("$.data.items[0].project").value("demoOps"));
+    }
 }

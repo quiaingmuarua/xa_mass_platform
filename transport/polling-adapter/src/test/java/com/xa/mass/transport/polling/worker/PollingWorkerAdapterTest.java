@@ -10,6 +10,7 @@ import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -80,6 +81,7 @@ class PollingWorkerAdapterTest {
     private PollingWorkerAdapter adapter() {
         return new PollingWorkerAdapter(
                 NoopWorkerSystemEventChannel.INSTANCE,
+                new InMemoryWorkerPresenceStore(),
                 new TransportDeliveryService(
                         new InMemoryTransportDeliveryStore(
                                 InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,

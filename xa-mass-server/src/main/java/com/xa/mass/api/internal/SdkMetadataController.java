@@ -1,7 +1,10 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
+import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -31,33 +34,44 @@ public class SdkMetadataController {
     private final SdkMetadataCatalog metadataCatalog;
     private final WorkerQueryOperations workerQueries;
     private final TransportDebugOperations transportDebugOperations;
+    private final SubmitterOperations submitterOperations;
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog) {
-        this(metadataCatalog, (WorkerQueryOperations) null, null);
+        this(metadataCatalog, (WorkerQueryOperations) null, null, null);
     }
 
     @Autowired
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  ObjectProvider<WorkerQueryOperations> workerQueriesProvider,
-                                 ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
+                                 ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider,
+                                 ObjectProvider<SubmitterOperations> submitterOperationsProvider) {
         this(
                 metadataCatalog,
                 workerQueriesProvider == null ? null : workerQueriesProvider.getIfAvailable(),
-                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
+                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable(),
+                submitterOperationsProvider == null ? null : submitterOperationsProvider.getIfAvailable()
         );
     }
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  WorkerQueryOperations workerQueries) {
-        this(metadataCatalog, workerQueries, null);
+        this(metadataCatalog, workerQueries, null, null);
     }
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  WorkerQueryOperations workerQueries,
                                  TransportDebugOperations transportDebugOperations) {
+        this(metadataCatalog, workerQueries, transportDebugOperations, null);
+    }
+
+    public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
+                                 WorkerQueryOperations workerQueries,
+                                 TransportDebugOperations transportDebugOperations,
+                                 SubmitterOperations submitterOperations) {
         this.metadataCatalog = metadataCatalog;
         this.workerQueries = workerQueries;
         this.transportDebugOperations = transportDebugOperations;
+        this.submitterOperations = submitterOperations;
     }
 
     @GetMapping("/projects")
@@ -83,6 +97,23 @@ public class SdkMetadataController {
                     .body(ApiResponse.error(404, "Project metadata not found: " + projectCode));
         }
         return ResponseEntity.ok(ApiResponse.success(metadataCatalog.getEventsForProject(projectCode)));
+    }
+
+    @GetMapping("/projects/{projectCode}/submitters")
+    public ResponseEntity<ApiResponse<List<SubmitterMetadata>>> getProjectSubmitters(@PathVariable String projectCode) {
+        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
+        if (projectMetadata == null) {
+            return ResponseEntity.status(404)
+                    .body(ApiResponse.error(404, "Project metadata not found: " + projectCode));
+        }
+        if (submitterOperations == null) {
+            return ResponseEntity.ok(ApiResponse.success(List.of()));
+        }
+        List<SubmitterMetadata> submitters = submitterOperations.listSubmitters().stream()
+                .filter(submitter -> supportsProject(submitter, projectCode))
+                .sorted(Comparator.comparing(SubmitterMetadata::getPrincipalId, String::compareToIgnoreCase))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(submitters));
     }
 
     @GetMapping("/events")
@@ -187,5 +218,20 @@ public class SdkMetadataController {
                 .distinct()
                 .sorted(String::compareToIgnoreCase)
                 .toList();
+    }
+
+    private boolean supportsProject(SubmitterMetadata submitter, String projectCode) {
+        if (submitter == null || projectCode == null || projectCode.isBlank()) {
+            return false;
+        }
+        String normalizedProjectCode = projectCode.trim();
+        if (normalizedProjectCode.equalsIgnoreCase(submitter.getProjectScope())) {
+            return true;
+        }
+        return submitter.getProjectScopes().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .anyMatch(scope -> PrincipalContext.WILDCARD_SCOPE.equals(scope)
+                        || normalizedProjectCode.equalsIgnoreCase(scope));
     }
 }

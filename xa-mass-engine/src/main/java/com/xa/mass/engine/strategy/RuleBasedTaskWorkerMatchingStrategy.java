@@ -6,6 +6,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
@@ -202,9 +203,17 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     }
 
     private PrefilterDecision prefilterCandidate(Task task, Worker worker, WorkerContext workerContext) {
-        if (!worker.isAvailable()) {
+        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
+        if (!workerManager.isWorkerDispatchEnabled(worker)) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
                     "worker unavailable", Map.of(), false);
+        }
+        if (reachability != WorkerReachabilityState.ONLINE) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "worker transport unreachable", Map.of(
+                            "transportReachability", reachability.name(),
+                            "isTransportReachable", false
+                    ), false);
         }
         boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
         if (workerLocked) {
@@ -273,12 +282,16 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
         context.put("workerId", worker.getWorkerId());
         context.put("workerStatus", worker.getStatus().name());
+        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
+        context.put("transportReachability", reachability.name());
+        context.put("isTransportReachable", reachability == WorkerReachabilityState.ONLINE);
         context.put("workerGroupId", worker.getWorkerGroupId());
         context.put("workerAttributes", worker.getAttributes());
         context.put("agentVersion", worker.getAgentVersion());
         context.put("supportedProjects", worker.getSupportedProjects());
         context.put("supportedEventCodes", worker.getSupportedEventCodes());
-        context.put("isWorkerAvailable", worker.isAvailable());
+        context.put("isWorkerAvailable",
+                workerManager.isWorkerDispatchEnabled(worker) && reachability == WorkerReachabilityState.ONLINE);
         context.put("isWorkerLocked", workerLocked);
 
         context.put("taskId", task.getTid());

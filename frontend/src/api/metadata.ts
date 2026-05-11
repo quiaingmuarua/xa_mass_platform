@@ -2,6 +2,7 @@ import {getAppConfig} from '@/app/config'
 import {
     getEventDefinitionMock,
     getProjectMetadataMock,
+    listProjectSubmittersMock,
     listEventCapabilitiesMock,
     listEventDefinitionsMock,
     listProjectEventDefinitionsMock,
@@ -10,12 +11,18 @@ import {
 import {
     getEventDefinitionReal,
     getProjectMetadataReal,
+    listProjectSubmittersReal,
     listEventCapabilitiesReal,
     listEventDefinitionsReal,
     listProjectEventDefinitionsReal,
     listProjectMetadataReal,
 } from '@/api/metadata.real'
-import type {EventCapability, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
+import type {
+    EventCapability,
+    ProjectMetadata,
+    ProjectSubmitterMetadata,
+    SdkEventDefinition,
+} from '@/types/metadata'
 
 export async function listProjectMetadata(): Promise<ProjectMetadata[]> {
     if (getAppConfig().useMockApi) {
@@ -43,6 +50,16 @@ export async function listProjectEventDefinitions(
     }
 
     return listProjectEventDefinitionsReal(projectCode)
+}
+
+export async function listProjectSubmitters(
+    projectCode: string,
+): Promise<ProjectSubmitterMetadata[]> {
+    if (getAppConfig().useMockApi) {
+        return listProjectSubmittersMock(projectCode)
+    }
+
+    return listProjectSubmittersReal(projectCode)
 }
 
 export async function listEventDefinitions(): Promise<SdkEventDefinition[]> {

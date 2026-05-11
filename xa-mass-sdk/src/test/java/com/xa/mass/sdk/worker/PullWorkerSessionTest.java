@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,6 +33,7 @@ class PullWorkerSessionTest {
                 taskPullChannel,
                 mock(TaskResultIngestChannel.class),
                 mock(WorkerSystemEventChannel.class),
+                new InMemoryWorkerPresenceStore(),
                 "polling"
         );
 
@@ -53,6 +55,7 @@ class PullWorkerSessionTest {
                 taskPullChannel,
                 mock(TaskResultIngestChannel.class),
                 mock(WorkerSystemEventChannel.class),
+                new InMemoryWorkerPresenceStore(),
                 "polling"
         );
 
@@ -72,6 +75,7 @@ class PullWorkerSessionTest {
                 mock(TaskPullChannel.class),
                 resultIngestChannel,
                 mock(WorkerSystemEventChannel.class),
+                new InMemoryWorkerPresenceStore(),
                 "polling"
         );
 

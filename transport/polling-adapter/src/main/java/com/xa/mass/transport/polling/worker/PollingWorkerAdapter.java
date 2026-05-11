@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -31,11 +32,14 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     public static final String PROTOCOL = "polling";
 
     private final WorkerSystemEventChannel systemEventChannel;
+    private final WorkerPresenceStore workerPresenceStore;
     private final TransportDeliveryService deliveryService;
 
     public PollingWorkerAdapter(WorkerSystemEventChannel systemEventChannel,
+                                WorkerPresenceStore workerPresenceStore,
                                 TransportDeliveryService deliveryService) {
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
@@ -70,14 +74,17 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     public void announceWorkerOnline(String workerId, String reason) {
+        workerPresenceStore.markOnline(workerId, PROTOCOL, workerId, workerId, reason);
         systemEventChannel.publishWorkerOnline(workerId, reason, workerId);
     }
 
     public void announceWorkerOffline(String workerId, String reason) {
+        workerPresenceStore.markOffline(workerId, PROTOCOL, workerId, workerId, reason);
         systemEventChannel.publishWorkerOffline(workerId, reason, workerId);
     }
 
     public void publishWorkerHeartbeat(String workerId, String reason) {
+        workerPresenceStore.refreshHeartbeat(workerId, PROTOCOL, workerId, workerId, reason);
         systemEventChannel.publishWorkerHeartbeat(workerId, reason, workerId);
     }
 

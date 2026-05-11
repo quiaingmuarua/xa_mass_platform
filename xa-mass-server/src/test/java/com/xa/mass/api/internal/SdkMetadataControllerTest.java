@@ -1,5 +1,7 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.sdk.SubmitterOperations;
+import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
@@ -23,6 +25,7 @@ class SdkMetadataControllerTest {
 
     private MockMvc mockMvc;
     private TransportDebugOperations transportDebugOperations;
+    private SubmitterOperations submitterOperations;
 
     @BeforeEach
     void setUp() {
@@ -56,6 +59,12 @@ class SdkMetadataControllerTest {
                 .description("Test demo app")
                 .eventCodes(java.util.List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
+        catalog.registerProject(ProjectMetadata.builder()
+                .code("crawlerApp")
+                .name("Crawler App")
+                .description("Test crawler app")
+                .eventCodes(java.util.List.of("crawler.fetch-page"))
+                .build());
         WorkerSnapshot crawlerWorker = worker("crawler-worker-1", "ONLINE",
                 List.of("otherApp"), List.of("crawler.fetch-page"));
         WorkerSnapshot offlineChatWorker = worker("chat-worker-1", "OFFLINE",
@@ -67,6 +76,25 @@ class SdkMetadataControllerTest {
         when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
+        submitterOperations = mock(SubmitterOperations.class);
+        when(submitterOperations.listSubmitters()).thenReturn(List.of(
+                SubmitterMetadata.builder()
+                        .principalId("crawler-submitter")
+                        .projectScope("crawlerApp")
+                        .projectScopes(List.of("crawlerApp"))
+                        .enabled(true)
+                        .build(),
+                SubmitterMetadata.builder()
+                        .principalId("demo-admin")
+                        .projectScopes(List.of("*"))
+                        .enabled(true)
+                        .build(),
+                SubmitterMetadata.builder()
+                        .principalId("test-only")
+                        .projectScopes(List.of("testApp"))
+                        .enabled(true)
+                        .build()
+        ));
         transportDebugOperations = mock(TransportDebugOperations.class);
         when(transportDebugOperations.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
@@ -89,7 +117,7 @@ class SdkMetadataControllerTest {
                 )
         ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new SdkMetadataController(catalog, workerQueries, transportDebugOperations)
+                new SdkMetadataController(catalog, workerQueries, transportDebugOperations, submitterOperations)
         ).build();
     }
 
@@ -109,6 +137,16 @@ class SdkMetadataControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply')]").exists());
+    }
+
+    @Test
+    void projectSubmittersReturnScopedAndWildcardPrincipals() throws Exception {
+        mockMvc.perform(get("/api/v1/meta/projects/crawlerApp/submitters"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.principalId=='crawler-submitter')]").exists())
+                .andExpect(jsonPath("$.data[?(@.principalId=='demo-admin')]").exists())
+                .andExpect(jsonPath("$.data[?(@.principalId=='test-only')]").doesNotExist());
     }
 
     @Test

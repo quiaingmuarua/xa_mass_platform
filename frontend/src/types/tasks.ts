@@ -41,6 +41,7 @@ export interface TaskListResponse {
 
 export interface TaskListQuery {
     keyword?: string
+    project?: string
     status?: TaskListItem['status'] | ''
 }
 

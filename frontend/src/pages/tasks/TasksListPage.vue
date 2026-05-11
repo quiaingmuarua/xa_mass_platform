@@ -32,6 +32,12 @@
           placeholder="Search by task name or id"
           @keyup.enter="loadTasks"
         />
+        <el-input
+          v-model="filters.project"
+          clearable
+          placeholder="Project"
+          @keyup.enter="loadTasks"
+        />
         <el-select
           v-model="filters.status"
           clearable
@@ -284,6 +290,7 @@ const handledDraftSignature = ref('')
 const starterGuidance = ref<string[]>([])
 const filters = reactive({
   keyword: '',
+  project: '',
   status: '' as TaskListItem['status'] | '',
 })
 const createForm = reactive({
@@ -344,6 +351,11 @@ async function loadTasks(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function applyTaskFiltersFromQuery(): void {
+  filters.project =
+    typeof route.query.project === 'string' ? route.query.project : ''
 }
 
 async function loadProjectOptions(): Promise<void> {
@@ -564,17 +576,21 @@ function goToTask(taskId: string): void {
 }
 
 onMounted(() => {
+  applyTaskFiltersFromQuery()
   void loadTasks()
   maybeOpenCreateDialogFromQuery()
 })
 
 onActivated(() => {
+  applyTaskFiltersFromQuery()
   maybeOpenCreateDialogFromQuery()
 })
 
 watch(
   () => route.query,
   () => {
+    applyTaskFiltersFromQuery()
+    void loadTasks()
     maybeOpenCreateDialogFromQuery()
   },
 )
@@ -588,7 +604,7 @@ watch(
 }
 
 .toolbar :deep(.el-input) {
-  width: 260px;
+  width: 220px;
 }
 
 .toolbar :deep(.el-select) {

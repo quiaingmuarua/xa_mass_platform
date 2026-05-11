@@ -17,6 +17,7 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
 import org.junit.jupiter.api.Test;
 
@@ -262,6 +263,7 @@ class TransportRoutingTaskDispatchListenerTest {
                         workerManager,
                         report -> true,
                         new NoopWorkerSystemEventChannel(),
+                        new InMemoryWorkerPresenceStore(),
                         List.of(binding)
                 )
         );
@@ -286,6 +288,7 @@ class TransportRoutingTaskDispatchListenerTest {
                         workerLookupStore,
                         report -> true,
                         new NoopWorkerSystemEventChannel(),
+                        new InMemoryWorkerPresenceStore(),
                         List.of(workerIdRouteBinding(pollingAdapter))
                 )
         );
@@ -485,6 +488,7 @@ class TransportRoutingTaskDispatchListenerTest {
                 workerManager,
                 report -> true,
                 new NoopWorkerSystemEventChannel(),
+                new InMemoryWorkerPresenceStore(),
                 Arrays.stream(adapters)
                         .map(TransportRoutingTaskDispatchListenerTest::workerIdRouteBinding)
                         .toList()

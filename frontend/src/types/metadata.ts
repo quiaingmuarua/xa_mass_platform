@@ -3,11 +3,13 @@ export type MetadataPayloadType = 'TEXT' | 'JSON'
 export type MetadataTaskMode = 'SINGLE_RUN' | 'STREAMING'
 
 export interface ProjectMetadata {
+    tenantId?: string
     code: string
     name: string
     description: string
     enabled: boolean
     eventCodes: string[]
+    ownerPrincipalId?: string | null
 }
 
 export interface SdkEventDefinition {
@@ -32,4 +34,17 @@ export interface EventCapability {
     hasDirectRuntimeHandler: boolean
     hasOnlineWorkerCoverage: boolean
     ready: boolean
+}
+
+export interface ProjectSubmitterMetadata {
+    principalId: string
+    principalType: string
+    keyPrefix: string | null
+    userId: string | null
+    projectScope: string | null
+    permissions: string[]
+    projectScopes: string[]
+    eventScopes: string[]
+    enabled: boolean
+    attributes: Record<string, string>
 }

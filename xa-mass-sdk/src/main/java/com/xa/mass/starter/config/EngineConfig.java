@@ -10,6 +10,7 @@ import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityView;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -61,6 +62,7 @@ public class EngineConfig {
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
+    private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
@@ -252,7 +254,17 @@ public class EngineConfig {
     }
 
     public WorkerManager getWorkerManager() {
-        return new WorkerManager(getWorkerStorage());
+        return new WorkerManager(getWorkerStorage(), workerReachabilityView);
+    }
+
+    public WorkerReachabilityView getWorkerReachabilityView() {
+        return workerReachabilityView;
+    }
+
+    public void setWorkerReachabilityView(WorkerReachabilityView workerReachabilityView) {
+        this.workerReachabilityView = workerReachabilityView != null
+                ? workerReachabilityView
+                : WorkerReachabilityView.permissive();
     }
 
     public WorkerStorage getWorkerStorage() {
