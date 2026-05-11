@@ -26,8 +26,8 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
     private final List<Consumer<Task>> taskReadyListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<Task>> taskDispatchListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<Task>> taskTerminalListeners = new CopyOnWriteArrayList<>();
-    private final List<TaskMessageAttemptClosedListener> taskMessageAttemptClosedListeners = new CopyOnWriteArrayList<>();
-    private final List<TaskMessageLogicallyFinalListener> taskMessageLogicallyFinalListeners = new CopyOnWriteArrayList<>();
+    private final List<TaskWorkAttemptClosedListener> taskWorkAttemptClosedListeners = new CopyOnWriteArrayList<>();
+    private final List<TaskWorkLogicallyFinalListener> taskWorkLogicallyFinalListeners = new CopyOnWriteArrayList<>();
 
     public void addTaskCreatedListener(Consumer<Task> listener) {
         if (listener != null) {
@@ -89,27 +89,27 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
-    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+    public void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
         if (listener != null) {
-            taskMessageAttemptClosedListeners.add(listener);
+            taskWorkAttemptClosedListeners.add(listener);
         }
     }
 
-    public void removeTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+    public void removeTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
         if (listener != null) {
-            taskMessageAttemptClosedListeners.remove(listener);
+            taskWorkAttemptClosedListeners.remove(listener);
         }
     }
 
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+    public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
         if (listener != null) {
-            taskMessageLogicallyFinalListeners.add(listener);
+            taskWorkLogicallyFinalListeners.add(listener);
         }
     }
 
-    public void removeTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+    public void removeTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
         if (listener != null) {
-            taskMessageLogicallyFinalListeners.remove(listener);
+            taskWorkLogicallyFinalListeners.remove(listener);
         }
     }
 
@@ -163,10 +163,10 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
-    public void publishTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
-        for (TaskMessageAttemptClosedListener listener : taskMessageAttemptClosedListeners) {
+    public void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
+        for (TaskWorkAttemptClosedListener listener : taskWorkAttemptClosedListeners) {
             try {
-                listener.onTaskMessageAttemptClosed(task, event);
+                listener.onTaskWorkAttemptClosed(task, event);
             } catch (Exception e) {
                 logger.error("Task message attempt-closed listener failed for task {}, msg {}, attempt {}",
                         task.getTid(),
@@ -177,10 +177,10 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
-    public void publishTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event) {
-        for (TaskMessageLogicallyFinalListener listener : taskMessageLogicallyFinalListeners) {
+    public void publishTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event) {
+        for (TaskWorkLogicallyFinalListener listener : taskWorkLogicallyFinalListeners) {
             try {
-                listener.onTaskMessageLogicallyFinal(task, event);
+                listener.onTaskWorkLogicallyFinal(task, event);
             } catch (Exception e) {
                 logger.error("Task message logically-final listener failed for task {}, msg {}",
                         task.getTid(), event != null ? event.messageId() : "null", e);

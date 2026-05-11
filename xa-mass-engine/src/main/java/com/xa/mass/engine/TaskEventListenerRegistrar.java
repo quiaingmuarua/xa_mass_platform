@@ -25,9 +25,9 @@ public interface TaskEventListenerRegistrar {
     void addTaskTerminalListener(Consumer<Task> listener);
     void removeTaskTerminalListener(Consumer<Task> listener);
 
-    void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener);
-    void removeTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener);
+    void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener);
+    void removeTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener);
 
-    void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener);
-    void removeTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener);
+    void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener);
+    void removeTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener);
 }

@@ -122,8 +122,8 @@ Must hold:
 - `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are projections of the latest attempt used for compatibility and UI; they are null between retry reset and next assignment
 - duplicate final callbacks do not mutate final state
 - final message projection must carry a compatible `finalReason`
-- `taskMessageAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
-- `taskMessageLogicallyFinal` must only fire when the logical message view is stably final and will not be reset for retry
+- `taskWorkAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
+- `taskWorkLogicallyFinal` must only fire when the logical message view is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical message view to `INIT`; it must not publish logically-final semantics
 - `BATCH` lease expiry has no stable logical timeout meaning while the task is still live: it either resets `INIT` when runtime retry budget remains or finalizes as `FAILED + RETRY_EXHAUSTED` when the budget is exhausted
 - worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but the latest attempt/message projection is missing, engine repairs that compatibility state from runtime before continuing
@@ -230,8 +230,8 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
 - **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
   the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireLeasedWork(...)`). This always marks the
   concrete compatibility attempt `EXPIRED` and publishes
-  `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
-  `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without `taskMessageLogicallyFinal`. When retry
+  `taskWorkAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
+  `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without `taskWorkLogicallyFinal`. When retry
   budget is exhausted, `SESSION` keeps logical `EXPIRED`, while `BATCH` finalizes as `FAILED + RETRY_EXHAUSTED`
   because lease loss is treated as an attempt failure mode rather than a stable per-item timeout contract.
 - **Max task runtime**: non-terminal tasks with `maxRuntimeSeconds > 0` are indexed by their
@@ -240,7 +240,7 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
   `maxRuntimeSeconds = 0` (default) to disable the limit.
 
 Must hold:
-- `expireLeasedWork` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`
+- `expireLeasedWork` must fire `taskWorkAttemptClosed` after expiry so `TaskResourceReleaseListener`
   can release the worker context; skipping this call leaves the context permanently `OCCUPIED`
 - retryable lease expiry must follow the same logical-reset rule as retryable failure: close the attempt,
   clear latest-attempt projections, increment `retryCount`, and avoid logical-final publication until the

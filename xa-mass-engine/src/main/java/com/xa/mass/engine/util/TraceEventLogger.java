@@ -6,10 +6,10 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskMessageCompatibilityState.AttemptFinalReason;
-import com.xa.mass.engine.TaskMessageCompatibilityState.AttemptStatus;
-import com.xa.mass.engine.TaskMessageCompatibilityState.MessageFinalReason;
-import com.xa.mass.engine.TaskMessageCompatibilityState.MessageStatus;
+import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
+import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
+import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
+import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -83,16 +83,16 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
+    public void taskWorkStatusTransition(TaskWorkTraceView taskMsg,
                                         MessageStatus fromStatus,
                                         MessageStatus toStatus,
                                         String trigger,
                                         String source,
                                         String reason) {
-        taskMsgStatusTransition(taskMsg, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
+        taskWorkStatusTransition(taskMsg, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
     }
 
-    public void taskMsgStatusTransition(TaskMessageTraceView taskMsg,
+    public void taskWorkStatusTransition(TaskWorkTraceView taskMsg,
                                         String attemptId,
                                         String workerId,
                                         String workerContextId,
@@ -125,7 +125,7 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMsgAttemptStatusTransition(String taskId,
+    public void taskWorkAttemptStatusTransition(String taskId,
                                                String messageId,
                                                String attemptId,
                                                Integer attemptNo,
@@ -161,15 +161,15 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMsgRetryReset(TaskMessageTraceView taskMsg,
+    public void taskWorkRetryReset(TaskWorkTraceView taskMsg,
                                   Long workRetryDelayMillis,
                                   String trigger,
                                   String source,
                                   String reason) {
-        taskMsgRetryReset(taskMsg, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
+        taskWorkRetryReset(taskMsg, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
     }
 
-    public void taskMsgRetryReset(TaskMessageTraceView taskMsg,
+    public void taskWorkRetryReset(TaskWorkTraceView taskMsg,
                                   String attemptId,
                                   String workerId,
                                   String workerContextId,
@@ -373,21 +373,21 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void callbackAccepted(TaskMessageTraceView taskMsg, String reason) {
+    public void callbackAccepted(TaskWorkTraceView taskMsg, String reason) {
         if (taskMsg == null) {
             return;
         }
         emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, taskMsg, reason, "SUCCESS", true));
     }
 
-    public void callbackIgnoredDuplicate(TaskMessageTraceView taskMsg, String reason) {
+    public void callbackIgnoredDuplicate(TaskWorkTraceView taskMsg, String reason) {
         if (taskMsg == null) {
             return;
         }
         emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, taskMsg, reason, "IGNORED", true));
     }
 
-    public void callbackIgnoredLate(TaskMessageTraceView taskMsg, String reason) {
+    public void callbackIgnoredLate(TaskWorkTraceView taskMsg, String reason) {
         if (taskMsg == null) {
             return;
         }
@@ -410,22 +410,22 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void callbackRejectedNoActiveLease(TaskMessageTraceView taskMsg, String reason) {
+    public void callbackRejectedNoActiveLease(TaskWorkTraceView taskMsg, String reason) {
         if (taskMsg == null) {
             return;
         }
         emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, taskMsg, reason, "REJECTED", false));
     }
 
-    public void callbackRejectedInvalidState(TaskMessageTraceView taskMsg, String reason) {
+    public void callbackRejectedInvalidState(TaskWorkTraceView taskMsg, String reason) {
         if (taskMsg == null) {
             return;
         }
         emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, taskMsg, reason, "REJECTED", false));
     }
 
-    public void taskMessageAttemptClosed(Task task,
-                                         TaskMessageTraceView taskMsg,
+    public void taskWorkAttemptClosed(Task task,
+                                         TaskWorkTraceView taskMsg,
                                          String attemptId,
                                          Integer attemptNo,
                                          String workerId,
@@ -462,8 +462,8 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskMessageLogicallyFinal(Task task,
-                                          TaskMessageTraceView taskMsg,
+    public void taskWorkLogicallyFinal(Task task,
+                                          TaskWorkTraceView taskMsg,
                                           String attemptId,
                                           String workerId,
                                           String workerContextId,
@@ -525,7 +525,7 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void leaseExpired(TaskMessageTraceView taskMsg,
+    public void leaseExpired(TaskWorkTraceView taskMsg,
                              String attemptId,
                              String workerId,
                              String workerContextId,
@@ -757,7 +757,7 @@ public final class TraceEventLogger {
     }
 
     private ExecutionEvent callbackEvent(ExecutionEventType eventType,
-                                         TaskMessageTraceView taskMsg,
+                                         TaskWorkTraceView taskMsg,
                                          String reason,
                                          String result,
                                          boolean success) {
@@ -875,7 +875,7 @@ public final class TraceEventLogger {
         return value == null ? null : String.valueOf(value);
     }
 
-    public record TaskMessageTraceView(
+    public record TaskWorkTraceView(
             String taskId,
             String messageId,
             String latestAttemptId,

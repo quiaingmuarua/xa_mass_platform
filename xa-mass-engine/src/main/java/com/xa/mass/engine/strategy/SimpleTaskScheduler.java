@@ -26,7 +26,7 @@ public class SimpleTaskScheduler implements TaskScheduler {
     }
 
     @Override
-    public boolean retryTaskMessage(String taskId, String messageId) {
+    public boolean retryTaskDispatchUnit(String taskId, String messageId) {
         log.info("Retrying task message {} of task {}", messageId, taskId);
         return true;
     }

@@ -99,7 +99,7 @@ Keep these facts fixed unless the owning global baselines change:
   grow message/attempt residue reads back into it
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
   compatibility projection audit belongs to `TaskProjectionStateAuditor`
-- `TaskMessageCompatibilityState` is the engine-owned message/attempt residue
+- `TaskWorkProjectionState` is the engine-owned message/attempt residue
   state owner; do not let storage-edge projection enums leak back into
   runtime/result/trace code as native engine state
 - `TaskCompatibilityProjectionStore` is the engine-internal storage-edge owner

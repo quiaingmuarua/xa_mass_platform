@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 /**
  * Engine event payload for a closed execution attempt.
  */
-public record TaskMessageAttemptClosedEvent(
+public record TaskWorkAttemptClosedEvent(
         String taskId,
         String messageId,
         String attemptId,
@@ -11,20 +11,20 @@ public record TaskMessageAttemptClosedEvent(
         String workerId,
         String workerContextId,
         String batchId,
-        TaskMessageCompatibilityState.AttemptStatus status,
-        TaskMessageCompatibilityState.AttemptFinalReason finalReason
+        TaskWorkProjectionState.AttemptStatus status,
+        TaskWorkProjectionState.AttemptFinalReason finalReason
 ) {
 
-    public static TaskMessageAttemptClosedEvent from(String taskId,
+    public static TaskWorkAttemptClosedEvent from(String taskId,
                                                      String messageId,
                                                      String attemptId,
                                                      int attemptNo,
                                                      String workerId,
                                                      String workerContextId,
                                                      String batchId,
-                                                     TaskMessageCompatibilityState.AttemptStatus status,
-                                                     TaskMessageCompatibilityState.AttemptFinalReason finalReason) {
-        return new TaskMessageAttemptClosedEvent(
+                                                     TaskWorkProjectionState.AttemptStatus status,
+                                                     TaskWorkProjectionState.AttemptFinalReason finalReason) {
+        return new TaskWorkAttemptClosedEvent(
                 taskId,
                 messageId,
                 attemptId,

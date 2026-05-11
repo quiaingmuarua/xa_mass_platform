@@ -239,28 +239,28 @@ class TaskLifecycleService {
         return doTerminateTask(taskId, reason, "TERMINATE_TASK");
     }
 
-    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
+    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        if (inputs == null || inputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must be a non-empty list");
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("items must be a non-empty list");
         }
-        if (inputs.size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
-            throw new IllegalArgumentException("append inputs exceed ingest batch limit: "
-                    + inputs.size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
+        if (items.size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
+            throw new IllegalArgumentException("append items exceed ingest batch limit: "
+                    + items.size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
         }
-        if (!canAcceptTaskInputs(task)) {
-            throw new IllegalStateException(describeInputAppendRejection(task, taskId));
+        if (!canAcceptTaskItems(task)) {
+            throw new IllegalStateException(describeItemAppendRejection(task, taskId));
         }
 
-        List<RuntimeTaskIngressItem> ingressItems = new java.util.ArrayList<>(inputs.size());
-        for (java.util.Map<String, Object> input : inputs) {
+        List<RuntimeTaskIngressItem> ingressItems = new java.util.ArrayList<>(items.size());
+        for (java.util.Map<String, Object> item : items) {
             ingressItems.add(RuntimeTaskIngressItem.fromInput(
                     taskId,
                     java.util.UUID.randomUUID().toString(),
-                    input,
+                    item,
                     task.getExecutionSpec().getDefaultMaxRetryCount()
             ));
         }
@@ -291,13 +291,13 @@ class TaskLifecycleService {
         return true;
     }
 
-    private boolean canAcceptTaskInputs(Task task) {
+    private boolean canAcceptTaskItems(Task task) {
         return task.getStatus() != null
                 && !task.getStatus().isFinal()
                 && task.getIntakeStatus() == TaskIntakeStatus.OPEN;
     }
 
-    private String describeInputAppendRejection(Task task, String taskId) {
+    private String describeItemAppendRejection(Task task, String taskId) {
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return "Task intake is sealed: " + taskId;
         }

@@ -17,14 +17,15 @@ class SdkTaskRequestMapperTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
+                .contract(TaskContract.SESSION)
                 .sharedConfig(Map.of("source", "sdk"))
-                .executionSpec(spec(TaskContract.SESSION, TaskWorkloadClass.INTERACTIVE, 1, 0))
+                .executionSpec(spec(TaskWorkloadClass.INTERACTIVE, 1, 0))
                 .build();
 
         TaskShellCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
 
         assertEquals(TaskWorkloadClass.INTERACTIVE, dto.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskContract.SESSION, dto.getExecutionSpec().getContract());
+        assertEquals(TaskContract.SESSION, dto.getContract());
         assertEquals("sdk", dto.getSharedConfig().get("source"));
     }
 
@@ -33,23 +34,22 @@ class SdkTaskRequestMapperTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .executionSpec(spec(TaskContract.BATCH, TaskWorkloadClass.BULK, 1, 0))
+                .contract(TaskContract.BATCH)
+                .executionSpec(spec(TaskWorkloadClass.BULK, 1, 0))
                 .sharedConfig(Map.of("eventCode", "crawler.fetch-page"))
                 .build();
 
         TaskShellCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
 
         assertEquals(TaskWorkloadClass.BULK, dto.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskContract.BATCH, dto.getExecutionSpec().getContract());
+        assertEquals(TaskContract.BATCH, dto.getContract());
         assertEquals("crawler.fetch-page", dto.getSharedConfig().get("eventCode"));
     }
 
-    private TaskExecutionSpec spec(TaskContract contract,
-                                   TaskWorkloadClass workloadClass,
+    private TaskExecutionSpec spec(TaskWorkloadClass workloadClass,
                                    int batchSize,
                                    int maxRuntimeSeconds) {
         TaskExecutionSpec spec = new TaskExecutionSpec();
-        spec.setContract(contract);
         spec.setWorkloadClass(workloadClass);
         spec.setBatchSize(batchSize);
         spec.setMaxRuntimeSeconds(maxRuntimeSeconds);

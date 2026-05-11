@@ -9,8 +9,8 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.TaskMessageCompatibilityState.AttemptStatus;
-import com.xa.mass.engine.TaskMessageAttemptSupport;
+import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
+import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
@@ -291,14 +291,14 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
     private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work) {
         int attemptNo = Math.max(0, work.retryCount()) + 1;
-        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                 work.messageId(),
                 attemptNo,
                 work.workerId(),
                 work.workerContextId(),
                 work.batchId()
         );
-        traceEventLogger.taskMsgAttemptStatusTransition(
+        traceEventLogger.taskWorkAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
                 attemptId,
@@ -313,7 +313,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 "SimpleTaskDispatchBinder",
                 "attempt leased for dispatch"
         );
-        traceEventLogger.taskMsgAttemptStatusTransition(
+        traceEventLogger.taskWorkAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
                 attemptId,

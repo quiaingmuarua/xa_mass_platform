@@ -1,14 +1,15 @@
 package com.xa.mass.base.model;
 
-import com.xa.mass.base.enums.task.TaskContract;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.xa.mass.base.enums.task.TaskExecutionProfile;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.Objects;
 
+@JsonIgnoreProperties(ignoreUnknown = false)
 public class TaskExecutionSpec {
 
-    private TaskContract contract;
     private TaskExecutionProfile profile;
     private TaskWorkloadClass workloadClass;
     private int batchSize;
@@ -16,7 +17,6 @@ public class TaskExecutionSpec {
     private int defaultMaxRetryCount;
 
     public TaskExecutionSpec() {
-        this.contract = null;
         this.profile = TaskExecutionProfile.STANDARD;
         this.workloadClass = null;
         this.batchSize = 1;
@@ -29,21 +29,12 @@ public class TaskExecutionSpec {
         if (spec == null) {
             return normalized;
         }
-        normalized.setContract(spec.getContract());
         normalized.setProfile(spec.getProfile());
         normalized.setWorkloadClass(spec.getWorkloadClass());
         normalized.setBatchSize(spec.getBatchSize());
         normalized.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
         normalized.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
         return normalized;
-    }
-
-    public TaskContract getContract() {
-        return contract;
-    }
-
-    public void setContract(TaskContract contract) {
-        this.contract = contract;
     }
 
     public TaskExecutionProfile getProfile() {
@@ -86,6 +77,11 @@ public class TaskExecutionSpec {
         this.defaultMaxRetryCount = Math.max(defaultMaxRetryCount, 0);
     }
 
+    @JsonSetter("contract")
+    public void rejectLegacyContractField(Object ignored) {
+        throw new IllegalArgumentException("executionSpec.contract has been removed; use top-level contract");
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -93,13 +89,12 @@ public class TaskExecutionSpec {
         return batchSize == that.batchSize
                 && maxRuntimeSeconds == that.maxRuntimeSeconds
                 && defaultMaxRetryCount == that.defaultMaxRetryCount
-                && contract == that.contract
                 && profile == that.profile
                 && workloadClass == that.workloadClass;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(contract, profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
+        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
     }
 }

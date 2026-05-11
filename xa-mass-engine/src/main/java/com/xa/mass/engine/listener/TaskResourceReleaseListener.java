@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskMessageAttemptClosedEvent;
+import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -67,7 +67,7 @@ public class TaskResourceReleaseListener {
         }
     }
 
-    public void onTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
+    public void onTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
         if (task == null || event == null || task.getStatus().isFinal()) {
             return;
         }

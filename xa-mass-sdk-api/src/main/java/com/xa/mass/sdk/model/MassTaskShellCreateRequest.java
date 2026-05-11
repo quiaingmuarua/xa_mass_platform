@@ -1,5 +1,6 @@
 package com.xa.mass.sdk.model;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.model.TaskExecutionSpec;
 
 import java.util.Collections;
@@ -11,6 +12,7 @@ public final class MassTaskShellCreateRequest {
     private final String userId;
     private final String tenantId;
     private final String project;
+    private final TaskContract contract;
     private final Map<String, Object> sharedConfig;
     private final TaskExecutionSpec executionSpec;
     private final String sourceRef;
@@ -19,6 +21,7 @@ public final class MassTaskShellCreateRequest {
         this.userId = builder.userId;
         this.tenantId = normalizeString(builder.tenantId);
         this.project = builder.project;
+        this.contract = builder.contract;
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
         this.executionSpec = TaskExecutionSpec.normalized(builder.executionSpec);
         this.sourceRef = normalizeString(builder.sourceRef);
@@ -40,6 +43,10 @@ public final class MassTaskShellCreateRequest {
         return project;
     }
 
+    public TaskContract getContract() {
+        return contract;
+    }
+
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
     }
@@ -56,6 +63,7 @@ public final class MassTaskShellCreateRequest {
         private String userId;
         private String tenantId;
         private String project;
+        private TaskContract contract;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
         private TaskExecutionSpec executionSpec;
         private String sourceRef;
@@ -75,6 +83,11 @@ public final class MassTaskShellCreateRequest {
 
         public Builder project(String project) {
             this.project = project;
+            return this;
+        }
+
+        public Builder contract(TaskContract contract) {
+            this.contract = contract;
             return this;
         }
 

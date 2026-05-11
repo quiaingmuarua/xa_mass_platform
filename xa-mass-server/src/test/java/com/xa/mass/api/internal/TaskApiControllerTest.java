@@ -94,8 +94,25 @@ class TaskApiControllerTest {
         assertEquals("demoApp", request.getProject());
         assertEquals(TenantConstants.DEFAULT_TENANT_ID, request.getTenantId());
         assertEquals("agent", request.getUserId());
+        assertNull(request.getContract());
         assertEquals(2, request.getExecutionSpec().getBatchSize());
         assertEquals(TaskWorkloadClass.INTERACTIVE, request.getExecutionSpec().getWorkloadClass());
+    }
+
+    @Test
+    void createTaskShellRejectsLegacyNestedExecutionSpecContract() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "project":"demoApp",
+                                  "userId":"agent",
+                                  "executionSpec":{"contract":"SESSION","workloadClass":"INTERACTIVE"}
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(taskAdmin, never()).createTaskShell(any());
     }
 
     @Test

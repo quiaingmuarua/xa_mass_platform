@@ -1,6 +1,7 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -24,6 +25,7 @@ public class Task {
     private String tid;
     private String tenantId;
     private String taskName;
+    private TaskContract contract;
     private ProjectRef project;
     private TaskStatus status;
     private int taskTargetNumber;
@@ -45,6 +47,7 @@ public class Task {
     private TaskTerminalReason terminalReason;
 
     public Task() {
+        this.contract = TaskContract.BATCH;
         this.status = TaskStatus.NEW;
         this.executionSpec = new TaskExecutionSpec();
         this.intakeStatus = TaskIntakeStatus.SEALED;
@@ -88,6 +91,15 @@ public class Task {
 
     public void setTaskName(String taskName) {
         this.taskName = taskName;
+    }
+
+    public TaskContract getContract() {
+        return contractOrDefault();
+    }
+
+    public void setContract(TaskContract contract) {
+        this.contract = contract == null ? TaskContract.BATCH : contract;
+        this.updateTime = LocalDateTime.now();
     }
 
     public String getProject() {
@@ -330,6 +342,13 @@ public class Task {
         this.taskNonSuccessNumber = this.taskEligibleNumber - this.taskSuccessNumber;
     }
 
+    private TaskContract contractOrDefault() {
+        if (this.contract == null) {
+            this.contract = TaskContract.BATCH;
+        }
+        return this.contract;
+    }
+
     private TaskExecutionSpec executionSpecOrDefault() {
         if (this.executionSpec == null) {
             this.executionSpec = new TaskExecutionSpec();
@@ -356,6 +375,7 @@ public class Task {
                 "tid='" + tid + '\'' +
                 ", tenantId='" + tenantId + '\'' +
                 ", taskName='" + taskName + '\'' +
+                ", contract=" + contract +
                 ", project='" + project + '\'' +
                 ", status=" + status +
                 ", executionSpec=" + executionSpec +

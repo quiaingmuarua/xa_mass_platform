@@ -34,7 +34,7 @@ final class TaskCompatibilityProjectionStore {
                 ingressItem.taskId(),
                 ingressItem.projectedInput(),
                 ingressItem.payloadRef(),
-                TaskMessageCompatibilityState.MessageStatus.INIT.toProjection(),
+                TaskWorkProjectionState.MessageStatus.INIT.toProjection(),
                 null,
                 null,
                 null,

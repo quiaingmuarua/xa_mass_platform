@@ -33,7 +33,7 @@ class TaskDispatchRequestService {
         if (!isUsable(task)) {
             return;
         }
-        if (task.getExecutionSpec().getContract() == TaskContract.BATCH) {
+        if (task.getContract() == TaskContract.BATCH) {
             return;
         }
         delayedDispatchSchedule.remove(task.getTid());
@@ -44,7 +44,7 @@ class TaskDispatchRequestService {
         if (!isUsable(task)) {
             return;
         }
-        if (task.getExecutionSpec().getContract() == TaskContract.BATCH) {
+        if (task.getContract() == TaskContract.BATCH) {
             return;
         }
         if (delayMillis <= 0L) {

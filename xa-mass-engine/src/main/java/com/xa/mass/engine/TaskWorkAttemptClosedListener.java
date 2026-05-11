@@ -6,7 +6,7 @@ import com.xa.mass.base.model.Task;
  * Listener for one concrete execution attempt reaching a final state.
  */
 @FunctionalInterface
-public interface TaskMessageAttemptClosedListener {
+public interface TaskWorkAttemptClosedListener {
 
-    void onTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event);
+    void onTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event);
 }

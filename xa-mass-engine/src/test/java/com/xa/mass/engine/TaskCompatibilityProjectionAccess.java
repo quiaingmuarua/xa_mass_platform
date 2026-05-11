@@ -216,7 +216,7 @@ final class TaskCompatibilityProjectionAccess {
             return null;
         }
         int attemptNo = Math.max(1, activeLease.retryCount() + 1);
-        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
+        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(messageId, attemptNo, activeLease);
         LocalDateTime leaseExpireTime = activeLease.leaseExpireAt() != null
                 ? LocalDateTime.ofInstant(activeLease.leaseExpireAt(), ZoneId.systemDefault())
                 : null;
@@ -629,7 +629,7 @@ final class TaskCompatibilityProjectionAccess {
                 return base;
             }
             int runtimeAttemptNo = Math.max(1, activeLease.retryCount() + 1);
-            String runtimeAttemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+            String runtimeAttemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                     messageId,
                     runtimeAttemptNo,
                     activeLease

@@ -404,6 +404,7 @@ public class TaskApiController {
         item.put("tenantId", task.getTenantId());
         item.put("project", task.getProject());
         item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
+        item.put("contract", task.getContract() != null ? task.getContract().name() : null);
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
         item.put("executionSpec", task.getExecutionSpec());
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
@@ -487,6 +488,7 @@ public class TaskApiController {
                 .userId(resolvedUserId)
                 .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
+                .contract(requestBody.getContract())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .executionSpec(TaskExecutionSpec.normalized(requestBody.getExecutionSpec()))
                 .sourceRef(requestBody.getSourceRef())
@@ -510,6 +512,7 @@ public class TaskApiController {
     private boolean isEmptyCreateRequest(TaskShellCreateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
+                && requestBody.getContract() == null
                 && requestBody.getSharedConfig() == null
                 && requestBody.getExecutionSpec() == null
                 && requestBody.getSourceRef() == null;

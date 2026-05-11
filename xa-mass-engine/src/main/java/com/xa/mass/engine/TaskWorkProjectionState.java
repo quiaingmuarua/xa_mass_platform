@@ -13,9 +13,9 @@ import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
  * projection enums as its native state model. Conversion to storage projection
  * types happens only at persistence and diagnostic boundaries.</p>
  */
-public final class TaskMessageCompatibilityState {
+public final class TaskWorkProjectionState {
 
-    private TaskMessageCompatibilityState() {
+    private TaskWorkProjectionState() {
     }
 
     public static boolean isFinalReasonCompatible(MessageStatus status,

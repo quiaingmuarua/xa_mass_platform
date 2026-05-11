@@ -13,7 +13,7 @@ final class TaskResultCorrelationSupport {
                                                   String projectedAttemptId,
                                                   ActiveLeaseRecord activeLease) {
         String runtimeAttemptId = activeLease != null
-                ? TaskMessageAttemptSupport.runtimeAttemptId(
+                ? TaskWorkAttemptIdSupport.runtimeAttemptId(
                 messageId,
                 Math.max(1, activeLease.retryCount() + 1),
                 activeLease

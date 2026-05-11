@@ -6,7 +6,7 @@ import com.xa.mass.base.model.Task;
  * Listener for a logical task message reaching a stable final state.
  */
 @FunctionalInterface
-public interface TaskMessageLogicallyFinalListener {
+public interface TaskWorkLogicallyFinalListener {
 
-    void onTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event);
+    void onTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event);
 }

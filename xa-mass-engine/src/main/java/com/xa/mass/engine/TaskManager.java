@@ -180,7 +180,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             Task task = createTaskShellInternal(dto);
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
-                    + ", contract=" + task.getExecutionSpec().getContract()
+                    + ", contract=" + task.getContract()
                     + ", intakeStatus=" + task.getIntakeStatus(), duration);
             return task;
         } catch (Exception e) {
@@ -333,8 +333,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
     @Override
-    public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
-        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
+    public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, items));
     }
 
     /**
@@ -617,15 +617,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
         }
         TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
-        TaskContract contract = resolveShellContract(normalizedSpec);
-        normalizedSpec.setContract(contract);
+        TaskContract contract = resolveShellContract(dto);
         normalizedSpec.setWorkloadClass(resolveWorkloadClass(contract, normalizedSpec));
+        dto.setContract(contract);
         dto.setExecutionSpec(normalizedSpec);
     }
 
-    private TaskContract resolveShellContract(TaskExecutionSpec normalizedSpec) {
-        if (normalizedSpec != null && normalizedSpec.getContract() != null) {
-            return normalizedSpec.getContract();
+    private TaskContract resolveShellContract(TaskShellCreateRequestDto dto) {
+        if (dto != null && dto.getContract() != null) {
+            return dto.getContract();
         }
         return TaskContract.BATCH;
     }
@@ -765,12 +765,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return true;
     }
 
-    void publishTaskMessageAttemptClosed(Task task, TaskMessageAttemptClosedEvent event) {
-        eventPublisher.publishTaskMessageAttemptClosed(task, event);
+    void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
+        eventPublisher.publishTaskWorkAttemptClosed(task, event);
     }
 
-    void publishTaskMessageLogicallyFinal(Task task, TaskMessageLogicallyFinalEvent event) {
-        eventPublisher.publishTaskMessageLogicallyFinal(task, event);
+    void publishTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event) {
+        eventPublisher.publishTaskWorkLogicallyFinal(task, event);
     }
 
     private WorkEnqueueOutcome enqueueTaskWork(Task task, RuntimeTaskIngressItem ingressItem) {
@@ -813,6 +813,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 user
         );
         task.setTenantId(dto.getTenantId());
+        task.setContract(dto.getContract());
         task.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
         task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
         task.setIntakeStatus(intakeStatus);
@@ -827,9 +828,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
         String project = dto.getProject() != null ? dto.getProject().trim() : "task";
-        TaskContract contract = dto.getExecutionSpec().getContract() != null
-                ? dto.getExecutionSpec().getContract()
-                : TaskContract.BATCH;
+        TaskContract contract = dto.getContract() != null ? dto.getContract() : TaskContract.BATCH;
         String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
         String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
                 ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)

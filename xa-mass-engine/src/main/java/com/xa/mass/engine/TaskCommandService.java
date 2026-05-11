@@ -68,8 +68,8 @@ public class TaskCommandService {
         return taskCommands.terminateTask(taskId, reason);
     }
 
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        return taskCommands.appendTaskItems(taskId, inputs);
+    public int appendTaskItems(String taskId, List<Map<String, Object>> items) {
+        return taskCommands.appendTaskItems(taskId, items);
     }
 
     public boolean sealTask(String taskId) {

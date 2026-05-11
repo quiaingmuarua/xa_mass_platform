@@ -481,12 +481,12 @@ class TaskConcurrencyAcceptanceTest {
                                 AtomicInteger attemptClosedCount,
                                 AtomicInteger logicallyFinalCount,
                                 AtomicInteger terminalCount) {
-        taskManager.events().addTaskMessageAttemptClosedListener((task, attempt) -> {
+        taskManager.events().addTaskWorkAttemptClosedListener((task, attempt) -> {
             if (taskId.equals(task.getTid())) {
                 attemptClosedCount.incrementAndGet();
             }
         });
-        taskManager.events().addTaskMessageLogicallyFinalListener((task, event) -> {
+        taskManager.events().addTaskWorkLogicallyFinalListener((task, event) -> {
             if (taskId.equals(task.getTid())) {
                 logicallyFinalCount.incrementAndGet();
             }
@@ -558,7 +558,7 @@ class TaskConcurrencyAcceptanceTest {
             );
         }
         int attemptNo = Math.max(1, message.retryCount() + 1);
-        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                 message.messageId(),
                 attemptNo,
                 "worker-" + suffix,
@@ -658,7 +658,7 @@ class TaskConcurrencyAcceptanceTest {
         }
 
         @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
+        public boolean retryTaskDispatchUnit(String taskId, String messageId) {
             return true;
         }
 

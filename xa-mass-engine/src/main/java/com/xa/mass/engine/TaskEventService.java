@@ -75,23 +75,23 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
-    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
-        registrar.addTaskMessageAttemptClosedListener(listener);
+    public void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        registrar.addTaskWorkAttemptClosedListener(listener);
     }
 
     @Override
-    public void removeTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
-        registrar.removeTaskMessageAttemptClosedListener(listener);
+    public void removeTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        registrar.removeTaskWorkAttemptClosedListener(listener);
     }
 
     @Override
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
-        registrar.addTaskMessageLogicallyFinalListener(listener);
+    public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        registrar.addTaskWorkLogicallyFinalListener(listener);
     }
 
     @Override
-    public void removeTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
-        registrar.removeTaskMessageLogicallyFinalListener(listener);
+    public void removeTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        registrar.removeTaskWorkLogicallyFinalListener(listener);
     }
 
     @Override

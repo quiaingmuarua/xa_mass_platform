@@ -626,7 +626,7 @@ class SimpleTaskDispatchBinderTest {
         }
 
         @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
+        public boolean retryTaskDispatchUnit(String taskId, String messageId) {
             return true;
         }
 

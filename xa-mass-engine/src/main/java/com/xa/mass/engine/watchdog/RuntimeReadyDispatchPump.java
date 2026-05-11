@@ -104,7 +104,7 @@ public class RuntimeReadyDispatchPump {
             return false;
         }
         TaskStatus status = task.getStatus();
-        return task.getExecutionSpec().getContract() == TaskContract.BATCH
+        return task.getContract() == TaskContract.BATCH
                 && (status == TaskStatus.READY || status == TaskStatus.RUNNING);
     }
 }

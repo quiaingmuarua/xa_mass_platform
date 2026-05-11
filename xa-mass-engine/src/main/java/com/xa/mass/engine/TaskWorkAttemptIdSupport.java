@@ -5,9 +5,9 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 /**
  * Narrow helper for runtime attempt correlation.
  */
-public final class TaskMessageAttemptSupport {
+public final class TaskWorkAttemptIdSupport {
 
-    private TaskMessageAttemptSupport() {
+    private TaskWorkAttemptIdSupport() {
     }
 
     public static String runtimeAttemptId(String messageId,

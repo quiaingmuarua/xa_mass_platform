@@ -5,11 +5,11 @@ import java.util.Map;
 /**
  * Engine event payload for one logical task message reaching stable finality.
  */
-public record TaskMessageLogicallyFinalEvent(
+public record TaskWorkLogicallyFinalEvent(
         String taskId,
         String messageId,
-        TaskMessageCompatibilityState.MessageStatus status,
-        TaskMessageCompatibilityState.MessageFinalReason finalReason,
+        TaskWorkProjectionState.MessageStatus status,
+        TaskWorkProjectionState.MessageFinalReason finalReason,
         int retryCount,
         String errorCode,
         String errorMessage,
@@ -17,16 +17,16 @@ public record TaskMessageLogicallyFinalEvent(
         Map<String, Object> output
 ) {
 
-    static TaskMessageLogicallyFinalEvent from(String taskId,
+    static TaskWorkLogicallyFinalEvent from(String taskId,
                                                String messageId,
-                                               TaskMessageCompatibilityState.MessageStatus status,
-                                               TaskMessageCompatibilityState.MessageFinalReason finalReason,
+                                               TaskWorkProjectionState.MessageStatus status,
+                                               TaskWorkProjectionState.MessageFinalReason finalReason,
                                                int retryCount,
                                                String errorCode,
                                                String errorMessage,
                                                String payloadRef,
                                                Map<String, Object> output) {
-        return new TaskMessageLogicallyFinalEvent(
+        return new TaskWorkLogicallyFinalEvent(
                 taskId,
                 messageId,
                 status,

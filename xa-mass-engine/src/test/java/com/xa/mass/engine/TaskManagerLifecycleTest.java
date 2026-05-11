@@ -51,7 +51,7 @@ class TaskManagerLifecycleTest {
         Task task = createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.BATCH, task.getContract());
         assertEquals(TaskWorkloadClass.BULK, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertNotNull(task.getProjectRef());
@@ -78,7 +78,7 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.SESSION, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.SESSION, task.getContract());
         assertEquals(TaskWorkloadClass.BULK, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
     }
@@ -90,7 +90,7 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.BATCH, task.getContract());
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
@@ -200,7 +200,7 @@ class TaskManagerLifecycleTest {
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.SESSION, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.SESSION, task.getContract());
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
@@ -221,7 +221,7 @@ class TaskManagerLifecycleTest {
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.BATCH, task.getContract());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals("mock/input/demo.csv", task.getSourceRef());
         assertEquals(0, task.getTaskTargetNumber());
@@ -255,7 +255,7 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskContract.BATCH, task.getContract());
         assertEquals(1, task.getTaskTargetNumber());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
@@ -612,7 +612,7 @@ class TaskManagerLifecycleTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> taskManager.appendTaskItems(task.getTid(), oversizedBatch));
 
-        assertTrue(error.getMessage().contains("append inputs exceed ingest batch limit"));
+        assertTrue(error.getMessage().contains("append items exceed ingest batch limit"));
     }
 
     @Test
@@ -1274,7 +1274,7 @@ class TaskManagerLifecycleTest {
         assertEquals(1, claimed.size());
         TaskDetailStore.TaskMessageProjection compatibilityMessage = ProjectionTestSupport.markAssigned(
                 message,
-                TaskMessageAttemptSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.runtimeAttemptId(
                         message.messageId(),
                         Math.max(1, message.retryCount() + 1),
                         "worker-recover",
@@ -1458,7 +1458,7 @@ class TaskManagerLifecycleTest {
 
         assertEquals(1, visibleAttempts.size());
         TaskDetailStore.TaskMessageAttemptProjection activeAttempt = visibleAttempts.getFirst();
-        assertEquals(TaskMessageAttemptSupport.runtimeAttemptId(
+        assertEquals(TaskWorkAttemptIdSupport.runtimeAttemptId(
                 message.messageId(),
                 1,
                 "worker-audit-view",
@@ -1602,9 +1602,9 @@ class TaskManagerLifecycleTest {
             assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
 
             List<String> events = new java.util.ArrayList<>();
-            taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+            taskManager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
                     events.add("attempt-closed:" + attempt.status()));
-            taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+            taskManager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
                     events.add("logical-final:" + event.status()));
             taskManager.events().addTaskDispatchListener(currentTask ->
                     events.add("dispatch:" + currentTask.getStatus()));
@@ -1628,7 +1628,7 @@ class TaskManagerLifecycleTest {
         assignMessage(task, message);
 
         List<String> events = new java.util.ArrayList<>();
-        taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) -> events.add("logical-final"));
+        taskManager.events().addTaskWorkLogicallyFinalListener((currentTask, event) -> events.add("logical-final"));
         taskManager.events().addTaskTerminalListener(currentTask -> events.add("terminal"));
 
         assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
@@ -2672,9 +2672,9 @@ class TaskManagerLifecycleTest {
             assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
 
             List<String> events = new java.util.ArrayList<>();
-            taskManager.events().addTaskMessageAttemptClosedListener((currentTask, attempt) ->
+            taskManager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
                     events.add("attempt-closed:" + attempt.status()));
-            taskManager.events().addTaskMessageLogicallyFinalListener((currentTask, event) ->
+            taskManager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
                     events.add("logical-final:" + event.status()));
             taskManager.events().addTaskDispatchListener(currentTask ->
                     events.add("dispatch:" + currentTask.getStatus()));
@@ -3069,16 +3069,6 @@ class TaskManagerLifecycleTest {
             this.sealIntakeAfterCreate = sealIntakeAfterCreate;
         }
 
-        TaskContract getContract() {
-            return getExecutionSpec().getContract();
-        }
-
-        void setContract(TaskContract contract) {
-            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
-            executionSpec.setContract(contract);
-            setExecutionSpec(executionSpec);
-        }
-
         void setWorkloadClass(TaskWorkloadClass workloadClass) {
             TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
             executionSpec.setWorkloadClass(workloadClass);
@@ -3102,9 +3092,8 @@ class TaskManagerLifecycleTest {
             dto.setUserId(getUserId());
             dto.setProject(getProject());
             dto.setSharedConfig(getSharedConfig());
-            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
-            executionSpec.setContract(contract);
-            dto.setExecutionSpec(executionSpec);
+            dto.setContract(contract);
+            dto.setExecutionSpec(TaskExecutionSpec.normalized(getExecutionSpec()));
             dto.setSourceRef(getSourceRef());
             return dto;
         }
@@ -3153,7 +3142,7 @@ class TaskManagerLifecycleTest {
         }
         TaskDetailStore.TaskMessageProjection assignedProjection = ProjectionTestSupport.markAssigned(
                 message,
-                TaskMessageAttemptSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.runtimeAttemptId(
                         message.messageId(),
                         message.retryCount() + 1,
                         workerId,
@@ -3168,7 +3157,7 @@ class TaskManagerLifecycleTest {
 
         int attemptNo = message.retryCount() + 1;
         TaskDetailStore.TaskMessageAttemptProjection attempt = ProjectionTestSupport.attempt(
-                TaskMessageAttemptSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.runtimeAttemptId(
                         message.messageId(),
                         attemptNo,
                         workerId,
@@ -3284,7 +3273,7 @@ class TaskManagerLifecycleTest {
         }
 
         @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
+        public boolean retryTaskDispatchUnit(String taskId, String messageId) {
             return true;
         }
 

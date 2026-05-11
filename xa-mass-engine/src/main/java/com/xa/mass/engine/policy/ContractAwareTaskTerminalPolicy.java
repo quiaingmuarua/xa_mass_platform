@@ -28,7 +28,7 @@ public class ContractAwareTaskTerminalPolicy implements TaskTerminalPolicy {
         if (task == null) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
-        return switch (task.getExecutionSpec().getContract()) {
+        return switch (task.getContract()) {
             case BATCH -> batchPolicy.evaluate(task, stats);
             case SESSION -> evaluateSession(task, stats);
         };

@@ -21,6 +21,7 @@ public final class TaskOwnershipSupport {
                 .userId(request.getUserId())
                 .tenantId(request.getTenantId())
                 .project(request.getProject())
+                .contract(request.getContract())
                 .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
                 .executionSpec(request.getExecutionSpec())
                 .sourceRef(request.getSourceRef())

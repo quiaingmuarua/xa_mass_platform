@@ -35,7 +35,7 @@ public interface TaskCommandPort {
 
     boolean terminateTask(String taskId, TaskTerminalReason reason);
 
-    int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
+    int appendTaskItems(String taskId, List<Map<String, Object>> items);
 
     boolean sealTask(String taskId);
 }

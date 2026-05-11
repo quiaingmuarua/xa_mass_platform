@@ -15,7 +15,7 @@ public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
 
     @Override
     public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats) {
-        if (task == null || task.getExecutionSpec().getContract() != TaskContract.BATCH) {
+        if (task == null || task.getContract() != TaskContract.BATCH) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
         if (stats.totalCount() <= 0) {

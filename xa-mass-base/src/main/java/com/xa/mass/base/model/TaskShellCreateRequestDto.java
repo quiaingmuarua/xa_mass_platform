@@ -1,6 +1,7 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.xa.mass.base.enums.task.TaskContract;
 
 import java.util.Map;
 
@@ -10,6 +11,7 @@ public class TaskShellCreateRequestDto {
     private String userId;
     private String tenantId;
     private String project;
+    private TaskContract contract;
     private Map<String, Object> sharedConfig;
     private TaskExecutionSpec executionSpec;
     private String sourceRef;
@@ -36,6 +38,14 @@ public class TaskShellCreateRequestDto {
 
     public void setProject(String project) {
         this.project = project;
+    }
+
+    public TaskContract getContract() {
+        return contract;
+    }
+
+    public void setContract(TaskContract contract) {
+        this.contract = contract;
     }
 
     public Map<String, Object> getSharedConfig() {

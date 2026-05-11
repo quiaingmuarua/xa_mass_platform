@@ -73,9 +73,9 @@ final class TaskProjectionStateAuditor {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
             }
             if (isCompleted(messageProjection)
-                    && !TaskMessageCompatibilityState.isFinalReasonCompatible(
-                    TaskMessageCompatibilityState.MessageStatus.fromProjection(messageProjection.status()),
-                    TaskMessageCompatibilityState.MessageFinalReason.fromProjection(messageProjection.finalReason()))) {
+                    && !TaskWorkProjectionState.isFinalReasonCompatible(
+                    TaskWorkProjectionState.MessageStatus.fromProjection(messageProjection.status()),
+                    TaskWorkProjectionState.MessageFinalReason.fromProjection(messageProjection.finalReason()))) {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskDetailStore.TaskMessageAttemptStats attemptStats =
@@ -91,8 +91,8 @@ final class TaskProjectionStateAuditor {
             boolean allAttemptsFinal = attemptStats.getTotalAttempts() > 0 && activeAttemptCount == 0;
             if (allAttemptsFinal
                     && !isCompleted(messageProjection)
-                    && TaskMessageCompatibilityState.MessageStatus.fromProjection(messageProjection.status())
-                    != TaskMessageCompatibilityState.MessageStatus.INIT) {
+                    && TaskWorkProjectionState.MessageStatus.fromProjection(messageProjection.status())
+                    != TaskWorkProjectionState.MessageStatus.INIT) {
                 attemptNeedsResolution = true;
                 violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
             }
