@@ -28,6 +28,20 @@ flows, commands, and module-local inventories.
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
 - process-local EventBus bridging is optional shell wiring, not default engine runtime truth
 
+SDK-first boundary rules:
+
+- the stable integration boundary for workers, embedding clients, and external
+  automation is the SDK contract surface, not server DTOs and not engine/base
+  aggregates
+- `xa-mass-server` is the reference host and validation shell; host auth,
+  project, tenant, user, and console requirements may shape server APIs, but
+  they must not redefine kernel owner semantics
+- `xa-mass-base` and `xa-mass-engine` models may evolve quickly; public
+  compatibility is preserved through SDK request models and SDK snapshot
+  read-models instead of freezing internal `Task` / `Worker` / runtime types
+- SDK snapshots are contract read-models only; engine/runtime logic must not
+  consume SDK snapshots as decision input
+
 Current owner vocabulary:
 
 - `Task` is the task/control aggregate truth
@@ -67,6 +81,7 @@ Boundary rules:
 
 - do not let protocol fields become business or lifecycle truth
 - `EventDefinition.code` is globally unique capability identity
+- do not let server view DTOs or SDK snapshots become kernel runtime truth
 - task contract owns lifecycle, terminal, and default dispatch expectation
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
 - task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path

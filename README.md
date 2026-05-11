@@ -6,6 +6,7 @@ Trust code and verified runtime behavior over historical documentation.
 
 ## Start Here
 
+- [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
 - [doc/README.md](./doc/README.md)
@@ -41,6 +42,20 @@ The shared kernel is:
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
 - SDK-first runtime entry; HTTP pages and demo APIs are validation shells
 - hot-path observability through logs, traces, and bounded diagnostics rather than scan-heavy projections
+
+Current integration boundary rule:
+
+- `xa-mass-sdk` is the stable integration boundary for workers, embedding
+  clients, and external automation
+- `xa-mass-server` is the reference host, demo console backend, and validation
+  shell; it may evolve its HTTP/auth/project/tenant/user surfaces without
+  redefining engine-kernel semantics
+- `xa-mass-base` and `xa-mass-engine` models are allowed to evolve quickly;
+  public compatibility is preserved through SDK request models and SDK snapshot
+  read models rather than by freezing internal `Task` / `Worker` / runtime
+  structures
+- SDK snapshots are read-model contracts, not runtime truth and not engine
+  decision input
 
 ## Current Facts
 

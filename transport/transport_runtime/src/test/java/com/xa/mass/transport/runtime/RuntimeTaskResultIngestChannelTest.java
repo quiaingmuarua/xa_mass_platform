@@ -8,8 +8,8 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskMessageAttemptSupport;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
@@ -426,7 +426,7 @@ class RuntimeTaskResultIngestChannelTest {
                 1,
                 assignmentRuntimePort.getWorkLeaseSeconds()
         );
-        String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                 taskMsg.messageId(),
                 1,
                 "worker-1",

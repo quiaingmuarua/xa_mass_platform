@@ -30,8 +30,6 @@ import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.event.EventDefinitionRegistry;
 import com.xa.mass.sdk.event.EventHandler;
 import com.xa.mass.sdk.model.*;
-import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -65,7 +63,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final Map<String, EventHandler> eventHandlerCache;
     private final ProjectEventCatalog sdkMetadataCatalogView;
     private final TaskDiagnosticOperations taskDiagnostics;
-    private final TransportDebugOperations transportDebugOperations;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
@@ -99,7 +96,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEventsForProject
         );
         this.taskDiagnostics = new DefaultTaskDiagnosticOperations(this::requireStartedTaskQueries);
-        this.transportDebugOperations = new DefaultTransportDebugOperations(delegate);
         this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
@@ -117,6 +113,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public boolean isRunning() {
         return delegate.isRunning();
+    }
+
+    /**
+     * Advanced embedded-runtime seam for operator shells and server wiring that
+     * intentionally live below the stable SDK mainline surface.
+     */
+    public MassApplication runtimeApplication() {
+        return delegate;
     }
 
     @Override
@@ -233,10 +237,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public TaskDiagnosticOperations taskDiagnostics() {
         return taskDiagnostics;
-    }
-
-    public TransportDebugOperations transportDebug() {
-        return transportDebugOperations;
     }
 
     @Override

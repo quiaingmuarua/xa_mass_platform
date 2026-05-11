@@ -53,6 +53,8 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
@@ -368,7 +370,7 @@ class MassSdkTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> app.transportDebug().listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
+                waitUntil(() -> transportDebug(app).listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
                         "sdk socket hello should register an active socket session");
             }
         } finally {
@@ -933,9 +935,9 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> queueDetail = app.transportDebug().getQueueDetail();
-        Map<String, Object> sessionStats = app.transportDebug().getSessionStats();
-        Map<String, Object> enqueueResult = app.transportDebug().enqueueRawMessage(
+        Map<String, Object> queueDetail = transportDebug(app).getQueueDetail();
+        Map<String, Object> sessionStats = transportDebug(app).getSessionStats();
+        Map<String, Object> enqueueResult = transportDebug(app).enqueueRawMessage(
                 Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
         );
 
@@ -987,8 +989,8 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        List<Map<String, Object>> sessions = app.transportDebug().listSessions();
-        Map<String, Object> sessionStats = app.transportDebug().getSessionStats();
+        List<Map<String, Object>> sessions = transportDebug(app).listSessions();
+        Map<String, Object> sessionStats = transportDebug(app).getSessionStats();
 
         assertEquals(1, sessions.size());
         @SuppressWarnings("unchecked")
@@ -1007,7 +1009,7 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> enqueueResult = app.transportDebug().enqueueRawMessage(Map.of(
+        Map<String, Object> enqueueResult = transportDebug(app).enqueueRawMessage(Map.of(
                 "workerId", "worker-debug-2",
                 "rawJson", "{\"eventCode\":\"platform.direct\"}"
         ));
@@ -1029,10 +1031,10 @@ class MassSdkTest {
             app.start();
 
             assertTrue(app.isRunning());
-            assertEquals(false, app.transportDebug().getQueueDetail().get("transporterAvailable"));
-        assertEquals(-1, app.transportDebug().getQueueDetail().get("inputQueueSize"));
-        assertEquals(-1, app.transportDebug().getQueueDetail().get("outputQueueSize"));
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.transportDebug().getQueueDetail().get("deliveryDiagnostics");
+            assertEquals(false, transportDebug(app).getQueueDetail().get("transporterAvailable"));
+        assertEquals(-1, transportDebug(app).getQueueDetail().get("inputQueueSize"));
+        assertEquals(-1, transportDebug(app).getQueueDetail().get("outputQueueSize"));
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) transportDebug(app).getQueueDetail().get("deliveryDiagnostics");
         assertEquals(true, deliveryDiagnostics.get("available"));
         assertEquals(0, deliveryDiagnostics.get("queuedItems"));
         assertEquals(0, deliveryDiagnostics.get("queueCount"));
@@ -1052,7 +1054,7 @@ class MassSdkTest {
         assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
         assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
         assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) transportDebug(app).getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
@@ -1073,7 +1075,7 @@ class MassSdkTest {
         try {
             app.start();
 
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.transportDebug().getQueueDetail().get("deliveryDiagnostics");
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) transportDebug(app).getQueueDetail().get("deliveryDiagnostics");
         assertEquals(true, deliveryDiagnostics.get("available"));
         assertEquals(7, deliveryDiagnostics.get("maxQueuedItems"));
         assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
@@ -1096,7 +1098,7 @@ class MassSdkTest {
         try {
             app.start();
 
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) transportDebug(app).getQueueDetail().get("runtimeExecutors");
             assertEquals(17, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(3, ((Map<?, ?>) runtimeExecutors.get("event")).get("maxPendingTasks"));
         } finally {
@@ -1165,7 +1167,7 @@ class MassSdkTest {
         try {
             app.start();
             assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.transportDebug().getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) transportDebug(app).getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
             assertEquals(1L, ((Map<?, ?>) runtimeExecutors.get("event")).get("completedTasks"));
             app.stop();
@@ -3283,6 +3285,10 @@ class MassSdkTest {
         spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
         spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         return spec;
+    }
+
+    private static TransportDebugOperations transportDebug(MassSdkApplication app) {
+        return new DefaultTransportDebugOperations(app.runtimeApplication());
     }
 
 }

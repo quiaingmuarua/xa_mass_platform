@@ -1,8 +1,6 @@
 package com.xa.mass.server.e2e.support;
 
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -160,7 +158,7 @@ public abstract class AbstractSampleE2eTest {
                                   String textContent,
                                   List<String> targets,
                                   int batchSize,
-                                  TaskWorkloadClass workloadClass) {
+                                  String workloadClass) {
         String defaultRoutingCode = "us";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
@@ -169,8 +167,8 @@ public abstract class AbstractSampleE2eTest {
         createBody.put("sourceRef", sourceRef);
         Map<String, Object> executionSpec = new LinkedHashMap<>();
         executionSpec.put("batchSize", batchSize);
-        if (workloadClass != null) {
-            executionSpec.put("workloadClass", workloadClass.name());
+        if (workloadClass != null && !workloadClass.isBlank()) {
+            executionSpec.put("workloadClass", workloadClass);
         }
         createBody.put("executionSpec", executionSpec);
 

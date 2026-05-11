@@ -1,6 +1,5 @@
 package com.xa.mass.server.e2e.lifecycle;
 
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -88,7 +87,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
                 "interactive workload smoke",
                 List.of("interactive-target-001"),
                 1,
-                TaskWorkloadClass.INTERACTIVE
+                "INTERACTIVE"
         );
         assertApiOk(audit(taskId, "interactive-workload"));
 
@@ -109,7 +108,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
                 "bulk workload smoke",
                 List.of("bulk-target-001", "bulk-target-002", "bulk-target-003"),
                 2,
-                TaskWorkloadClass.BULK
+                "BULK"
         );
         assertApiOk(audit(taskId, "bulk-workload"));
 

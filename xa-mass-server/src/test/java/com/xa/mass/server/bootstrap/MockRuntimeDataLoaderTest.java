@@ -1,9 +1,5 @@
 package com.xa.mass.server.bootstrap;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -12,8 +8,10 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -49,18 +47,18 @@ class MockRuntimeDataLoaderTest {
         assertEquals(2, runtime.registeredWorkerContexts.size());
         assertEquals(1, runtime.createdTasks.size());
         assertEquals(2, runtime.rules.size());
-        assertTrue(runtime.workers.stream().allMatch(worker -> worker.getStatus() == WorkerStatus.OFFLINE));
-        assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("demoApp")));
-        assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("testApp")));
+        assertTrue(runtime.workers.stream().allMatch(worker -> "OFFLINE".equals(worker.getStatus())));
+        assertTrue(runtime.workers.stream().allMatch(worker -> worker.getSupportedProjects().contains("demoApp")));
+        assertTrue(runtime.workers.stream().allMatch(worker -> worker.getSupportedProjects().contains("testApp")));
 
-        WorkerContext us = runtime.workerContextById("wc-us-1");
-        WorkerContext gb = runtime.workerContextById("wc-gb-1");
+        WorkerContextSnapshot us = runtime.workerContextById("wc-us-1");
+        WorkerContextSnapshot gb = runtime.workerContextById("wc-gb-1");
         assertNotNull(us);
         assertNotNull(gb);
         assertTrue(us.getRoutingTags().contains("route-us"));
         assertTrue(gb.getRoutingTags().contains("route-gb"));
-        assertEquals(WorkerContextStatus.IDLE, us.getStatus());
-        assertEquals(WorkerContextStatus.IDLE, gb.getStatus());
+        assertEquals("IDLE", us.getStatus());
+        assertEquals("IDLE", gb.getStatus());
     }
 
     @Test
@@ -110,11 +108,11 @@ class MockRuntimeDataLoaderTest {
         loader.loadInto(runtime);
 
         assertEquals(1, runtime.registeredWorkers.size());
-        assertEquals(WorkerStatus.OFFLINE, runtime.workers.get(0).getStatus());
+        assertEquals("OFFLINE", runtime.workers.get(0).getStatus());
         assertEquals("polling", runtime.registeredWorkers.get(0).getTransportHint());
 
         assertEquals(1, runtime.registeredWorkerContexts.size());
-        assertEquals(WorkerContextStatus.IDLE, runtime.workerContexts.get(0).getStatus());
+        assertEquals("IDLE", runtime.workerContexts.get(0).getStatus());
         assertTrue(runtime.registeredWorkerContexts.get(0).getRoutingTags().contains("route-us"));
     }
 
@@ -327,8 +325,8 @@ class MockRuntimeDataLoaderTest {
     }
 
     private static final class FakeRuntime implements MassRuntimeControl {
-        private final List<Worker> workers = new ArrayList<>();
-        private final List<WorkerContext> workerContexts = new ArrayList<>();
+        private final List<WorkerSnapshot> workers = new ArrayList<>();
+        private final List<WorkerContextSnapshot> workerContexts = new ArrayList<>();
         private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
         private final List<WorkerContextRegistration> registeredWorkerContexts = new ArrayList<>();
         private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
@@ -342,10 +340,6 @@ class MockRuntimeDataLoaderTest {
         @Override
         public void registerWorker(WorkerRegistration request) {
             registeredWorkers.add(request);
-            Worker worker = new Worker();
-            worker.setWorkerId(request.getWorkerId());
-            worker.setWorkerGroupId(request.getWorkerGroupId());
-            worker.setAdapterId(request.getAdapterId());
             List<String> supportedProjects = request.getSupportedProjects();
             if ((supportedProjects == null || supportedProjects.isEmpty()) && !request.getEventBindings().isEmpty()) {
                 supportedProjects = request.getEventBindings().stream()
@@ -360,25 +354,38 @@ class MockRuntimeDataLoaderTest {
                         .distinct()
                         .toList();
             }
-            worker.setSupportedProjects(supportedProjects);
-            worker.setSupportedEventCodes(supportedEventCodes);
-            worker.setOnlineStrategy(request.getTransportHint());
-            worker.setAttributes(request.getAttributes());
-            workers.add(worker);
+            workers.add(new WorkerSnapshot(
+                    request.getWorkerId(),
+                    "OFFLINE",
+                    null,
+                    null,
+                    supportedProjects,
+                    supportedEventCodes,
+                    request.getWorkerGroupId(),
+                    request.getAdapterId(),
+                    request.getTransportHint(),
+                    request.getAttributes(),
+                    null,
+                    null
+            ));
         }
 
         @Override
         public void registerWorkerContext(WorkerContextRegistration request) {
             registeredWorkerContexts.add(request);
-            WorkerContext workerContext = new WorkerContext();
-            workerContext.setWorkerContextId(request.getWorkerContextId());
-            workerContext.setWorkerId(request.getWorkerId());
-            if (request.getProject() != null && !request.getProject().isBlank()) {
-                workerContext.setProject(request.getProject());
-            }
-            workerContext.setRoutingTags(request.getRoutingTags());
-            workerContext.setAttributes(request.getAttributes());
-            workerContexts.add(workerContext);
+            workerContexts.add(new WorkerContextSnapshot(
+                    request.getWorkerContextId(),
+                    request.getWorkerId(),
+                    request.getProject(),
+                    "IDLE",
+                    request.getRoutingTags(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    request.getAttributes()
+            ));
         }
 
         @Override
@@ -422,14 +429,14 @@ class MockRuntimeDataLoaderTest {
         @Override
         public boolean sealTask(String taskId) { return false; }
 
-        private WorkerContext workerContextById(String workerContextId) {
+        private WorkerContextSnapshot workerContextById(String workerContextId) {
             return workerContexts.stream()
                     .filter(workerContext -> workerContextId.equals(workerContext.getWorkerContextId()))
                     .findFirst()
                     .orElse(null);
         }
 
-        private List<WorkerContext> workerContextsFor(String workerId) {
+        private List<WorkerContextSnapshot> workerContextsFor(String workerId) {
             return workerContexts.stream()
                     .filter(workerContext -> workerId.equals(workerContext.getWorkerId()))
                     .toList();

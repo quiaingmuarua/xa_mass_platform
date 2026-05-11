@@ -181,9 +181,9 @@ credential keeps its own permissions, project scopes, and event scopes.
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
+- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
-- transport/session/queue raw diagnostics are internal/operator-only through `app.transportDebug()`; they are not part of the stable embedding mainline
+- transport/session/queue raw diagnostics are internal/operator-only through `TransportDebugOperations` created from `app.runtimeApplication()`; they are not part of the stable embedding mainline
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
@@ -322,11 +322,11 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 `EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
-are surfaced through the internal/operator-only `app.transportDebug().getQueueDetail()`
+are surfaced through the internal/operator-only `TransportDebugOperations.getQueueDetail()`
 view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
-`app.transportDebug().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
+`TransportDebugOperations.getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
 replacement. Realtime direct-send counters are intentionally separate under
-`app.transportDebug().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
+`TransportDebugOperations.getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.

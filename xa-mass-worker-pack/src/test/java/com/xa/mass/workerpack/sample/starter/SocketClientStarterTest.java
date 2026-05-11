@@ -1,6 +1,6 @@
 package com.xa.mass.workerpack.sample.starter;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
 import org.junit.jupiter.api.Test;
@@ -65,23 +65,32 @@ class SocketClientStarterTest {
         }
     }
 
-    private static Worker worker(String workerId, String adapterId, String onlineStrategy) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setAdapterId(adapterId);
-        worker.setOnlineStrategy(onlineStrategy);
-        return worker;
+    private static WorkerSnapshot worker(String workerId, String adapterId, String onlineStrategy) {
+        return new WorkerSnapshot(
+                workerId,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                adapterId,
+                onlineStrategy,
+                java.util.Map.of(),
+                null,
+                null
+        );
     }
 
     private static class TestSocketClientStarter extends SocketClientStarter {
-        private final List<Worker> workers;
+        private final List<WorkerSnapshot> workers;
 
-        private TestSocketClientStarter(List<Worker> workers) {
+        private TestSocketClientStarter(List<WorkerSnapshot> workers) {
             this.workers = workers;
         }
 
         @Override
-        protected List<Worker> loadWorkers() {
+        protected List<WorkerSnapshot> loadWorkers() {
             return workers;
         }
     }

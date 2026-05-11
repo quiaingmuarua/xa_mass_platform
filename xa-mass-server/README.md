@@ -16,11 +16,12 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
 - starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
+- acts as a reference host and validation shell; server HTTP/auth/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
 - acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
-- default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
-- JSON fixture bootstrap remains a test-only input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from packaged fixture files
-- default `dev` startup does not auto-start embedded sample clients; worker presence is expected to come from external sample or real worker processes
+- default `dev` startup can seed a mainline in-process demo shell through `DevDemoBootstrapConfiguration` when `mass.demo.bootstrap.enabled=true`
+- the default dev demo shell registers demo projects, events, submitters, workers, contexts, and seeded task shells strictly through SDK-native APIs
+- JSON fixture bootstrap remains a test-only input path; packaged fixture files are not the default dev startup source anymore
 - default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
   protected by `X-Sample-Bootstrap-Key`
 
@@ -102,6 +103,24 @@ Control-console routing note:
 - `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
 
+## Dev Demo Bootstrap
+
+When `spring.profiles.active=dev` and `mass.demo.bootstrap.enabled=true`, the server starts with a mainline demo shell instead of an external fixture bootstrap.
+
+Current default demo shape:
+
+- projects: `demoApp`, `demoOps`
+- events: `demo.dispatch`, `demo.dispatch.gb`
+- submitter credentials:
+  - `demo-app-key`
+  - `demo-ops-key`
+  - `demo-admin-key`
+- workers: `36` SDK-registered demo workers with lane-tagged contexts
+- tasks: `8` seeded tasks with `1500` items each by default
+- task mix: active/running backlog, pending approval, paused, and blocked states
+
+The demo bootstrap intentionally stays inside server-owned dev wiring. It does not add new SDK product semantics and it does not rely on test-only JSON aggregate fixtures.
+
 ## Effective Sample Client Startup
 
 For test or explicit fixture paths, embedded sample clients are owned by `xa-mass-worker-pack` and started by:
@@ -112,7 +131,7 @@ For test or explicit fixture paths, embedded sample clients are owned by `xa-mas
 
 Startup behavior:
 
-- disabled in default `dev`
+- disabled unless the relevant sample-worker property is enabled
 - gated by `sample.client.auto-start=true` only for tests or explicit local fixture runs
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters

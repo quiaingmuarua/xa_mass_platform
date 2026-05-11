@@ -3,8 +3,6 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
@@ -12,8 +10,10 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
@@ -103,14 +103,14 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private void loadWorkers(MassRuntimeControl runtime) {
-        Worker[] workers = readConfig(workerConfigPath, Worker[].class);
+        WorkerFixture[] workers = readConfig(workerConfigPath, WorkerFixture[].class);
         if (workers == null) return;
         if (workers.length == 0) {
             logger.warn("Worker config loaded but produced 0 entries [path={}]", workerConfigPath);
             return;
         }
         int accepted = 0;
-        for (Worker worker : workers) {
+        for (WorkerFixture worker : workers) {
             if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
                 logger.warn("Skipping worker fixture because workerId is missing");
                 continue;
@@ -123,14 +123,14 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private void loadWorkerContexts(MassRuntimeControl runtime) {
-        WorkerContext[] contexts = readConfig(workerContextConfigPath, WorkerContext[].class);
+        WorkerContextFixture[] contexts = readConfig(workerContextConfigPath, WorkerContextFixture[].class);
         if (contexts == null) return;
         if (contexts.length == 0) {
             logger.info("Worker context config is empty, workers will run stateless [path={}]", workerContextConfigPath);
             return;
         }
         int accepted = 0;
-        for (WorkerContext ctx : contexts) {
+        for (WorkerContextFixture ctx : contexts) {
             normalizeWorkerContext(ctx);
             if (ctx.getWorkerId() == null || ctx.getWorkerId().isBlank()) {
                 logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
@@ -192,7 +192,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void normalizeWorker(Worker worker) {
+    private void normalizeWorker(WorkerFixture worker) {
         if (worker == null) {
             return;
         }
@@ -230,7 +230,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void normalizeWorkerContext(WorkerContext workerContext) {
+    private void normalizeWorkerContext(WorkerContextFixture workerContext) {
         if (workerContext == null) {
             return;
         }
@@ -244,7 +244,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private WorkerRegistration toRegistration(Worker worker) {
+    private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
                 .workerGroupId(worker.getWorkerGroupId())
@@ -258,7 +258,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         return builder.build();
     }
 
-    private List<WorkerEventBinding> toEventBindings(Worker worker) {
+    private List<WorkerEventBinding> toEventBindings(WorkerFixture worker) {
         List<String> supportedEventCodes = worker.getSupportedEventCodes();
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
             return List.of();
@@ -277,7 +277,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
     }
 
-    private WorkerContextRegistration toRegistration(WorkerContext workerContext) {
+    private WorkerContextRegistration toRegistration(WorkerContextFixture workerContext) {
         WorkerContextRegistration.Builder builder = WorkerContextRegistration.builder()
                 .workerContextId(workerContext.getWorkerContextId())
                 .workerId(workerContext.getWorkerId())
@@ -326,6 +326,129 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .executionSpec(executionSpec)
                 .sourceRef(dto.getSourceRef())
                 .build();
+    }
+
+    private static final class WorkerFixture {
+        private String workerId;
+        private String workerGroupId;
+        private String adapterId;
+        private String onlineStrategy;
+        private String agentVersion;
+        private List<String> supportedProjects;
+        private List<String> supportedEventCodes;
+        private java.util.Map<String, String> attributes;
+
+        public String getWorkerId() {
+            return workerId;
+        }
+
+        public void setWorkerId(String workerId) {
+            this.workerId = workerId;
+        }
+
+        public String getWorkerGroupId() {
+            return workerGroupId;
+        }
+
+        public void setWorkerGroupId(String workerGroupId) {
+            this.workerGroupId = workerGroupId;
+        }
+
+        public String getAdapterId() {
+            return adapterId;
+        }
+
+        public void setAdapterId(String adapterId) {
+            this.adapterId = adapterId;
+        }
+
+        public String getOnlineStrategy() {
+            return onlineStrategy;
+        }
+
+        public void setOnlineStrategy(String onlineStrategy) {
+            this.onlineStrategy = onlineStrategy;
+        }
+
+        public String getAgentVersion() {
+            return agentVersion;
+        }
+
+        public void setAgentVersion(String agentVersion) {
+            this.agentVersion = agentVersion;
+        }
+
+        public List<String> getSupportedProjects() {
+            return supportedProjects;
+        }
+
+        public void setSupportedProjects(List<String> supportedProjects) {
+            this.supportedProjects = supportedProjects;
+        }
+
+        public List<String> getSupportedEventCodes() {
+            return supportedEventCodes;
+        }
+
+        public void setSupportedEventCodes(List<String> supportedEventCodes) {
+            this.supportedEventCodes = supportedEventCodes;
+        }
+
+        public java.util.Map<String, String> getAttributes() {
+            return attributes;
+        }
+
+        public void setAttributes(java.util.Map<String, String> attributes) {
+            this.attributes = attributes;
+        }
+    }
+
+    private static final class WorkerContextFixture {
+        private String workerContextId;
+        private String workerId;
+        private String project;
+        private java.util.Set<String> routingTags;
+        private java.util.Map<String, String> attributes;
+
+        public String getWorkerContextId() {
+            return workerContextId;
+        }
+
+        public void setWorkerContextId(String workerContextId) {
+            this.workerContextId = workerContextId;
+        }
+
+        public String getWorkerId() {
+            return workerId;
+        }
+
+        public void setWorkerId(String workerId) {
+            this.workerId = workerId;
+        }
+
+        public String getProject() {
+            return project;
+        }
+
+        public void setProject(String project) {
+            this.project = project;
+        }
+
+        public java.util.Set<String> getRoutingTags() {
+            return routingTags;
+        }
+
+        public void setRoutingTags(java.util.Set<String> routingTags) {
+            this.routingTags = routingTags;
+        }
+
+        public java.util.Map<String, String> getAttributes() {
+            return attributes;
+        }
+
+        public void setAttributes(java.util.Map<String, String> attributes) {
+            this.attributes = attributes;
+        }
     }
 
     private static final class BootstrapTaskFixture {

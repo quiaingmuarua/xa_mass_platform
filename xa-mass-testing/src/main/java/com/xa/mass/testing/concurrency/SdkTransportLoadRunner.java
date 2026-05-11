@@ -7,6 +7,8 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -298,12 +300,12 @@ public final class SdkTransportLoadRunner {
             }
             require(activeSessionCount(app, config.transport().adapterId()) >= config.workerCount(),
                     "realtime workers did not become ready for adapter=" + config.transport().adapterId()
-                            + " sessions=" + app.transportDebug().listSessions());
+                            + " sessions=" + transportDebug(app).listSessions());
         }
 
         private int activeSessionCount(MassSdkApplication app, String adapterId) {
             int active = 0;
-            for (Map<String, Object> session : app.transportDebug().listSessions()) {
+            for (Map<String, Object> session : transportDebug(app).listSessions()) {
                 Object connections = session.get("connections");
                 if (!(connections instanceof List<?> list)) {
                     continue;
@@ -448,7 +450,7 @@ public final class SdkTransportLoadRunner {
 
         @SuppressWarnings("unchecked")
         private DeliveryQueueSnapshot collectDeliveryQueueSnapshot(MassSdkApplication app, long totalMessages) {
-            Map<String, Object> queueDetail = app.transportDebug().getQueueDetail();
+            Map<String, Object> queueDetail = transportDebug(app).getQueueDetail();
             Map<String, Object> deliveryQueue = (Map<String, Object>) queueDetail.get("deliveryQueue");
             require(deliveryQueue != null, "deliveryQueue diagnostics should be available");
             DeliveryQueueSnapshot snapshot = DeliveryQueueSnapshot.from(deliveryQueue);
@@ -1004,6 +1006,10 @@ public final class SdkTransportLoadRunner {
         } catch (Exception ex) {
             throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
         }
+    }
+
+    private static TransportDebugOperations transportDebug(MassSdkApplication app) {
+        return new DefaultTransportDebugOperations(app.runtimeApplication());
     }
 
     private record EmbeddedRuntime(MassSdkApplication app,

@@ -1,6 +1,5 @@
 package com.xa.mass.server.e2e.assignment;
 
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -41,6 +40,7 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String STATE_WORKER_ID = "it-worker-0";
     private static final String DISCONNECT_WORKER_ID = "it-worker-1";
+    private static final String TARGET_WORKER_ID_KEY = "targetWorkerId";
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -119,7 +119,7 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
         createBody.put("userId", "itest");
-        createBody.put("sharedConfig", Map.of(TaskSharedConfig.TARGET_WORKER_ID, workerId));
+        createBody.put("sharedConfig", Map.of(TARGET_WORKER_ID_KEY, workerId));
         createBody.put("sourceRef", taskName);
         createBody.put("executionSpec", Map.of("batchSize", 1));
 
