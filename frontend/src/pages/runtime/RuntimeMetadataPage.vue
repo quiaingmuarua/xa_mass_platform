@@ -537,13 +537,15 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {listEventCapabilities, listEventDefinitions, listProjectMetadata} from '@/api/metadata'
+import {listEventCapabilities, listEventDefinitions} from '@/api/metadata'
+import {listProjects} from '@/api/projects'
 import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {EventCapability, EventInvocationModel, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
+import type {EventCapability, EventInvocationModel, SdkEventDefinition} from '@/types/metadata'
+import type {ProjectMetadata} from '@/types/projects'
 import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -898,7 +900,7 @@ async function loadDiscovery(): Promise<void> {
       submitterSnapshot,
     ] =
       await Promise.all([
-        listProjectMetadata(),
+        listProjects(),
         listEventDefinitions(),
         listEventCapabilities(),
         listWorkers(),

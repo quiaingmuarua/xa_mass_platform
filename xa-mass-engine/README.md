@@ -149,6 +149,9 @@ Repo-level mainline surfaces:
   must not grow a direct dependency on transport routing/runtime classes, and
   transport-side consumption now happens through the batch handoff seam rather
   than a direct dispatch-listener callback
+- transport reachability is read through `WorkerReachabilityView`; dispatch
+  eligibility online truth belongs to transport presence rather than engine
+  heartbeat folding on `Worker.status`
 - task-create input consumed by `TaskCommandService` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
   DTO packages just to submit tasks
@@ -189,6 +192,9 @@ Current default rule set:
 Matching boundaries:
 
 - `Worker.status` and worker lock state are typed truth, not attributes
+- `Worker.status` is control-plane lifecycle truth, not transport reachability
+- dispatch eligibility must read transport reachability from
+  `WorkerReachabilityView`, not local heartbeat-expiry heuristics
 - `workerAttributes` and `workerContextAttributes` are auxiliary matching labels
   only
 - routing is a task-owned hint currently resolved from

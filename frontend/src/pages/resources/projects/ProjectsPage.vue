@@ -112,9 +112,9 @@
 import {computed, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {
-  listProjectMetadata,
+  listProjects,
   listProjectSubmitters,
-} from '@/api/metadata'
+} from '@/api/projects'
 import {listTasks} from '@/api/tasks'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
@@ -123,7 +123,7 @@ import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
   ProjectMetadata,
   ProjectSubmitterMetadata,
-} from '@/types/metadata'
+} from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -170,7 +170,7 @@ async function loadProjects(): Promise<void> {
   errorMessage.value = ''
   try {
     const [projectItems, workerResponse, taskResponse] = await Promise.all([
-      listProjectMetadata(),
+      listProjects(),
       listWorkers(),
       listTasks(),
     ])

@@ -1,6 +1,6 @@
 # Policy Interaction Baseline
 
-Last updated: 2026-04-27
+Last updated: 2026-05-11
 
 Status: current engine policy baseline.
 
@@ -51,7 +51,8 @@ Any change to this precedence must update state machine, trace contract, and E2E
 - no-active-attempt callbacks are rejected or ignored explicitly; they must not synthesize attempt history
 - task terminal closure is `TERMINAL + terminalReason`, not a split terminal enum
 - `OPEN` intake tasks do not close from normal all-final convergence
-- `Worker.status` remains the online truth
+- `Worker.status` is engine control-plane worker lifecycle truth, not transport reachability truth
+- transport reachability truth comes from transport presence and is consumed through engine reachability read seams
 - worker lock truth remains in `WorkerStorage` / `WorkerManager.isLocked(...)`
 - `Worker.attributes` and `WorkerContext.attributes` remain matching labels only
 - routing truth must come from explicit rules and worker-context signals, not `workerGroupId`

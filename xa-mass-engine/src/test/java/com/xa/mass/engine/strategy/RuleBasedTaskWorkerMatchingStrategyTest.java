@@ -214,6 +214,48 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
+    void prefilterRejectsStaleTransportPresenceBeforeRuleEvaluation() {
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> "worker-stale".equals(workerId)
+                        ? WorkerReachabilityState.STALE
+                        : WorkerReachabilityState.ONLINE
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-stale-prefilter");
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+
+        Worker staleWorker = worker("worker-stale", "pool-a");
+        workerManager.addWorker(staleWorker);
+
+        Worker acceptedWorker = worker("worker-online", "pool-b");
+        workerManager.addWorker(acceptedWorker);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-online", matched.get(0).getWorkerId());
+
+        AssignmentRecord staleRecord = findRecord(recordService, "task-stale-prefilter", "worker-stale");
+        assertEquals("worker transport unreachable", staleRecord.getReason());
+        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, staleRecord.getResult());
+        assertEquals("STALE", staleRecord.getContextSnapshot().get("transportReachability"));
+        assertEquals(Boolean.FALSE, staleRecord.getContextSnapshot().get("isTransportReachable"));
+        assertEquals(0, staleRecord.getRuleEvaluations().size());
+    }
+
+    @Test
     void choosesMatchingContextWhenWorkerHasMultipleContexts() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());

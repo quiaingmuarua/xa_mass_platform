@@ -48,8 +48,8 @@ class SdkMetadataApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     @SuppressWarnings("unchecked")
     void sdkMetadataApisExposeSdkRegisteredProjectsAndEvents() {
-        Map<String, Object> projectResponse = exchange("/api/v1/meta/projects", HttpMethod.GET, null);
-        Map<String, Object> projectEventsResponse = exchange("/api/v1/meta/projects/demoApp/events", HttpMethod.GET, null);
+        Map<String, Object> projectResponse = exchange("/api/v1/projects", HttpMethod.GET, null);
+        Map<String, Object> projectEventsResponse = exchange("/api/v1/projects/demoApp/events", HttpMethod.GET, null);
         Map<String, Object> eventResponse = exchange("/api/v1/meta/events/crawler.fetch-page", HttpMethod.GET, null);
         Map<String, Object> capabilityResponse = exchange("/api/v1/meta/event-capabilities", HttpMethod.GET, null);
 

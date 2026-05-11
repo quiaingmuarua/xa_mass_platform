@@ -22,5 +22,11 @@ public interface WorkerQueryOperations {
 
     boolean isWorkerLocked(String workerId);
 
+    /**
+     * Returns whether the worker currently has transport reachability.
+     *
+     * <p>When transport presence is available this query reflects transport
+     * truth; otherwise it falls back to the engine-owned worker model.</p>
+     */
     boolean isWorkerOnline(String workerId);
 }

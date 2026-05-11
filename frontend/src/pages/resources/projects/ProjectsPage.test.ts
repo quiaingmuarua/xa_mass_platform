@@ -8,7 +8,7 @@ import ProjectsPage from '@/pages/resources/projects/ProjectsPage.vue'
 
 async function waitForMockData(): Promise<void> {
     await flushPromises()
-    await new Promise((resolve) => window.setTimeout(resolve, 120))
+    await new Promise((resolve) => window.setTimeout(resolve, 260))
     await flushPromises()
 }
 

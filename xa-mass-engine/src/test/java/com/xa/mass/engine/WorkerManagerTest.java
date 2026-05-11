@@ -306,10 +306,10 @@ class WorkerManagerTest {
         assertFalse(manager.tryLockWorker("w7"));
     }
 
-    // ---- online status ----
+    // ---- worker model status vs transport reachability ----
 
     @Test
-    void onlineStatusTracking() {
+    void updateOnlineStatusTracksWorkerModelAvailabilityOnly() {
         manager.addWorker(worker("w8", "us"));
         manager.updateOnlineStatus("w8", false);
         assertFalse(manager.isWorkerOnline("w8"));
@@ -325,7 +325,7 @@ class WorkerManagerTest {
     }
 
     @Test
-    void workerStatusEventListenerKeepsModelStatusInSync() {
+    void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
         WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
         manager.addWorker(worker("w9", "us"));
         manager.updateOnlineStatus("w9", false);
@@ -341,7 +341,7 @@ class WorkerManagerTest {
     }
 
     @Test
-    void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingStatus() {
+    void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
         WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
         manager.addWorker(worker("w10", "us"));
         manager.updateOnlineStatus("w10", false);
@@ -351,6 +351,37 @@ class WorkerManagerTest {
         assertFalse(manager.isWorkerOnline("w10"));
         assertNotNull(manager.getWorker("w10").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
+    }
+
+    @Test
+    void workerReachabilityComesFromTransportViewInsteadOfWorkerModelStatus() {
+        WorkerManager reachabilityAwareManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> switch (workerId) {
+                    case "w-online" -> WorkerReachabilityState.ONLINE;
+                    case "w-stale" -> WorkerReachabilityState.STALE;
+                    case "w-offline" -> WorkerReachabilityState.OFFLINE;
+                    default -> WorkerReachabilityState.UNKNOWN;
+                }
+        );
+        Worker onlineModelWorker = worker("w-online", "us");
+        onlineModelWorker.setStatus(WorkerStatus.ONLINE);
+        Worker staleModelWorker = worker("w-stale", "us");
+        staleModelWorker.setStatus(WorkerStatus.ONLINE);
+        Worker offlineModelWorker = worker("w-offline", "us");
+        offlineModelWorker.setStatus(WorkerStatus.ONLINE);
+        reachabilityAwareManager.addWorker(onlineModelWorker);
+        reachabilityAwareManager.addWorker(staleModelWorker);
+        reachabilityAwareManager.addWorker(offlineModelWorker);
+
+        assertEquals(WorkerReachabilityState.ONLINE, reachabilityAwareManager.getWorkerReachability("w-online"));
+        assertEquals(WorkerReachabilityState.STALE, reachabilityAwareManager.getWorkerReachability("w-stale"));
+        assertEquals(WorkerReachabilityState.OFFLINE, reachabilityAwareManager.getWorkerReachability("w-offline"));
+        assertEquals(WorkerReachabilityState.UNKNOWN, reachabilityAwareManager.getWorkerReachability("missing"));
+
+        // Worker model status can still say ONLINE while transport reachability has already converged to STALE.
+        assertTrue(reachabilityAwareManager.isWorkerOnline("w-stale"));
+        assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker));
     }
 
     // ---- helpers ----

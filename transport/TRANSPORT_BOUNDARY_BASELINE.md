@@ -99,7 +99,8 @@ Concrete adapters own protocol I/O only:
 
 Engine may read transport reachability for matching and dispatch eligibility,
 but transport owns the online truth itself. Heartbeat expiry is a transport
-lease rule, not an engine selector heuristic.
+lease rule, not an engine selector heuristic. `STALE` is transport-owned
+diagnostic state and must be treated as not dispatchable on the engine side.
 
 ## Model Boundaries
 

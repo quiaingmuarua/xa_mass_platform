@@ -88,6 +88,9 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.presence.WorkerPresence;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
@@ -970,6 +973,79 @@ class MassSdkTest {
         verify(delegate).getTransportQueueDetail();
         verify(delegate, atLeastOnce()).getEndpointRegistry();
         verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
+    }
+
+    @Test
+    void sdkWorkerOnlineReadsTransportPresenceBeforeWorkerModelStatus() {
+        MassApplication delegate = mock(MassApplication.class);
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        presenceStore.markOnline("worker-1", "polling", "worker-1", "worker-1", "connected");
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertTrue(app.isWorkerOnline("worker-1"));
+
+        presenceStore.markOffline("worker-1", "polling", "worker-1", "worker-1", "disconnect");
+
+        assertFalse(app.isWorkerOnline("worker-1"));
+    }
+
+    @Test
+    void sdkWorkerOnlineTreatsStalePresenceAsOffline() {
+        MassApplication delegate = mock(MassApplication.class);
+        WorkerPresenceStore presenceStore = new WorkerPresenceStore() {
+            @Override
+            public WorkerPresence markOnline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence refreshHeartbeat(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence markOffline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence getPresence(String workerId) {
+                return new WorkerPresence(
+                        workerId,
+                        "polling",
+                        workerId,
+                        WorkerPresenceState.STALE,
+                        1L,
+                        1L,
+                        "runtime-a",
+                        workerId,
+                        1L,
+                        null
+                );
+            }
+
+            @Override
+            public boolean isRouteOnline(String adapterId, String routeKey) {
+                return false;
+            }
+
+            @Override
+            public List<WorkerPresence> listActivePresences() {
+                return List.of();
+            }
+
+            @Override
+            public int pruneExpired() {
+                return 0;
+            }
+        };
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertFalse(app.isWorkerOnline("worker-stale"));
     }
 
     @Test

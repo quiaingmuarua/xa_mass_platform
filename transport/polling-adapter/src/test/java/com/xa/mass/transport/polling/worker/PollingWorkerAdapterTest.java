@@ -6,6 +6,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -78,10 +79,33 @@ class PollingWorkerAdapterTest {
         assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult("worker-1", 0, 0).getStatus());
     }
 
+    @Test
+    void workerPresenceAnnouncementsUpdateTransportOwnedPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        PollingWorkerAdapter adapter = adapter(presenceStore);
+
+        adapter.announceWorkerOnline("worker-1", "poll connected");
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.isRouteOnline(PollingWorkerAdapter.PROTOCOL, "worker-1"));
+
+        adapter.publishWorkerHeartbeat("worker-1", "poll heartbeat");
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+
+        adapter.announceWorkerOffline("worker-1", "poll disconnect");
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.listActivePresences().isEmpty());
+    }
+
     private PollingWorkerAdapter adapter() {
+        return adapter(new InMemoryWorkerPresenceStore());
+    }
+
+    private PollingWorkerAdapter adapter(InMemoryWorkerPresenceStore presenceStore) {
         return new PollingWorkerAdapter(
                 NoopWorkerSystemEventChannel.INSTANCE,
-                new InMemoryWorkerPresenceStore(),
+                presenceStore,
                 new TransportDeliveryService(
                         new InMemoryTransportDeliveryStore(
                                 InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,

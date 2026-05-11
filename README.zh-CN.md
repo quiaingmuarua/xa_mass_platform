@@ -2,7 +2,7 @@
 
 XA Mass Platform 是一个通用的分布式任务调度平台。
 
-它要解决的不是简单的“建一条任务记录，然后等人来查状态”，而是一类更偏运行时的问题：
+它解决的不是简单的“建一条任务记录，然后查状态”问题，而是一类更偏运行时内核的问题：
 
 - 把一批结构化工作项交给一批异构的执行端
 - 根据能力、路由和状态选择合适的 worker
@@ -16,9 +16,36 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 - LLM Agent 调度
 - RPA / 设备任务分发
 
+## 先用一句话理解它
+
+可以把 XA Mass Platform 理解成一个面向“批量任务 + 会话任务”的统一调度内核。
+
+它的重点不在于把任务记录存下来，而在于：
+
+- 正确接收工作项
+- 正确匹配执行端
+- 正确处理并发、重试、超时和回调
+- 最终把任务收敛成可信状态
+
+## 当前项目状态
+
+从最近几次主线提交看，这个项目已经不只是一个“engine + demo”仓库，而是在逐步形成更完整的产品壳：
+
+- `project`、`submitter`、`task` 已经有更完整的资源页面和 HTTP 入口
+- SDK 对外边界比内部 engine 模型更稳定，越来越像正式集成面
+- `xa-mass-server` 更像参考宿主和验证壳，而不是 kernel 定义者
+- 内部 vocabulary 已经明显从 `message` 向 `work` 收敛
+
+换句话说：
+
+- **kernel 真相仍然在 engine/runtime**
+- **对人和对系统集成方暴露的入口，越来越集中到 SDK 和 server 壳层**
+
+这对项目是好事，因为它让内部演化和外部集成边界开始分开。
+
 ## 这个项目想做什么
 
-从项目定位看，XA Mass Platform 想做的是一个“任务运行时内核”，而不是一个传统的 CRUD 后台。
+从项目定位看，XA Mass Platform 更像一个“任务运行时内核”，而不是传统的 CRUD 后台。
 
 它更关心下面这些问题：
 
@@ -35,7 +62,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 - 重试与超时
 - 终态收敛
 
-## 这个项目怎么理解最顺
+## 怎么理解这个项目最顺
 
 可以把 XA Mass Platform 理解成四层：
 
@@ -104,7 +131,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 可以粗略分成三层：
 
 1. 控制面存储
-   - 任务壳、worker 注册、规则定义、提交者等
+   - 任务壳、worker 注册、规则定义、submitter、project 等
 2. 运行时状态
    - ready queue、lease、retry、runtime counters
 3. trace / audit
@@ -120,6 +147,28 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 - 不是所有状态都应该落数据库
 - 不是所有查询模型都应该反推运行时行为
 - 不应该为了“方便看”就让消息投影重新主导热路径
+
+## 集成边界怎么理解
+
+这个点是最近项目演化里越来越重要的一条线。
+
+现在更合理的理解方式是：
+
+- `xa-mass-sdk`
+  - 稳定集成边界
+  - 面向嵌入式调用方、worker、自动化脚本和宿主应用
+- `xa-mass-server`
+  - 参考宿主、验证壳、控制台后端
+  - 提供 HTTP API、页面、资源管理入口
+- `xa-mass-engine`
+  - 内核 owner
+  - 负责生命周期、派发、结果、并发和策略
+
+这意味着：
+
+- 外部集成不应该直接把 `Task`、`Worker` 等内部模型当稳定 API
+- 更适合依赖 SDK request / snapshot read model
+- server 提供的页面、过滤器、管理入口是产品壳能力，不是 kernel 真相本身
 
 ## 传输层是显式子系统
 
@@ -138,27 +187,6 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 - engine 只负责运行时内核
 - transport 只负责任务投递、结果回写和系统事件通道
 - 某个具体协议不能重新定义任务内核
-
-## 项目入口怎么看
-
-如果你只是想快速跑起来或定位主要入口，可以先记这几个模块：
-
-- `xa-mass-server`
-  - Spring Boot 可运行入口
-  - 负责 HTTP API、控制台和前端壳
-- `xa-mass-sdk`
-  - SDK 主入口
-  - 适合嵌入到 JVM 应用中
-- `xa-mass-engine`
-  - 任务生命周期、派发、结果处理的核心内核
-- `platform_infra`
-  - 运行时和存储基础设施
-- `transport`
-  - transport 合同、运行时和各类适配器
-- `xa-mass-testing`
-  - perf、chaos、transport harness 等验证工具
-- `xa-mass-worker-pack`
-  - 样例 worker、调试 worker、样例命令运行时
 
 ## 一条推荐的业务主线
 
@@ -180,7 +208,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 
 在 SDK 里，通常通过 `registerProject(...)` 注册项目元数据。
 
-如果项目没有先注册清楚，后面的 task create、worker capability、submitter scope 都会缺少稳定业务边界。
+在 server 壳层，这部分也开始具备更明确的页面和 API 入口，所以它已经不只是“底层字典数据”，而是一个面向人可管理的业务资源。
 
 ### 2. submitter 注册
 
@@ -195,6 +223,8 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 在 SDK 里，通常通过 `registerSubmitter(...)` 注册，再通过凭证做认证。
 
 对外的 HTTP 入口也遵守这套思路：不是任何人都能直接调任务接口，而是由 submitter 凭证代表一个被授权的调用方。
+
+从最近的提交看，submitter 也越来越像正式资源，而不是临时测试配置。
 
 ### 3. worker 注册
 
@@ -239,6 +269,8 @@ worker 注册主要声明：
 4. 等待任务自动收敛到 terminal
 
 如果是 `SESSION` 任务，当前 work 集合清空通常不代表任务结束，是否继续 append、何时 seal、何时终止，要看会话型业务自己的节奏。
+
+最近主线提交里还加强了 task 相关页面和过滤入口。这些能力对产品壳很有价值，但要记住：**filter 是壳层读模型能力，不是 engine runtime 真相。**
 
 ### 5. 提交结果
 
@@ -288,6 +320,89 @@ worker 收到任务后，会按 `eventCode` 执行本地逻辑，然后把结果
 
 如果按这条线理解项目，会比直接从 controller、DTO 或数据库表入手更顺。
 
+## 快速开始
+
+如果你只是想快速建立直觉，建议按下面顺序：
+
+1. 看根目录 [README.md](./README.md)
+2. 看当前文档索引 [doc/README.md](./doc/README.md)
+3. 看 SDK 主入口 [xa-mass-sdk/README.md](./xa-mass-sdk/README.md)
+4. 看 Boot 可运行入口 [xa-mass-server/README.md](./xa-mass-server/README.md)
+5. 看外部 worker 入口 [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
+
+如果你想验证一条最短主线，推荐顺序是：
+
+1. 启动 `xa-mass-server`
+2. 注册或使用已有 `project`
+3. 注册 `submitter`
+4. 启动一个 sample worker
+5. 创建 task shell
+6. append items
+7. 观察 worker 执行和结果回写
+
+更具体的启动和接口说明，可以看：
+
+- [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
+- [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
+- [samples/README.md](./samples/README.md)
+
+## 典型场景
+
+### 场景一：批量爬虫任务
+
+这类任务通常更适合 `BATCH`：
+
+- 先创建一个 task shell
+- 追加一批待抓取 URL
+- seal intake
+- 让系统分批派发给 crawler worker
+- worker 回写抓取结果
+- 所有工作项 final 后，任务自动收敛
+
+这类任务关注的是：
+
+- 吞吐
+- retry
+- backlog
+- 批量收敛
+
+### 场景二：IM / 会话式消息处理
+
+这类任务通常更适合 `SESSION`：
+
+- 先创建一个 session 型 task shell
+- 按会话节奏持续 append 消息或事件
+- 由 worker 按 `eventCode` 处理
+- 当前 work 集合清空并不代表整个 session 结束
+
+这类任务关注的是：
+
+- 低延迟
+- 持续接收
+- 会话边界
+- 不因为临时 drain 就自动 terminal
+
+## 项目入口怎么看
+
+如果你只是想快速跑起来或定位主要入口，可以先记这几个模块：
+
+- `xa-mass-server`
+  - Spring Boot 可运行入口
+  - 负责 HTTP API、控制台和前端壳
+- `xa-mass-sdk`
+  - SDK 主入口
+  - 适合嵌入到 JVM 应用中
+- `xa-mass-engine`
+  - 任务生命周期、派发、结果处理的核心内核
+- `platform_infra`
+  - 运行时和存储基础设施
+- `transport`
+  - transport 合同、运行时和各类适配器
+- `xa-mass-testing`
+  - perf、chaos、transport harness 等验证工具
+- `xa-mass-worker-pack`
+  - 样例 worker、调试 worker、样例命令运行时
+
 ## 适合谁看
 
 这份文档更适合下面几类读者：
@@ -315,4 +430,4 @@ XA Mass Platform 可以理解成一个面向“批量任务 + 会话任务”统
 - 正确接收工作项
 - 正确匹配执行端
 - 正确处理并发、重试、超时和回调
-- 最终把任务收敛成可信的状态
+- 最终把任务收敛成可信状态

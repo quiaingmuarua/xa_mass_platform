@@ -238,20 +238,22 @@
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {
-  getProjectMetadata,
+  getProject,
   listProjectEventDefinitions,
   listProjectSubmitters,
-} from '@/api/metadata'
+} from '@/api/projects'
 import {listTasks} from '@/api/tasks'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
-  ProjectMetadata,
-  ProjectSubmitterMetadata,
   SdkEventDefinition,
 } from '@/types/metadata'
+import type {
+  ProjectMetadata,
+  ProjectSubmitterMetadata,
+} from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -303,7 +305,7 @@ async function loadProject(): Promise<void> {
   try {
     const [projectMetadata, eventRows, submitterRows, workerResponse, taskResponse] =
       await Promise.all([
-        getProjectMetadata(projectCode.value),
+        getProject(projectCode.value),
         listProjectEventDefinitions(projectCode.value),
         listProjectSubmitters(projectCode.value),
         listWorkers(),

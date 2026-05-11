@@ -129,8 +129,10 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     /**
-     * Updates the worker model status so online checks and matching rules read a
-     * single truth source.
+     * Updates the engine-owned worker model status only.
+     *
+     * <p>This helper does not own transport reachability truth. Dispatch
+     * eligibility must still read {@link #getWorkerReachability(String)}.</p>
      */
     public void updateOnlineStatus(String workerId, boolean online) {
         Worker worker = getWorker(workerId);
@@ -147,6 +149,13 @@ public class WorkerManager implements WorkerLookupStore {
         updateWorker(worker);
     }
 
+    /**
+     * Legacy worker-model availability helper.
+     *
+     * <p>This reflects {@link WorkerStatus} on the engine-owned worker record,
+     * not transport presence. SDK-facing online queries should prefer the
+     * transport-owned presence view when available.</p>
+     */
     public boolean isWorkerOnline(String workerId) {
         Worker worker = getWorker(workerId);
         return worker != null && worker.getStatus() == WorkerStatus.ONLINE;

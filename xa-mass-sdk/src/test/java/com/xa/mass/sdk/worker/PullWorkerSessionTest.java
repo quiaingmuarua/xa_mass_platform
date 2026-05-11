@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -102,6 +104,30 @@ class PullWorkerSessionTest {
         verify(resultIngestChannel).ingest(captured.capture());
         assertEquals("route-9", captured.getValue().getRouteKey());
         assertEquals("attempt-1", captured.getValue().getAttemptId());
+    }
+
+    @Test
+    void connectHeartbeatDisconnectWriteTransportPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        PullWorkerSession session = new PullWorkerSession(
+                "worker-1",
+                "polling",
+                mock(TaskPullChannel.class),
+                mock(TaskResultIngestChannel.class),
+                mock(WorkerSystemEventChannel.class),
+                presenceStore,
+                "polling"
+        );
+
+        session.connect("connected");
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.isRouteOnline("polling", "worker-1"));
+
+        session.heartbeat("heartbeat");
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+
+        session.disconnect("disconnect");
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
     }
 
     private static TaskDispatchItem item(String messageId) {
