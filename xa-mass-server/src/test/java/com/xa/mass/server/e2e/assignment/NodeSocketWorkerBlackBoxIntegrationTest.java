@@ -107,9 +107,8 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                         20,
                         100L
                 ))) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     SOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> worker.assertAlive("External Node worker exited before reaching status ONLINE"),
@@ -175,17 +174,15 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                              20,
                              100L
                      ))) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     WEBSOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> websocketWorker.assertAlive("External Node worker exited before reaching status ONLINE"),
                     websocketWorker::capturedOutput
             );
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     SOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> socketWorker.assertAlive("External Node worker exited before reaching status ONLINE"),

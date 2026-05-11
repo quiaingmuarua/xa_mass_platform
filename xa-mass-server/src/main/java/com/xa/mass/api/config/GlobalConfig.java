@@ -18,7 +18,7 @@ public class GlobalConfig {
     }
 
     /**
-     * Return all supported project codes.
+     * Return all registered control-plane project codes.
      */
     public List<String> getAllProjects() {
         return metadataCatalog.listProjects().stream()

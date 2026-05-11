@@ -2,11 +2,12 @@
   <section class="app-page">
     <header class="page-header">
       <div>
-        <h2 class="page-title">Metadata & Discovery</h2>
+        <h2 class="page-title">Control-plane Discovery</h2>
         <p class="page-subtitle">
-          SDK registration catalog plus live worker inventory. Use it to
-          inspect which projects and events were explicitly registered in the
-          backend runtime, then compare them with currently available workers.
+          Project directory, event capability inventory, and live worker
+          presence in one control-plane view. Use it to inspect which projects
+          and events were explicitly registered in the backend runtime, then
+          compare them with currently available workers.
         </p>
       </div>
       <div class="header-actions">
@@ -296,7 +297,7 @@
           </template>
           <PageEmptyState
             v-if="projectRows.length === 0"
-            description="No SDK project metadata is currently available."
+            description="No projects are currently available."
           />
           <el-table v-else :data="projectRows" row-key="code">
             <el-table-column prop="code" label="Project" min-width="220">

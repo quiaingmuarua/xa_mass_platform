@@ -55,7 +55,7 @@ public class ProjectApiController {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
             return ResponseEntity.status(404)
-                    .body(ApiResponse.error(404, "Project metadata not found: " + projectCode));
+                    .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }
         return ResponseEntity.ok(ApiResponse.success(projectMetadata));
     }
@@ -65,7 +65,7 @@ public class ProjectApiController {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
             return ResponseEntity.status(404)
-                    .body(ApiResponse.error(404, "Project metadata not found: " + projectCode));
+                    .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }
         return ResponseEntity.ok(ApiResponse.success(metadataCatalog.getEventsForProject(projectCode)));
     }
@@ -75,7 +75,7 @@ public class ProjectApiController {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
             return ResponseEntity.status(404)
-                    .body(ApiResponse.error(404, "Project metadata not found: " + projectCode));
+                    .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }
         if (submitterOperations == null) {
             return ResponseEntity.ok(ApiResponse.success(List.of()));

@@ -5,7 +5,8 @@ import com.xa.mass.sdk.event.EventDefinition;
 import java.util.List;
 
 /**
- * Read surface for SDK project metadata and runtime-projected event metadata.
+ * Read surface for the SDK control-plane project directory and
+ * runtime-projected event catalog.
  */
 public interface SdkMetadataCatalog {
 

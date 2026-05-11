@@ -725,7 +725,7 @@ public class TaskApiController {
     private void validateProjectAndEvent(String projectCode, String eventCode) {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
-            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+            throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
         if (metadataCatalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
@@ -738,7 +738,7 @@ public class TaskApiController {
     private String resolveProjectTenantId(String projectCode) {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
-            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+            throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
         return projectMetadata.getTenantId();
     }

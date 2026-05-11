@@ -11,12 +11,12 @@ import java.util.List;
 public interface ProjectOperations {
 
     /**
-     * Register or replace project metadata.
+     * Register or replace a project resource definition.
      */
     void registerProject(ProjectMetadata projectMetadata);
 
     /**
-     * Register or replace multiple project metadata entries.
+     * Register or replace multiple project resource definitions.
      */
     default void registerProjects(List<ProjectMetadata> projectMetadataList) {
         if (projectMetadataList == null) {

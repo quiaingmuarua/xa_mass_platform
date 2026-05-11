@@ -63,7 +63,7 @@ public class TestDevBootstrapConfiguration {
     private boolean loadBootstrapRules;
 
     @Bean
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
     public MassBootstrapDataProvider mockRuntimeDataLoader() {
         return new MockRuntimeDataLoader(
                 workersConfigPath,
@@ -79,7 +79,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(10)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testFixtureLoadRunner(MassSdkApplication app,
                                                    MassBootstrapDataProvider bootstrapDataProvider) {
         return args -> bootstrapDataProvider.loadInto(app);
@@ -87,7 +87,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-catalog", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-catalog", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testCatalogBootstrapRunner(MassSdkApplication app) {
         return args -> {
             registerCatalogTaskDefinition(app, EventDefinition.builder()
@@ -171,7 +171,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 1)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testSubmitterBootstrapRunner(MassSdkApplication app) {
         return args -> {
             app.registerSubmitter(SubmitterRegistration.builder()

@@ -8,6 +8,7 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -158,7 +159,24 @@ public abstract class AbstractSampleE2eTest {
                                   String textContent,
                                   List<String> targets,
                                   int batchSize,
+                                  int defaultMaxRetryCount) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, null, defaultMaxRetryCount);
+    }
+
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
                                   String workloadClass) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, null);
+    }
+
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  String workloadClass,
+                                  Integer defaultMaxRetryCount) {
         String defaultRoutingCode = "us";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
@@ -169,6 +187,9 @@ public abstract class AbstractSampleE2eTest {
         executionSpec.put("batchSize", batchSize);
         if (workloadClass != null && !workloadClass.isBlank()) {
             executionSpec.put("workloadClass", workloadClass);
+        }
+        if (defaultMaxRetryCount != null) {
+            executionSpec.put("defaultMaxRetryCount", defaultMaxRetryCount);
         }
         createBody.put("executionSpec", executionSpec);
 
@@ -589,6 +610,32 @@ public abstract class AbstractSampleE2eTest {
         }
     }
 
+    protected void waitForWorkerPresenceOnline(String workerId,
+                                               int maxAttempts,
+                                               long sleepMillis,
+                                               Runnable livenessCheck,
+                                               Supplier<String> diagnosticsSupplier) throws InterruptedException {
+        try {
+            boolean online = awaitCondition(() -> {
+                if (livenessCheck != null) {
+                    livenessCheck.run();
+                }
+                return requireSdkApp().isWorkerOnline(workerId);
+            }, maxAttempts, sleepMillis);
+            assertTrue(online, "Worker " + workerId + " did not become transport-online");
+        } catch (AssertionError error) {
+            if (livenessCheck != null) {
+                livenessCheck.run();
+            }
+            String diagnostics = diagnosticsSupplier == null ? "" : diagnosticsSupplier.get();
+            if (diagnostics == null || diagnostics.isBlank()) {
+                throw error;
+            }
+            throw new AssertionError(error.getMessage() + System.lineSeparator()
+                    + "Process output:" + System.lineSeparator() + diagnostics, error);
+        }
+    }
+
     protected void waitForWorkerOffline(String workerId, String failureMessage) throws InterruptedException {
         assertTrue(awaitCondition(() -> !requireSdkApp().isWorkerOnline(workerId), 20, 100L), failureMessage);
     }
@@ -716,12 +763,22 @@ public abstract class AbstractSampleE2eTest {
     }
 
     private List<String> defaultSupportedEvents(String project) {
-        return switch (project) {
+        List<String> preferred = switch (project) {
             case "crawlerApp" -> List.of("crawler.fetch-page");
             case "testApp" -> List.of("demo.dispatch");
             case "otherApp", "demoApp" -> List.of("demo.dispatch", "demo.dispatch.gb");
             default -> List.of();
         };
+        List<String> available = requireSdkApp().getEventsForProject(project).stream()
+                .map(EventDefinition::getCode)
+                .toList();
+        if (available.isEmpty()) {
+            throw new IllegalStateException("No runtime events registered for project: " + project);
+        }
+        List<String> resolved = preferred.stream()
+                .filter(available::contains)
+                .toList();
+        return resolved.isEmpty() ? List.of(available.getFirst()) : resolved;
     }
 
     private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {

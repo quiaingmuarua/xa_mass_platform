@@ -245,9 +245,9 @@ describe('RuntimeMetadataPage', () => {
 
         const { wrapper, router } = await mountRuntimeMetadataPage()
 
-        expect(wrapper.text()).toContain('Metadata & Discovery')
+        expect(wrapper.text()).toContain('Control-plane Discovery')
         expect(wrapper.text()).toContain(
-            'SDK registration catalog plus live worker inventory',
+            'Project directory, event capability inventory, and live worker presence in one control-plane view',
         )
         expect(wrapper.text()).toContain('supportedEventCodes')
         expect(wrapper.text()).toContain('Demo App')

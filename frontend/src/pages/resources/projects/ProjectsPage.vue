@@ -43,7 +43,7 @@
 
         <PageEmptyState
           v-else-if="projectRows.length === 0"
-          description="No project metadata is currently available."
+          description="No projects are currently available."
         />
 
         <el-table v-else :data="projectRows" row-key="code">

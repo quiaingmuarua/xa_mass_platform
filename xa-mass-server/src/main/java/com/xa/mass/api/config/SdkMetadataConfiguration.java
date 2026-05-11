@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Wires the default SDK metadata catalog used by the read-only metadata APIs.
+ * Wires the default SDK catalog view used by project, event, and capability
+ * read APIs when the host runtime does not provide a live SDK-backed bean.
  */
 @Configuration
 public class SdkMetadataConfiguration {

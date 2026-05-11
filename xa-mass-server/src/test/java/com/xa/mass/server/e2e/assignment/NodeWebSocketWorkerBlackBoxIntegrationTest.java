@@ -105,9 +105,8 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> worker.assertAlive("External Node worker exited before reaching status ONLINE"),
@@ -190,9 +189,8 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(STOCK_WORKER_ID, wsUri)) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     STOCK_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> worker.assertAlive("External Node worker exited before reaching status ONLINE"),

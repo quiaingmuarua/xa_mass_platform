@@ -15,6 +15,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -68,7 +69,7 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
         try {
             waitUntil(() -> app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker must become online");
 
-            String taskId = createTaskId("redis-runtime-late-replay", "redis runtime replay integration", "target-a");
+            String taskId = createTaskId("redis-runtime-late-replay", "redis runtime replay integration", List.of("target-a"), 1, 1);
             Map<String, Object> approveResponse = exchange(
                     "/api/v1/tasks/" + taskId + ":approve",
                     HttpMethod.POST,
