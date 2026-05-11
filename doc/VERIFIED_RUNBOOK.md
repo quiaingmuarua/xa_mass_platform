@@ -1,12 +1,26 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-27
+Last updated: 2026-05-11
 
 Status: current verified runtime runbook.
 
-This runbook records verified runtime facts only. It is not an architecture essay, API reference, or changelog.
+This runbook records verified runtime facts only. It is not an architecture
+essay, API reference, or changelog.
 
-Use this file when you need to boot the app, run a smoke flow, or choose a focused regression command. Use [TESTING_BASELINE.md](./TESTING_BASELINE.md) for test-lane placement, [../xa-mass-engine/README.md](../xa-mass-engine/README.md) and [../xa-mass-testing/README.md](../xa-mass-testing/README.md) for module-owned test detail, [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace semantics.
+Use this file when you need to boot the app, run a smoke flow, or choose a
+focused regression command.
+
+Use [TESTING_INDEX.md](./TESTING_INDEX.md) for current test-layer truth,
+minimum verification rules, and CI gate truth. Use
+[TESTING_BASELINE.md](./TESTING_BASELINE.md) for lane placement,
+[../xa-mass-engine/README.md](../xa-mass-engine/README.md) and
+[../xa-mass-testing/README.md](../xa-mass-testing/README.md) for module-owned
+test detail, [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for
+endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for
+lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace
+semantics.
+
+This file does not define lane ownership, suite layering, or CI gate policy.
 
 ## 1. Verified Entry
 

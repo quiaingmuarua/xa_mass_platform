@@ -175,7 +175,7 @@ async function waitForWorkerOnline(workerId) {
     const items = json?.data;
     if (Array.isArray(items)) {
       const worker = items.find((item) => item?.workerId === workerId);
-      if (worker?.status === "ONLINE") {
+      if (worker?.online === true || worker?.transportOnline === true || worker?.status === "ONLINE") {
         console.log(`[sample-launcher] worker online ${workerId}`);
         return;
       }

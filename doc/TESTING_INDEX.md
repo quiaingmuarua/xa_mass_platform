@@ -1,0 +1,345 @@
+# Testing Index
+
+Last updated: 2026-05-11
+
+Status: current project-level testing index.
+
+This is the default testing entry for both humans and agents.
+
+Use this file to answer four questions quickly:
+
+1. what the current test layers are
+2. what each layer proves and does not prove
+3. which tests are the minimum verification for a given change
+4. which test shapes are encouraged, downgraded, or being phased out
+
+Use with:
+
+- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- [E2E_BASELINE.md](./E2E_BASELINE.md)
+- [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
+- [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
+- [../xa-mass-server/README.md](../xa-mass-server/README.md)
+- [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
+- [../transport/AGENTS.md](../transport/AGENTS.md)
+
+## 1. Mainline First
+
+Organize test decisions around the current product mainline:
+
+`project -> submitter / worker capability -> task shell -> item append -> engine runtime -> transport delivery -> result ingest -> convergence`
+
+Current testing assumptions:
+
+- `project` is part of the mainline business boundary, not just a metadata page
+- `transport` is an explicit subsystem and validation surface, not an engine implementation detail
+- the primary proof surface is integration/E2E/edge-case coverage
+- local unit tests are still useful, but new tests should prefer the mainline unless the logic is kernel-critical and easier to prove locally
+
+## 2. Test Layers
+
+### 2.1 Mainline Boundary
+
+Objects:
+
+- `project`
+- `submitter`
+- `worker`
+- `workerContext`
+
+Purpose:
+
+- prove business boundary, auth boundary, and capability boundary on the real mainline
+- verify project/event/submitter/worker constraints are enforced before dispatch
+
+Preferred surfaces:
+
+- Boot-shell E2E
+- controller/API contract tests when a host-side surface changes
+
+Does not prove:
+
+- runtime retry/finality correctness by itself
+- transport recovery behavior by itself
+
+### 2.2 Engine Kernel
+
+Objects:
+
+- lifecycle
+- retry
+- expiry
+- finality
+- release
+- convergence
+
+Purpose:
+
+- prove shared-kernel correctness under concurrency and edge ordering
+- protect invariants that are expensive or noisy to isolate at the host layer
+
+Preferred surfaces:
+
+- engine acceptance/concurrency tests
+- focused lifecycle/service tests only when they directly protect kernel behavior
+
+Does not prove:
+
+- host HTTP contracts
+- transport adapter routing or endpoint behavior
+
+### 2.3 Transport Boundary
+
+Objects:
+
+- transport runtime
+- adapter routing
+- result-ingest boundary
+- adapter-specific reachability and delivery behavior
+
+Purpose:
+
+- prove transport stays decoupled from engine
+- prove adapters route and ingest correctly without redefining kernel semantics
+
+Preferred surfaces:
+
+- transport module tests
+- Boot-shell E2E when host/runtime integration is involved
+
+Does not prove:
+
+- task lifecycle convergence on its own
+- host resource/auth/read-model behavior on its own
+
+### 2.4 Boot-shell E2E / Black-box
+
+Objects:
+
+- the full chain from project boundary to terminal convergence
+
+Purpose:
+
+- primary acceptance proof for the real product mainline
+- preferred home for edge-case behavior that must survive real wiring
+
+Preferred surfaces:
+
+- `xa-mass-server` integration tests
+- cross-language external worker black-box tests
+
+Does not prove:
+
+- hot-path throughput regression
+- chaos/recovery robustness beyond the scenario under test
+
+### 2.5 Perf / Chaos
+
+Objects:
+
+- scale behavior
+- disconnects
+- late replay
+- lease expiry
+- delayed retry visibility
+
+Purpose:
+
+- prove the mainline still holds under stress and degraded conditions
+
+Preferred surfaces:
+
+- `xa-mass-testing` perf smokes
+- `xa-mass-testing` chaos probes
+
+Does not prove:
+
+- ordinary feature correctness by itself
+- host controller/resource semantics by itself
+
+## 3. Current CI Truth
+
+Current CI truth comes from workflow files, not from roadmap prose.
+
+PR/push gates:
+
+- `.github/workflows/maven.yml`
+  - `reactor-core`
+  - `server-e2e`
+  - `lifecycle-integration`
+  - `chaos-smokes`
+- `.github/workflows/external-worker-samples.yml`
+  - `cross-language-blackbox`
+
+Scheduled/manual only:
+
+- `.github/workflows/perf-smokes.yml`
+  - `perf-smokes`
+
+Current implications:
+
+- `xa-mass-testing` is compiled on PR via the `reactor-core` compilation gate
+- chaos smoke probes are PR-gated
+- perf smoke remains scheduled/manual and is not a PR gate
+- cross-language black-box remains part of PR validation
+
+## 4. Current Test Asset Map
+
+### Engine Mainline Acceptance
+
+Primary classes:
+
+- `TaskConcurrencyAcceptanceTest`
+- `TaskManagerLifecycleTest`
+- `TaskResourceReleaseListenerTest`
+
+Proves:
+
+- lifecycle and result correctness under race-sensitive conditions
+- retry/reset/release/finality invariants
+
+Does not prove:
+
+- host HTTP/resource contracts
+- transport endpoint behavior
+
+Use first when:
+
+- changing lifecycle, retry, expiry, release, or convergence rules
+
+### Server Mainline E2E
+
+Primary groups:
+
+- lifecycle
+- assignment
+- results
+- audit
+- console/resource
+
+High-signal classes include:
+
+- `TaskApiIntegrationTest`
+- `TaskApiLifecycleGuardsIntegrationTest`
+- `TaskApiFailureResultIntegrationTest`
+- `TaskApiMixedResultsIntegrationTest`
+- `TaskApiCallbackReplayIntegrationTest`
+- `TaskApiMultiRoundDispatchIntegrationTest`
+- `TaskApiStateValidationIntegrationTest`
+- `ControlConsoleRoutingIntegrationTest`
+
+Proves:
+
+- the host shell exposes the mainline correctly
+- project/submitter/worker/task flows survive real wiring
+- edge-case task behavior survives real server + SDK + engine integration
+
+Does not prove:
+
+- long-run throughput
+- disconnect/recovery robustness by itself
+
+Use first when:
+
+- changing project, submitter, worker, task API, mainline authorization, or any host-facing mainline behavior
+
+### Cross-language Black-box
+
+Primary groups:
+
+- Java / Node polling
+- Java / Node websocket
+- Java / Node socket
+
+Proves:
+
+- external worker compatibility
+- adapter-specific delivery still lands on the same kernel semantics
+
+Does not prove:
+
+- host-side page/read-model behavior
+- internal engine race conditions in isolation
+
+Use first when:
+
+- changing external worker protocol, adapter routing, or result-ingest behavior that crosses the process boundary
+
+### Testing Module
+
+Primary groups:
+
+- perf smoke
+- SDK transport harness
+- chaos runners
+
+Proves:
+
+- hot-path regression signal
+- SDK transport composition behavior
+- degraded/recovery behavior
+
+Does not prove:
+
+- normal host API contracts
+- UI/resource shell semantics
+
+Use first when:
+
+- changing hot runtime paths, disconnect handling, lease expiry, retry visibility, late replay, or transport recovery
+
+## 5. What To Keep, Downgrade, and Phase Out
+
+### Keep
+
+- Boot-shell E2E
+- cross-language black-box
+- chaos
+- perf
+- engine concurrency/acceptance tests around lifecycle, retry, expiry, release, and convergence
+- transport tests around adapter routing, delivery, result ingress, and boundary decoupling
+- server/controller tests that protect host-side mainline HTTP contracts for `project`, `submitter`, `worker`, and `task`
+
+### Downgrade
+
+- DTO copy/getter/setter tests
+- local passthrough tests that only restate an already-proven E2E behavior
+- compatibility/read-model tests that provide no extra debugging value
+
+### Phase Out
+
+- server tests that treat `base model` as a stable host-shell API
+- server E2E that drives mainline behavior by directly mutating `Task`, `TaskStorage`, or runtime state
+- tests organized around historical `message` semantics instead of the current `work` mainline
+- local tests that prove only private implementation detail and not a mainline behavior or kernel invariant
+
+## 6. Change Type -> Minimum Verification
+
+| Change type | Minimum verification | Add when needed |
+| --- | --- | --- |
+| `project / submitter / worker / workerContext` boundary | Boot-shell E2E | controller/API contract tests |
+| task lifecycle / contract / intake | engine acceptance/concurrency + Boot-shell E2E | chaos for degraded edge behavior |
+| retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
+| transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
+| host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
+| hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |
+| disconnect / delay / late replay / lease expiry | chaos | deterministic engine surrogate when a race needs isolation |
+
+## 7. Rules For Agents
+
+When changing this repo:
+
+1. identify whether the change touches mainline boundary, engine kernel, transport boundary, host shell, or perf/chaos behavior
+2. choose the minimum verification from Section 6 before adding any extra tests
+3. prefer integration/E2E/edge-case coverage over local unit tests unless the logic is kernel-critical and cheaper to prove locally
+4. do not add new server tests that depend on `com.xa.mass.base.model.*` as host-stable API truth
+5. do not use direct storage/runtime mutation to manufacture a mainline scenario unless the test is explicitly audit-only or deterministic fault injection
+
+## 8. Read Next
+
+- [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
+- [../xa-mass-server/README.md](../xa-mass-server/README.md)
+- [../xa-mass-testing/README.md](../xa-mass-testing/README.md)

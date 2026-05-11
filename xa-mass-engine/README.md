@@ -6,6 +6,10 @@ This module owns kernel orchestration semantics: lifecycle, matching,
 assignment, result handling, and terminal convergence. It does not own runtime
 implementation modules or storage implementations.
 
+For current test-layer truth, minimum verification, and CI gate truth, start
+with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README only
+covers engine-owned assets and when to use them.
+
 ## Role
 
 `engine` is a runtime kernel, not a CRUD backend module.
@@ -216,6 +220,18 @@ Core acceptance for this module stays:
 - `Boot-shell E2E`: mainly in `xa-mass-server`, used to verify lifecycle and
   workload-class plumbing end to end
 
+What engine tests prove:
+
+- kernel lifecycle, retry, expiry, release, and convergence invariants
+- race-sensitive behavior that is cheaper to make deterministic inside the
+  engine boundary
+
+What engine tests do not replace:
+
+- `project / submitter / worker` host-boundary proof
+- transport adapter routing and result-ingest boundary proof
+- Boot-shell E2E for the real host wiring
+
 Useful starting tests:
 
 - `TaskConcurrencyAcceptanceTest`
@@ -241,4 +257,5 @@ Global baselines:
 - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
 - [`../doc/STATE_MACHINE_BASELINE.md`](../doc/STATE_MACHINE_BASELINE.md)
 - [`../doc/TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md)
+- [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md)
 - [`../doc/TESTING_BASELINE.md`](../doc/TESTING_BASELINE.md)

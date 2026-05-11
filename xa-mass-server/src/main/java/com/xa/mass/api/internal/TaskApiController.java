@@ -116,6 +116,7 @@ public class TaskApiController {
                         item.put("contract", task.getContract());
                         item.put("status", task.getStatus());
                         item.put("executionSpec", task.getExecutionSpec());
+                        populateExecutionSpecFields(item, task.getExecutionSpec());
                         item.put("terminalReason", task.getTerminalReason());
                         item.put("successCount", task.getTaskSuccessNumber());
                         item.put("eligibleCount", task.getTaskEligibleNumber());
@@ -427,6 +428,7 @@ public class TaskApiController {
         view.put("sharedConfig", taskSecurityViewSupport.sanitizeSharedConfig(task.getSharedConfig()));
         view.put("holdReason", task.getHoldReason());
         view.put("executionSpec", task.getExecutionSpec());
+        populateExecutionSpecFields(view, task.getExecutionSpec());
         view.put("sourceRef", task.getSourceRef());
         view.put("intakeStatus", task.getIntakeStatus());
         view.put("userId", task.getUserId());
@@ -534,6 +536,17 @@ public class TaskApiController {
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {
         return source != null && source.toLowerCase().contains(normalizedKeyword);
+    }
+
+    private void populateExecutionSpecFields(Map<String, Object> target, com.xa.mass.sdk.model.TaskExecutionOptions executionSpec) {
+        if (target == null || executionSpec == null) {
+            return;
+        }
+        target.put("workloadClass", executionSpec.getWorkloadClass());
+        target.put("batchSize", executionSpec.getBatchSize());
+        target.put("maxRuntimeSeconds", executionSpec.getMaxRuntimeSeconds());
+        target.put("defaultMaxRetryCount", executionSpec.getDefaultMaxRetryCount());
+        target.put("executionProfile", executionSpec.getProfile());
     }
 
     private String defaultString(String value) {

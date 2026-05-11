@@ -18,6 +18,7 @@ Most tasks only need one contract lane plus one owner README:
   [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
   [../platform_infra/README.md](../platform_infra/README.md)
 - testing / acceptance:
+  [TESTING_INDEX.md](./TESTING_INDEX.md),
   [TESTING_BASELINE.md](./TESTING_BASELINE.md),
   [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - HTTP / external shell:
@@ -33,6 +34,7 @@ Most tasks only need one contract lane plus one owner README:
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
+| [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |

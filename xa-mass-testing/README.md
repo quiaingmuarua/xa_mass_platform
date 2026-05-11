@@ -4,6 +4,10 @@ Status: current testing owner README.
 
 `xa-mass-testing` owns perf, SDK embedded-runtime harnesses, and chaos probes.
 
+For current test-layer truth, minimum verification, and CI gate truth, start
+with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README is
+module-local only.
+
 Use this module when the question is:
 
 - did a hot path get slower
@@ -12,6 +16,19 @@ Use this module when the question is:
 
 Do not use it as a replacement for Boot-shell E2E when the change also touches
 HTTP/API shell behavior or Spring wiring.
+
+What this module proves:
+
+- hot-path perf signal
+- SDK transport composition and transport-adapter runtime behavior
+- degraded-condition and recovery behavior such as disconnect, lease expiry,
+  late replay, and retry reset
+
+What this module does not replace:
+
+- Boot-shell E2E for host HTTP/mainline behavior
+- engine deterministic concurrency tests for kernel-local invariants
+- the repo-level testing map or CI truth
 
 ## Runner Map
 
@@ -151,6 +168,7 @@ Look at these first:
 
 Use repo-level docs only for system-level policy:
 
+- [../doc/TESTING_INDEX.md](../doc/TESTING_INDEX.md)
 - [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
 - [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md)
 - [../transport/AGENTS.md](../transport/AGENTS.md)

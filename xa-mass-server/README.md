@@ -12,6 +12,11 @@ Use this module for end-to-end validation of:
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
+For current test-layer truth, minimum verification, and CI gate truth, start
+with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README only
+covers server-owned Boot-shell E2E, black-box, and host-shell validation
+assets.
+
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
@@ -313,8 +318,27 @@ Mainline stance:
 
 - end-to-end integration coverage is the primary acceptance gate for runtime behavior
 - unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
+- Boot-shell E2E is the default proof surface for host-side mainline behavior,
+  including `project`, `submitter`, `worker`, task shell, dispatch wiring, and
+  result convergence
+- server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
+  API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
 - shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/server/e2e/support/AbstractSampleE2eTest`
+
+What this module proves:
+
+- real Spring Boot host wiring and HTTP contracts
+- mainline boundary behavior for `project / submitter / worker / workerContext`
+- full-chain task shell -> item append -> dispatch -> result ingest ->
+  convergence behavior
+
+What this module should not become:
+
+- a replacement for engine concurrency/acceptance tests
+- a place to lock in `base model` as a permanent server-host API surface
+- a suite that manufactures mainline scenarios by mutating storage/runtime
+  truth directly
 
 Focused verified regression command:
 
@@ -393,7 +417,11 @@ Fixture rules:
 - prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `sealTask(...)`
 - worker JSON and worker-context JSON are fixture inputs, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
-- direct `TaskManager` writes stay limited to focused white-box assertions or fault injection
+- direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to
+  focused white-box assertions, audit-only verification, or deterministic fault
+  injection
+- new mainline tests should prefer SDK or HTTP surfaces over direct
+  `com.xa.mass.base.model.*` manipulation
 
 Current gaps:
 
