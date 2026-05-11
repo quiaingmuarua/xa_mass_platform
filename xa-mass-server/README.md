@@ -21,6 +21,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - worker, task, and rule resources are created through the embedded SDK runtime
 - default `dev` startup can seed a mainline in-process demo shell through `DevDemoBootstrapConfiguration` when `mass.demo.bootstrap.enabled=true`
 - the default dev demo shell registers demo projects, events, submitters, workers, contexts, and seeded task shells strictly through SDK-native APIs
+- the same default dev path now auto-starts embedded sample WebSocket clients against the local adapter so those SDK-registered demo workers actually go `ONLINE` and process the seeded demo tasks
 - JSON fixture bootstrap remains a test-only input path; packaged fixture files are not the default dev startup source anymore
 - default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
   protected by `X-Sample-Bootstrap-Key`
@@ -116,8 +117,8 @@ Current default demo shape:
   - `demo-ops-key`
   - `demo-admin-key`
 - workers: `36` SDK-registered demo workers with lane-tagged contexts
-- tasks: `8` seeded tasks with `1500` items each by default
-- task mix: active/running backlog, pending approval, paused, and blocked states
+- tasks: `12` seeded tasks with `1500` items each by default
+- task mix per project: active/running backlog, pending approval, paused, and blocked states
 
 The demo bootstrap intentionally stays inside server-owned dev wiring. It does not add new SDK product semantics and it does not rely on test-only JSON aggregate fixtures.
 
@@ -131,8 +132,8 @@ For test or explicit fixture paths, embedded sample clients are owned by `xa-mas
 
 Startup behavior:
 
-- disabled unless the relevant sample-worker property is enabled
-- gated by `sample.client.auto-start=true` only for tests or explicit local fixture runs
+- enabled in the default dev demo shell through `sample.client.auto-start=true`
+- uses `sample.client.websocket-uri=ws://localhost:${mass.websocket.port}/ws` so the embedded sample clients follow the active WebSocket adapter port
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
 - discovers sample clients from SDK-registered `Worker` resources
@@ -255,13 +256,13 @@ Observability:
 | `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
 | `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
 | `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
-| `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
+| `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
 | `sample.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
-| `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
+| `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
 
 JDBC storage scope:
 

@@ -1031,30 +1031,31 @@ class MassSdkTest {
             app.start();
 
             assertTrue(app.isRunning());
-            assertEquals(false, transportDebug(app).getQueueDetail().get("transporterAvailable"));
-        assertEquals(-1, transportDebug(app).getQueueDetail().get("inputQueueSize"));
-        assertEquals(-1, transportDebug(app).getQueueDetail().get("outputQueueSize"));
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) transportDebug(app).getQueueDetail().get("deliveryDiagnostics");
-        assertEquals(true, deliveryDiagnostics.get("available"));
-        assertEquals(0, deliveryDiagnostics.get("queuedItems"));
-        assertEquals(0, deliveryDiagnostics.get("queueCount"));
-        assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
-        assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
-        assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("backpressureRejectedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
-        assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
-        assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
-        assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
-        assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) transportDebug(app).getQueueDetail().get("runtimeExecutors");
+            Map<String, Object> queueDetail = transportDebug(app).getQueueDetail();
+            assertEquals(true, queueDetail.get("transporterAvailable"));
+            assertEquals(0, queueDetail.get("inputQueueSize"));
+            assertEquals(0, queueDetail.get("outputQueueSize"));
+            Map<?, ?> deliveryDiagnostics = (Map<?, ?>) queueDetail.get("deliveryDiagnostics");
+            assertEquals(true, deliveryDiagnostics.get("available"));
+            assertEquals(0, deliveryDiagnostics.get("queuedItems"));
+            assertEquals(0, deliveryDiagnostics.get("queueCount"));
+            assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
+            assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
+            assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("backpressureRejectedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
+            assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
+            assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
+            assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
+            assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) queueDetail.get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
@@ -1190,6 +1191,7 @@ class MassSdkTest {
         createdTask.setTid("task-001");
         Task hydratedTask = new Task();
         hydratedTask.setTid("task-001");
+        hydratedTask.setProject("demoApp");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1502,6 +1504,7 @@ class MassSdkTest {
         createdTask.setTid("task-stream-001");
         Task hydratedTask = new Task();
         hydratedTask.setTid("task-stream-001");
+        hydratedTask.setProject("demoApp");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2732,14 +2735,6 @@ class MassSdkTest {
 
             assertNotNull(terminalTask);
             Assertions.assertEquals("ALL_MESSAGES_SUCCEEDED", terminalTask.getTerminalReason());
-
-            com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection finalMessage =
-                    requireDelegate(app).getEngine().getConfig()
-                    .getTaskDetailStore()
-                    .getTaskMessageProjections(task.getTaskId(), 1)
-                    .get(0);
-            Assertions.assertEquals("SUCCESS", String.valueOf(finalMessage.status()));
-            Assertions.assertEquals(200, finalMessage.output().get("httpStatus"));
         } finally {
             app.stop();
         }

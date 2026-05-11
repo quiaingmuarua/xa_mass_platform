@@ -4,7 +4,7 @@ mass:
     bootstrap:
       enabled: true
       worker-count: 36
-      task-count: 8
+      task-count: 12
       items-per-task: 1500
       batch-size: 20
       default-max-retry-count: 1
@@ -34,7 +34,10 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 sample:
+  client:
+    auto-start: true
+    websocket-uri: ws://localhost:${mass.websocket.port}/ws
   bootstrap:
     api-key: dev-bootstrap-key
   worker:
-    auto-start: true
+    auto-start: false

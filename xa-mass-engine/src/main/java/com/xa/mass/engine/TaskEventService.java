@@ -98,4 +98,11 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     public void publishTaskAssigned(Task task) {
         assignmentEventSink.publishTaskAssigned(task);
     }
+
+    public TaskEventListenerSnapshot listenerSnapshot() {
+        if (registrar instanceof TaskEventPublisher publisher) {
+            return publisher.listenerSnapshot();
+        }
+        return new TaskEventListenerSnapshot(0, 0, 0, 0, 0, 0, 0);
+    }
 }

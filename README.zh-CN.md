@@ -160,6 +160,134 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
 - `xa-mass-worker-pack`
   - 样例 worker、调试 worker、样例命令运行时
 
+## 一条推荐的业务主线
+
+如果你想从“这个平台到底怎么用”来理解项目，最顺的一条主线是：
+
+`project 注册 -> submitter 注册 -> worker 注册 -> 创建 task -> 提交结果`
+
+这条链同时适用于 SDK 嵌入和 Boot Shell / HTTP 验证，只是入口形式不同。
+
+### 1. project 注册
+
+`project` 是任务和能力的业务容器。
+
+它回答的是：
+
+- 这个任务属于哪个业务项目
+- 这个项目允许哪些 `eventCode`
+- worker 可以在哪些项目下提供能力
+
+在 SDK 里，通常通过 `registerProject(...)` 注册项目元数据。
+
+如果项目没有先注册清楚，后面的 task create、worker capability、submitter scope 都会缺少稳定业务边界。
+
+### 2. submitter 注册
+
+`submitter` 可以理解成“谁有资格代表某个业务主体发任务”。
+
+它主要解决：
+
+- 谁可以创建任务
+- 谁可以访问哪个项目
+- 谁可以触发哪些事件
+
+在 SDK 里，通常通过 `registerSubmitter(...)` 注册，再通过凭证做认证。
+
+对外的 HTTP 入口也遵守这套思路：不是任何人都能直接调任务接口，而是由 submitter 凭证代表一个被授权的调用方。
+
+### 3. worker 注册
+
+`worker` 是任务执行端，不等同于某个具体连接。
+
+worker 注册主要声明：
+
+- `workerId`
+- 支持哪些 `eventCode`
+- 属于什么 transport family
+- 具体使用哪个 `adapterId`
+- 所属项目和辅助属性
+
+如果需要更细的路由或上下文隔离，还会继续注册 `workerContext`。
+
+这里有一个很重要的认知：
+
+- 注册 worker 不等于 worker 已经在线
+- transport 在线也不等于它一定能接某个任务
+
+真正能不能派发，最终仍然由 engine 按规则、能力和当前状态决定。
+
+### 4. 创建 task
+
+任务创建在当前主线上是两步，而不是一步：
+
+1. 创建 task shell
+2. 再追加 task items
+
+也就是说，推荐理解成：
+
+- `POST /api/v1/tasks` 或 `createTaskShell(...)`
+  - 只创建任务壳
+- `POST /api/v1/tasks/{taskId}/items` 或 `appendTaskItems(...)`
+  - 真正把工作项送进系统
+
+如果是 `BATCH` 任务，常见做法是：
+
+1. 创建任务壳
+2. 批量追加 items
+3. `sealTask(...)`
+4. 等待任务自动收敛到 terminal
+
+如果是 `SESSION` 任务，当前 work 集合清空通常不代表任务结束，是否继续 append、何时 seal、何时终止，要看会话型业务自己的节奏。
+
+### 5. 提交结果
+
+worker 收到任务后，会按 `eventCode` 执行本地逻辑，然后把结果提交回来。
+
+这里的关键不是“往某张表里写一条成功/失败记录”，而是：
+
+- engine 要校验 active lease
+- runtime 要应用这次结果
+- 系统要判断是否重试、是否 final、是否释放资源
+- 最后再决定 task 是否推进到新的状态
+
+对于 pull / polling worker，提交结果通常是显式 API 或 session 方法。
+
+对于 realtime worker，结果会沿着各自 adapter 的回写路径进入统一的 result ingest 主线。
+
+所以“提交结果”在这个项目里本质上是：
+
+- worker 报告执行结果
+- engine/runtime 统一收敛执行真相
+
+而不是“worker 自己直接改任务状态”。
+
+## 为什么这条主线重要
+
+很多人第一次看这类项目，容易把重点放在：
+
+- 页面
+- 任务表
+- worker 在线列表
+
+但 XA Mass Platform 更核心的是上面那条业务主线。
+
+它真正要保证的是：
+
+1. 先把业务边界定义清楚
+   - `project`
+   - `submitter`
+   - `worker`
+2. 再把任务送进来
+   - `task shell`
+   - `task items`
+3. 再让 engine 统一调度和收敛
+   - dispatch
+   - result ingest
+   - retry / expiry / terminal
+
+如果按这条线理解项目，会比直接从 controller、DTO 或数据库表入手更顺。
+
 ## 适合谁看
 
 这份文档更适合下面几类读者：

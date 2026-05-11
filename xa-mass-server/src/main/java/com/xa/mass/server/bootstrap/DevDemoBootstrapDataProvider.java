@@ -2,6 +2,8 @@ package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -30,6 +32,14 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
 
     private static final Logger log = LoggerFactory.getLogger(DevDemoBootstrapDataProvider.class);
     private static final List<String> DEMO_PROJECTS = List.of("demoApp", "demoOps");
+    private static final List<DemoTaskScenario> SCENARIO_CYCLE = List.of(
+            DemoTaskScenario.ACTIVE,
+            DemoTaskScenario.ACTIVE_GB,
+            DemoTaskScenario.ACTIVE_OPS,
+            DemoTaskScenario.PENDING_REVIEW,
+            DemoTaskScenario.PAUSED,
+            DemoTaskScenario.BLOCKED
+    );
 
     private final int workerCount;
     private final int taskCount;
@@ -106,20 +116,24 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
 
     private void createTasks(MassRuntimeControl runtime) {
         for (int taskIndex = 0; taskIndex < taskCount; taskIndex++) {
-            String lane = routingLanes.get(taskIndex % routingLanes.size());
-            String project = DEMO_PROJECTS.get(taskIndex % DEMO_PROJECTS.size());
+            String project = projectFor(taskIndex);
             DemoTaskScenario scenario = scenarioFor(taskIndex);
+            String lane = effectiveLane(taskIndex, scenario);
             String eventCode = eventCodeForLane(lane);
             TaskExecutionOptions execution = executionOptionsFor(scenario, taskIndex);
+            PrincipalContext owner = ownerForProject(project);
 
-            TaskShellSnapshot task = runtime.createTaskShell(MassTaskShellCreateRequest.builder()
-                    .userId("dev-demo")
-                    .project(project)
-                    .contract("BATCH")
-                    .sourceRef(String.format(Locale.ROOT, "dev-demo-%s-%02d", lane, taskIndex + 1))
-                    .sharedConfig(buildSharedConfig(taskIndex, lane, project, scenario))
-                    .executionSpec(execution)
-                    .build());
+            TaskShellSnapshot task = runtime.createTaskShell(TaskOwnershipSupport.stamp(
+                    MassTaskShellCreateRequest.builder()
+                            .userId(owner.getUserId())
+                            .project(project)
+                            .contract("BATCH")
+                            .sourceRef(String.format(Locale.ROOT, "dev-demo-%s-%02d", lane, taskIndex + 1))
+                            .sharedConfig(buildSharedConfig(taskIndex, lane, project, scenario))
+                            .executionSpec(execution)
+                            .build(),
+                    owner
+            ));
 
             runtime.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
@@ -214,12 +228,45 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
     }
 
     private DemoTaskScenario scenarioFor(int taskIndex) {
-        DemoTaskScenario[] scenarios = DemoTaskScenario.values();
-        return scenarios[taskIndex % scenarios.length];
+        int scenarioIndex = (taskIndex / DEMO_PROJECTS.size()) % SCENARIO_CYCLE.size();
+        return SCENARIO_CYCLE.get(scenarioIndex);
+    }
+
+    private String projectFor(int taskIndex) {
+        return DEMO_PROJECTS.get(taskIndex % DEMO_PROJECTS.size());
+    }
+
+    private String effectiveLane(int taskIndex, DemoTaskScenario scenario) {
+        if (scenario == DemoTaskScenario.ACTIVE_GB && routingLanes.contains("gb")) {
+            return "gb";
+        }
+        return routingLanes.get(taskIndex % routingLanes.size());
     }
 
     private String eventCodeForLane(String lane) {
         return "gb".equalsIgnoreCase(lane) ? "demo.dispatch.gb" : "demo.dispatch";
+    }
+
+    private PrincipalContext ownerForProject(String project) {
+        String normalizedProject = project == null ? "" : project.trim();
+        if ("demoOps".equals(normalizedProject)) {
+            return PrincipalContext.builder()
+                    .principalId("demo-ops-submitter")
+                    .userId("demo-ops-user")
+                    .projectScope("demoOps")
+                    .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
+                    .projectScopes(List.of("demoOps"))
+                    .eventScopes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                    .build();
+        }
+        return PrincipalContext.builder()
+                .principalId("demo-app-submitter")
+                .userId("demo-app-user")
+                .projectScope("demoApp")
+                .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
+                .projectScopes(List.of("demoApp"))
+                .eventScopes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build();
     }
 
     private static List<String> normalizeRoutingLanes(List<String> routingLanes) {

@@ -187,4 +187,16 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
             }
         }
     }
+
+    public TaskEventListenerSnapshot listenerSnapshot() {
+        return new TaskEventListenerSnapshot(
+                taskCreatedListeners.size(),
+                taskAssignedListeners.size(),
+                taskReadyListeners.size(),
+                taskDispatchListeners.size(),
+                taskTerminalListeners.size(),
+                taskWorkAttemptClosedListeners.size(),
+                taskWorkLogicallyFinalListeners.size()
+        );
+    }
 }

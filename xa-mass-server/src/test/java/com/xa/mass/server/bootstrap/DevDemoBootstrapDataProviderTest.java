@@ -2,6 +2,7 @@ package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -28,7 +29,7 @@ class DevDemoBootstrapDataProviderTest {
     void loadIntoGeneratesWorkersProjectsAndLifecycleMix() {
         DevDemoBootstrapDataProvider provider = new DevDemoBootstrapDataProvider(
                 4,
-                6,
+                12,
                 3,
                 20,
                 1,
@@ -41,26 +42,34 @@ class DevDemoBootstrapDataProviderTest {
 
         assertEquals(4, runtime.workers.size());
         assertEquals(4, runtime.workerContexts.size());
-        assertEquals(6, runtime.createdTasks.size());
-        assertEquals(6, runtime.appendRequests.size());
-        assertEquals(6, runtime.sealedTaskIds.size());
+        assertEquals(12, runtime.createdTasks.size());
+        assertEquals(12, runtime.appendRequests.size());
+        assertEquals(12, runtime.sealedTaskIds.size());
 
         Set<String> projects = runtime.createdTasks.stream()
                 .map(MassTaskShellCreateRequest::getProject)
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("demoApp", "demoOps"), projects);
 
-        assertIterableEquals(List.of("task-1", "task-2", "task-3", "task-5"), runtime.approvedTaskIds);
-        assertIterableEquals(List.of("task-5"), runtime.pausedTaskIds);
-        assertIterableEquals(List.of("task-6"), runtime.rejectedTaskIds);
+        assertIterableEquals(List.of("task-1", "task-2", "task-3", "task-4", "task-5", "task-6", "task-9", "task-10"),
+                runtime.approvedTaskIds);
+        assertIterableEquals(List.of("task-9", "task-10"), runtime.pausedTaskIds);
+        assertIterableEquals(List.of("task-11", "task-12"), runtime.rejectedTaskIds);
 
         assertEquals("demo.dispatch", runtime.appendRequests.get(0).getEventCode());
-        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(1).getEventCode());
-        assertEquals("demo.dispatch", runtime.appendRequests.get(2).getEventCode());
+        assertEquals("demo.dispatch", runtime.appendRequests.get(1).getEventCode());
+        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(2).getEventCode());
+        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(3).getEventCode());
 
         Map<String, Object> firstSharedConfig = runtime.createdTasks.get(0).getSharedConfig();
         assertEquals("active", firstSharedConfig.get("demoScenario"));
         assertEquals("demoApp", firstSharedConfig.get("demoProject"));
+        assertEquals("demo-app-submitter",
+                TaskOwnershipStamp.fromSharedConfig(firstSharedConfig).getCreatedByPrincipalId());
+
+        Map<String, Object> secondSharedConfig = runtime.createdTasks.get(1).getSharedConfig();
+        assertEquals("demo-ops-submitter",
+                TaskOwnershipStamp.fromSharedConfig(secondSharedConfig).getCreatedByPrincipalId());
 
         WorkerRegistration firstWorker = runtime.workers.get(0);
         assertTrue(firstWorker.getEventBindings().stream()

@@ -99,7 +99,7 @@ public class TaskApiController {
                     ? taskQueries.getTaskSummariesByStatus(status)
                     : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
             List<Map<String, Object>> items = candidates.stream()
-                    .filter(task -> submitterViewer == null)
+                    .filter(task -> canViewTaskSummary(task, submitterViewer))
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
                             .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -588,6 +588,17 @@ public class TaskApiController {
         } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
             throw new SdkUnauthenticatedException(ex.getMessage());
         }
+    }
+
+    private boolean canViewTaskSummary(TaskSummarySnapshot task, PrincipalContext submitterViewer) {
+        if (submitterViewer == null) {
+            return true;
+        }
+        TaskAccessSnapshot access = taskQueries.getTaskAccess(task.getTaskId());
+        if (access == null) {
+            return false;
+        }
+        return apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, access.getSharedConfig());
     }
 
     private PrincipalContext resolveTaskAppender(String apiKeyHeader,

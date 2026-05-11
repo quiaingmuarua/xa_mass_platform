@@ -15,6 +15,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "sample.client.auto-start=true",
+                "mass.mock.bootstrap.enabled=true",
+                "mass.mock.bootstrap.register-dev-catalog=true",
+                "mass.mock.bootstrap.register-dev-submitters=false",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
                 "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
@@ -90,6 +94,12 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(sharedConfig.containsKey("_massSecurity"));
         assertEquals("crawler-agent", securityView.get("createdByPrincipalId"));
         assertEquals("SERVICE", securityView.get("createdByPrincipalType"));
+
+        Map<String, Object> listResponse = exchange("/api/v1/tasks", HttpMethod.GET, null,
+                sdkHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+        assertApiOk(listResponse);
+        List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(listResponse).get("items");
+        assertTrue(items.stream().anyMatch(item -> taskId.equals(String.valueOf(item.get("id")))));
     }
 
     @Test

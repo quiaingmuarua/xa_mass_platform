@@ -61,8 +61,9 @@ Default runtime facts:
   - events: `demo.dispatch`, `demo.dispatch.gb`
   - submitter credentials: `demo-app-key`, `demo-ops-key`, `demo-admin-key`
   - workers: `36` demo workers across `us,gb,de,fr,sg,jp`
-  - tasks: `8` demo tasks with mixed states (`RUNNING/READY`, `NEW`, `PAUSED`, `BLOCKED`) and `1500` items each by default
-- Embedded sample worker clients auto-start only when `sample.client.auto-start=true`, which is intended for explicit fixture or test runs rather than the default dev shell.
+  - tasks: `12` demo tasks with per-project mixed states (`RUNNING`, `NEW`, `PAUSED`, `BLOCKED`) and `1500` items each by default
+- default `dev` startup also auto-starts embedded sample WebSocket clients against `ws://localhost:${mass.websocket.port}/ws`, so the SDK-registered demo workers can go `ONLINE` and consume the seeded demo tasks
+- external sample worker launcher is not part of the default dev demo path; enable `sample.worker.auto-start=true` explicitly only when validating the separate cross-process sample shell
 - Sample adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
@@ -94,31 +95,31 @@ Create a task shell, append items, then seal:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8088/api/v1/tasks \
-  -H 'X-API-Key: demo-app-key' \
+  -H 'X-Mass-Api-Key: demo-app-key' \
   -H 'Content-Type: application/json' \
   -d '{"project":"demoApp","sharedConfig":{"textContent":"smoke"},"userId":"demo-app-user","executionSpec":{"batchSize":1,"maxRuntimeSeconds":0}}'
 
 curl -s -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
-  -H 'X-API-Key: demo-app-key' \
+  -H 'X-Mass-Api-Key: demo-app-key' \
   -H 'Content-Type: application/json' \
   -d '{"eventCode":"demo.dispatch","items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}]}'
 
 curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}:seal \
-  -H 'X-API-Key: demo-app-key'
+  -H 'X-Mass-Api-Key: demo-app-key'
 ```
 
 Approve it:
 
 ```bash
 curl -i -X POST "http://127.0.0.1:8088/api/v1/tasks/{taskId}:approve" \
-  -H 'X-API-Key: demo-app-key'
+  -H 'X-Mass-Api-Key: demo-app-key'
 ```
 
 Inspect task:
 
 ```bash
 curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId} \
-  -H 'X-API-Key: demo-app-key'
+  -H 'X-Mass-Api-Key: demo-app-key'
 ```
 
 - `Task`: `NEW -> READY -> RUNNING -> TERMINAL`

@@ -4,8 +4,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -72,12 +70,12 @@ class MassEngineStopTest {
         try {
             engine.start();
 
-            assertEquals(0, listenerCount(config, "taskCreatedListeners"));
-            assertEquals(0, listenerCount(config, "taskAssignedListeners"));
-            assertEquals(1, listenerCount(config, "taskReadyListeners"));
-            assertEquals(1, listenerCount(config, "taskDispatchListeners"));
-            assertEquals(1, listenerCount(config, "taskTerminalListeners"));
-            assertEquals(1, listenerCount(config, "taskMessageAttemptClosedListeners"));
+            assertEquals(0, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(0, listenerSnapshot(config).taskAssignedListeners());
+            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
         } finally {
             engine.stop();
         }
@@ -91,17 +89,17 @@ class MassEngineStopTest {
         engine.start();
         engine.stop();
 
-        assertEquals(0, listenerCount(config, "taskReadyListeners"));
-        assertEquals(0, listenerCount(config, "taskDispatchListeners"));
-        assertEquals(0, listenerCount(config, "taskTerminalListeners"));
-        assertEquals(0, listenerCount(config, "taskMessageAttemptClosedListeners"));
+        assertEquals(0, listenerSnapshot(config).taskReadyListeners());
+        assertEquals(0, listenerSnapshot(config).taskDispatchListeners());
+        assertEquals(0, listenerSnapshot(config).taskTerminalListeners());
+        assertEquals(0, listenerSnapshot(config).taskWorkAttemptClosedListeners());
 
         engine.start();
         try {
-            assertEquals(1, listenerCount(config, "taskReadyListeners"));
-            assertEquals(1, listenerCount(config, "taskDispatchListeners"));
-            assertEquals(1, listenerCount(config, "taskTerminalListeners"));
-            assertEquals(1, listenerCount(config, "taskMessageAttemptClosedListeners"));
+            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
         } finally {
             engine.stop();
         }
@@ -115,14 +113,14 @@ class MassEngineStopTest {
 
         engine.start();
         try {
-            assertEquals(1, listenerCount(config, "taskCreatedListeners"));
-            assertEquals(1, listenerCount(config, "taskAssignedListeners"));
+            assertEquals(1, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(1, listenerSnapshot(config).taskAssignedListeners());
         } finally {
             engine.stop();
         }
 
-        assertEquals(0, listenerCount(config, "taskCreatedListeners"));
-        assertEquals(0, listenerCount(config, "taskAssignedListeners"));
+        assertEquals(0, listenerSnapshot(config).taskCreatedListeners());
+        assertEquals(0, listenerSnapshot(config).taskAssignedListeners());
     }
 
     // ---- helpers ----
@@ -154,11 +152,8 @@ class MassEngineStopTest {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private int listenerCount(EngineConfig config, String fieldName) {
-        Object taskEvents = config.getTaskEventService();
-        Object eventPublisher = readField(taskEvents, "registrar");
-        return ((List<Object>) readField(eventPublisher, fieldName)).size();
+    private com.xa.mass.engine.TaskEventListenerSnapshot listenerSnapshot(EngineConfig config) {
+        return config.getTaskEventService().listenerSnapshot();
     }
 
     private void setField(Object target, String fieldName, Object value) {

@@ -36,7 +36,7 @@ public class DevDemoBootstrapConfiguration {
     @Value("${mass.demo.bootstrap.worker-count:36}")
     private int workerCount;
 
-    @Value("${mass.demo.bootstrap.task-count:8}")
+    @Value("${mass.demo.bootstrap.task-count:12}")
     private int taskCount;
 
     @Value("${mass.demo.bootstrap.items-per-task:1500}")

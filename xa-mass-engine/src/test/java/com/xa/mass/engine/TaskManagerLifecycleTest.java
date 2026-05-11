@@ -1234,10 +1234,18 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
 
-        TaskDetailStore.TaskMessageProjection updatedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection updatedMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt = awaitVisibleTaskMessageAttemptProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updatedMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, updatedMessage.finalReason());
         assertEquals("worker-repair", updatedMessage.latestAttemptWorkerId());
