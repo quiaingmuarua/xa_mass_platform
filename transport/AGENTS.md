@@ -26,6 +26,9 @@ entry for `transport/`.
 - worker reachability truth now lives in a transport-owned presence plane.
   Adapters write `WorkerPresenceStore`; engine consumes a reachability view and
   must not re-own transport online truth through worker heartbeat folding.
+  Presence ownership is connection-aware: reconnect may replace the current
+  owner, while heartbeat/offline only apply when the caller still holds the
+  stored `connectionId`.
 - `TransportPacket` is the internal flat transport envelope. Dispatch now
   creates packet-backed envelopes before adapter delivery, but worker-facing
   websocket/socket/polling JSON remains unchanged in this phase.

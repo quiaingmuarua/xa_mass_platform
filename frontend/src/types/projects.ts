@@ -1,4 +1,4 @@
-export interface ProjectMetadata {
+export interface ProjectDefinition {
     tenantId?: string
     code: string
     name: string

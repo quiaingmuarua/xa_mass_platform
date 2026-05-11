@@ -170,7 +170,7 @@ async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
 
 async function waitForWorkerOnline(workerId) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const response = await fetch(`${baseUrl}/api/v1/meta/worker-capabilities`);
+    const response = await fetch(`${baseUrl}/api/v1/catalog/worker-capabilities`);
     const json = await response.json().catch(() => ({}));
     const items = json?.data;
     if (Array.isArray(items)) {

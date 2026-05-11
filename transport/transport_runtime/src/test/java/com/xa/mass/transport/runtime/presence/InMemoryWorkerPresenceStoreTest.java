@@ -56,4 +56,28 @@ class InMemoryWorkerPresenceStoreTest {
         assertFalse(store.isRouteOnline("socket", "route-9"));
         assertTrue(store.listActivePresences().isEmpty());
     }
+
+    @Test
+    void staleHeartbeatOrDisconnectDoesNotKnockDownNewConnectionOwner() {
+        InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
+
+        store.markOnline("worker-1", "websocket", "route-old", "conn-old", "connected");
+        store.markOnline("worker-1", "websocket", "route-new", "conn-new", "reconnected");
+
+        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-1", "websocket", "route-old", "conn-old", "stale-heartbeat");
+        assertNotNull(ignoredHeartbeat);
+        assertEquals("conn-new", ignoredHeartbeat.getConnectionId());
+        assertEquals("route-new", ignoredHeartbeat.getRouteKey());
+        assertTrue(store.isRouteOnline("websocket", "route-new"));
+
+        WorkerPresence ignoredOffline = store.markOffline("worker-1", "websocket", "route-old", "conn-old", "stale-disconnect");
+        assertNotNull(ignoredOffline);
+        assertEquals(WorkerPresenceState.ONLINE, ignoredOffline.getPresenceState());
+        assertTrue(store.isRouteOnline("websocket", "route-new"));
+
+        WorkerPresence finalOffline = store.markOffline("worker-1", "websocket", "route-new", "conn-new", "disconnect");
+        assertNotNull(finalOffline);
+        assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
+        assertFalse(store.isRouteOnline("websocket", "route-new"));
+    }
 }

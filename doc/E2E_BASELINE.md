@@ -67,7 +67,7 @@ Worker and context:
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal`
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
 - external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
-- the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/meta/*`, complete task work, and exit cleanly
+- the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/catalog/*`, complete task work, and exit cleanly
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
 - same worker can own multiple contexts without overwrite
 - releasing one context does not release sibling contexts

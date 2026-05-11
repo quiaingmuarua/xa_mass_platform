@@ -18,8 +18,8 @@ embedding callers without pulling in runtime composition internals.
 
 - request/response and registration models intended for SDK callers
 - submitter/principal contract types and small in-memory SDK-local helpers
-- platform-level authorization request/policy contracts and minimal ownership metadata contracts
-- catalog metadata and event-definition contract types
+- platform-level authorization request/policy contracts and minimal ownership contracts
+- catalog and event-definition contract types
 
 ## What Does Not Belong Here
 

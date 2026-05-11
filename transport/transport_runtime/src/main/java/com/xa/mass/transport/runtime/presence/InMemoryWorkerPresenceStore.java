@@ -46,15 +46,20 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                                      String connectionId,
                                      String reason) {
         long now = System.currentTimeMillis();
+        String normalizedWorkerId = normalizeRequired(workerId, "workerId");
+        String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
+        String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
+        String normalizedConnectionId = normalizeNullable(connectionId);
+        String nextConnectionId = normalizedConnectionId != null ? normalizedConnectionId : UUID.randomUUID().toString();
         WorkerPresence next = new WorkerPresence(
-                normalizeRequired(workerId, "workerId"),
-                normalizeRequired(adapterId, "adapterId"),
-                normalizeRequired(routeKey, "routeKey"),
+                normalizedWorkerId,
+                normalizedAdapterId,
+                normalizedRouteKey,
                 WorkerPresenceState.ONLINE,
                 now,
                 now + leaseMillis,
                 transportInstanceId,
-                normalizeNullable(connectionId),
+                nextConnectionId,
                 now,
                 null
         );
@@ -67,7 +72,32 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                                            String routeKey,
                                            String connectionId,
                                            String reason) {
-        return markOnline(workerId, adapterId, routeKey, connectionId, reason);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        String normalizedConnectionId = normalizeNullable(connectionId);
+        if (normalizedWorkerId == null || normalizedConnectionId == null) {
+            return getPresence(workerId);
+        }
+        long now = System.currentTimeMillis();
+        return presenceByWorkerId.compute(normalizedWorkerId, (workerIdKey, stored) -> {
+            WorkerPresence current = materialize(stored, now);
+            if (current == null || !normalizedConnectionId.equals(current.getConnectionId())) {
+                return current != null ? current : stored;
+            }
+            WorkerPresence next = new WorkerPresence(
+                    current.getWorkerId(),
+                    current.getAdapterId(),
+                    current.getRouteKey(),
+                    WorkerPresenceState.ONLINE,
+                    now,
+                    now + leaseMillis,
+                    transportInstanceId,
+                    current.getConnectionId(),
+                    now,
+                    current.getDisconnectReason()
+            );
+            workerIdByRoute.put(routeIdentity(next.getAdapterId(), next.getRouteKey()), normalizedWorkerId);
+            return next;
+        });
     }
 
     @Override
@@ -82,6 +112,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
         WorkerPresence previous = materialize(presenceByWorkerId.get(normalizedWorkerId), now);
+        if (previous == null || normalizedConnectionId == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
+            return previous;
+        }
         WorkerPresence next = new WorkerPresence(
                 normalizedWorkerId,
                 normalizedAdapterId,

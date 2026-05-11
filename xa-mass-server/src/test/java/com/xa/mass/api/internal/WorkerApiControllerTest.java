@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -50,7 +50,7 @@ class WorkerApiControllerTest {
                 .taskModes(List.of(TaskMode.SINGLE_RUN))
                 .projectCodes(List.of("demoApp"))
                 .build());
-        metadataCatalog.registerProject(ProjectMetadata.builder()
+        metadataCatalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Demo")

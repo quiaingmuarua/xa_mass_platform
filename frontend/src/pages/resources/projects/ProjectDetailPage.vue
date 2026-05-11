@@ -248,10 +248,10 @@ import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
-  SdkEventDefinition,
-} from '@/types/metadata'
+  EventDefinition,
+} from '@/types/catalog'
 import type {
-  ProjectMetadata,
+  ProjectDefinition,
   ProjectSubmitterMetadata,
 } from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
@@ -263,8 +263,8 @@ const router = useRouter()
 
 const loading = ref(false)
 const errorMessage = ref('')
-const project = ref<ProjectMetadata | null>(null)
-const events = ref<SdkEventDefinition[]>([])
+const project = ref<ProjectDefinition | null>(null)
+const events = ref<EventDefinition[]>([])
 const submitters = ref<ProjectSubmitterMetadata[]>([])
 const workers = ref<WorkerListItem[]>([])
 const tasks = ref<TaskListItem[]>([])
@@ -303,7 +303,7 @@ async function loadProject(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [projectMetadata, eventRows, submitterRows, workerResponse, taskResponse] =
+    const [projectDefinition, eventRows, submitterRows, workerResponse, taskResponse] =
       await Promise.all([
         getProject(projectCode.value),
         listProjectEventDefinitions(projectCode.value),
@@ -311,7 +311,7 @@ async function loadProject(): Promise<void> {
         listWorkers(),
         listTasks({ project: projectCode.value }),
       ])
-    project.value = projectMetadata
+    project.value = projectDefinition
     events.value = eventRows
     submitters.value = submitterRows
     workers.value = workerResponse.items

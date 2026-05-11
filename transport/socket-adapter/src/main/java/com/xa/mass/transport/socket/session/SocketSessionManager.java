@@ -59,8 +59,10 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
-        if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
+        if (result.currentEntry().endpoint().isActive()) {
             workerPresenceStore.markOnline(workerId, adapterId, routeKey, endpointId, "socket connected");
+        }
+        if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
             systemEventChannel.publishWorkerOnline(workerId, "socket connected", null);
         }
     }

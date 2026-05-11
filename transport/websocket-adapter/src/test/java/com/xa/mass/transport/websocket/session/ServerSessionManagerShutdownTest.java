@@ -134,6 +134,30 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void removingStaleChannelDoesNotOfflineReplacementPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel firstChannel = mockActiveChannel("worker-1-old");
+        Channel secondChannel = mockActiveChannel("worker-1-new");
+        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession("route-1", "worker-1", secondChannel, secondCtx);
+
+        manager.removeSession(firstChannel);
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("worker-1-new", presenceStore.getPresence("worker-1").getConnectionId());
+        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+
+        manager.removeSession(secondChannel);
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+    }
+
+    @Test
     void shutdownSkipsInactiveChannels() {
         Channel active = mockActiveChannel("active");
         Channel inactive = mock(Channel.class);

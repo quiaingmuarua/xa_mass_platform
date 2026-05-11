@@ -156,7 +156,7 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
 
     @SuppressWarnings("unchecked")
     private boolean hasActiveEndpoint(String workerId) {
-        Map<String, Object> response = exchange("/api/v1/meta/worker-capabilities", HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
         assertApiOk(response);
         Object data = response.get("data");
         List<Map<String, Object>> items = data instanceof List<?> list ? (List<Map<String, Object>>) list : null;

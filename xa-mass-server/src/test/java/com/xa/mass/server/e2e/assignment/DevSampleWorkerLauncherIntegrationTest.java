@@ -67,7 +67,7 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
         waitForSeedTaskContaining("sample-stock-quote-stream", "RUNNING");
 
         String requestId = "launcher-stock-req-0001";
-        String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/meta/events/stock.quote.fetch";
+        String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/catalog/events/stock.quote.fetch";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "launcher-itest");

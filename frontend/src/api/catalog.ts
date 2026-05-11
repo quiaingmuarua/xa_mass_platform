@@ -3,18 +3,18 @@ import {
     getEventDefinitionMock,
     listEventCapabilitiesMock,
     listEventDefinitionsMock,
-} from '@/api/metadata.mock'
+} from '@/api/catalog.mock'
 import {
     getEventDefinitionReal,
     listEventCapabilitiesReal,
     listEventDefinitionsReal,
-} from '@/api/metadata.real'
+} from '@/api/catalog.real'
 import type {
     EventCapability,
-    SdkEventDefinition,
-} from '@/types/metadata'
+    EventDefinition,
+} from '@/types/catalog'
 
-export async function listEventDefinitions(): Promise<SdkEventDefinition[]> {
+export async function listEventDefinitions(): Promise<EventDefinition[]> {
     if (getAppConfig().useMockApi) {
         return listEventDefinitionsMock()
     }
@@ -32,7 +32,7 @@ export async function listEventCapabilities(): Promise<EventCapability[]> {
 
 export async function getEventDefinition(
     eventCode: string,
-): Promise<SdkEventDefinition> {
+): Promise<EventDefinition> {
     if (getAppConfig().useMockApi) {
         return getEventDefinitionMock(eventCode)
     }

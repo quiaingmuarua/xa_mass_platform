@@ -13,8 +13,8 @@ import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
@@ -49,7 +49,7 @@ public class InternalDebugTaskInvocationController {
     private static final ObjectMapper SIZE_OBJECT_MAPPER = new ObjectMapper();
 
     private final TaskAdminOperations taskAdmin;
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
@@ -57,13 +57,13 @@ public class InternalDebugTaskInvocationController {
 
     @Autowired
     public InternalDebugTaskInvocationController(TaskAdminOperations taskAdmin,
-                                                 SdkMetadataCatalog metadataCatalog,
+                                                 ControlPlaneCatalog catalog,
                                                  ApiAuthService apiAuthService,
                                                  ApiAuthorizationService apiAuthorizationService,
                                                  TaskSecurityViewSupport taskSecurityViewSupport,
                                                  SyncTaskResultBridge syncBridge) {
         this.taskAdmin = taskAdmin;
-        this.metadataCatalog = metadataCatalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : metadataCatalog;
+        this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
@@ -258,24 +258,24 @@ public class InternalDebugTaskInvocationController {
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        if (metadataCatalog.getEvent(eventCode) == null) {
+        if (catalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
-        if (!projectMetadata.getAuthorizedEventCodes().contains(eventCode)) {
+        if (!projectDefinition.getAuthorizedEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
     }
 
     private String resolveProjectTenantId(String projectCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        return projectMetadata.getTenantId();
+        return projectDefinition.getTenantId();
     }
 
     private String requireProjectCode(String project) {

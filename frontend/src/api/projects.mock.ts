@@ -1,7 +1,7 @@
 import {mockEvents, mockProjects, mockProjectSubmitters} from '@/api/mockCatalog'
-import type {SdkEventDefinition} from '@/types/metadata'
+import type {EventDefinition} from '@/types/catalog'
 import type {
-    ProjectMetadata,
+    ProjectDefinition,
     ProjectSubmitterMetadata,
 } from '@/types/projects'
 
@@ -11,16 +11,16 @@ function delay<T>(value: T): Promise<T> {
     })
 }
 
-export async function listProjectsMock(): Promise<ProjectMetadata[]> {
+export async function listProjectsMock(): Promise<ProjectDefinition[]> {
     return delay(mockProjects)
 }
 
 export async function getProjectMock(
     projectCode: string,
-): Promise<ProjectMetadata> {
+): Promise<ProjectDefinition> {
     const project = mockProjects.find((item) => item.code === projectCode)
     if (!project) {
-        throw new Error(`Project metadata not found: ${projectCode}`)
+        throw new Error(`Project not found: ${projectCode}`)
     }
 
     return delay(project)
@@ -28,10 +28,10 @@ export async function getProjectMock(
 
 export async function listProjectEventDefinitionsMock(
     projectCode: string,
-): Promise<SdkEventDefinition[]> {
+): Promise<EventDefinition[]> {
     const project = mockProjects.find((item) => item.code === projectCode)
     if (!project) {
-        throw new Error(`Project metadata not found: ${projectCode}`)
+        throw new Error(`Project not found: ${projectCode}`)
     }
 
     return delay(
@@ -44,7 +44,7 @@ export async function listProjectSubmittersMock(
 ): Promise<ProjectSubmitterMetadata[]> {
     const project = mockProjects.find((item) => item.code === projectCode)
     if (!project) {
-        throw new Error(`Project metadata not found: ${projectCode}`)
+        throw new Error(`Project not found: ${projectCode}`)
     }
 
     return delay(mockProjectSubmitters[projectCode] ?? [])

@@ -124,7 +124,7 @@ expose its own control-plane directory:
 
 ```java
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 
@@ -136,7 +136,7 @@ app.registerEventDefinition(EventDefinition.builder()
         .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
         .build());
 
-app.registerProject(ProjectMetadata.builder()
+app.registerProject(ProjectDefinition.builder()
         .code("botApp")
         .name("Bot App")
         .description("Telegram-style bot project")

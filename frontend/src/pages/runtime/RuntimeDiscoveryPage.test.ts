@@ -2,7 +2,7 @@ import ElementPlus from 'element-plus'
 import {flushPromises, mount} from '@vue/test-utils'
 import {createMemoryHistory, createRouter} from 'vue-router'
 import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
-import RuntimeMetadataPage from '@/pages/runtime/RuntimeMetadataPage.vue'
+import RuntimeDiscoveryPage from '@/pages/runtime/RuntimeDiscoveryPage.vue'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -27,7 +27,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
         if (input.includes('/api/v1/submitters/me')) {
             return Promise.resolve(submitterResponse)
         }
-        if (input.includes('/api/v1/meta/event-capabilities')) {
+        if (input.includes('/api/v1/catalog/event-capabilities')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -97,7 +97,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                 }),
             )
         }
-        if (input.includes('/api/v1/meta/events')) {
+        if (input.includes('/api/v1/catalog/events')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -182,11 +182,11 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
     }
 }
 
-async function mountRuntimeMetadataPage() {
+async function mountRuntimeDiscoveryPage() {
     const router = createRouter({
         history: createMemoryHistory(),
         routes: [
-            { path: '/', component: RuntimeMetadataPage },
+            { path: '/', component: RuntimeDiscoveryPage },
             {
                 path: '/tasks',
                 name: 'tasks',
@@ -202,7 +202,7 @@ async function mountRuntimeMetadataPage() {
     await router.push('/')
     await router.isReady()
 
-    const wrapper = mount(RuntimeMetadataPage, {
+    const wrapper = mount(RuntimeDiscoveryPage, {
         global: {
             plugins: [router, ElementPlus],
         },
@@ -212,13 +212,13 @@ async function mountRuntimeMetadataPage() {
     return { wrapper, router }
 }
 
-describe('RuntimeMetadataPage', () => {
+describe('RuntimeDiscoveryPage', () => {
     afterEach(() => {
         resetRuntimeConfigOverrides()
         vi.unstubAllGlobals()
     })
 
-    it('combines SDK metadata and live workers into a discovery view', async () => {
+    it('combines the catalog and live workers into a discovery view', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         vi.stubGlobal(
             'fetch',
@@ -231,7 +231,7 @@ describe('RuntimeMetadataPage', () => {
                             principalId: 'crawler-agent',
                             userId: 'crawler-user',
                             projectScope: 'crawlerApp',
-                            permissions: ['task:create', 'metadata:view'],
+                            permissions: ['task:create', 'catalog:view'],
                             projectScopes: ['crawlerApp'],
                             eventScopes: ['crawler.fetch-page'],
                             attributes: {
@@ -243,7 +243,7 @@ describe('RuntimeMetadataPage', () => {
             ),
         )
 
-        const { wrapper, router } = await mountRuntimeMetadataPage()
+        const { wrapper, router } = await mountRuntimeDiscoveryPage()
 
         expect(wrapper.text()).toContain('Control-plane Discovery')
         expect(wrapper.text()).toContain(
@@ -312,7 +312,7 @@ describe('RuntimeMetadataPage', () => {
             ),
         )
 
-        const { wrapper } = await mountRuntimeMetadataPage()
+        const { wrapper } = await mountRuntimeDiscoveryPage()
 
         expect(wrapper.text()).toContain('No SDK credential in this browser session')
         expect(wrapper.text()).toContain('It is not the control-console login state')
@@ -336,7 +336,7 @@ describe('RuntimeMetadataPage', () => {
             ),
         )
 
-        const { wrapper } = await mountRuntimeMetadataPage()
+        const { wrapper } = await mountRuntimeDiscoveryPage()
 
         expect(wrapper.text()).toContain('Endpoint unavailable or mock mode')
     })
@@ -367,7 +367,7 @@ describe('RuntimeMetadataPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/api/v1/meta/event-capabilities')) {
+                if (input.includes('/api/v1/catalog/event-capabilities')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -389,7 +389,7 @@ describe('RuntimeMetadataPage', () => {
                         }),
                     )
                 }
-                if (input.includes('/api/v1/meta/events')) {
+                if (input.includes('/api/v1/catalog/events')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,
@@ -421,7 +421,7 @@ describe('RuntimeMetadataPage', () => {
             }),
         )
 
-        const { wrapper, router } = await mountRuntimeMetadataPage()
+        const { wrapper, router } = await mountRuntimeDiscoveryPage()
 
         expect(wrapper.text()).toContain('Direct runtime event')
 

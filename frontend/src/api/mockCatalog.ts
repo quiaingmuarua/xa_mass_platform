@@ -1,10 +1,10 @@
-import type {SdkEventDefinition, EventCapability} from '@/types/metadata'
+import type {EventDefinition, EventCapability} from '@/types/catalog'
 import type {
-    ProjectMetadata,
+    ProjectDefinition,
     ProjectSubmitterMetadata,
 } from '@/types/projects'
 
-export const mockProjects: ProjectMetadata[] = [
+export const mockProjects: ProjectDefinition[] = [
     {
         tenantId: 'default',
         code: 'demoApp',
@@ -116,7 +116,7 @@ export const mockProjectSubmitters: Record<string, ProjectSubmitterMetadata[]> =
     ],
 }
 
-export const mockEvents: SdkEventDefinition[] = [
+export const mockEvents: EventDefinition[] = [
     {
         code: 'demo.dispatch',
         name: 'Demo dispatch',
@@ -157,7 +157,7 @@ export const mockEvents: SdkEventDefinition[] = [
         code: 'test.smoke',
         name: 'Smoke test event',
         description:
-            'Minimal event used to verify SDK metadata and dispatch plumbing.',
+            'Minimal event used to verify catalog registration and dispatch plumbing.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,

@@ -1,6 +1,6 @@
 package com.xa.mass.api.config;
 
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,17 +11,17 @@ import java.util.List;
 @Component
 public class GlobalConfig {
 
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
 
-    public GlobalConfig(SdkMetadataCatalog metadataCatalog) {
-        this.metadataCatalog = metadataCatalog;
+    public GlobalConfig(ControlPlaneCatalog catalog) {
+        this.catalog = catalog;
     }
 
     /**
      * Return all registered control-plane project codes.
      */
     public List<String> getAllProjects() {
-        return metadataCatalog.listProjects().stream()
+        return catalog.listProjects().stream()
                 .map(project -> project.getCode())
                 .toList();
     }

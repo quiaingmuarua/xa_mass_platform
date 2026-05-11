@@ -61,8 +61,10 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
-        if (!wasRouteOnline && hasActiveChannel(routeKey)) {
+        if (hasActiveChannel(routeKey)) {
             workerPresenceStore.markOnline(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
+        }
+        if (!wasRouteOnline && hasActiveChannel(routeKey)) {
             systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
         }
     }

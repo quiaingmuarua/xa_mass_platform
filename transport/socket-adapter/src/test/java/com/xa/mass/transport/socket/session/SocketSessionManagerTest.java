@@ -10,6 +10,7 @@ import java.net.Socket;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -52,6 +53,42 @@ class SocketSessionManagerTest {
         assertFalse(manager.isAdapterRouteOnline("socket", "route-1"));
         assertEquals("socket-edge", manager.getAdapterId());
         assertEquals("socket-edge", manager.listWorkerEndpoints().get(0).getAdapterId());
+    }
+
+    @Test
+    void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        SocketSessionManager manager = new SocketSessionManager("socket", mock(WorkerSystemEventChannel.class));
+        manager.setWorkerPresenceStore(presenceStore);
+
+        manager.addSession("route-1", "worker-1", "endpoint-old", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession("route-1", "worker-1", "endpoint-new", activeSocket(), mock(BufferedWriter.class));
+
+        manager.recordHeartbeat("route-1", "worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("endpoint-new", presenceStore.getPresence("worker-1").getConnectionId());
+
+        manager.removeSession("endpoint-old");
+
+        assertTrue(presenceStore.isRouteOnline("socket", "route-1"));
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+
+        manager.removeSession("endpoint-new");
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline("socket", "route-1"));
+    }
+
+    @Test
+    void blankConnectionIdOnMarkOnlineGeneratesOwnedConnectionId() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+
+        var presence = presenceStore.markOnline("worker-1", "socket", "route-1", " ", "connected");
+
+        assertNotNull(presence);
+        assertNotNull(presence.getConnectionId());
+        assertFalse(presence.getConnectionId().isBlank());
     }
 
     private Socket activeSocket() {

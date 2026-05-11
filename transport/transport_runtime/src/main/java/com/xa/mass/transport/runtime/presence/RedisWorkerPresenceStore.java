@@ -4,6 +4,7 @@ import com.xa.mass.transport.presence.WorkerPresence;
 import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 
@@ -19,6 +20,84 @@ import java.util.Objects;
 public final class RedisWorkerPresenceStore implements WorkerPresenceStore, AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:presence";
+    private static final String MARK_ONLINE_SCRIPT = """
+            local workerKey = KEYS[1]
+            local workersKey = KEYS[2]
+            local newRouteKey = KEYS[3]
+            local routePrefix = ARGV[11]
+            local prevAdapter = redis.call('HGET', workerKey, 'adapterId')
+            local prevRoute = redis.call('HGET', workerKey, 'routeKey')
+            local prevWorkerId = redis.call('HGET', workerKey, 'workerId')
+            if prevAdapter and prevRoute and prevWorkerId == ARGV[1] then
+              redis.call('DEL', routePrefix .. prevAdapter .. string.char(0) .. prevRoute)
+            end
+            redis.call('HSET', workerKey,
+              'workerId', ARGV[1],
+              'adapterId', ARGV[2],
+              'routeKey', ARGV[3],
+              'presenceState', ARGV[4],
+              'lastHeartbeatEpochMillis', ARGV[5],
+              'leaseExpireAtEpochMillis', ARGV[6],
+              'transportInstanceId', ARGV[7],
+              'connectionId', ARGV[8],
+              'updatedAtEpochMillis', ARGV[9],
+              'disconnectReason', ARGV[10]
+            )
+            redis.call('SET', newRouteKey, ARGV[1])
+            redis.call('SADD', workersKey, ARGV[1])
+            return 1
+            """;
+    private static final String REFRESH_HEARTBEAT_SCRIPT = """
+            local workerKey = KEYS[1]
+            local workersKey = KEYS[2]
+            local currentConnectionId = redis.call('HGET', workerKey, 'connectionId')
+            if not currentConnectionId or currentConnectionId ~= ARGV[1] then
+              return 0
+            end
+            local adapterId = redis.call('HGET', workerKey, 'adapterId')
+            local routeValue = redis.call('HGET', workerKey, 'routeKey')
+            if not adapterId or not routeValue then
+              return 0
+            end
+            redis.call('HSET', workerKey,
+              'presenceState', ARGV[2],
+              'lastHeartbeatEpochMillis', ARGV[3],
+              'leaseExpireAtEpochMillis', ARGV[4],
+              'transportInstanceId', ARGV[5],
+              'updatedAtEpochMillis', ARGV[6],
+              'disconnectReason', ARGV[7]
+            )
+            redis.call('SET', KEYS[3], ARGV[8])
+            redis.call('SADD', workersKey, ARGV[8])
+            return 1
+            """;
+    private static final String MARK_OFFLINE_SCRIPT = """
+            local workerKey = KEYS[1]
+            local currentConnectionId = redis.call('HGET', workerKey, 'connectionId')
+            if not currentConnectionId or currentConnectionId ~= ARGV[1] then
+              return 0
+            end
+            local adapterId = redis.call('HGET', workerKey, 'adapterId')
+            local routeValue = redis.call('HGET', workerKey, 'routeKey')
+            local workerId = redis.call('HGET', workerKey, 'workerId')
+            local lastHeartbeat = redis.call('HGET', workerKey, 'lastHeartbeatEpochMillis')
+            if adapterId and routeValue and workerId then
+              local routeKey = ARGV[7] .. adapterId .. string.char(0) .. routeValue
+              local mappedWorkerId = redis.call('GET', routeKey)
+              if mappedWorkerId == workerId then
+                redis.call('DEL', routeKey)
+              end
+            end
+            redis.call('HSET', workerKey,
+              'presenceState', ARGV[2],
+              'leaseExpireAtEpochMillis', ARGV[3],
+              'transportInstanceId', ARGV[4],
+              'updatedAtEpochMillis', ARGV[5],
+              'disconnectReason', ARGV[6],
+              'lastHeartbeatEpochMillis', lastHeartbeat or '0'
+            )
+            return 1
+            """;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
@@ -93,22 +172,27 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = readStoredPresence(normalizedWorkerId);
-        clearPreviousRoute(previous, normalizedWorkerId);
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("workerId", normalizedWorkerId);
-        fields.put("adapterId", normalizedAdapterId);
-        fields.put("routeKey", normalizedRouteKey);
-        fields.put("presenceState", WorkerPresenceState.ONLINE.name());
-        fields.put("lastHeartbeatEpochMillis", Long.toString(now));
-        fields.put("leaseExpireAtEpochMillis", Long.toString(now + leaseMillis));
-        fields.put("transportInstanceId", transportInstanceId);
-        fields.put("connectionId", nullableField(normalizedConnectionId));
-        fields.put("updatedAtEpochMillis", Long.toString(now));
-        fields.put("disconnectReason", "");
-        commands.hset(workerKey(normalizedWorkerId), fields);
-        commands.set(routeKey(normalizedAdapterId, normalizedRouteKey), normalizedWorkerId);
-        commands.sadd(workersKey(), normalizedWorkerId);
+        String nextConnectionId = normalizedConnectionId != null ? normalizedConnectionId : java.util.UUID.randomUUID().toString();
+        commands.eval(
+                MARK_ONLINE_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{
+                        workerKey(normalizedWorkerId),
+                        workersKey(),
+                        routeKey(normalizedAdapterId, normalizedRouteKey)
+                },
+                normalizedWorkerId,
+                normalizedAdapterId,
+                normalizedRouteKey,
+                WorkerPresenceState.ONLINE.name(),
+                Long.toString(now),
+                Long.toString(now + leaseMillis),
+                transportInstanceId,
+                nullableField(nextConnectionId),
+                Long.toString(now),
+                "",
+                routeKeyPrefix()
+        );
         return new WorkerPresence(
                 normalizedWorkerId,
                 normalizedAdapterId,
@@ -117,7 +201,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 now,
                 now + leaseMillis,
                 transportInstanceId,
-                normalizedConnectionId,
+                nextConnectionId,
                 now,
                 null
         );
@@ -129,7 +213,48 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                                            String routeKey,
                                            String connectionId,
                                            String reason) {
-        return markOnline(workerId, adapterId, routeKey, connectionId, reason);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        String normalizedConnectionId = normalizeNullable(connectionId);
+        if (normalizedWorkerId == null || normalizedConnectionId == null) {
+            return getPresence(workerId);
+        }
+        WorkerPresence previous = readStoredPresence(normalizedWorkerId);
+        if (previous == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
+            return materialize(previous);
+        }
+        long now = System.currentTimeMillis();
+        Long updated = commands.eval(
+                REFRESH_HEARTBEAT_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{
+                        workerKey(normalizedWorkerId),
+                        workersKey(),
+                        routeKey(previous.getAdapterId(), previous.getRouteKey())
+                },
+                normalizedConnectionId,
+                WorkerPresenceState.ONLINE.name(),
+                Long.toString(now),
+                Long.toString(now + leaseMillis),
+                transportInstanceId,
+                Long.toString(now),
+                "",
+                normalizedWorkerId
+        );
+        if (updated == null || updated.longValue() == 0L) {
+            return getPresence(normalizedWorkerId);
+        }
+        return new WorkerPresence(
+                previous.getWorkerId(),
+                previous.getAdapterId(),
+                previous.getRouteKey(),
+                WorkerPresenceState.ONLINE,
+                now,
+                now + leaseMillis,
+                transportInstanceId,
+                previous.getConnectionId(),
+                now,
+                null
+        );
     }
 
     @Override
@@ -144,30 +269,34 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
         WorkerPresence previous = readStoredPresence(normalizedWorkerId);
-        clearPreviousRoute(previous, normalizedWorkerId);
+        if (previous == null || normalizedConnectionId == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
+            return materialize(previous);
+        }
         long lastHeartbeat = previous != null ? previous.getLastHeartbeatEpochMillis() : 0L;
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("workerId", normalizedWorkerId);
-        fields.put("adapterId", normalizedAdapterId);
-        fields.put("routeKey", normalizedRouteKey);
-        fields.put("presenceState", WorkerPresenceState.OFFLINE.name());
-        fields.put("lastHeartbeatEpochMillis", Long.toString(lastHeartbeat));
-        fields.put("leaseExpireAtEpochMillis", Long.toString(now));
-        fields.put("transportInstanceId", transportInstanceId);
-        fields.put("connectionId", nullableField(normalizedConnectionId));
-        fields.put("updatedAtEpochMillis", Long.toString(now));
-        fields.put("disconnectReason", nullableField(normalizeNullable(reason)));
-        commands.hset(workerKey(normalizedWorkerId), fields);
-        commands.sadd(workersKey(), normalizedWorkerId);
+        Long updated = commands.eval(
+                MARK_OFFLINE_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{workerKey(normalizedWorkerId)},
+                normalizedConnectionId,
+                WorkerPresenceState.OFFLINE.name(),
+                Long.toString(now),
+                transportInstanceId,
+                Long.toString(now),
+                nullableField(normalizeNullable(reason)),
+                routeKeyPrefix()
+        );
+        if (updated == null || updated.longValue() == 0L) {
+            return getPresence(normalizedWorkerId);
+        }
         return new WorkerPresence(
                 normalizedWorkerId,
-                normalizedAdapterId,
-                normalizedRouteKey,
+                previous.getAdapterId() != null ? previous.getAdapterId() : normalizedAdapterId,
+                previous.getRouteKey() != null ? previous.getRouteKey() : normalizedRouteKey,
                 WorkerPresenceState.OFFLINE,
                 lastHeartbeat,
                 now,
                 transportInstanceId,
-                normalizedConnectionId,
+                previous.getConnectionId(),
                 now,
                 normalizeNullable(reason)
         );
@@ -321,6 +450,10 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
 
     private String routeKey(String adapterId, String routeKey) {
         return namespacePrefix + ":route:" + adapterId + '\u0000' + routeKey;
+    }
+
+    private String routeKeyPrefix() {
+        return namespacePrefix + ":route:";
     }
 
     private static long parseLong(String raw) {

@@ -83,7 +83,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
             assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
-                    List.of(Map.of("url", baseUrl + "/api/v1/meta/events/crawler.fetch-page"))));
+                    List.of(Map.of("url", baseUrl + "/api/v1/catalog/events/crawler.fetch-page"))));
             assertApiOk(sealTask(taskId));
 
             Map<String, Object> approveResponse = approveTask(taskId);
@@ -109,8 +109,8 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     }
 
     private void assertSdkMetadataProjection(String workerId) {
-        Map<String, Object> workerCapabilityResponse = exchange("/api/v1/meta/worker-capabilities", HttpMethod.GET, null);
-        Map<String, Object> eventCapabilityResponse = exchange("/api/v1/meta/event-capabilities", HttpMethod.GET, null);
+        Map<String, Object> workerCapabilityResponse = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
+        Map<String, Object> eventCapabilityResponse = exchange("/api/v1/catalog/event-capabilities", HttpMethod.GET, null);
         assertApiOk(workerCapabilityResponse);
         assertApiOk(eventCapabilityResponse);
         @SuppressWarnings("unchecked")

@@ -13,7 +13,7 @@ class ProjectEventCatalogRegistryTest {
     void defaultRegistryLoadsBaselineProjectsWithoutExampleEvents() {
         ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
 
-        List<ProjectMetadata> projects = registry.listProjects();
+        List<ProjectDefinition> projects = registry.listProjects();
         List<EventDefinition> events = registry.listEvents();
 
         assertFalse(projects.isEmpty());
@@ -33,13 +33,13 @@ class ProjectEventCatalogRegistryTest {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build();
         registry.registerEventDefinition(sharedEvent);
-        registry.registerProject(ProjectMetadata.builder()
+        registry.registerProject(ProjectDefinition.builder()
                 .code("alpha")
                 .name("Alpha")
                 .description("alpha project")
                 .eventCodes(List.of("chatbot.reply"))
                 .build());
-        registry.registerProject(ProjectMetadata.builder()
+        registry.registerProject(ProjectDefinition.builder()
                 .code("beta")
                 .name("Beta")
                 .description("beta project")
@@ -62,7 +62,7 @@ class ProjectEventCatalogRegistryTest {
                 .taskModes(List.of(TaskMode.STREAMING))
                 .enabled(false)
                 .build());
-        registry.registerProject(ProjectMetadata.builder()
+        registry.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("disabled project")
@@ -70,7 +70,7 @@ class ProjectEventCatalogRegistryTest {
                 .enabled(false)
                 .build());
 
-        ProjectMetadata project = registry.getProject("crawlerApp");
+        ProjectDefinition project = registry.getProject("crawlerApp");
         EventDefinition event = registry.getEvent("crawler.fetch-page");
 
         assertNotNull(project);

@@ -14,13 +14,13 @@ import java.util.*;
  * once the application has projected definitions from the underlying event
  * runtime.
  */
-public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
+public class ProjectEventCatalogRegistry implements ControlPlaneCatalog {
 
-    private final Map<String, ProjectMetadata> projects = new LinkedHashMap<>();
+    private final Map<String, ProjectDefinition> projects = new LinkedHashMap<>();
     private final Map<String, EventDefinition> events = new LinkedHashMap<>();
 
-    public synchronized ProjectEventCatalogRegistry registerProject(ProjectMetadata projectMetadata) {
-        ProjectMetadata project = Objects.requireNonNull(projectMetadata, "projectMetadata");
+    public synchronized ProjectEventCatalogRegistry registerProject(ProjectDefinition projectDefinition) {
+        ProjectDefinition project = Objects.requireNonNull(projectDefinition, "projectDefinition");
         projects.put(project.getCode(), project);
         return this;
     }
@@ -32,14 +32,14 @@ public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
     }
 
     @Override
-    public synchronized List<ProjectMetadata> listProjects() {
+    public synchronized List<ProjectDefinition> listProjects() {
         return projects.values().stream()
-                .sorted(Comparator.comparing(ProjectMetadata::getCode, Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(ProjectDefinition::getCode, Comparator.nullsLast(String::compareTo)))
                 .toList();
     }
 
     @Override
-    public synchronized ProjectMetadata getProject(String projectCode) {
+    public synchronized ProjectDefinition getProject(String projectCode) {
         return projects.get(projectCode);
     }
 
@@ -57,7 +57,7 @@ public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
 
     @Override
     public synchronized List<EventDefinition> getEventsForProject(String projectCode) {
-        ProjectMetadata project = projects.get(projectCode);
+        ProjectDefinition project = projects.get(projectCode);
         if (project == null) {
             return List.of();
         }

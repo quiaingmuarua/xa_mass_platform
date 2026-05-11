@@ -106,6 +106,17 @@ presence record shape and route-ownership semantics as the in-memory default;
 transport runtime may swap the store implementation, but engine reachability
 consumption must remain unchanged.
 
+Presence owner semantics are also part of the transport contract:
+
+- `workerId` identifies the canonical shared presence record
+- `connectionId` identifies the current live owner for that worker route
+- `markOnline(...)` may install or replace the owner with a new
+  `adapterId + routeKey + connectionId`
+- `refreshHeartbeat(...)` and `markOffline(...)` must only mutate shared
+  presence when the incoming `connectionId` still matches the stored owner
+- stale heartbeat or disconnect events from an older connection must never
+  revoke a newer active connection after reconnect or route takeover
+
 ## Model Boundaries
 
 `TaskDispatchItem` is currently a hybrid dispatch payload:

@@ -12,7 +12,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.event.EventResponse;
@@ -125,7 +125,7 @@ public class TestDevBootstrapConfiguration {
             registerMockTaskDefinitions(app);
             registerRuntimeToolDefinitions(app);
 
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("demoApp")
                     .name("Demo App")
                     .description("Default demo project. Event catalog is registered through the SDK runtime.")
@@ -140,7 +140,7 @@ public class TestDevBootstrapConfiguration {
                             "mock.reset"
                     ))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("testApp")
                     .name("Test App")
                     .description("Test project used by regression and E2E fixtures.")
@@ -154,13 +154,13 @@ public class TestDevBootstrapConfiguration {
                             "mock.reset"
                     ))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("otherApp")
                     .name("Other App")
                     .description("Secondary demo project used by the dev validation shell.")
                     .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("crawlerApp")
                     .name("Crawler")
                     .description("Crawler worker lab project for SDK-created pull worker scenarios.")

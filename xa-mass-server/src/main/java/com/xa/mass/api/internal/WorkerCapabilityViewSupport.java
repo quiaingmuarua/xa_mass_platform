@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -42,7 +42,7 @@ final class WorkerCapabilityViewSupport {
     }
 
     static List<Map<String, Object>> deriveEventBindings(List<String> supportedEventCodes,
-                                                         SdkMetadataCatalog metadataCatalog) {
+                                                         ControlPlaneCatalog catalog) {
         supportedEventCodes = normalizeStringList(supportedEventCodes);
         if (supportedEventCodes.isEmpty()) {
             return List.of();
@@ -50,7 +50,7 @@ final class WorkerCapabilityViewSupport {
 
         List<Map<String, Object>> bindings = new ArrayList<>(supportedEventCodes.size());
         for (String eventCode : supportedEventCodes) {
-            EventDefinition definition = metadataCatalog == null ? null : metadataCatalog.getEvent(eventCode);
+            EventDefinition definition = catalog == null ? null : catalog.getEvent(eventCode);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("eventCode", eventCode);
             item.put("projectCodes", resolveBindingProjects(definition));

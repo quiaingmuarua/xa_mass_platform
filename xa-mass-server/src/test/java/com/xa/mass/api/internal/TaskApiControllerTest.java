@@ -7,9 +7,9 @@ import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -161,7 +161,7 @@ class TaskApiControllerTest {
 
     @Test
     void approveUsesCommandRoute() throws Exception {
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW"), taskState("READY"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY"));
         when(taskAdmin.approveTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}:approve", TASK_ID))
@@ -171,7 +171,6 @@ class TaskApiControllerTest {
 
     @Test
     void resumeReturnsTerminalCloseMessageWhenAlreadyCompletedWhilePaused() throws Exception {
-        when(taskQueries.taskExists(TASK_ID)).thenReturn(true);
         when(taskAdmin.resumeTaskDetailed(TASK_ID))
                 .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", "ALL_MESSAGES_SUCCEEDED", true));
 
@@ -324,7 +323,7 @@ class TaskApiControllerTest {
         );
     }
 
-    private ProjectEventCatalog createTaskCatalog() {
+    private ControlPlaneCatalog createTaskCatalog() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
         catalog.registerEventDefinition(EventDefinition.builder()
                 .code("crawler.fetch-page")
@@ -340,13 +339,13 @@ class TaskApiControllerTest {
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Test demo app")
                 .eventCodes(List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("Test crawler app")

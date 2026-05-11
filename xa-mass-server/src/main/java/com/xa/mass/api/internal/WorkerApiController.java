@@ -2,7 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.WorkerQueryOperations;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
@@ -23,24 +23,24 @@ public class WorkerApiController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final WorkerQueryOperations workerQueries;
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
     private final TransportDebugOperations transportDebugOperations;
 
     public WorkerApiController(WorkerQueryOperations workerQueries) {
-        this(workerQueries, (SdkMetadataCatalog) null, (TransportDebugOperations) null);
+        this(workerQueries, (ControlPlaneCatalog) null, (TransportDebugOperations) null);
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               SdkMetadataCatalog metadataCatalog,
+                               ControlPlaneCatalog catalog,
                                TransportDebugOperations transportDebugOperations) {
         this.workerQueries = workerQueries;
-        this.metadataCatalog = metadataCatalog;
+        this.catalog = catalog;
         this.transportDebugOperations = transportDebugOperations;
     }
 
     @Autowired
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
+                               ObjectProvider<ControlPlaneCatalog> metadataCatalogProvider,
                                ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
         this(
                 workerQueries,
@@ -66,7 +66,7 @@ public class WorkerApiController {
                     item.put("supportedProjects", worker.getSupportedProjects());
                     item.put("supportedEventCodes", worker.getSupportedEventCodes());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
-                            worker.getSupportedEventCodes(), metadataCatalog));
+                            worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());

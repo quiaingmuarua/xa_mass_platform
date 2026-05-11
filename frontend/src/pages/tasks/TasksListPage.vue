@@ -121,7 +121,7 @@
         class="dialog-alert"
         type="info"
         :closable="false"
-        :title="`Metadata starter context: ${starterEventCode}`"
+        :title="`Event starter context: ${starterEventCode}`"
         description="Task shell create stays event-agnostic. This starter only pre-fills the append capability eventCode and payload examples."
       />
 

@@ -2,7 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.WorkerQueryOperations;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerSnapshot;
@@ -21,53 +21,53 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Read-only SDK/platform metadata endpoints.
+ * Read-only control-plane catalog endpoints.
  */
 @RestController
-@RequestMapping("/api/v1/meta")
-public class SdkMetadataController {
+@RequestMapping("/api/v1/catalog")
+public class CatalogController {
 
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
     private final WorkerQueryOperations workerQueries;
     private final TransportDebugOperations transportDebugOperations;
 
-    public SdkMetadataController(SdkMetadataCatalog metadataCatalog) {
-        this(metadataCatalog, (WorkerQueryOperations) null, null);
+    public CatalogController(ControlPlaneCatalog catalog) {
+        this(catalog, (WorkerQueryOperations) null, null);
     }
 
     @Autowired
-    public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
+    public CatalogController(ControlPlaneCatalog catalog,
                                  ObjectProvider<WorkerQueryOperations> workerQueriesProvider,
                                  ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
         this(
-                metadataCatalog,
+                catalog,
                 workerQueriesProvider == null ? null : workerQueriesProvider.getIfAvailable(),
                 transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
         );
     }
 
-    public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
+    public CatalogController(ControlPlaneCatalog catalog,
                                  WorkerQueryOperations workerQueries) {
-        this(metadataCatalog, workerQueries, null);
+        this(catalog, workerQueries, null);
     }
 
-    public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
+    public CatalogController(ControlPlaneCatalog catalog,
                                  WorkerQueryOperations workerQueries,
                                  TransportDebugOperations transportDebugOperations) {
-        this.metadataCatalog = metadataCatalog;
+        this.catalog = catalog;
         this.workerQueries = workerQueries;
         this.transportDebugOperations = transportDebugOperations;
     }
 
     @GetMapping("/events")
     public ResponseEntity<ApiResponse<List<EventDefinition>>> listEvents() {
-        return ResponseEntity.ok(ApiResponse.success(metadataCatalog.listEvents()));
+        return ResponseEntity.ok(ApiResponse.success(catalog.listEvents()));
     }
 
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
-        List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
+        List<Map<String, Object>> items = catalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> {
                     boolean directRuntime = event.getTaskModes().isEmpty();
@@ -126,7 +126,7 @@ public class SdkMetadataController {
                     item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
                     item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
-                            worker.getSupportedEventCodes(), metadataCatalog));
+                            worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
@@ -142,10 +142,10 @@ public class SdkMetadataController {
 
     @GetMapping("/events/{eventCode}")
     public ResponseEntity<ApiResponse<EventDefinition>> getEvent(@PathVariable String eventCode) {
-        EventDefinition definition = metadataCatalog.getEvent(eventCode);
+        EventDefinition definition = catalog.getEvent(eventCode);
         if (definition == null) {
             return ResponseEntity.status(404)
-                    .body(ApiResponse.error(404, "Event metadata not found: " + eventCode));
+                    .body(ApiResponse.error(404, "Event not found: " + eventCode));
         }
         return ResponseEntity.ok(ApiResponse.success(definition));
     }

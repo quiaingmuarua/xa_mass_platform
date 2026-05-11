@@ -121,14 +121,14 @@ import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
-  ProjectMetadata,
+  ProjectDefinition,
   ProjectSubmitterMetadata,
 } from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
-interface ProjectRow extends ProjectMetadata {
+interface ProjectRow extends ProjectDefinition {
   eventCount: number
   submitterCount: number
   workerCount: number
@@ -139,7 +139,7 @@ const router = useRouter()
 
 const loading = ref(false)
 const errorMessage = ref('')
-const projects = ref<ProjectMetadata[]>([])
+const projects = ref<ProjectDefinition[]>([])
 const tasks = ref<TaskListItem[]>([])
 const workers = ref<WorkerListItem[]>([])
 const submittersByProject = ref<Record<string, ProjectSubmitterMetadata[]>>({})
@@ -199,7 +199,7 @@ function submittersForProject(projectCode: string): ProjectSubmitterMetadata[] {
   return submittersByProject.value[projectCode] ?? []
 }
 
-function workersForProject(project: ProjectMetadata): WorkerListItem[] {
+function workersForProject(project: ProjectDefinition): WorkerListItem[] {
   const authorizedEventCodes = new Set(project.eventCodes)
   return workers.value.filter((worker) => {
     if (worker.supportedProjects.includes(project.code)) {

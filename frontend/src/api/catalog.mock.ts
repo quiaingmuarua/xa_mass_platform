@@ -1,5 +1,5 @@
 import {deriveMockEventCapabilities, mockEvents} from '@/api/mockCatalog'
-import type {EventCapability, SdkEventDefinition} from '@/types/metadata'
+import type {EventCapability, EventDefinition} from '@/types/catalog'
 
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
@@ -7,7 +7,7 @@ function delay<T>(value: T): Promise<T> {
     })
 }
 
-export async function listEventDefinitionsMock(): Promise<SdkEventDefinition[]> {
+export async function listEventDefinitionsMock(): Promise<EventDefinition[]> {
     return delay(mockEvents)
 }
 
@@ -17,7 +17,7 @@ export async function listEventCapabilitiesMock(): Promise<EventCapability[]> {
 
 export async function getEventDefinitionMock(
     eventCode: string,
-): Promise<SdkEventDefinition> {
+): Promise<EventDefinition> {
     const event = mockEvents.find((item) => item.code === eventCode)
     if (!event) {
         throw new Error(`SDK event definition not found: ${eventCode}`)

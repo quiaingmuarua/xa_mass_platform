@@ -5,9 +5,9 @@ import com.xa.mass.base.model.TenantConstants;
 import java.util.*;
 
 /**
- * Public project metadata exposed through the SDK catalog APIs.
+ * Public project resource exposed through the SDK catalog APIs.
  */
-public final class ProjectMetadata {
+public final class ProjectDefinition {
 
     private final String tenantId;
     private final String code;
@@ -17,7 +17,7 @@ public final class ProjectMetadata {
     private final String ownerPrincipalId;
     private final List<String> authorizedEventCodes;
 
-    private ProjectMetadata(Builder builder) {
+    private ProjectDefinition(Builder builder) {
         this.tenantId = normalizeTenantId(builder.tenantId);
         this.code = requireNonBlank(builder.code, "code");
         this.name = requireNonBlank(builder.name, "name");
@@ -66,7 +66,7 @@ public final class ProjectMetadata {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof ProjectMetadata that)) return false;
+        if (!(o instanceof ProjectDefinition that)) return false;
         return enabled == that.enabled
                 && Objects.equals(tenantId, that.tenantId)
                 && Objects.equals(code, that.code)
@@ -83,7 +83,7 @@ public final class ProjectMetadata {
 
     @Override
     public String toString() {
-        return "ProjectMetadata{" +
+        return "ProjectDefinition{" +
                 "tenantId='" + tenantId + '\'' +
                 ", code='" + code + '\'' +
                 ", name='" + name + '\'' +
@@ -181,8 +181,8 @@ public final class ProjectMetadata {
             return authorizedEventCodes(eventCodes);
         }
 
-        public ProjectMetadata build() {
-            return new ProjectMetadata(this);
+        public ProjectDefinition build() {
+            return new ProjectDefinition(this);
         }
     }
 }

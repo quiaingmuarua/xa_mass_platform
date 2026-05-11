@@ -5,7 +5,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.server.bootstrap.DevDemoBootstrapDataProvider;
@@ -92,13 +92,13 @@ public class DevDemoBootstrapConfiguration {
                     .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                     .projectCodes(List.of("demoApp", "demoOps"))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("demoApp")
                     .name("Demo App")
                     .description("Primary dev-shell demo project with active workload and approval flow.")
                     .eventCodes(DEMO_EVENT_CODES)
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("demoOps")
                     .name("Demo Ops")
                     .description("Secondary dev-shell demo project for operator and cross-project API checks.")

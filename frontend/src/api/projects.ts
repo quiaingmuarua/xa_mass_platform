@@ -11,13 +11,13 @@ import {
     listProjectsReal,
     listProjectSubmittersReal,
 } from '@/api/projects.real'
-import type {SdkEventDefinition} from '@/types/metadata'
+import type {EventDefinition} from '@/types/catalog'
 import type {
-    ProjectMetadata,
+    ProjectDefinition,
     ProjectSubmitterMetadata,
 } from '@/types/projects'
 
-export async function listProjects(): Promise<ProjectMetadata[]> {
+export async function listProjects(): Promise<ProjectDefinition[]> {
     if (getAppConfig().useMockApi) {
         return listProjectsMock()
     }
@@ -25,7 +25,7 @@ export async function listProjects(): Promise<ProjectMetadata[]> {
     return listProjectsReal()
 }
 
-export async function getProject(projectCode: string): Promise<ProjectMetadata> {
+export async function getProject(projectCode: string): Promise<ProjectDefinition> {
     if (getAppConfig().useMockApi) {
         return getProjectMock(projectCode)
     }
@@ -35,7 +35,7 @@ export async function getProject(projectCode: string): Promise<ProjectMetadata> 
 
 export async function listProjectEventDefinitions(
     projectCode: string,
-): Promise<SdkEventDefinition[]> {
+): Promise<EventDefinition[]> {
     if (getAppConfig().useMockApi) {
         return listProjectEventDefinitionsMock(projectCode)
     }

@@ -37,7 +37,7 @@ class SdkSubmitterControllerTest {
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
-                List.of("task:create", "metadata:view"),
+                List.of("task:create", "catalog:view"),
                 List.of("telegramApp"),
                 List.of("chatbot.reply"),
                 Map.of("channel", "telegram")

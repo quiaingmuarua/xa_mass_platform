@@ -5,7 +5,7 @@ import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,13 +43,13 @@ class ProjectApiControllerTest {
                 .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Test demo app")
                 .eventCodes(java.util.List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("Test crawler app")
@@ -80,7 +80,7 @@ class ProjectApiControllerTest {
     }
 
     @Test
-    void listProjectsReturnsProjectMetadata() throws Exception {
+    void listProjectsReturnsProjectDefinitions() throws Exception {
         mockMvc.perform(get("/api/v1/projects"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -116,7 +116,7 @@ class ProjectApiControllerTest {
 
     @Test
     void legacyMetaProjectRoutesAreNotMapped() throws Exception {
-        mockMvc.perform(get("/api/v1/meta/projects"))
+        mockMvc.perform(get("/api/v1/catalog/projects"))
                 .andExpect(status().isNotFound());
     }
 }

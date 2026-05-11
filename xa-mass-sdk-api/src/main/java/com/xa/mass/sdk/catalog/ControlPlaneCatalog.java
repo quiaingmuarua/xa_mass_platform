@@ -8,11 +8,11 @@ import java.util.List;
  * Read surface for the SDK control-plane project directory and
  * runtime-projected event catalog.
  */
-public interface SdkMetadataCatalog {
+public interface ControlPlaneCatalog {
 
-    List<ProjectMetadata> listProjects();
+    List<ProjectDefinition> listProjects();
 
-    ProjectMetadata getProject(String projectCode);
+    ProjectDefinition getProject(String projectCode);
 
     List<EventDefinition> listEvents();
 

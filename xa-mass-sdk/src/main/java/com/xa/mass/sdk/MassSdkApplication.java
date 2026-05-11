@@ -60,7 +60,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final MassEventRuntime eventRuntime;
     private final EventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, EventHandler> eventHandlerCache;
-    private final ProjectEventCatalog sdkMetadataCatalogView;
+    private final ControlPlaneCatalog controlPlaneCatalogView;
     private final TaskDiagnosticOperations taskDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
@@ -87,7 +87,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new EventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
-        this.sdkMetadataCatalogView = new DefinitionBackedProjectEventCatalog(
+        this.controlPlaneCatalogView = new DefinitionBackedControlPlaneCatalog(
                 this::listProjects,
                 this::getProject,
                 this::listEvents,
@@ -95,7 +95,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEventsForProject
         );
         this.taskDiagnostics = new DefaultTaskDiagnosticOperations(this::requireStartedTaskQueries);
-        this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
+        this.eventPermissionService = new DefaultEventPermissionService(controlPlaneCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
@@ -414,8 +414,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public void registerProject(ProjectMetadata projectMetadata) {
-        ProjectMetadata normalized = Objects.requireNonNull(projectMetadata, "projectMetadata");
+    public void registerProject(ProjectDefinition projectDefinition) {
+        ProjectDefinition normalized = Objects.requireNonNull(projectDefinition, "projectDefinition");
         bootstrapProjectCatalogRegistry.registerProject(normalized);
         registerProjectIntoCore(normalized);
         syncProjectScopeIntoDefinitions(normalized);
@@ -427,12 +427,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<ProjectMetadata> listProjects() {
+    public List<ProjectDefinition> listProjects() {
         return bootstrapProjectCatalogRegistry.listProjects();
     }
 
     @Override
-    public ProjectMetadata getProject(String projectCode) {
+    public ProjectDefinition getProject(String projectCode) {
         return bootstrapProjectCatalogRegistry.getProject(projectCode);
     }
 
@@ -465,8 +465,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public SdkMetadataCatalog metadataCatalog() {
-        return sdkMetadataCatalogView;
+    public ControlPlaneCatalog catalog() {
+        return controlPlaneCatalogView;
     }
 
     @Override
@@ -638,11 +638,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return eventHandlerCache.get(eventCode);
     }
 
-    private void syncProjectScopeIntoDefinitions(ProjectMetadata projectMetadata) {
-        if (projectMetadata.getEventCodes() == null || projectMetadata.getEventCodes().isEmpty()) {
+    private void syncProjectScopeIntoDefinitions(ProjectDefinition projectDefinition) {
+        if (projectDefinition.getEventCodes() == null || projectDefinition.getEventCodes().isEmpty()) {
             return;
         }
-        for (String eventCode : projectMetadata.getEventCodes()) {
+        for (String eventCode : projectDefinition.getEventCodes()) {
             EventDefinition existing = getEvent(eventCode);
             if (existing == null) {
                 continue;
@@ -660,7 +660,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                             .taskModes(existing.getTaskModes())
                             .enabled(existing.isEnabled())
                             .defaultRoutingCode(existing.getDefaultRoutingCode())
-                            .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectMetadata.getCode())))
+                            .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectDefinition.getCode())))
                             .handler(existingHandler)
                             .build()),
                     toCoreHandler(existingHandler)
@@ -675,9 +675,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (existing != null) {
             projectCodes.addAll(existing.getProjectCodes());
         }
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            if (projectMetadata.getEventCodes().contains(eventCode)) {
-                projectCodes.add(projectMetadata.getCode());
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            if (projectDefinition.getEventCodes().contains(eventCode)) {
+                projectCodes.add(projectDefinition.getCode());
             }
         }
         return List.copyOf(projectCodes);
@@ -1045,25 +1045,25 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         }
         List<String> resolvedProjects = new ArrayList<>(binding.getProjectCodes().size());
         for (String projectCode : binding.getProjectCodes()) {
-            ProjectMetadata projectMetadata = getProject(projectCode);
-            if (projectMetadata == null) {
+            ProjectDefinition projectDefinition = getProject(projectCode);
+            if (projectDefinition == null) {
                 throw new IllegalArgumentException("Unsupported worker project: " + projectCode);
             }
-            if (!projectMetadata.isEnabled()) {
+            if (!projectDefinition.isEnabled()) {
                 throw new IllegalArgumentException("Worker project is disabled: " + projectCode);
             }
-            if (!definitionScope.contains(projectMetadata.getCode())) {
-                throw new IllegalArgumentException("Worker project " + projectMetadata.getCode()
+            if (!definitionScope.contains(projectDefinition.getCode())) {
+                throw new IllegalArgumentException("Worker project " + projectDefinition.getCode()
                         + " is outside event scope: " + definition.getCode());
             }
-            resolvedProjects.add(projectMetadata.getCode());
+            resolvedProjects.add(projectDefinition.getCode());
         }
         return List.copyOf(resolvedProjects);
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            registerProjectIntoCore(projectMetadata);
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            registerProjectIntoCore(projectDefinition);
         }
     }
 
@@ -1127,9 +1127,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (seedProjectCodes != null) {
             projectCodes.addAll(seedProjectCodes);
         }
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            if (projectMetadata.getEventCodes().contains(eventCode)) {
-                projectCodes.add(projectMetadata.getCode());
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            if (projectDefinition.getEventCodes().contains(eventCode)) {
+                projectCodes.add(projectDefinition.getCode());
             }
         }
         return List.copyOf(projectCodes);
@@ -1147,7 +1147,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             try {
                 payloadTypes.add(PayloadType.valueOf(value.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException ignored) {
-                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+                // Keep the derived catalog projection tolerant of unknown internal descriptor values.
             }
         }
         return List.copyOf(payloadTypes);
@@ -1165,7 +1165,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             try {
                 taskModes.add(TaskMode.valueOf(value.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException ignored) {
-                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+                // Keep the derived catalog projection tolerant of unknown internal descriptor values.
             }
         }
         return List.copyOf(taskModes);
@@ -1177,9 +1177,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .toList();
     }
 
-    private void registerProjectIntoCore(ProjectMetadata projectMetadata) {
-        Objects.requireNonNull(projectMetadata, "projectMetadata");
-        ProjectRegistry.register(projectMetadata.getCode(), projectMetadata.getName(), projectMetadata.isEnabled());
+    private void registerProjectIntoCore(ProjectDefinition projectDefinition) {
+        Objects.requireNonNull(projectDefinition, "projectDefinition");
+        ProjectRegistry.register(projectDefinition.getCode(), projectDefinition.getName(), projectDefinition.isEnabled());
     }
 
     @Override
@@ -1211,7 +1211,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
-     * {@link #start()} 鈥?the listener is registered on the engine command/event
+     * {@link #start()} 闁?the listener is registered on the engine command/event
      * surface which exists independent of engine lifecycle.
      */
     public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {

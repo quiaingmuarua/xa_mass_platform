@@ -2,11 +2,11 @@ import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/conf
 import {
     listEventCapabilities,
     listEventDefinitions,
-} from '@/api/metadata'
+} from '@/api/catalog'
 import {
     listEventCapabilitiesReal,
     listEventDefinitionsReal,
-} from '@/api/metadata.real'
+} from '@/api/catalog.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -17,13 +17,13 @@ function jsonResponse(body: unknown): Response {
     })
 }
 
-describe('metadata API facade', () => {
+describe('catalog API facade', () => {
     afterEach(() => {
         resetRuntimeConfigOverrides()
         vi.unstubAllGlobals()
     })
 
-    it('serves SDK event metadata from the mock adapter', async () => {
+    it('serves catalog event definitions from the mock adapter', async () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
         const events = await listEventDefinitions()
@@ -36,16 +36,16 @@ describe('metadata API facade', () => {
     })
 })
 
-describe('metadata.real', () => {
+describe('catalog.real', () => {
     afterEach(() => {
         resetRuntimeConfigOverrides()
         vi.unstubAllGlobals()
     })
 
-    it('calls backend SDK metadata endpoints', async () => {
+    it('calls backend catalog endpoints', async () => {
         setRuntimeConfigOverrides({ apiBaseUrl: '/backend' })
         const fetchMock = vi.fn((input: string) => {
-            if (input.endsWith('/api/v1/meta/event-capabilities')) {
+            if (input.endsWith('/api/v1/catalog/event-capabilities')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
@@ -67,7 +67,7 @@ describe('metadata.real', () => {
                     }),
                 )
             }
-            if (input.endsWith('/api/v1/meta/events')) {
+            if (input.endsWith('/api/v1/catalog/events')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
@@ -98,11 +98,11 @@ describe('metadata.real', () => {
         const events = await listEventDefinitionsReal()
         const capabilities = await listEventCapabilitiesReal()
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/meta/events',
+            '/backend/api/v1/catalog/events',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/meta/event-capabilities',
+            '/backend/api/v1/catalog/event-capabilities',
             expect.any(Object),
         )
         expect(events[0].code).toBe('demo.dispatch')

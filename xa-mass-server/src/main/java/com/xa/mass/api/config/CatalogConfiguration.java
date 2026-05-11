@@ -1,21 +1,21 @@
 package com.xa.mass.api.config;
 
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Wires the default SDK catalog view used by project, event, and capability
- * read APIs when the host runtime does not provide a live SDK-backed bean.
+ * Wires the default control-plane catalog used by project, event, and
+ * capability read APIs when the host runtime does not provide a live bean.
  */
 @Configuration
-public class SdkMetadataConfiguration {
+public class CatalogConfiguration {
 
     @Bean
-    @ConditionalOnMissingBean(SdkMetadataCatalog.class)
-    public SdkMetadataCatalog sdkMetadataCatalog() {
+    @ConditionalOnMissingBean(ControlPlaneCatalog.class)
+    public ControlPlaneCatalog catalog() {
         return DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
     }
 }

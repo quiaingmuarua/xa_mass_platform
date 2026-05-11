@@ -46,8 +46,8 @@ import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
@@ -166,7 +166,7 @@ class MassSdkTest {
     @Test
     void builderProjectCatalogBootstrapSeedsProjects() {
         ProjectEventCatalogRegistry bootstrapRegistry = new ProjectEventCatalogRegistry();
-        bootstrapRegistry.registerProject(ProjectMetadata.builder()
+        bootstrapRegistry.registerProject(ProjectDefinition.builder()
                 .code("seedApp")
                 .name("Seed App")
                 .description("builder bootstrap project")
@@ -1079,6 +1079,30 @@ class MassSdkTest {
     }
 
     @Test
+    void sdkWorkerOnlineFollowsNewestPresenceOwnerAfterReconnect() {
+        MassApplication delegate = mock(MassApplication.class);
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        presenceStore.markOnline("worker-2", "websocket", "route-old", "conn-old", "connected");
+        assertTrue(app.isWorkerOnline("worker-2"));
+
+        presenceStore.markOnline("worker-2", "socket", "route-new", "conn-new", "reconnected");
+        presenceStore.markOffline("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
+
+        assertTrue(app.isWorkerOnline("worker-2"));
+        assertEquals("conn-new", presenceStore.getPresence("worker-2").getConnectionId());
+        assertEquals("socket", presenceStore.getPresence("worker-2").getAdapterId());
+        assertEquals("route-new", presenceStore.getPresence("worker-2").getRouteKey());
+
+        presenceStore.markOffline("worker-2", "socket", "route-new", "conn-new", "disconnect");
+
+        assertFalse(app.isWorkerOnline("worker-2"));
+    }
+
+    @Test
     void sessionDiagnosticsExposeAdapterIdAndRouteKey() {
         MassApplication delegate = mock(MassApplication.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
@@ -1710,7 +1734,7 @@ class MassSdkTest {
                 .defaultRoutingCode("bot")
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build();
-        ProjectMetadata projectMetadata = ProjectMetadata.builder()
+        ProjectDefinition projectDefinition = ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("Bot-oriented sdk catalog entry")
@@ -1718,13 +1742,13 @@ class MassSdkTest {
                 .build();
 
         app.registerEventDefinition(eventDefinition);
-        app.registerProject(projectMetadata);
+        app.registerProject(projectDefinition);
 
         Assertions.assertTrue(app instanceof ResourceOperations);
         Assertions.assertNotNull(app.getEvent("bot.command"));
         Assertions.assertEquals("bot.command", app.getEvent("bot.command").getCode());
         Assertions.assertEquals("Bot Command", app.getEvent("bot.command").getName());
-        Assertions.assertEquals(projectMetadata, app.getProject("botApp"));
+        Assertions.assertEquals(projectDefinition, app.getProject("botApp"));
         Assertions.assertTrue(app.hasEvent("bot.command"));
         Assertions.assertTrue(app.hasProject("botApp"));
         Assertions.assertTrue(app.projectSupportsEvent("botApp", "bot.command"));
@@ -1752,7 +1776,7 @@ class MassSdkTest {
                 .defaultRoutingCode("bot")
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("bot project")
@@ -1778,7 +1802,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         when(delegate.getEventRuntime()).thenReturn(runtime);
         MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("runtimeApp")
                 .name("Runtime App")
                 .description("runtime-backed project")
@@ -1804,11 +1828,11 @@ class MassSdkTest {
         assertEquals(List.of("runtime.only"),
                 app.getEventsForProject("runtimeApp").stream().map(EventDefinition::getCode).toList());
         assertEquals(List.of("runtime.only"),
-                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
+                app.catalog().getEventsForProject("runtimeApp").stream()
                         .map(EventDefinition::getCode)
                         .toList());
         assertEquals(List.of("runtime.only"),
-                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
+                app.catalog().getEventsForProject("runtimeApp").stream()
                         .map(EventDefinition::getCode)
                         .toList());
     }
@@ -1816,7 +1840,7 @@ class MassSdkTest {
     @Test
     void eventDefinitionBecomesSingleSourceForMetadataScopeAndHandler() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("bot project")
@@ -1856,12 +1880,12 @@ class MassSdkTest {
         assertEquals(List.of("bot.command"),
                 app.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
-        SdkMetadataCatalog metadataCatalog = app.metadataCatalog();
+        ControlPlaneCatalog metadataCatalog = app.catalog();
         assertTrue(metadataCatalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 metadataCatalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
-        SdkMetadataCatalog catalog = app.metadataCatalog();
+        ControlPlaneCatalog catalog = app.catalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 catalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
@@ -1904,7 +1928,7 @@ class MassSdkTest {
                 .principalId("crawler-read-key")
                 .credential("crawler-read-secret")
                 .userId("crawler-user")
-                .permissions(List.of("metadata:view"))
+                .permissions(List.of("catalog:view"))
                 .projectScopes(List.of("crawlerApp"))
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
@@ -2090,7 +2114,7 @@ class MassSdkTest {
 
         try {
             app.start();
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("botAppExecutableTest")
                     .name("Bot App Executable Test")
                     .description("custom runtime project")
@@ -2131,7 +2155,7 @@ class MassSdkTest {
                     .payloadTypes(List.of(PayloadType.TEXT))
                     .taskModes(List.of(TaskMode.SINGLE_RUN))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("botAppCatalogTest")
                     .name("Bot App Catalog Test")
                     .description("custom runtime project")
@@ -2175,25 +2199,25 @@ class MassSdkTest {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
 
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("Example crawler project.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Example demo project.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("telegramApp")
                 .name("Telegram App")
                 .description("Example telegram project.")
                 .eventCodes(List.of("chatbot.reply"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("rcsApp")
                 .name("RCS App")
                 .description("Example RCS project.")

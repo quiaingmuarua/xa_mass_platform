@@ -14,8 +14,8 @@ import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +42,7 @@ public class TaskApiController {
 
     private final TaskQueryOperations taskQueries;
     private final TaskAdminOperations taskAdmin;
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
@@ -55,29 +55,29 @@ public class TaskApiController {
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
+                             ControlPlaneCatalog catalog) {
+        this(taskQueries, taskAdmin, catalog, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog,
+                             ControlPlaneCatalog catalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
+        this(taskQueries, taskAdmin, catalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog,
+                             ControlPlaneCatalog catalog,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
         this.taskAdmin = taskAdmin;
-        this.metadataCatalog = metadataCatalog;
+        this.catalog = catalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
@@ -723,24 +723,24 @@ public class TaskApiController {
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        if (metadataCatalog.getEvent(eventCode) == null) {
+        if (catalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
-        if (!projectMetadata.getAuthorizedEventCodes().contains(eventCode)) {
+        if (!projectDefinition.getAuthorizedEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
     }
 
     private String resolveProjectTenantId(String projectCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        return projectMetadata.getTenantId();
+        return projectDefinition.getTenantId();
     }
 
     private void validateIngestGuardrails(List<Object> items) {

@@ -42,10 +42,10 @@
 
     <template v-else>
       <el-alert
-        class="metadata-note"
+        class="discovery-note"
         type="info"
         :closable="false"
-        title="Project and event entries come from SDK registration. Event capability comes from /api/v1/meta/event-capabilities: direct runtime handlers are explicit, and task-backed worker coverage comes from supportedEventCodes."
+        title="Project and event entries come from control-plane registration. Event capability comes from /api/v1/catalog/event-capabilities: direct runtime handlers are explicit, and task-backed worker coverage comes from supportedEventCodes."
       />
 
       <section class="metric-grid">
@@ -183,7 +183,7 @@
               </template>
               <PageEmptyState
                 v-if="!selectedProject"
-                description="Select a project to inspect metadata and start from a task draft."
+                description="Select a project to inspect the catalog and start from a task draft."
               />
               <template v-else>
                 <el-descriptions :column="1" border>
@@ -444,7 +444,7 @@
           </template>
           <PageEmptyState
             v-if="selectedEventRows.length === 0"
-            description="No event metadata is available for the selected scope."
+            description="No events are available for the selected scope."
           />
           <el-table v-else :data="selectedEventRows" row-key="code">
             <el-table-column prop="code" label="Event" min-width="260">
@@ -538,15 +538,15 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {listEventCapabilities, listEventDefinitions} from '@/api/metadata'
+import {listEventCapabilities, listEventDefinitions} from '@/api/catalog'
 import {listProjects} from '@/api/projects'
 import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {EventCapability, EventInvocationModel, SdkEventDefinition} from '@/types/metadata'
-import type {ProjectMetadata} from '@/types/projects'
+import type {EventCapability, EventInvocationModel, EventDefinition} from '@/types/catalog'
+import type {ProjectDefinition} from '@/types/projects'
 import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -555,8 +555,8 @@ import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedCo
 const ALL_PROJECTS = 'ALL'
 const TAG_LIMIT = 4
 
-interface ProjectRow extends ProjectMetadata {
-  resolvedEvents: SdkEventDefinition[]
+interface ProjectRow extends ProjectDefinition {
+  resolvedEvents: EventDefinition[]
   onlineWorkerIds: string[]
 }
 
@@ -565,7 +565,7 @@ interface WorkerDiscoveryRow extends WorkerListItem {
   visibleSupportedEventCodes: string[]
 }
 
-interface EventRow extends SdkEventDefinition {
+interface EventRow extends EventDefinition {
   invocationModel: EventInvocationModel
   projectCodes: string[]
   workerIds: string[]
@@ -579,8 +579,8 @@ const router = useRouter()
 
 const loading = ref(false)
 const errorMessage = ref('')
-const projects = ref<ProjectMetadata[]>([])
-const events = ref<SdkEventDefinition[]>([])
+const projects = ref<ProjectDefinition[]>([])
+const events = ref<EventDefinition[]>([])
 const eventCapabilities = ref<EventCapability[]>([])
 const workers = ref<WorkerListItem[]>([])
 const sdkSubmitterSnapshot = ref<SdkSubmitterSnapshot>({
@@ -594,14 +594,14 @@ const showOnlineOnly = ref(true)
 const sortedProjects = computed(() =>
   [...projects.value].sort((left, right) => left.code.localeCompare(right.code)),
 )
-const projectByCode = computed<Record<string, ProjectMetadata>>(() =>
-  projects.value.reduce<Record<string, ProjectMetadata>>((acc, project) => {
+const projectByCode = computed<Record<string, ProjectDefinition>>(() =>
+  projects.value.reduce<Record<string, ProjectDefinition>>((acc, project) => {
     acc[project.code] = project
     return acc
   }, {}),
 )
-const eventByCode = computed<Record<string, SdkEventDefinition>>(() =>
-  events.value.reduce<Record<string, SdkEventDefinition>>((acc, event) => {
+const eventByCode = computed<Record<string, EventDefinition>>(() =>
+  events.value.reduce<Record<string, EventDefinition>>((acc, event) => {
     acc[event.code] = event
     return acc
   }, {}),
@@ -654,7 +654,7 @@ const projectRows = computed<ProjectRow[]>(() =>
   displayedProjects.value.map((project) => {
     const resolvedEvents = project.eventCodes
       .map((eventCode) => eventByCode.value[eventCode])
-      .filter((event): event is SdkEventDefinition => Boolean(event))
+      .filter((event): event is EventDefinition => Boolean(event))
     const onlineWorkerIds = uniqueStrings(
       project.eventCodes.flatMap(
         (eventCode) => capabilityByEvent.value[eventCode]?.onlineWorkerIds ?? [],
@@ -894,8 +894,8 @@ async function loadDiscovery(): Promise<void> {
 
   try {
     const [
-      projectMetadata,
-      eventMetadata,
+      projectRowsData,
+      eventRowsData,
       eventCapabilityRows,
       workerResponse,
       submitterSnapshot,
@@ -907,8 +907,8 @@ async function loadDiscovery(): Promise<void> {
         listWorkers(),
         getCurrentSdkSubmitter(),
       ])
-    projects.value = projectMetadata
-    events.value = eventMetadata
+    projects.value = projectRowsData
+    events.value = eventRowsData
     eventCapabilities.value = eventCapabilityRows
     workers.value = workerResponse.items
     sdkSubmitterSnapshot.value = submitterSnapshot
@@ -923,7 +923,7 @@ async function loadDiscovery(): Promise<void> {
     }
     errorMessage.value = toErrorMessage(
       error,
-      'Failed to load runtime metadata discovery data.',
+      'Failed to load runtime discovery data.',
     )
   } finally {
     loading.value = false
@@ -1101,7 +1101,7 @@ watch(
   width: 300px;
 }
 
-.metadata-note {
+.discovery-note {
   border-radius: 14px;
 }
 

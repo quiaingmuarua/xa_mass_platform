@@ -119,7 +119,7 @@ Base path: `/api/v1/projects`
 - Path: `/api/v1/projects`
 - Status: `Implemented`
 
-Returns the registered `ProjectMetadata` list.
+Returns the registered project list.
 
 ### 3.2 Get Project
 
@@ -144,7 +144,7 @@ Returns the full `EventDefinition` list for the project's declared
 - Path: `/api/v1/projects/{projectCode}/submitters`
 - Status: `Implemented`
 
-Returns the effective `SubmitterMetadata` list visible for the project scope.
+Returns the effective submitter list visible for the project scope.
 
 Notes:
 
@@ -152,14 +152,14 @@ Notes:
   submitters whose scopes still authorize the project
 - this is a control-plane ownership view; it does not expose raw credentials
 
-## 4. Metadata API
+## 4. Catalog API
 
-Base path: `/api/v1/meta`
+Base path: `/api/v1/catalog`
 
 ### 4.1 List Events
 
 - Method: `GET`
-- Path: `/api/v1/meta/events`
+- Path: `/api/v1/catalog/events`
 - Status: `Implemented`
 
 Notes:
@@ -171,7 +171,7 @@ Notes:
 ### 4.2 Get Event
 
 - Method: `GET`
-- Path: `/api/v1/meta/events/{eventCode}`
+- Path: `/api/v1/catalog/events/{eventCode}`
 - Status: `Implemented`
 
 Returns HTTP `404` when `eventCode` does not exist.
@@ -179,7 +179,7 @@ Returns HTTP `404` when `eventCode` does not exist.
 ### 4.3 List Event Capabilities
 
 - Method: `GET`
-- Path: `/api/v1/meta/event-capabilities`
+- Path: `/api/v1/catalog/event-capabilities`
 - Status: `Implemented`
 
 Notes:
@@ -195,7 +195,7 @@ Notes:
 ### 4.4 List Worker Capability Snapshots
 
 - Method: `GET`
-- Path: `/api/v1/meta/worker-capabilities`
+- Path: `/api/v1/catalog/worker-capabilities`
 - Status: `Implemented`
 
 Notes:
@@ -204,7 +204,7 @@ Notes:
   snapshots by `workerId`
 - `supportedEventCodes` remains the flat runtime capability list used by
   matching
-- `eventBindings` is the richer capability view derived from event metadata
+- `eventBindings` is the richer capability view derived from event definitions
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
 - `connections` and `hasActiveEndpoint` are reachability facts from the
@@ -335,7 +335,7 @@ Supported request fields:
 
 Contract rules:
 
-- metadata-only update path
+- shell-only update path
 - only `NEW` and `BLOCKED` tasks may be updated
 - omitted fields keep the currently persisted values
 - `taskName` is server-derived and cannot be patched
@@ -710,5 +710,5 @@ The active JSON API surface uses one response family:
 Implications:
 
 - consumers should read payloads from `data`
-- task, metadata, runtime, and worker APIs all follow the same
+- task, catalog, runtime, and worker APIs all follow the same
   `ApiResponse<T>` envelope

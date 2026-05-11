@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 
 /**
  * SDK control-plane resource operations.
@@ -12,7 +12,7 @@ public interface ResourceOperations extends ProjectOperations, EventOperations, 
 
     /**
      * Preferred read surface for the SDK project directory plus
-     * runtime-projected event metadata.
+     * runtime-projected event catalog.
      */
-    SdkMetadataCatalog metadataCatalog();
+    ControlPlaneCatalog catalog();
 }

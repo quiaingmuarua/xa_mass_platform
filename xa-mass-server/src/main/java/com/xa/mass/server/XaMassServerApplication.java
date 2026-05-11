@@ -312,8 +312,8 @@ public class XaMassServerApplication {
     @Bean
     @Primary
     @Profile("dev")
-    public SdkMetadataCatalog devAppMetadataCatalog(MassSdkApplication app) {
-        return app.metadataCatalog();
+    public ControlPlaneCatalog devAppCatalog(MassSdkApplication app) {
+        return app.catalog();
     }
 
     @Bean

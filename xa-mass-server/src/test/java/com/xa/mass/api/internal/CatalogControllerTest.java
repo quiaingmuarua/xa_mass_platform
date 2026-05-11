@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class SdkMetadataControllerTest {
+class CatalogControllerTest {
 
     private MockMvc mockMvc;
     private TransportDebugOperations transportDebugOperations;
@@ -82,13 +82,13 @@ class SdkMetadataControllerTest {
                 )
         ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new SdkMetadataController(catalog, workerQueries, transportDebugOperations)
+                new CatalogController(catalog, workerQueries, transportDebugOperations)
         ).build();
     }
 
     @Test
     void listEventsReturnsEventDefinitions() throws Exception {
-        mockMvc.perform(get("/api/v1/meta/events"))
+        mockMvc.perform(get("/api/v1/catalog/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='sms.wait-code')]").exists());
@@ -96,7 +96,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void eventCapabilitiesReturnInvocationModelAndLiveWorkerCoverage() throws Exception {
-        mockMvc.perform(get("/api/v1/meta/event-capabilities"))
+        mockMvc.perform(get("/api/v1/catalog/event-capabilities"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.invocationModel=='TASK_BACKED')]").exists())
@@ -111,7 +111,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void workerCapabilitiesJoinCatalogWorkerAndTransportFacts() throws Exception {
-        mockMvc.perform(get("/api/v1/meta/worker-capabilities"))
+        mockMvc.perform(get("/api/v1/catalog/worker-capabilities"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.supportedEventCodes[0]=='crawler.fetch-page')]").exists())
@@ -127,7 +127,7 @@ class SdkMetadataControllerTest {
 
     @Test
     void missingProjectOrEventReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/meta/events/missing"))
+        mockMvc.perform(get("/api/v1/catalog/events/missing"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404));
     }

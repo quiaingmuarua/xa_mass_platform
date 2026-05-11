@@ -141,7 +141,7 @@ Task create/update:
 - Work items are appended explicitly through `POST /api/v1/tasks/{taskId}/items`.
 - Append requires explicit `eventCode` either on the batch request or on each item payload.
 - Unknown or retired create fields fail fast.
-- Update is metadata-only and supports `userId`, `project`, and `sharedConfig`.
+- Update is shell-only and supports `userId`, `project`, and `sharedConfig`.
 - Updates are allowed only while the task is `NEW` or `BLOCKED`.
 
 Assignment and dispatch:

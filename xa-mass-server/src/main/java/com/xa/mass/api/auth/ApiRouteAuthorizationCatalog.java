@@ -75,7 +75,7 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
-        if (uri.startsWith("/api/v1/meta/") && "GET".equals(method)) {
+        if (uri.startsWith("/api/v1/catalog/") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS);
         }
         if (uri.equals("/api/v1/submitters/me") && "GET".equals(method)) {

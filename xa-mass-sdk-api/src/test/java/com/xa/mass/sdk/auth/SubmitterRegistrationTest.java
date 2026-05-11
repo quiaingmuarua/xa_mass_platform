@@ -57,14 +57,14 @@ class SubmitterRegistrationTest {
                 .credential(" mass_sk_test_123456 ")
                 .keyPrefix(" mass_sk_test ")
                 .userId(" crawler-user ")
-                .permissions(List.of(" task:create ", "metadata:view", "task:create"))
+                .permissions(List.of(" task:create ", "catalog:view", "task:create"))
                 .projectScopes(List.of(" crawlerApp ", "demoApp", "crawlerApp"))
                 .eventScopes(List.of(" crawler.fetch-page ", "tool.country.capital.lookup"))
                 .build();
 
         Assertions.assertEquals("crawler-key", registration.getPrincipalId());
         Assertions.assertEquals("mass_sk_test", registration.getKeyPrefix());
-        Assertions.assertEquals(List.of("task:create", "metadata:view"), registration.getPermissions());
+        Assertions.assertEquals(List.of("task:create", "catalog:view"), registration.getPermissions());
         Assertions.assertEquals(List.of("crawlerApp", "demoApp"), registration.getProjectScopes());
         Assertions.assertEquals(List.of("crawler.fetch-page", "tool.country.capital.lookup"), registration.getEventScopes());
 

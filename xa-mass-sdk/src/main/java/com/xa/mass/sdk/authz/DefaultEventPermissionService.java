@@ -1,7 +1,7 @@
 package com.xa.mass.sdk.authz;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventDefinition;
 
@@ -12,10 +12,10 @@ import java.util.Objects;
  */
 public class DefaultEventPermissionService implements EventPermissionService {
 
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
 
-    public DefaultEventPermissionService(SdkMetadataCatalog metadataCatalog) {
-        this.metadataCatalog = Objects.requireNonNull(metadataCatalog, "metadataCatalog");
+    public DefaultEventPermissionService(ControlPlaneCatalog catalog) {
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
     }
 
     @Override
@@ -41,7 +41,7 @@ public class DefaultEventPermissionService implements EventPermissionService {
     }
 
     private AuthorizationDecision validateCatalogAndDescriptor(String eventCode, String projectCode) {
-        EventDefinition definition = metadataCatalog.getEvent(eventCode);
+        EventDefinition definition = catalog.getEvent(eventCode);
         if (definition != null) {
             if (!definition.isEnabled()) {
                 return AuthorizationDecision.deny(AuthorizationReasonCode.EVENT_DISABLED,

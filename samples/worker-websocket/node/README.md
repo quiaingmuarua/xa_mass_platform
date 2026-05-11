@@ -45,7 +45,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks \
     "userId": "stock-agent",
     "sharedConfig": {
       "routingCode": "us",
-      "sourceUrl": "http://127.0.0.1:8088/api/v1/meta/events/stock.quote.fetch"
+      "sourceUrl": "http://127.0.0.1:8088/api/v1/catalog/events/stock.quote.fetch"
     },
     "executionSpec": {
       "batchSize": 1,

@@ -4,8 +4,8 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,57 +23,57 @@ import java.util.Objects;
 @RequestMapping("/api/v1/projects")
 public class ProjectApiController {
 
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
     private final SubmitterOperations submitterOperations;
 
-    public ProjectApiController(SdkMetadataCatalog metadataCatalog) {
-        this(metadataCatalog, (SubmitterOperations) null);
+    public ProjectApiController(ControlPlaneCatalog catalog) {
+        this(catalog, (SubmitterOperations) null);
     }
 
     @Autowired
-    public ProjectApiController(SdkMetadataCatalog metadataCatalog,
+    public ProjectApiController(ControlPlaneCatalog catalog,
                                 ObjectProvider<SubmitterOperations> submitterOperationsProvider) {
         this(
-                metadataCatalog,
+                catalog,
                 submitterOperationsProvider == null ? null : submitterOperationsProvider.getIfAvailable()
         );
     }
 
-    public ProjectApiController(SdkMetadataCatalog metadataCatalog,
+    public ProjectApiController(ControlPlaneCatalog catalog,
                                 SubmitterOperations submitterOperations) {
-        this.metadataCatalog = metadataCatalog;
+        this.catalog = catalog;
         this.submitterOperations = submitterOperations;
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProjectMetadata>>> listProjects() {
-        return ResponseEntity.ok(ApiResponse.success(metadataCatalog.listProjects()));
+    public ResponseEntity<ApiResponse<List<ProjectDefinition>>> listProjects() {
+        return ResponseEntity.ok(ApiResponse.success(catalog.listProjects()));
     }
 
     @GetMapping("/{projectCode}")
-    public ResponseEntity<ApiResponse<ProjectMetadata>> getProject(@PathVariable String projectCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+    public ResponseEntity<ApiResponse<ProjectDefinition>> getProject(@PathVariable String projectCode) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             return ResponseEntity.status(404)
                     .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }
-        return ResponseEntity.ok(ApiResponse.success(projectMetadata));
+        return ResponseEntity.ok(ApiResponse.success(projectDefinition));
     }
 
     @GetMapping("/{projectCode}/events")
     public ResponseEntity<ApiResponse<List<EventDefinition>>> getProjectEvents(@PathVariable String projectCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             return ResponseEntity.status(404)
                     .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }
-        return ResponseEntity.ok(ApiResponse.success(metadataCatalog.getEventsForProject(projectCode)));
+        return ResponseEntity.ok(ApiResponse.success(catalog.getEventsForProject(projectCode)));
     }
 
     @GetMapping("/{projectCode}/submitters")
     public ResponseEntity<ApiResponse<List<SubmitterMetadata>>> getProjectSubmitters(@PathVariable String projectCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
             return ResponseEntity.status(404)
                     .body(ApiResponse.error(404, "Project not found: " + projectCode));
         }

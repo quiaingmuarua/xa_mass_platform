@@ -689,7 +689,7 @@ public abstract class AbstractSampleE2eTest {
 
     @SuppressWarnings("unchecked")
     private int fetchOnlineWorkerCount() {
-        Map<String, Object> response = exchange("/api/v1/meta/worker-capabilities", HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
         if (!isApiOk(response)) {
             return 0;
         }

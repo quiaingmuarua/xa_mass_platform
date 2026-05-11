@@ -1,13 +1,13 @@
-export type MetadataPayloadType = 'TEXT' | 'JSON'
+export type PayloadType = 'TEXT' | 'JSON'
 
-export type MetadataTaskMode = 'SINGLE_RUN' | 'STREAMING'
+export type TaskMode = 'SINGLE_RUN' | 'STREAMING'
 
-export interface SdkEventDefinition {
+export interface EventDefinition {
     code: string
     name: string
     description: string
-    payloadTypes: MetadataPayloadType[]
-    taskModes: MetadataTaskMode[]
+    payloadTypes: PayloadType[]
+    taskModes: TaskMode[]
     enabled: boolean
 }
 
