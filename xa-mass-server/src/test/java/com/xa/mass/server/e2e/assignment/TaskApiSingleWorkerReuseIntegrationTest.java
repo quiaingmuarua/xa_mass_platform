@@ -1,10 +1,9 @@
 package com.xa.mass.server.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -70,8 +69,8 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
             TaskSnapshot secondTerminal = waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
         assertEquals(workerId, secondTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
-            WorkerContext workerContext = app.getWorkerContexts(workerId).get(0);
-            assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
+            WorkerContextSnapshot workerContext = app.getWorkerContexts(workerId).get(0);
+            assertEquals("IDLE", workerContext.getStatus());
         } finally {
             client.disconnect();
         }

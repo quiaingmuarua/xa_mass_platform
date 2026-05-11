@@ -1,7 +1,6 @@
 package com.xa.mass.testing.chaos;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
 import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
@@ -102,7 +101,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         "all-failed chaos worker should be online before task creation"
                 );
 
-                Task task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.multiMessage(
+                TaskShellSnapshot task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.multiMessage(
                         "sdk-chaos",
                         PROJECT_CODE,
                         "sdk-polling-all-messages-failed",
@@ -120,14 +119,14 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                 );
 
                 TaskOutcomeSnapshot outcome = runtime.waitForTerminalTask(
-                        task.getTid(),
+                        task.getTaskId(),
                         MESSAGE_COUNT,
                         config.timeoutSeconds(),
                         "all-messages-failed task must converge to TERMINAL"
                 );
 
                 List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.taskDetailStore(), task.getTid(), MESSAGE_COUNT).messages();
+                        runtime.taskDetailStore(), task.getTaskId(), MESSAGE_COUNT).messages();
 
                 ChaosSupport.require(messages.size() == MESSAGE_COUNT,
                         "task should have exactly " + MESSAGE_COUNT + " message projections");
@@ -140,7 +139,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                             "message " + msg.messageId() + " retryCount should be 0 (no retries configured)");
 
                     List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), msg.messageId());
+                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), msg.messageId());
                     ChaosSupport.require(attempts.size() == 1,
                             "message " + msg.messageId() + " should have exactly 1 attempt");
                     ChaosSupport.require("FAILED".equals(attempts.get(0).status()),
@@ -149,14 +148,14 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                             "attempt finalReason should be BUSINESS_FAILURE");
                 }
 
-                ChaosSupport.require(outcome.status().equals(TaskStatus.TERMINAL.name()),
+                ChaosSupport.require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");
                 ChaosSupport.require("ALL_MESSAGES_FAILED".equals(outcome.terminalReason()),
                         "task terminalReason should be ALL_MESSAGES_FAILED, got " + outcome.terminalReason());
 
                 // Trace contract assertions - verify canonical ExecutionEvent stream
                 TraceEventAssertions.of(traceSink)
-                        .forTask(task.getTid())
+                        .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
@@ -170,13 +169,13 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         "runtime", Map.of("transport", "polling", "adapterId", "polling"),
                         "wallClock", Map.of("totalMillis",
                                 ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
-                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTid()),
+                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
                         "task", outcome.toMap(),
                         "workers", Map.of("worker", worker.snapshot().toMap())
                 ));
 
                 return new ChaosReport(
-                        task.getTid(),
+                        task.getTaskId(),
                         MESSAGE_COUNT,
                         worker.failedResults(),
                         outcome.terminalReason(),

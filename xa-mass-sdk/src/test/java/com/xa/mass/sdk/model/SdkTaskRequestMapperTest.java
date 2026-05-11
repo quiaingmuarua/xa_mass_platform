@@ -2,7 +2,6 @@ package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +16,7 @@ class SdkTaskRequestMapperTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .contract(TaskContract.SESSION)
+                .contract(TaskContract.SESSION.name())
                 .sharedConfig(Map.of("source", "sdk"))
                 .executionSpec(spec(TaskWorkloadClass.INTERACTIVE, 1, 0))
                 .build();
@@ -34,7 +33,7 @@ class SdkTaskRequestMapperTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .contract(TaskContract.BATCH)
+                .contract(TaskContract.BATCH.name())
                 .executionSpec(spec(TaskWorkloadClass.BULK, 1, 0))
                 .sharedConfig(Map.of("eventCode", "crawler.fetch-page"))
                 .build();
@@ -46,11 +45,11 @@ class SdkTaskRequestMapperTest {
         assertEquals("crawler.fetch-page", dto.getSharedConfig().get("eventCode"));
     }
 
-    private TaskExecutionSpec spec(TaskWorkloadClass workloadClass,
-                                   int batchSize,
-                                   int maxRuntimeSeconds) {
-        TaskExecutionSpec spec = new TaskExecutionSpec();
-        spec.setWorkloadClass(workloadClass);
+    private TaskExecutionOptions spec(TaskWorkloadClass workloadClass,
+                                      int batchSize,
+                                      int maxRuntimeSeconds) {
+        TaskExecutionOptions spec = new TaskExecutionOptions();
+        spec.setWorkloadClass(workloadClass.name());
         spec.setBatchSize(batchSize);
         spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
         return spec;

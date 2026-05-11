@@ -23,6 +23,12 @@ It solves one recurring kernel problem: match a batch of structured work items
 to a batch of heterogeneous, stateful workers, track each result, and
 converge task-level completion state.
 
+Current kernel truth is intentionally narrow:
+
+- `Task.contract` answers whether the task is `SESSION` or `BATCH`
+- `Task.intakeStatus` answers whether ingress remains `OPEN` or is already `SEALED`
+- `TaskWorkRuntime` answers ready/delayed/lease/result/counter truth for execution
+
 Current mainline execution path:
 
 - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`

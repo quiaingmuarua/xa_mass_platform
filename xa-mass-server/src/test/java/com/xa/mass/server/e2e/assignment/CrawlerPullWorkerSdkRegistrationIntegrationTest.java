@@ -4,10 +4,11 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -91,10 +92,10 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         session.connect();
         try {
             waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
-            TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+            TaskExecutionOptions executionSpec = new TaskExecutionOptions();
             executionSpec.setBatchSize(1);
 
-            var task = createShellWithOptionalItems(
+            TaskShellSnapshot task = createShellWithOptionalItems(
                     MassTaskShellCreateRequest.builder()
                             .userId("crawler-agent")
                             .project("crawlerApp")
@@ -107,7 +108,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
                     false
             );
 
-            assertTrue(app.approveTask(task.getTid()));
+            assertTrue(app.approveTask(task.getTaskId()));
 
             List<TaskDispatchItem> items = List.of();
             for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
@@ -119,7 +120,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
             TaskDispatchItem item = items.get(0);
-            assertEquals(task.getTid(), item.getTaskId());
+            assertEquals(task.getTaskId(), item.getTaskId());
             assertEquals(workerId, item.getWorkerId());
             assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
@@ -130,7 +131,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
                     Map.of("url", "https://example.test/page-1", "statusCode", 200, "title", "Example Page")
             ));
 
-            TaskSnapshot terminal = waitForTerminalTask(task.getTid());
+            TaskSnapshot terminal = waitForTerminalTask(task.getTaskId());
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
             assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
@@ -147,21 +148,21 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must mark the worker offline");
     }
 
-    private com.xa.mass.base.model.Task createShellWithOptionalItems(MassTaskShellCreateRequest request,
-                                                                     String eventCode,
-                                                                     List<Object> items,
-                                                                     boolean keepIntakeOpen) {
-        com.xa.mass.base.model.Task task = app.createTaskShell(request);
+    private TaskShellSnapshot createShellWithOptionalItems(MassTaskShellCreateRequest request,
+                                                           String eventCode,
+                                                           List<Object> items,
+                                                           boolean keepIntakeOpen) {
+        TaskShellSnapshot task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
-            app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+            app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
                     .build());
         }
         if (!keepIntakeOpen) {
-            assertTrue(app.sealTask(task.getTid()));
+            assertTrue(app.sealTask(task.getTaskId()));
         }
-        return app.getTask(task.getTid());
+        return task;
     }
 
     private RuleDefinition rule(String id, String content) {

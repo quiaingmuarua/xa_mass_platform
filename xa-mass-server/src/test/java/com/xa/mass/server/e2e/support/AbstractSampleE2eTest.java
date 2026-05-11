@@ -10,6 +10,7 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -556,12 +557,12 @@ public abstract class AbstractSampleE2eTest {
         }
     }
 
-    protected Worker waitForWorkerStatus(String workerId,
-                                         String expectedStatus,
-                                         int maxAttempts,
-                                         long sleepMillis,
-                                         Runnable livenessCheck,
-                                         Supplier<String> diagnosticsSupplier) throws InterruptedException {
+    protected WorkerSnapshot waitForWorkerStatus(String workerId,
+                                                 String expectedStatus,
+                                                 int maxAttempts,
+                                                 long sleepMillis,
+                                                 Runnable livenessCheck,
+                                                 Supplier<String> diagnosticsSupplier) throws InterruptedException {
         try {
             return awaitValue(
                     "Worker " + workerId + " did not reach status " + expectedStatus,
@@ -574,8 +575,7 @@ public abstract class AbstractSampleE2eTest {
                         return fetchRuntimeWorker(workerId);
                     },
                     worker -> worker != null
-                            && worker.getStatus() != null
-                            && expectedStatus.equals(worker.getStatus().name()),
+                            && expectedStatus.equals(worker.getStatus()),
                     worker -> worker == null ? "<not-registered>" : worker.toString()
             );
         } catch (AssertionError error) {
@@ -657,7 +657,7 @@ public abstract class AbstractSampleE2eTest {
                 .count();
     }
 
-    private Worker fetchRuntimeWorker(String workerId) {
+    private WorkerSnapshot fetchRuntimeWorker(String workerId) {
         return requireSdkApp().getAllWorkers().stream()
                 .filter(worker -> workerId.equals(worker.getWorkerId()))
                 .findFirst()

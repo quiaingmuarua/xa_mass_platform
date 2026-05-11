@@ -1,6 +1,7 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
@@ -36,6 +37,8 @@ public class TransportRuntimeComposition {
 
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
+    private static final String DEFAULT_INPUT_QUEUE_NAME = "transport-input";
+    private static final String DEFAULT_OUTPUT_QUEUE_NAME = "transport-output";
 
     private final MessageTransporterFactory.TransporterType transporterType;
     private final MessageQueue<String> inputQueue;
@@ -101,12 +104,10 @@ public class TransportRuntimeComposition {
 
     public MessageTransporter<String, TransportOutboundMessage> createMessageTransporter() {
         return switch (transporterType) {
-            case QUEUE_BASED -> {
-                if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException("QUEUE_BASED transporter requires both inputQueue and outputQueue");
-                }
-                yield MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
-            }
+            case QUEUE_BASED -> MessageTransporterFactory.createQueueBased(
+                    resolveInputQueue(),
+                    resolveOutputQueue()
+            );
             case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
             case API_BASED -> throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         };
@@ -114,8 +115,8 @@ public class TransportRuntimeComposition {
 
     public MessageTransporter<String, TransportOutboundMessage> createMessageTransporterIfConfigured() {
         return switch (transporterType) {
-            case QUEUE_BASED -> (inputQueue != null && outputQueue != null)
-                    ? MessageTransporterFactory.createQueueBased(inputQueue, outputQueue)
+            case QUEUE_BASED -> (inputQueue != null || outputQueue != null || isEnabled())
+                    ? MessageTransporterFactory.createQueueBased(resolveInputQueue(), resolveOutputQueue())
                     : null;
             case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
             case API_BASED -> null;
@@ -319,6 +320,18 @@ public class TransportRuntimeComposition {
 
     private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
         return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private MessageQueue<String> resolveInputQueue() {
+        return inputQueue != null
+                ? inputQueue
+                : new InMemoryMessageQueue<>(DEFAULT_INPUT_QUEUE_NAME, String.class);
+    }
+
+    private MessageQueue<TransportOutboundMessage> resolveOutputQueue() {
+        return outputQueue != null
+                ? outputQueue
+                : new InMemoryMessageQueue<>(DEFAULT_OUTPUT_QUEUE_NAME, TransportOutboundMessage.class);
     }
 
     private static void validateUniqueAdapterIds(List<TransportAdapterBootstrap> bootstraps) {

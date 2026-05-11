@@ -19,6 +19,10 @@ flows, commands, and module-local inventories.
 - the kernel problem is: match structured work items to heterogeneous,
   stateful executors, track per-item result, and converge task-level state
 - stable kernel: `Task / assignment / result / audit / terminal policy`
+- kernel truth is explicitly split across:
+  - `Task.contract`
+  - `Task.intakeStatus`
+  - `TaskWorkRuntime`
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
@@ -27,6 +31,8 @@ flows, commands, and module-local inventories.
 Current owner vocabulary:
 
 - `Task` is the task/control aggregate truth
+- `Task.contract` is the runtime contract truth: `SESSION | BATCH`
+- `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and result application
 - current bounded compatibility residue lives behind engine-internal owners plus

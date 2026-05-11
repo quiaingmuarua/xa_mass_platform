@@ -1,8 +1,8 @@
 package com.xa.mass.testing.chaos;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -104,7 +104,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "chaos worker should be online before scenario starts"
                 );
 
-                Task task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.singleMessage(
+                TaskShellSnapshot task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.singleMessage(
                         "sdk-chaos",
                         PROJECT_CODE,
                         "sdk-chaos-late-result-after-lease-expiry",
@@ -114,9 +114,9 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         Map.of("source", "SdkWebSocketLateResultAfterLeaseExpiryChaosRunner")
                 ));
 
-                CompatibilityMessageView message = runtime.waitForSingleMessage(task.getTid(), config.timeoutSeconds());
+                CompatibilityMessageView message = runtime.waitForSingleMessage(task.getTaskId(), config.timeoutSeconds());
                 runtime.waitForActiveAttemptOnWorker(
-                        task.getTid(),
+                        task.getTaskId(),
                         message.messageId(),
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
@@ -142,7 +142,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 );
 
                 runtime.waitForAttemptCount(
-                        task.getTid(),
+                        task.getTaskId(),
                         message.messageId(),
                         2,
                         config.timeoutSeconds(),
@@ -150,16 +150,16 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 );
 
                 TaskOutcomeSnapshot terminalOutcome = runtime.waitForTerminalTask(
-                        task.getTid(),
+                        task.getTaskId(),
                         1,
                         config.timeoutSeconds(),
                         "late-result chaos task must converge"
                 );
 
                 CompatibilityMessageView terminalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
                 List<CompatibilityAttemptView> terminalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
                 ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
 
                 CompatibilityAttemptView expiredAttempt = terminalAttempts.get(0);
@@ -191,11 +191,11 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 );
                 ChaosSupport.maybeSleep(config.postReplayObserveDelayMillis());
 
-                TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTid(), 1);
+                TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTaskId(), 1);
                 CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
                 List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
 
                 ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
                 ChaosSupport.require(finalMessage != null, "final task message should exist");
@@ -207,7 +207,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "late stale result must not change retryCount");
                 ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
                         "late stale result must not steal latest attempt ownership");
-                ChaosSupport.require(TaskStatus.TERMINAL == runtime.app().getTask(task.getTid()).getStatus(),
+                TaskStateSnapshot currentTaskState = runtime.app().getTaskState(task.getTaskId());
+                ChaosSupport.require(currentTaskState != null && "TERMINAL".equals(currentTaskState.getStatus()),
                         "late stale result must not reopen the task");
                 ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(afterReplayOutcome.terminalReason()),
                         "late stale result must not change task terminal reason");
@@ -234,7 +235,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 return new ChaosReport(
                         extractPort(runtime.serverUri(CHAOS_WORKER_ID)),
-                        task.getTid(),
+                        task.getTaskId(),
                         message.messageId(),
                         chaosWorker.disconnectCycles(),
                         chaosWorker.reconnectCycles(),

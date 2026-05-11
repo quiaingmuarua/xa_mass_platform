@@ -1,6 +1,5 @@
 package com.xa.mass.server.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
@@ -49,7 +48,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(app.isWorkerOnline(firstWorkerId), "worker registration must not mark first worker online");
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
-        Task task = app.getTask(taskId);
+        Task task = taskStorage.getTask(taskId).orElseThrow();
         task.setMinRequiredWorkerCount(2);
         assertTrue(updateStoredTask(task));
 
@@ -59,7 +58,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
-        assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(firstWorkerId).get(0).getStatus());
+        assertEquals("IDLE", app.getWorkerContexts(firstWorkerId).get(0).getStatus());
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);

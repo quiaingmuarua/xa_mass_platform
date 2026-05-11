@@ -64,6 +64,8 @@ Still too heavy on the hot path:
 Keep these decisions stable:
 
 - `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, intake state, aggregate counters, terminal reason
+- high-volume work should default to `BATCH + BULK`: finite workset, runtime-driven redispatch, and no stable per-item timeout meaning while retry budget remains
+- low-latency conversational work should default to `SESSION + INTERACTIVE`: persistent channel semantics, signal-driven wakeup, and bounded per-item feedback
 - runtime queue/lease/counter ownership should stay behind shared runtime modules instead of being re-embedded back into engine-local packages
 - runtime workload selection should resolve once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
 - task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-message rule matching as a scaling fallback

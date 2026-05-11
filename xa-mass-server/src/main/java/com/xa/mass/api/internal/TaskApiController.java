@@ -8,9 +8,6 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
@@ -29,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
@@ -37,13 +33,11 @@ public class TaskApiController {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
+    private static final Set<String> EDITABLE_TASK_STATUSES = Set.of("NEW", "BLOCKED");
     private static final int MAX_INGEST_ITEM_COUNT = Integer.getInteger("xa.mass.api.maxIngestItemCount", 500);
     private static final int MAX_INGEST_ITEM_BYTES = Integer.getInteger("xa.mass.api.maxIngestItemBytes", 64 * 1024);
     private static final int MAX_INGEST_TOTAL_BYTES = Integer.getInteger("xa.mass.api.maxIngestTotalBytes", 1024 * 1024);
     private static final com.fasterxml.jackson.databind.ObjectMapper SIZE_OBJECT_MAPPER =
-            new com.fasterxml.jackson.databind.ObjectMapper();
-    private static final com.fasterxml.jackson.databind.ObjectMapper TASK_VIEW_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
@@ -94,41 +88,38 @@ public class TaskApiController {
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                       @RequestParam(required = false) String keyword,
-                                                                      @RequestParam(required = false) TaskStatus status,
+                                                                      @RequestParam(required = false) String status,
                                                                       @RequestParam(defaultValue = "0") int offset,
                                                                       @RequestParam(defaultValue = "500") int limit) {
         try {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
             // push status filter to storage when provided; otherwise use bounded page scan
-            var candidates = status != null
-                    ? taskQueries.getTasksByStatus(status)
-                    : taskQueries.listTasksPaged(offset, Math.min(limit, 1000));
+            List<TaskSummarySnapshot> candidates = status != null
+                    ? taskQueries.getTaskSummariesByStatus(status)
+                    : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
             List<Map<String, Object>> items = candidates.stream()
-                    .filter(task -> submitterViewer == null
-                            || apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, task.getSharedConfig()))
-                    .filter(task -> matchesKeyword(task.getTid(), task.getTaskName(), task.getProject(), normalizedKeyword))
+                    .filter(task -> submitterViewer == null)
+                    .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
-                            .comparing(task -> task.getUpdateTime(), Comparator.nullsLast(Comparator.reverseOrder()))
-                            .thenComparing(task -> task.getCreateTime(), Comparator.nullsLast(Comparator.reverseOrder())))
+                            .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
                     .map(task -> {
                         Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("id", task.getTid());
+                        item.put("id", task.getTaskId());
                         item.put("taskName", task.getTaskName());
                         item.put("tenantId", task.getTenantId());
                         item.put("project", task.getProject());
-                        item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
-                        item.put("contract", task.getContract() != null ? task.getContract().name() : null);
-                        item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
+                        item.put("userId", task.getUserId());
+                        item.put("contract", task.getContract());
+                        item.put("status", task.getStatus());
                         item.put("executionSpec", task.getExecutionSpec());
-                        item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
+                        item.put("terminalReason", task.getTerminalReason());
                         item.put("successCount", task.getTaskSuccessNumber());
                         item.put("eligibleCount", task.getTaskEligibleNumber());
                         item.put("updatedAt", formatDateTime(task.getUpdateTime()));
-                        item.put("security", taskSecurityViewSupport.toSecurityView(task.getSharedConfig()));
                         return item;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             return ok(Map.of("items", items, "total", items.size()));
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());
@@ -151,25 +142,25 @@ public class TaskApiController {
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
             if (submitterTaskCreate != null) {
-                var task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
                 return ok(Map.of(
-                        "taskId", task.getTid(),
+                        "taskId", task.getTaskId(),
                         "project", task.getProject(),
-                        "userId", task.getUser() != null ? task.getUser().getUserId() : submitterTaskCreate.userId(),
+                        "userId", task.getUserId() != null ? task.getUserId() : submitterTaskCreate.userId(),
                         "principalId", submitterTaskCreate.principal().getPrincipalId(),
                         "message", "Task shell created"
                 ));
             }
 
             PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
-            var task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+            TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                     toMassTaskShellCreateRequest(requestBody),
                     operator
             ));
-            return ok(Map.of("taskId", task.getTid(), "message", "Task shell created"));
+            return ok(Map.of("taskId", task.getTaskId(), "message", "Task shell created"));
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());
         } catch (SecurityException e) {
@@ -185,13 +176,13 @@ public class TaskApiController {
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                     @PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
+            TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTid(), task.getProject(), task.getSharedConfig());
+            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("task", toTaskDetailTaskView(task));
+            response.put("task", toTaskDetailView(task));
             response.put("security", taskSecurityViewSupport.toSecurityView(task.getSharedConfig()));
             return ok(response);
         } catch (SdkUnauthenticatedException e) {
@@ -206,11 +197,14 @@ public class TaskApiController {
     @PostMapping("/{taskId}:block")
     public ResponseEntity<ApiResponse<Map<String, Object>>> blockTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
+            if (taskAdmin.blockTask(taskId)) {
+                return ok(Map.of("message", "Task blocked"));
+            }
+            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+            if (state == null && !taskQueries.taskExists(taskId)) {
                 return notFound("Task not found: " + taskId);
             }
-            if (task.getStatus() == TaskStatus.NEW ? taskAdmin.rejectTask(task.getTid()) : taskAdmin.blockTask(task.getTid())) {
+            if (state != null && "NEW".equals(state.getStatus()) && taskAdmin.rejectTask(taskId)) {
                 return ok(Map.of("message", "Task blocked"));
             }
             return conflict("Task cannot be blocked from the current state");
@@ -222,17 +216,16 @@ public class TaskApiController {
     @PostMapping("/{taskId}:approve")
     public ResponseEntity<ApiResponse<Map<String, Object>>> approveTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
             boolean success = taskAdmin.approveTask(taskId);
-            var updatedTask = taskQueries.getTask(taskId);
-            if (success && updatedTask != null) {
+            if (success) {
+                TaskStateSnapshot updatedState = taskQueries.getTaskState(taskId);
                 return ok(Map.of(
                         "message", "Task approved",
-                        "newStatus", updatedTask.getStatus().name()
+                        "newStatus", updatedState != null ? defaultString(updatedState.getStatus()) : ""
                 ));
+            }
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
             }
             return badRequest("Task cannot be approved from the current state");
         } catch (Exception e) {
@@ -243,17 +236,16 @@ public class TaskApiController {
     @PostMapping("/{taskId}:reject")
     public ResponseEntity<ApiResponse<Map<String, Object>>> rejectTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
             boolean success = taskAdmin.rejectTask(taskId);
-            var updatedTask = taskQueries.getTask(taskId);
-            if (success && updatedTask != null) {
+            if (success) {
+                TaskStateSnapshot updatedState = taskQueries.getTaskState(taskId);
                 return ok(Map.of(
                         "message", "Task rejected",
-                        "newStatus", updatedTask.getStatus().name()
+                        "newStatus", updatedState != null ? defaultString(updatedState.getStatus()) : ""
                 ));
+            }
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
             }
             return badRequest("Task cannot be rejected from the current state");
         } catch (Exception e) {
@@ -264,12 +256,11 @@ public class TaskApiController {
     @PostMapping("/{taskId}:pause")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pauseTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
             if (taskAdmin.pauseTask(taskId)) {
                 return ok(Map.of("message", "Task paused"));
+            }
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
             }
             return conflict("Task cannot be paused from the current state");
         } catch (Exception e) {
@@ -280,10 +271,6 @@ public class TaskApiController {
     @PostMapping("/{taskId}:resume")
     public ResponseEntity<ApiResponse<Map<String, Object>>> resumeTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
             SdkTaskResumeResult result = taskAdmin.resumeTaskDetailed(taskId);
             if (result.success()) {
                 String message = result.completedToTerminal()
@@ -295,6 +282,9 @@ public class TaskApiController {
                         "terminalReason", result.terminalReason() != null ? result.terminalReason() : ""
                 ));
             }
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
+            }
             return conflict("Task cannot be resumed from the current state");
         } catch (Exception e) {
             return badRequest("Task resume failed: " + e.getMessage());
@@ -304,12 +294,11 @@ public class TaskApiController {
     @PostMapping("/{taskId}:terminate")
     public ResponseEntity<ApiResponse<Map<String, Object>>> terminateTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            if (taskAdmin.terminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED)) {
+            if (taskAdmin.terminateTask(taskId, "MANUAL_CANCELLED")) {
                 return ok(Map.of("message", "Task terminated"));
+            }
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
             }
             return conflict("Task cannot be terminated from the current state");
         } catch (Exception e) {
@@ -320,15 +309,16 @@ public class TaskApiController {
     @DeleteMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> deleteTask(@PathVariable String taskId) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
             boolean deleted = taskAdmin.deleteTask(taskId);
             if (deleted) {
                 return ok(Map.of("message", "Task deleted"));
             }
-            return badRequest("Task delete failed: current status " + task.getStatus().name() + " cannot be deleted");
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
+            }
+            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+            return badRequest("Task delete failed: current status "
+                    + (state != null ? defaultString(state.getStatus()) : "UNKNOWN") + " cannot be deleted");
         } catch (Exception e) {
             return badRequest("Task delete failed: " + e.getMessage());
         }
@@ -338,11 +328,12 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
                                                                        @RequestBody TaskUpdateApiRequest requestBody) {
         try {
-            var task = taskQueries.getTask(taskId);
-            if (task == null) {
+            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+            if (state == null && !taskQueries.taskExists(taskId)) {
                 return notFound("Task not found: " + taskId);
             }
-            if (!EDITABLE_TASK_STATUSES.contains(task.getStatus())) {
+            String status = state == null ? null : state.getStatus();
+            if (!EDITABLE_TASK_STATUSES.contains(status)) {
                 return badRequest("Task update failed: Only NEW or BLOCKED tasks can be updated");
             }
 
@@ -363,7 +354,7 @@ public class TaskApiController {
                                                                             @RequestBody TaskItemBatchIngestApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task append items");
-            var task = taskQueries.getTask(taskId);
+            TaskAccessSnapshot task = taskQueries.getTaskAccess(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
@@ -379,7 +370,7 @@ public class TaskApiController {
             for (String eventCode : eventCodes) {
                 validateProjectAndEvent(task.getProject(), eventCode);
             }
-            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTid(), task.getProject(),
+            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
                     task.getSharedConfig(), eventCodes);
             int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
@@ -404,23 +395,43 @@ public class TaskApiController {
         try {
             boolean sealed = taskAdmin.sealTask(taskId);
             if (sealed) {
-                var task = taskQueries.getTask(taskId);
-                return ok(Map.of("message", "Task sealed", "status", task != null ? task.getStatus().name() : ""));
+                TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+                return ok(Map.of("message", "Task sealed", "status", state != null ? defaultString(state.getStatus()) : ""));
             }
-            return conflict("Task not found or not open-ended");
+            if (!taskQueries.taskExists(taskId)) {
+                return notFound("Task not found: " + taskId);
+            }
+            return conflict("Task intake is already sealed");
         } catch (Exception e) {
             return badRequest("Seal task failed: " + e.getMessage());
         }
     }
 
-    private Map<String, Object> toTaskDetailTaskView(Object task) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> view = TASK_VIEW_OBJECT_MAPPER.convertValue(task, LinkedHashMap.class);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> sharedConfig = (Map<String, Object>) view.get("sharedConfig");
-        if (sharedConfig != null) {
-            view.put("sharedConfig", taskSecurityViewSupport.sanitizeSharedConfig(sharedConfig));
-        }
+    private Map<String, Object> toTaskDetailView(TaskDetailSnapshot task) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("tid", task.getTaskId());
+        view.put("tenantId", task.getTenantId());
+        view.put("taskName", task.getTaskName());
+        view.put("contract", task.getContract());
+        view.put("project", task.getProject());
+        view.put("status", task.getStatus());
+        view.put("taskTargetNumber", task.getTaskTargetNumber());
+        view.put("taskEligibleNumber", task.getTaskEligibleNumber());
+        view.put("taskSuccessNumber", task.getTaskSuccessNumber());
+        view.put("taskNonSuccessNumber", task.getTaskNonSuccessNumber());
+        view.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
+        view.put("peakAssignedWorkerCount", task.getPeakAssignedWorkerCount());
+        view.put("sharedConfig", taskSecurityViewSupport.sanitizeSharedConfig(task.getSharedConfig()));
+        view.put("holdReason", task.getHoldReason());
+        view.put("executionSpec", task.getExecutionSpec());
+        view.put("sourceRef", task.getSourceRef());
+        view.put("intakeStatus", task.getIntakeStatus());
+        view.put("userId", task.getUserId());
+        view.put("createTime", task.getCreateTime());
+        view.put("updateTime", task.getUpdateTime());
+        view.put("startTime", task.getStartTime());
+        view.put("endTime", task.getEndTime());
+        view.put("terminalReason", task.getTerminalReason());
         return view;
     }
 
@@ -462,7 +473,7 @@ public class TaskApiController {
                 .project(resolvedProject)
                 .contract(requestBody.getContract())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .executionSpec(TaskExecutionSpec.normalized(requestBody.getExecutionSpec()))
+                .executionSpec(TaskExecutionOptions.normalized(requestBody.getExecutionSpec()))
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
@@ -510,6 +521,10 @@ public class TaskApiController {
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {
         return source != null && source.toLowerCase().contains(normalizedKeyword);
+    }
+
+    private String defaultString(String value) {
+        return value == null ? "" : value;
     }
 
     private void requireBusinessBindings(String project, String userId) {

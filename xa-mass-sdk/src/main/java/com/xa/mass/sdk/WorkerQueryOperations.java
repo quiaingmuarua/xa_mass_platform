@@ -1,7 +1,7 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 
 import java.util.List;
 
@@ -10,15 +10,15 @@ import java.util.List;
  */
 public interface WorkerQueryOperations {
 
-    Worker getWorker(String workerId);
+    WorkerSnapshot getWorker(String workerId);
 
-    List<Worker> getAllWorkers();
+    List<WorkerSnapshot> getAllWorkers();
 
-    List<WorkerContext> getAllWorkerContexts();
+    List<WorkerContextSnapshot> getAllWorkerContexts();
 
-    List<WorkerContext> getWorkerContexts(String workerId);
+    List<WorkerContextSnapshot> getWorkerContexts(String workerId);
 
-    WorkerContext getWorkerContextById(String workerContextId);
+    WorkerContextSnapshot getWorkerContextById(String workerContextId);
 
     boolean isWorkerLocked(String workerId);
 

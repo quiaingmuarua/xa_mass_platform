@@ -2,8 +2,7 @@ package com.xa.mass.api.model.task;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
-import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
 
 import java.util.Map;
 
@@ -12,9 +11,9 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
 
     private String userId;
     private String project;
-    private TaskContract contract;
+    private String contract;
     private Map<String, Object> sharedConfig;
-    private TaskExecutionSpec executionSpec;
+    private TaskExecutionOptions executionSpec;
     private String sourceRef;
 
     public String getUserId() {
@@ -33,11 +32,11 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.project = project;
     }
 
-    public TaskContract getContract() {
+    public String getContract() {
         return contract;
     }
 
-    public void setContract(TaskContract contract) {
+    public void setContract(String contract) {
         this.contract = contract;
     }
 
@@ -49,11 +48,11 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.sharedConfig = sharedConfig;
     }
 
-    public TaskExecutionSpec getExecutionSpec() {
+    public TaskExecutionOptions getExecutionSpec() {
         return executionSpec;
     }
 
-    public void setExecutionSpec(TaskExecutionSpec executionSpec) {
+    public void setExecutionSpec(TaskExecutionOptions executionSpec) {
         this.executionSpec = executionSpec;
     }
 

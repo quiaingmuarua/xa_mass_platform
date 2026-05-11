@@ -2,7 +2,6 @@ package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -12,6 +11,7 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.junit.jupiter.api.Test;
@@ -292,7 +292,6 @@ class MockRuntimeDataLoaderTest {
                   {
                     "userId": "agent",
                     "project": "demoApp",
-                    "taskName": "mock-task",
                     "sharedConfig": {
                       "textContent": "hello",
                       "routingCode": "us"
@@ -383,11 +382,11 @@ class MockRuntimeDataLoaderTest {
         }
 
         @Override
-        public Task createTaskShell(MassTaskShellCreateRequest request) {
+        public TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request) {
             createdTasks.add(request);
-            Task task = new Task();
-            task.setTid("task-" + createdTasks.size());
-            return task;
+            String taskId = "task-" + createdTasks.size();
+            return new TaskShellSnapshot(taskId, "fixture-" + createdTasks.size(), "default",
+                    request.getProject(), request.getUserId(), request.getContract(), request.getSourceRef());
         }
 
         @Override
@@ -395,9 +394,6 @@ class MockRuntimeDataLoaderTest {
             this.rules.clear();
             this.rules.addAll(rules);
         }
-
-        @Override
-        public Task getTask(String taskId) { return null; }
 
         @Override
         public boolean approveTask(String taskId) { return false; }
@@ -418,7 +414,7 @@ class MockRuntimeDataLoaderTest {
         public boolean cancelTask(String taskId) { return false; }
 
         @Override
-        public boolean terminateTask(String taskId, com.xa.mass.base.enums.task.TaskTerminalReason reason) { return false; }
+        public boolean terminateTask(String taskId, String reason) { return false; }
 
         @Override
         public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) { return 0; }

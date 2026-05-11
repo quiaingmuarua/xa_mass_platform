@@ -1,6 +1,6 @@
 package com.xa.mass.api.sync;
 
-import com.xa.mass.engine.TaskMessageLogicallyFinalEvent;
+import com.xa.mass.engine.TaskWorkLogicallyFinalEvent;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +38,7 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
     public static final String SYNC_KEY = "_syncKey";
 
     private final MassSdkApplication app;
-    private final ConcurrentHashMap<String, CompletableFuture<TaskMessageLogicallyFinalEvent>> pending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<TaskWorkLogicallyFinalEvent>> pending = new ConcurrentHashMap<>();
 
     public SyncTaskResultBridge(MassSdkApplication app) {
         this.app = app;
@@ -46,17 +46,17 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        app.addTaskMessageLogicallyFinalListener((task, finalEvent) ->
-                onMessageLogicallyFinal(task == null ? null : task.getSharedConfig(), finalEvent));
+        app.addTaskWorkLogicallyFinalListener((task, finalEvent) ->
+                onWorkLogicallyFinal(task == null ? null : task.getSharedConfig(), finalEvent));
         logger.info("SyncTaskResultBridge listener registered");
     }
 
-    private void onMessageLogicallyFinal(Map<String, Object> sharedConfig, TaskMessageLogicallyFinalEvent event) {
+    private void onWorkLogicallyFinal(Map<String, Object> sharedConfig, TaskWorkLogicallyFinalEvent event) {
         String correlationId = resolveCorrelationId(sharedConfig);
         if (correlationId == null) {
             return;
         }
-        CompletableFuture<TaskMessageLogicallyFinalEvent> future = pending.remove(correlationId);
+        CompletableFuture<TaskWorkLogicallyFinalEvent> future = pending.remove(correlationId);
         if (future != null) {
             future.complete(event);
         }
@@ -74,7 +74,7 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
      * Registers a future keyed by {@code correlationId}. Must be called
      * <em>before</em> the task is created to avoid a timing gap.
      */
-    public CompletableFuture<TaskMessageLogicallyFinalEvent> register(String correlationId) {
+    public CompletableFuture<TaskWorkLogicallyFinalEvent> register(String correlationId) {
         return pending.computeIfAbsent(correlationId, k -> new CompletableFuture<>());
     }
 
@@ -84,8 +84,8 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
      *
      * @return the completed logical-final event, or empty on timeout / interrupt
      */
-    public Optional<TaskMessageLogicallyFinalEvent> await(String correlationId,
-                                                          CompletableFuture<TaskMessageLogicallyFinalEvent> future,
+    public Optional<TaskWorkLogicallyFinalEvent> await(String correlationId,
+                                                       CompletableFuture<TaskWorkLogicallyFinalEvent> future,
                                                           long timeoutMs) {
         long bounded = Math.max(1L, Math.min(timeoutMs, MAX_TIMEOUT_MS));
         try {

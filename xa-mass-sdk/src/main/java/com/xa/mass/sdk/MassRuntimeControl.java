@@ -1,13 +1,12 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
@@ -35,11 +34,7 @@ public interface MassRuntimeControl {
     /**
      * Create a task through the stable SDK request contract.
      */
-    Task createTaskShell(MassTaskShellCreateRequest request);
-
-    // --- Task lifecycle ---
-
-    Task getTask(String taskId);
+    TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request);
 
     /**
      * Approve a NEW task, moving it to READY for dispatch.
@@ -62,7 +57,7 @@ public interface MassRuntimeControl {
 
     boolean cancelTask(String taskId);
 
-    boolean terminateTask(String taskId, TaskTerminalReason reason);
+    boolean terminateTask(String taskId, String reason);
 
     /**
      * Append additional work items to a task using the payload contract already

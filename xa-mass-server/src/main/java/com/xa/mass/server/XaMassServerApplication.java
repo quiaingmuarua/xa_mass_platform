@@ -1,10 +1,8 @@
 package com.xa.mass.server;
 
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -233,8 +231,7 @@ public class XaMassServerApplication {
                         .transportRuntimeMaxPendingTasks(transportRuntimeMaxPendingTasks)
                                 .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
                                 .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
-                                .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                                .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class));
+                                .queueMode();
                     if (deliveryStoreFactory != null) {
                         transport.deliveryStoreFactory(deliveryStoreFactory);
                     }

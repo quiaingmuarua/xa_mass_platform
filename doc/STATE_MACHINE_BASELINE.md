@@ -17,19 +17,20 @@ Use with:
 ## 1. Global Rules
 
 1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, `WorkerContextStatus`, `TaskTerminalReason`, and the neutral projection enums under `mass-storage-api` are the current lifecycle vocabulary.
-2. No lifecycle change is complete without:
+2. `Task.contract` is the runtime contract truth (`SESSION | BATCH`), and ingress form must not redefine lifecycle, terminal, or retry semantics.
+3. No lifecycle change is complete without:
    - code change
    - this file update
    - trace update
    - E2E coverage update
-3. `TERMINAL` task semantics are interpreted by `status + terminalReason`, not status alone.
-4. Task closure stays modeled as one final status plus terminal reason. Do not split `TaskStatus` into multiple terminal enums unless API, validation, trace, and E2E baselines are redesigned together.
-5. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
-6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
-7. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-8. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMessageProjection` remains the bounded compatibility read projection for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains the auditable execution-history residue for concrete dispatch attempts.
-9. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
-10. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
+4. `TERMINAL` task semantics are interpreted by `status + terminalReason`, not status alone.
+5. Task closure stays modeled as one final status plus terminal reason. Do not split `TaskStatus` into multiple terminal enums unless API, validation, trace, and E2E baselines are redesigned together.
+6. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
+7. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
+8. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
+9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMessageProjection` remains the bounded compatibility read projection for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains the auditable execution-history residue for concrete dispatch attempts.
+10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
+11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
 
 ## 2. TaskStatus
 

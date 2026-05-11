@@ -9,8 +9,6 @@ import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.InternalDebugTaskInvocationApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
-import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -20,6 +18,8 @@ import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -87,11 +87,11 @@ public class InternalDebugTaskInvocationController {
 
             long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
             String correlationId = UUID.randomUUID().toString();
-            CompletableFuture<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> future = syncBridge.register(correlationId);
+            CompletableFuture<com.xa.mass.engine.TaskWorkLogicallyFinalEvent> future = syncBridge.register(correlationId);
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            var task = submitterTaskCreate != null
+            TaskShellSnapshot task = submitterTaskCreate != null
                     ? taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                     toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
                             submitterTaskCreate.userId(), correlationId),
@@ -107,21 +107,21 @@ public class InternalDebugTaskInvocationController {
                 ));
             }
 
-            taskAdmin.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+            taskAdmin.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(requestBody.getItems())
                     .build());
-            taskAdmin.sealTask(task.getTid());
-            taskAdmin.approveTask(task.getTid());
+            taskAdmin.sealTask(task.getTaskId());
+            taskAdmin.approveTask(task.getTaskId());
 
-            String taskId = task.getTid();
-            Optional<com.xa.mass.engine.TaskMessageLogicallyFinalEvent> result =
+            String taskId = task.getTaskId();
+            Optional<com.xa.mass.engine.TaskWorkLogicallyFinalEvent> result =
                     syncBridge.await(correlationId, future, resolvedTimeoutMs);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("taskId", taskId);
             if (result.isPresent()) {
-                com.xa.mass.engine.TaskMessageLogicallyFinalEvent msg = result.get();
+                com.xa.mass.engine.TaskWorkLogicallyFinalEvent msg = result.get();
                 data.put("messageId", msg.messageId() != null ? msg.messageId() : "");
                 data.put("synced", true);
                 data.put("timedOut", false);
@@ -233,7 +233,7 @@ public class InternalDebugTaskInvocationController {
         if (requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank()) {
             validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
         }
-        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        TaskExecutionOptions executionSpec = new TaskExecutionOptions();
         executionSpec.setBatchSize(Math.max(requestBody.getBatchSize(), 1));
         executionSpec.setMaxRuntimeSeconds(requestBody.getMaxRuntimeSeconds());
         executionSpec.setWorkloadClass(requestBody.getWorkloadClass());
@@ -241,7 +241,7 @@ public class InternalDebugTaskInvocationController {
                 .userId(resolvedUserId)
                 .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
-                .contract(TaskContract.BATCH)
+                .contract("BATCH")
                 .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
                 .executionSpec(executionSpec)
                 .sourceRef(requestBody.getSourceRef())

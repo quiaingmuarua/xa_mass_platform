@@ -8,6 +8,10 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 
 - XA Mass Platform is a general distributed task scheduling platform.
 - Stable kernel: `Task / assignment / result / audit / terminal policy`.
+- Kernel truth is currently split across:
+  - `Task.contract` for runtime contract
+  - `Task.intakeStatus` for intake-window truth
+  - `TaskWorkRuntime` for ready/delayed/lease/result/counter truth
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
 - Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.

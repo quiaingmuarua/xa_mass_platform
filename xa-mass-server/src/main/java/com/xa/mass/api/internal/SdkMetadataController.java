@@ -6,6 +6,7 @@ import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
@@ -91,13 +92,13 @@ public class SdkMetadataController {
 
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
-        var workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
+        List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
         List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> {
                     boolean directRuntime = event.getTaskModes().isEmpty();
                     List<String> onlineWorkerIds = workers.stream()
-                            .filter(worker -> worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()))
+                            .filter(worker -> "ONLINE".equals(worker.getStatus()))
                             .filter(worker -> worker.getSupportedEventCodes() != null
                                     && worker.getSupportedEventCodes().contains(event.getCode()))
                             .map(worker -> worker.getWorkerId())
@@ -145,7 +146,7 @@ public class SdkMetadataController {
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
-                    item.put("status", worker.getStatus() != null ? worker.getStatus().name() : null);
+                    item.put("status", worker.getStatus());
                     item.put("workerGroupId", worker.getWorkerGroupId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
@@ -155,7 +156,7 @@ public class SdkMetadataController {
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("online", worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()));
+                    item.put("online", "ONLINE".equals(worker.getStatus()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));

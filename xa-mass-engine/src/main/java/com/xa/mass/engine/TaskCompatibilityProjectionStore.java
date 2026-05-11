@@ -62,7 +62,7 @@ final class TaskCompatibilityProjectionStore {
     }
 
     void upsertWorkSummaryBestEffort(String taskId,
-                                     TaskResultService.RuntimeWorkSummary workSummary,
+                                     WorkSummaryResidue workSummary,
                                      String action) {
         if (workSummary == null) {
             return;
@@ -82,7 +82,7 @@ final class TaskCompatibilityProjectionStore {
 
     void upsertAttemptSummaryBestEffort(String taskId,
                                         String messageId,
-                                        TaskResultService.AttemptProjectionView attempt,
+                                        WorkAttemptResidue attempt,
                                         String action) {
         if (attempt == null) {
             return;
@@ -118,7 +118,7 @@ final class TaskCompatibilityProjectionStore {
         return new WorkAttemptStatsView(stats.getTotalAttempts(), stats.getActiveAttempts());
     }
 
-    private TaskDetailStore.TaskMessageProjection toWorkProjectionRecord(TaskResultService.RuntimeWorkSummary workSummary) {
+    private TaskDetailStore.TaskMessageProjection toWorkProjectionRecord(WorkSummaryResidue workSummary) {
         return new TaskDetailStore.TaskMessageProjection(
                 workSummary.messageId(),
                 workSummary.taskId(),
@@ -143,7 +143,7 @@ final class TaskCompatibilityProjectionStore {
         );
     }
 
-    private TaskDetailStore.TaskMessageAttemptProjection toWorkAttemptProjectionRecord(TaskResultService.AttemptProjectionView attempt) {
+    private TaskDetailStore.TaskMessageAttemptProjection toWorkAttemptProjectionRecord(WorkAttemptResidue attempt) {
         return new TaskDetailStore.TaskMessageAttemptProjection(
                 attempt.attemptId(),
                 attempt.taskId(),
@@ -178,5 +178,40 @@ final class TaskCompatibilityProjectionStore {
     }
 
     record WorkAttemptStatsView(long totalAttempts, long activeAttempts) {
+    }
+
+    record WorkSummaryResidue(String messageId,
+                              String taskId,
+                              String latestAttemptId,
+                              String latestAttemptWorkerId,
+                              String latestAttemptWorkerContextId,
+                              String latestAttemptBatchId,
+                              TaskWorkProjectionState.MessageStatus status,
+                              java.time.LocalDateTime assignedTime,
+                              java.time.LocalDateTime createTime,
+                              java.time.LocalDateTime updateTime,
+                              java.time.LocalDateTime startTime,
+                              java.time.LocalDateTime completeTime,
+                              int retryCount,
+                              int maxRetryCount,
+                              String errorMessage,
+                              String errorCode,
+                              TaskWorkProjectionState.MessageFinalReason finalReason,
+                              String payloadRef,
+                              java.util.Map<String, Object> output) {
+    }
+
+    record WorkAttemptResidue(String attemptId,
+                              String taskId,
+                              String messageId,
+                              int attemptNo,
+                              String workerId,
+                              String workerContextId,
+                              String batchId,
+                              TaskWorkProjectionState.AttemptStatus status,
+                              TaskWorkProjectionState.AttemptFinalReason finalReason,
+                              String errorMessage,
+                              String errorCode,
+                              java.util.Map<String, Object> output) {
     }
 }

@@ -1,7 +1,6 @@
 package com.xa.mass.testing.chaos;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
 import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
 import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
@@ -123,7 +122,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         "retry-exhausted chaos worker should be online before task creation"
                 );
 
-                Task task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.multiMessage(
+                TaskShellSnapshot task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.multiMessage(
                         "sdk-chaos",
                         PROJECT_CODE,
                         "sdk-polling-retry-exhausted",
@@ -145,14 +144,14 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                 );
 
                 TaskOutcomeSnapshot outcome = runtime.waitForTerminalTask(
-                        task.getTid(),
+                        task.getTaskId(),
                         MESSAGE_COUNT,
                         config.timeoutSeconds(),
                         "retry-exhausted task must converge to TERMINAL"
                 );
 
                 List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.taskDetailStore(), task.getTid(), MESSAGE_COUNT).messages();
+                        runtime.taskDetailStore(), task.getTaskId(), MESSAGE_COUNT).messages();
 
                 ChaosSupport.require(messages.size() == MESSAGE_COUNT,
                         "task should have exactly " + MESSAGE_COUNT + " message projections");
@@ -168,7 +167,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                                     + ", got " + msg.retryCount());
 
                     List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), msg.messageId());
+                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), msg.messageId());
                     ChaosSupport.require(attempts.size() == EXPECTED_ATTEMPTS_PER_MESSAGE,
                             "message " + msg.messageId() + " should have exactly "
                                     + EXPECTED_ATTEMPTS_PER_MESSAGE + " attempts, got " + attempts.size());
@@ -191,14 +190,14 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                     }
                 }
 
-                ChaosSupport.require(outcome.status().equals(TaskStatus.TERMINAL.name()),
+                ChaosSupport.require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");
                 ChaosSupport.require("ALL_MESSAGES_FAILED".equals(outcome.terminalReason()),
                         "task terminalReason should be ALL_MESSAGES_FAILED, got " + outcome.terminalReason());
 
                 // Trace contract assertions
                 TraceEventAssertions.of(traceSink)
-                        .forTask(task.getTid())
+                        .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
@@ -219,13 +218,13 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                                 "expectedAttemptsPerMessage", EXPECTED_ATTEMPTS_PER_MESSAGE,
                                 "totalExpectedFailures", TOTAL_EXPECTED_FAILURES
                         ),
-                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTid()),
+                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
                         "task", outcome.toMap(),
                         "workers", Map.of("worker", worker.snapshot().toMap())
                 ));
 
                 return new ChaosReport(
-                        task.getTid(),
+                        task.getTaskId(),
                         MESSAGE_COUNT,
                         MAX_RETRY_PER_MESSAGE,
                         worker.failedResults(),

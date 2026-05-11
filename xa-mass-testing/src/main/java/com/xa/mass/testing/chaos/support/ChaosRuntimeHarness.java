@@ -1,14 +1,14 @@
 package com.xa.mass.testing.chaos.support;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -180,25 +180,25 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public void waitForTaskStatus(String taskId,
-                                  TaskStatus expectedStatus,
+                                  String expectedStatus,
                                   int timeoutSeconds,
                                   String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
                 () -> {
-                    Task current = app.getTask(taskId);
-                    return current != null && current.getStatus() == expectedStatus;
+                    TaskStateSnapshot current = app.getTaskState(taskId);
+                    return current != null && expectedStatus.equals(current.getStatus());
                 },
                 timeoutSeconds,
                 failureMessage
         );
     }
 
-    public Task createApprovedTask(TaskCreateSpec spec) {
-        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+    public TaskShellSnapshot createApprovedTask(TaskCreateSpec spec) {
+        TaskExecutionOptions executionSpec = new TaskExecutionOptions();
         executionSpec.setBatchSize(spec.batchSize());
         executionSpec.setMaxRuntimeSeconds(spec.maxRuntimeSeconds());
         executionSpec.setDefaultMaxRetryCount(spec.defaultMaxRetryCount());
-        Task task = createTask(
+        TaskShellSnapshot task = createTask(
                 MassTaskShellCreateRequest.builder()
                         .userId(spec.userId())
                         .project(spec.projectCode())
@@ -210,25 +210,25 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 new ArrayList<>(spec.inputs()),
                 false
         );
-        ChaosSupport.require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
+        ChaosSupport.require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
         return task;
     }
 
-    private Task createTask(MassTaskShellCreateRequest request,
-                            String eventCode,
-                            List<Object> items,
-                            boolean keepIntakeOpen) {
-        Task task = app.createTaskShell(request);
+    private TaskShellSnapshot createTask(MassTaskShellCreateRequest request,
+                                         String eventCode,
+                                         List<Object> items,
+                                         boolean keepIntakeOpen) {
+        TaskShellSnapshot task = app.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
-            app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+            app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
                     .build());
         }
         if (!keepIntakeOpen) {
-            ChaosSupport.require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+            ChaosSupport.require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
         }
-        return app.getTask(task.getTid());
+        return task;
     }
 
     public void waitForWorkerOnline(String workerId, int timeoutSeconds, String failureMessage) throws Exception {
@@ -284,8 +284,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                    String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
                 () -> {
-                    Task current = app.getTask(taskId);
-                    return current != null && current.getStatus() == TaskStatus.TERMINAL;
+                    TaskStateSnapshot current = app.getTaskState(taskId);
+                    return current != null && "TERMINAL".equals(current.getStatus());
                 },
                 timeoutSeconds,
                 failureMessage
@@ -294,7 +294,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public TaskOutcomeSnapshot snapshotTaskOutcome(String taskId, int messageLimit) {
-        Task task = app.getTask(taskId);
+        TaskStateSnapshot task = app.getTaskState(taskId);
         ChaosSupport.require(task != null, "task should exist: " + taskId);
         CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(taskDetailStore, taskId, messageLimit);
         List<CompatibilityMessageView> messages = messageSnapshot.messages();
@@ -311,9 +311,9 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
             ));
         }
         return new TaskOutcomeSnapshot(
-                task.getTid(),
-                ChaosSupport.enumName(task.getStatus()),
-                ChaosSupport.enumName(task.getTerminalReason()),
+                task.getTaskId(),
+                task.getStatus(),
+                task.getTerminalReason(),
                 snapshots
         );
     }

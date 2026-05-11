@@ -1,12 +1,5 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskExecutionSpec;
-import com.xa.mass.base.model.TenantConstants;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
@@ -21,6 +14,11 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskAccessSnapshot;
+import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -71,7 +69,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskShellDelegatesToSdkShellCreate() throws Exception {
-        Task createdTask = taskWithStatus(TaskStatus.NEW);
+        TaskShellSnapshot createdTask = taskShell("task-001", "demoApp", "agent");
         when(taskAdmin.createTaskShell(any(MassTaskShellCreateRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/api/v1/tasks")
@@ -92,11 +90,11 @@ class TaskApiControllerTest {
         verify(taskAdmin).createTaskShell(captor.capture());
         MassTaskShellCreateRequest request = captor.getValue();
         assertEquals("demoApp", request.getProject());
-        assertEquals(TenantConstants.DEFAULT_TENANT_ID, request.getTenantId());
+        assertEquals("default", request.getTenantId());
         assertEquals("agent", request.getUserId());
         assertNull(request.getContract());
         assertEquals(2, request.getExecutionSpec().getBatchSize());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, request.getExecutionSpec().getWorkloadClass());
+        assertEquals("INTERACTIVE", request.getExecutionSpec().getWorkloadClass());
     }
 
     @Test
@@ -134,10 +132,7 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskShellWithSdkCredentialUsesSubmitterScope() throws Exception {
-        Task createdTask = taskWithStatus(TaskStatus.NEW);
-        createdTask.setTid("task-sdk-001");
-        createdTask.setProject("crawlerApp");
-        createdTask.setUser(UserRef.of("crawler-agent"));
+        TaskShellSnapshot createdTask = taskShell("task-sdk-001", "crawlerApp", "crawler-agent");
 
         when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "crawler-agent",
@@ -166,7 +161,7 @@ class TaskApiControllerTest {
 
     @Test
     void approveUsesCommandRoute() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW), taskWithStatus(TaskStatus.READY));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW"), taskState("READY"));
         when(taskAdmin.approveTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}:approve", TASK_ID))
@@ -176,9 +171,9 @@ class TaskApiControllerTest {
 
     @Test
     void resumeReturnsTerminalCloseMessageWhenAlreadyCompletedWhilePaused() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskQueries.taskExists(TASK_ID)).thenReturn(true);
         when(taskAdmin.resumeTaskDetailed(TASK_ID))
-                .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", TaskTerminalReason.ALL_MESSAGES_SUCCEEDED.name(), true));
+                .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", "ALL_MESSAGES_SUCCEEDED", true));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}:resume", TASK_ID))
                 .andExpect(status().isOk())
@@ -188,9 +183,7 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskDoesNotReturnItemsByDefault() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setTaskName("detail-task");
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("READY", "detail-task", "demoApp"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -202,10 +195,7 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemsPassesBatchEventCode() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setProject("demoApp");
-
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskAdmin.appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class))).thenReturn(2);
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
@@ -228,9 +218,7 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemsRejectsMissingEventCode() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setProject("demoApp");
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
@@ -264,7 +252,7 @@ class TaskApiControllerTest {
     @Test
     void sealTaskUsesCommandRoute() throws Exception {
         when(taskAdmin.sealTask(TASK_ID)).thenReturn(true);
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.RUNNING));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING"));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}:seal", TASK_ID))
                 .andExpect(status().isOk())
@@ -273,7 +261,6 @@ class TaskApiControllerTest {
 
     @Test
     void deleteTaskUsesVersionedRoute() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
         when(taskAdmin.deleteTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(delete("/api/v1/tasks/{taskId}", TASK_ID))
@@ -283,7 +270,7 @@ class TaskApiControllerTest {
 
     @Test
     void updateTaskUsesPatchRoute() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW"));
         when(taskAdmin.updateTaskDefinition(any(), any())).thenReturn(true);
 
         mockMvc.perform(patch("/api/v1/tasks/{taskId}", TASK_ID)
@@ -297,12 +284,44 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.message").value("Task updated"));
     }
 
-    private Task taskWithStatus(TaskStatus status) {
-        Task task = new Task();
-        task.setTid(TASK_ID);
-        task.setStatus(status);
-        task.setExecutionSpec(new TaskExecutionSpec());
-        return task;
+    private TaskShellSnapshot taskShell(String taskId, String project, String userId) {
+        return new TaskShellSnapshot(taskId, "task-name", "default", project, userId, null, null);
+    }
+
+    private TaskStateSnapshot taskState(String status) {
+        return new TaskStateSnapshot(TASK_ID, status, null, "OPEN");
+    }
+
+    private TaskAccessSnapshot taskAccess(String project) {
+        return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
+    }
+
+    private TaskDetailSnapshot taskDetail(String status, String taskName, String project) {
+        return new TaskDetailSnapshot(
+                TASK_ID,
+                "default",
+                taskName,
+                null,
+                project,
+                status,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Map.of(),
+                null,
+                new TaskExecutionOptions(),
+                null,
+                "OPEN",
+                "agent",
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private ProjectEventCatalog createTaskCatalog() {

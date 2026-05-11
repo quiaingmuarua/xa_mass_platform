@@ -54,6 +54,10 @@ engine-internal listener packages.
 
 Keep these facts fixed unless the owning global baselines change:
 
+- kernel truth is the explicit triad:
+  - `Task.contract`
+  - `Task.intakeStatus`
+  - `TaskWorkRuntime`
 - task classification is now two-axis, not ingress-shaped:
   - `Task.contract`: kernel lifecycle/dispatch/terminal contract
   - `Task.workloadClass`: runtime tuning intent only

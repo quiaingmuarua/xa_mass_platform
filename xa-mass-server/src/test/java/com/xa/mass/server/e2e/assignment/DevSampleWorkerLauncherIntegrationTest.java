@@ -1,9 +1,9 @@
 package com.xa.mass.server.e2e.assignment;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -112,15 +112,14 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
     }
 
     private void waitForWorkerOnline(String workerId) throws InterruptedException {
-        Worker latestWorker = null;
+        WorkerSnapshot latestWorker = null;
         for (int attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
             latestWorker = app.getAllWorkers().stream()
                     .filter(worker -> workerId.equals(worker.getWorkerId()))
                     .findFirst()
                     .orElse(null);
             if (latestWorker != null
-                    && latestWorker.getStatus() != null
-                    && "ONLINE".equals(latestWorker.getStatus().name())) {
+                    && "ONLINE".equals(latestWorker.getStatus())) {
                 return;
             }
             Thread.sleep(250L);

@@ -1,16 +1,16 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 
 /**
  * Task mutation/admin surface used by embedded shells and repo-local tooling.
  */
 public interface TaskAdminOperations {
 
-    com.xa.mass.base.model.Task createTaskShell(MassTaskShellCreateRequest request);
+    TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request);
 
     boolean approveTask(String taskId);
 
@@ -24,7 +24,7 @@ public interface TaskAdminOperations {
 
     boolean cancelTask(String taskId);
 
-    boolean terminateTask(String taskId, TaskTerminalReason reason);
+    boolean terminateTask(String taskId, String reason);
 
     boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request);
 

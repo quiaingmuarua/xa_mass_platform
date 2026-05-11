@@ -3,9 +3,6 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -13,6 +10,8 @@ import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -161,14 +160,14 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             return;
         }
         for (BootstrapTaskFixture dto : dtos) {
-            Task task = runtime.createTaskShell(toShellCreateRequest(dto));
+            TaskShellSnapshot task = runtime.createTaskShell(toShellCreateRequest(dto));
             if (dto.getInputs() != null && !dto.getInputs().isEmpty()) {
-                runtime.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                runtime.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                         .items(new ArrayList<>(dto.getInputs()))
                         .build());
             }
             if (!dto.isKeepIntakeOpen()) {
-                runtime.sealTask(task.getTid());
+                runtime.sealTask(task.getTaskId());
             }
         }
         logger.info("Loaded {} task requests [path={}]", dtos.length, taskConfigPath);
@@ -316,7 +315,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private MassTaskShellCreateRequest toShellCreateRequest(BootstrapTaskFixture dto) {
-        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        TaskExecutionOptions executionSpec = new TaskExecutionOptions();
         executionSpec.setBatchSize(dto.getBatchSize());
         executionSpec.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
         executionSpec.setWorkloadClass(dto.getWorkloadClass());
@@ -337,7 +336,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         private int batchSize;
         private boolean keepIntakeOpen;
         private int maxRuntimeSeconds;
-        private TaskWorkloadClass workloadClass;
+        private String workloadClass;
         private String sourceRef;
 
         public String getUserId() {
@@ -396,11 +395,11 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             this.maxRuntimeSeconds = maxRuntimeSeconds;
         }
 
-        public TaskWorkloadClass getWorkloadClass() {
+        public String getWorkloadClass() {
             return workloadClass;
         }
 
-        public void setWorkloadClass(TaskWorkloadClass workloadClass) {
+        public void setWorkloadClass(String workloadClass) {
             this.workloadClass = workloadClass;
         }
 

@@ -76,17 +76,17 @@ class TaskResultService {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "compatibility projection could not be recovered", 0);
             return WorkMutationOutcome.rejected();
         }
-        RuntimeWorkSummary messageState = activeProjection.messageState();
-        if (messageState.isCompleted()) {
+        RuntimeWorkSummary workSummary = activeProjection.workSummary();
+        if (workSummary.isCompleted()) {
             logger.info("Work item {} of task {} is already in final status {}, skip expiry",
-                    messageId, taskId, messageState.status());
+                    messageId, taskId, workSummary.status());
             return WorkMutationOutcome.rejected();
         }
         AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
-        MessageStatus fromStatus = messageState.status();
-        if (!isExpiryAcceptableMessageState(messageState.status())) {
+        MessageStatus fromStatus = workSummary.status();
+        if (!isExpiryAcceptableMessageState(workSummary.status())) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
-                    "work item status " + messageState.status() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
+                    "work item status " + workSummary.status() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
             return WorkMutationOutcome.rejected();
         }
         boolean retryRequestedByPolicy = shouldRetryExpiredLease(task, fromStatus);
@@ -112,7 +112,7 @@ class TaskResultService {
         RuntimeWorkSummary currentSummary;
         RuntimeWorkSummary logicallyFinalSummary = null;
         if (retryScheduled) {
-            RuntimeWorkSummary retrySummary = summarizeRetryReset(messageState);
+            RuntimeWorkSummary retrySummary = summarizeRetryReset(workSummary);
             traceEventLogger.taskWorkRetryReset(retrySummary.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
@@ -126,7 +126,7 @@ class TaskResultService {
                             "persist expiry retry-reset compatibility summary"));
             currentSummary = retrySummary;
         } else {
-            logicallyFinalSummary = summarizeLeaseExpiryFinal(task, messageState, expiryDetail);
+            logicallyFinalSummary = summarizeLeaseExpiryFinal(task, workSummary, expiryDetail);
             traceEventLogger.taskWorkStatusTransition(
                     logicallyFinalSummary.toTraceView(),
                     activeAttempt.attemptId(),
@@ -146,7 +146,7 @@ class TaskResultService {
             currentSummary = logicallyFinalSummary;
         }
         traceEventLogger.leaseExpired(
-                messageState.toTraceView(),
+                workSummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
                 activeAttempt.workerContextId(),
@@ -267,17 +267,17 @@ class TaskResultService {
                     + "and no runtime projection could be recovered", messageId, taskId);
             return WorkMutationOutcome.rejected();
         }
-        RuntimeWorkSummary messageState = activeProjection.messageState();
+        RuntimeWorkSummary workSummary = activeProjection.workSummary();
         AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
 
         traceEventLogger.callbackAccepted(
-                messageState.toTraceView(),
+                workSummary.toTraceView(),
                 success ? "success callback received" : "failure callback received");
 
         if (success) {
-            return handleSuccess(task, taskId, messageState, activeAttempt, detail, output);
+            return handleSuccess(task, taskId, workSummary, activeAttempt, detail, output);
         }
-        return handleRuntimeAcceptedFailure(task, taskId, messageState, activeAttempt, applyStatus, detail, errorCode, output);
+        return handleRuntimeAcceptedFailure(task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
     }
 
     WorkMutationOutcome compensateDispatchSubmitFailure(Task task,
@@ -309,9 +309,9 @@ class TaskResultService {
                     messageId, taskId);
             return WorkMutationOutcome.rejected();
         }
-        RuntimeWorkSummary messageState = activeProjection.messageState();
+        RuntimeWorkSummary workSummary = activeProjection.workSummary();
 
-        AttemptProjectionView activeAttempt = resolveOrRecoverDispatchAttemptProjection(messageState, activeLease, dispatchBinding);
+        AttemptProjectionView activeAttempt = resolveOrRecoverDispatchAttemptProjection(workSummary, activeLease, dispatchBinding);
         if (activeAttempt == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt projection",
                     messageId, taskId);
@@ -330,7 +330,7 @@ class TaskResultService {
         RuntimeWorkSummary retrySummary = resetForRetryWithoutPublishingAttemptClosure(
                 task,
                 taskId,
-                messageState,
+                workSummary,
                 activeAttempt,
                 normalizedDetail,
                 DISPATCH_SUBMIT_FAILED_ERROR_CODE,
@@ -615,7 +615,7 @@ class TaskResultService {
                 trigger,
                 "TaskManager",
                 resetReason);
-        // Message projection write is @CompatibilityProjectionOnly - submit async.
+        // Work projection write is @CompatibilityProjectionOnly residue - submit async.
         final RuntimeWorkSummary capturedRetrySummary = retrySummary;
         taskManager.submitProjectionWrite(() ->
                 persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
@@ -739,7 +739,11 @@ class TaskResultService {
     private void persistWorkProjectionBestEffort(String taskId,
                                                  RuntimeWorkSummary workSummary,
                                                  String action) {
-        compatibilityProjectionStore.upsertWorkSummaryBestEffort(taskId, workSummary, action);
+        compatibilityProjectionStore.upsertWorkSummaryBestEffort(
+                taskId,
+                toProjectionResidue(workSummary),
+                action
+        );
     }
 
     @CompatibilityProjectionOnly
@@ -747,7 +751,59 @@ class TaskResultService {
                                                           String messageId,
                                                           AttemptProjectionView attempt,
                                                           String action) {
-        compatibilityProjectionStore.upsertAttemptSummaryBestEffort(taskId, messageId, attempt, action);
+        compatibilityProjectionStore.upsertAttemptSummaryBestEffort(
+                taskId,
+                messageId,
+                toProjectionResidue(attempt),
+                action
+        );
+    }
+
+    private TaskCompatibilityProjectionStore.WorkSummaryResidue toProjectionResidue(RuntimeWorkSummary workSummary) {
+        if (workSummary == null) {
+            return null;
+        }
+        return new TaskCompatibilityProjectionStore.WorkSummaryResidue(
+                workSummary.messageId(),
+                workSummary.taskId(),
+                workSummary.latestAttemptId(),
+                workSummary.latestAttemptWorkerId(),
+                workSummary.latestAttemptWorkerContextId(),
+                workSummary.latestAttemptBatchId(),
+                workSummary.status(),
+                workSummary.assignedTime(),
+                workSummary.createTime(),
+                workSummary.updateTime(),
+                workSummary.startTime(),
+                workSummary.completeTime(),
+                workSummary.retryCount(),
+                workSummary.maxRetryCount(),
+                workSummary.errorMessage(),
+                workSummary.errorCode(),
+                workSummary.finalReason(),
+                workSummary.payloadRef(),
+                workSummary.output()
+        );
+    }
+
+    private TaskCompatibilityProjectionStore.WorkAttemptResidue toProjectionResidue(AttemptProjectionView attempt) {
+        if (attempt == null) {
+            return null;
+        }
+        return new TaskCompatibilityProjectionStore.WorkAttemptResidue(
+                attempt.attemptId(),
+                attempt.taskId(),
+                attempt.messageId(),
+                attempt.attemptNo(),
+                attempt.workerId(),
+                attempt.workerContextId(),
+                attempt.batchId(),
+                attempt.status(),
+                attempt.finalReason(),
+                attempt.errorMessage(),
+                attempt.errorCode(),
+                attempt.output()
+        );
     }
 
     private boolean isCallbackAcceptableMessageState(MessageStatus workStatus) {
@@ -1073,7 +1129,7 @@ class TaskResultService {
         }
     }
 
-    private record ActiveRuntimeProjection(RuntimeWorkSummary messageState, AttemptProjectionView activeAttempt) {
+    private record ActiveRuntimeProjection(RuntimeWorkSummary workSummary, AttemptProjectionView activeAttempt) {
     }
 
     static final class AttemptProjectionView {

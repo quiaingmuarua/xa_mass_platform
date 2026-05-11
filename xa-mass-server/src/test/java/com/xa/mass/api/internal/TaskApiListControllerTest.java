@@ -1,9 +1,9 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskSummarySnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,27 +38,41 @@ class TaskApiListControllerTest {
 
     @Test
     void listTasksFiltersByKeywordAndStatus() throws Exception {
-        Task runningTask = new Task();
-        runningTask.setTid("task-001");
-        runningTask.setStatus(TaskStatus.RUNNING);
-        runningTask.setTaskName("Warm worker pool");
-        runningTask.setProject("demoApp");
-        runningTask.setTaskEligibleNumber(10);
-        runningTask.setTaskSuccessNumber(6);
-        runningTask.getExecutionSpec().setBatchSize(2);
-        runningTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 9, 30));
+        TaskExecutionOptions runningExecution = new TaskExecutionOptions();
+        runningExecution.setBatchSize(2);
+        TaskSummarySnapshot runningTask = new TaskSummarySnapshot(
+                "task-001",
+                "Warm worker pool",
+                "default",
+                "demoApp",
+                "agent",
+                null,
+                "RUNNING",
+                null,
+                runningExecution,
+                6,
+                10,
+                LocalDateTime.of(2026, 4, 21, 9, 30)
+        );
 
-        Task pausedTask = new Task();
-        pausedTask.setTid("task-002");
-        pausedTask.setStatus(TaskStatus.PAUSED);
-        pausedTask.setTaskName("Review backlog");
-        pausedTask.setProject("demoApp");
-        pausedTask.setTaskEligibleNumber(8);
-        pausedTask.setTaskSuccessNumber(2);
-        pausedTask.getExecutionSpec().setBatchSize(1);
-        pausedTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 8, 0));
+        TaskExecutionOptions pausedExecution = new TaskExecutionOptions();
+        pausedExecution.setBatchSize(1);
+        TaskSummarySnapshot pausedTask = new TaskSummarySnapshot(
+                "task-002",
+                "Review backlog",
+                "default",
+                "demoApp",
+                "agent",
+                null,
+                "PAUSED",
+                null,
+                pausedExecution,
+                2,
+                8,
+                LocalDateTime.of(2026, 4, 21, 8, 0)
+        );
 
-        when(taskQueries.getTasksByStatus(TaskStatus.RUNNING)).thenReturn(List.of(runningTask));
+        when(taskQueries.getTaskSummariesByStatus("RUNNING")).thenReturn(List.of(runningTask));
 
         mockMvc.perform(get("/api/v1/tasks")
                         .param("keyword", "warm")

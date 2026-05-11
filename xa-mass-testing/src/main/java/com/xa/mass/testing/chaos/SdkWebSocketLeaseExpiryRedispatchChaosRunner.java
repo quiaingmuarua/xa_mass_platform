@@ -4,15 +4,15 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -134,8 +134,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 chaosWorker.start();
                 waitForWorkerOnline(app, CHAOS_WORKER_ID, "chaos worker should be online before scenario starts");
 
-                Task task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
-                CompatibilityMessageView message = waitForSingleMessage(runtime.taskDetailStore(), task.getTid());
+                TaskShellSnapshot task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
+                CompatibilityMessageView message = waitForSingleMessage(runtime.taskDetailStore(), task.getTaskId());
 
                 waitForCondition(
                         () -> activeChaosWorker.disconnectCycles() >= 1,
@@ -150,7 +150,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
                 CompatibilityAttemptView firstAttempt = waitForActiveAttemptOnWorker(
                         runtime.taskDetailStore(),
-                        task.getTid(),
+                        task.getTaskId(),
                         message.messageId(),
                         CHAOS_WORKER_ID,
                         "first active attempt should stay bound to the chaos worker before lease expiry"
@@ -160,7 +160,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId()).size() >= 2,
+                        () -> ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
@@ -168,13 +168,13 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 TaskOutcome outcome = waitForTerminalTask(
                         app,
                         runtime.taskDetailStore(),
-                        task.getTid(),
+                        task.getTaskId(),
                         "lease-expiry redispatch task must converge"
                 );
                 CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
                 List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTid(), message.messageId());
+                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);
@@ -202,7 +202,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
                         "latest attempt worker should be the steady worker");
 
-                require(outcome.status().equals(TaskStatus.TERMINAL.name()),
+                require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");
                 require("ALL_MESSAGES_SUCCEEDED".equals(outcome.terminalReason()),
                         "task terminal reason should be ALL_MESSAGES_SUCCEEDED");
@@ -235,7 +235,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
                 return new ChaosReport(
                         runtime.transportPort(),
-                        task.getTid(),
+                        task.getTaskId(),
                         finalMessage.messageId(),
                         chaosWorker.disconnectCycles(),
                         chaosWorker.receivedDispatches(),
@@ -298,8 +298,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     .build());
         }
 
-        private Task createUntargetedTask(MassSdkApplication app, String taskName) {
-            Task task = createTask(app, MassTaskShellCreateRequest.builder()
+        private TaskShellSnapshot createUntargetedTask(MassSdkApplication app, String taskName) {
+            TaskShellSnapshot task = createTask(app, MassTaskShellCreateRequest.builder()
                     .userId("sdk-chaos")
                     .project(PROJECT_CODE)
                     .sourceRef(taskName)
@@ -315,31 +315,31 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                             "target", taskName + "-target-0"
                     )),
                     false);
-            require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
+            require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
             return task;
         }
 
-        private Task createTask(MassSdkApplication app,
-                                MassTaskShellCreateRequest request,
-                                List<Object> items,
-                                boolean keepIntakeOpen) {
-            Task task = app.createTaskShell(request);
+        private TaskShellSnapshot createTask(MassSdkApplication app,
+                                             MassTaskShellCreateRequest request,
+                                             List<Object> items,
+                                             boolean keepIntakeOpen) {
+            TaskShellSnapshot task = app.createTaskShell(request);
             if (items != null && !items.isEmpty()) {
-                app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                         .eventCode(TASK_EVENT_CODE)
                         .items(items)
                         .build());
             }
             if (!keepIntakeOpen) {
-                require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+                require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
             }
-            return app.getTask(task.getTid());
+            return task;
         }
 
-        private TaskExecutionSpec taskExecutionSpec(int batchSize,
-                                                    int maxRuntimeSeconds,
-                                                    int defaultMaxRetryCount) {
-            TaskExecutionSpec spec = new TaskExecutionSpec();
+        private TaskExecutionOptions taskExecutionSpec(int batchSize,
+                                                       int maxRuntimeSeconds,
+                                                       int defaultMaxRetryCount) {
+            TaskExecutionOptions spec = new TaskExecutionOptions();
             spec.setBatchSize(batchSize);
             spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
             spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
@@ -380,14 +380,14 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                                 String failureMessage) throws Exception {
             waitForCondition(
                     () -> {
-                        Task current = app.getTask(taskId);
-                        return current != null && current.getStatus() == TaskStatus.TERMINAL;
+                        TaskStateSnapshot current = app.getTaskState(taskId);
+                        return current != null && "TERMINAL".equals(current.getStatus());
                     },
                     config.timeoutSeconds(),
                     failureMessage
             );
 
-            Task task = app.getTask(taskId);
+            TaskStateSnapshot task = app.getTaskState(taskId);
             require(task != null, "task should exist: " + taskId);
             CompatibilityMessageSnapshot messageSnapshot =
                     ProjectionTestViews.snapshot(taskDetailStore, taskId, 1);
@@ -406,9 +406,9 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 ));
             }
             return new TaskOutcome(
-                    task.getTid(),
-                    task.getStatus() != null ? task.getStatus().name() : null,
-                    task.getTerminalReason() != null ? task.getTerminalReason().name() : null,
+                    task.getTaskId(),
+                    task.getStatus(),
+                    task.getTerminalReason(),
                     messageOutcomes
             );
         }

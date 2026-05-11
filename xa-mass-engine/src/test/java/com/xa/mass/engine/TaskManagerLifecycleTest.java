@@ -174,7 +174,7 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskRejectsWhenNoInputsProvided() {
+    void createBatchTaskAllowsMissingInitialInputsAndCreatesSealedEmptyShell() {
         TaskCreateSpec dto = new TaskCreateSpec();
         dto.setSourceRef("no-targets");
         dto.setProject("demoApp");
@@ -183,8 +183,13 @@ class TaskManagerLifecycleTest {
         dto.setInputs(null);
         dto.setBatchSize(0);
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
-        assertTrue(error.getMessage().contains("inputs"));
+        Task task = createTask(dto);
+
+        assertEquals(TaskContract.BATCH, task.getContract());
+        assertEquals(TaskStatus.NEW, task.getStatus());
+        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
+        assertEquals(0, task.getTaskTargetNumber());
+        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
     }
 
     @Test
@@ -246,7 +251,7 @@ class TaskManagerLifecycleTest {
     @Test
     void createBatchTaskAllowsInitialInputsEvenWhenSourceRefLooksFileLike() {
         TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("file-shell-with-inline-input");
+        dto.setSourceRef("file-shell-with-initial-items");
         dto.setProject("demoApp");
         dto.setUserId("agent");
         dto.setContract(TaskContract.BATCH);
@@ -545,21 +550,6 @@ class TaskManagerLifecycleTest {
         assertEquals(7, visible.maxRetryCount());
         assertEquals(payloadRef, visible.payloadRef());
         assertNotNull(visible.createTime());
-    }
-
-    @Test
-    void createBatchTaskRejectsOversizedInlineInputs() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("oversized-inline");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setInputs(java.util.stream.IntStream.rangeClosed(0, TaskManager.MAX_INITIAL_INLINE_INPUTS)
-                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
-                .toList());
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
-
-        assertTrue(error.getMessage().contains("BATCH task initial inputs exceed inline create limit"));
     }
 
     @Test
@@ -2997,23 +2987,6 @@ class TaskManagerLifecycleTest {
             throw new IllegalArgumentException("task request body is required");
         }
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
-        if (!request.shouldKeepIntakeOpen(contract)
-                && (request.getInputs() == null || request.getInputs().isEmpty())) {
-            throw new IllegalArgumentException("inputs must be a non-empty list");
-        }
-        if (contract == TaskContract.BATCH
-                && request.getInputs() != null
-                && request.getInputs().size() > TaskManager.MAX_INITIAL_INLINE_INPUTS) {
-            throw new IllegalArgumentException("BATCH task initial inputs exceed inline create limit: "
-                    + request.getInputs().size() + " > " + TaskManager.MAX_INITIAL_INLINE_INPUTS);
-        }
-        if (contract == TaskContract.SESSION
-                && request.getInputs() != null
-                && request.getInputs().size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
-            throw new IllegalArgumentException("STREAM task initial inputs exceed ingest batch limit: "
-                    + request.getInputs().size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
-        }
-
         Task task = manager.createTaskShell(request.toShellRequest(contract));
         if (request.getInputs() != null && !request.getInputs().isEmpty()) {
             manager.appendTaskItems(task.getTid(), request.getInputs());

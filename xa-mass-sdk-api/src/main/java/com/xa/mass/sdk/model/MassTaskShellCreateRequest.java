@@ -1,8 +1,5 @@
 package com.xa.mass.sdk.model;
 
-import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.model.TaskExecutionSpec;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,18 +9,18 @@ public final class MassTaskShellCreateRequest {
     private final String userId;
     private final String tenantId;
     private final String project;
-    private final TaskContract contract;
+    private final String contract;
     private final Map<String, Object> sharedConfig;
-    private final TaskExecutionSpec executionSpec;
+    private final TaskExecutionOptions executionSpec;
     private final String sourceRef;
 
     private MassTaskShellCreateRequest(Builder builder) {
         this.userId = builder.userId;
         this.tenantId = normalizeString(builder.tenantId);
         this.project = builder.project;
-        this.contract = builder.contract;
+        this.contract = normalizeToken(builder.contract);
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
-        this.executionSpec = TaskExecutionSpec.normalized(builder.executionSpec);
+        this.executionSpec = TaskExecutionOptions.normalized(builder.executionSpec);
         this.sourceRef = normalizeString(builder.sourceRef);
     }
 
@@ -43,7 +40,7 @@ public final class MassTaskShellCreateRequest {
         return project;
     }
 
-    public TaskContract getContract() {
+    public String getContract() {
         return contract;
     }
 
@@ -51,7 +48,7 @@ public final class MassTaskShellCreateRequest {
         return sharedConfig;
     }
 
-    public TaskExecutionSpec getExecutionSpec() {
+    public TaskExecutionOptions getExecutionSpec() {
         return executionSpec;
     }
 
@@ -63,9 +60,9 @@ public final class MassTaskShellCreateRequest {
         private String userId;
         private String tenantId;
         private String project;
-        private TaskContract contract;
+        private String contract;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
-        private TaskExecutionSpec executionSpec;
+        private TaskExecutionOptions executionSpec;
         private String sourceRef;
 
         private Builder() {
@@ -86,7 +83,7 @@ public final class MassTaskShellCreateRequest {
             return this;
         }
 
-        public Builder contract(TaskContract contract) {
+        public Builder contract(String contract) {
             this.contract = contract;
             return this;
         }
@@ -96,7 +93,7 @@ public final class MassTaskShellCreateRequest {
             return this;
         }
 
-        public Builder executionSpec(TaskExecutionSpec executionSpec) {
+        public Builder executionSpec(TaskExecutionOptions executionSpec) {
             this.executionSpec = executionSpec;
             return this;
         }
@@ -123,5 +120,12 @@ public final class MassTaskShellCreateRequest {
             return null;
         }
         return value.trim();
+    }
+
+    private static String normalizeToken(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim().toUpperCase(java.util.Locale.ROOT);
     }
 }

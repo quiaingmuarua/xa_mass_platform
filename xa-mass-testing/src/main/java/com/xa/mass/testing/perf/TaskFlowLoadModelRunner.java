@@ -189,7 +189,7 @@ public final class TaskFlowLoadModelRunner {
 
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
-                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
                 taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
                 taskEvents.addTaskTerminalListener(task -> {
                     if (Objects.equals(taskIdRef.get(), task.getTid())) {
@@ -460,10 +460,10 @@ public final class TaskFlowLoadModelRunner {
         }
 
         @Override
-        public void onTaskMessageAttemptClosed(Task task, com.xa.mass.engine.TaskMessageAttemptClosedEvent event) {
+        public void onTaskWorkAttemptClosed(Task task, com.xa.mass.engine.TaskWorkAttemptClosedEvent event) {
             metrics.attemptClosedInvocations.increment();
             long start = System.nanoTime();
-            super.onTaskMessageAttemptClosed(task, event);
+            super.onTaskWorkAttemptClosed(task, event);
             metrics.totalAttemptClosedNanos.add(System.nanoTime() - start);
         }
     }
@@ -477,11 +477,6 @@ public final class TaskFlowLoadModelRunner {
         @Override
         public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
-            return true;
         }
 
         @Override

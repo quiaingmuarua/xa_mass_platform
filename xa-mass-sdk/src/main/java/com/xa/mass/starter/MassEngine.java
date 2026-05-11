@@ -66,7 +66,7 @@ public class MassEngine {
     private Consumer<Task> taskReadyListener;
     private Consumer<Task> taskDispatchSignalListener;
     private Consumer<Task> taskTerminalListener;
-    private com.xa.mass.engine.TaskMessageAttemptClosedListener taskMessageAttemptClosedListener;
+    private com.xa.mass.engine.TaskWorkAttemptClosedListener taskWorkAttemptClosedListener;
 
     public MassEngine(EngineConfig config) {
         this.config = config;
@@ -130,11 +130,11 @@ public class MassEngine {
                     assignWorker.submit(task);
                 }
             };
-            taskMessageAttemptClosedListener = resourceReleaseListener::onTaskMessageAttemptClosed;
+            taskWorkAttemptClosedListener = resourceReleaseListener::onTaskWorkAttemptClosed;
             taskTerminalListener = resourceReleaseListener::onTaskTerminal;
             eventListeners.addTaskReadyListener(taskReadyListener);
             eventListeners.addTaskDispatchListener(taskDispatchSignalListener);
-            eventListeners.addTaskMessageAttemptClosedListener(taskMessageAttemptClosedListener);
+            eventListeners.addTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
             eventListeners.addTaskTerminalListener(taskTerminalListener);
             recoverRuntimeReadyTasks();
 
@@ -168,8 +168,8 @@ public class MassEngine {
                 }
             }
             if (eventListeners != null) {
-                if (taskMessageAttemptClosedListener != null) {
-                    eventListeners.removeTaskMessageAttemptClosedListener(taskMessageAttemptClosedListener);
+                if (taskWorkAttemptClosedListener != null) {
+                    eventListeners.removeTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
                 }
                 if (taskTerminalListener != null) {
                     eventListeners.removeTaskTerminalListener(taskTerminalListener);
@@ -194,7 +194,7 @@ public class MassEngine {
             resourceReleaseListener = null;
             taskReadyListener = null;
             taskDispatchSignalListener = null;
-            taskMessageAttemptClosedListener = null;
+            taskWorkAttemptClosedListener = null;
             taskTerminalListener = null;
             config.shutdownTaskRuntime();
             taskCommands = null;

@@ -21,7 +21,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
+import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
@@ -56,6 +56,8 @@ import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
+import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -1201,15 +1203,17 @@ class MassSdkTest {
                 .project("demoApp")
                 .sourceRef("sdk-task")
                 .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
-                .executionSpec(taskExecutionSpec(null, 2, 600, 0))
+                .executionSpec(taskExecutionOptions(null, 2, 600, 0))
                 .build();
 
-        Task result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
+        TaskDetailSnapshot result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), true);
 
-        assertSame(hydratedTask, result);
+        assertNotNull(result);
+        Assertions.assertEquals("task-001", result.getTaskId());
+        Assertions.assertEquals("demoApp", result.getProject());
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
         verify(engine).createTaskShell(captor.capture());
         TaskShellCreateRequestDto dto = captor.getValue();
@@ -1353,7 +1357,7 @@ class MassSdkTest {
         MassEngine engine = mock(MassEngine.class);
         TaskEventService taskEvents = mock(TaskEventService.class);
         EngineConfig config = mock(EngineConfig.class);
-        TaskMessageLogicallyFinalListener listener = mock(TaskMessageLogicallyFinalListener.class);
+        TaskWorkLogicallyFinalListener listener = mock(TaskWorkLogicallyFinalListener.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1362,9 +1366,9 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        app.addTaskMessageLogicallyFinalListener(listener);
+        app.addTaskWorkLogicallyFinalListener(listener);
 
-        verify(taskEvents).addTaskMessageLogicallyFinalListener(listener);
+        verify(taskEvents).addTaskWorkLogicallyFinalListener(listener);
     }
 
     @Test
@@ -1512,15 +1516,17 @@ class MassSdkTest {
                 .project("demoApp")
                 .sourceRef("crawler-stream")
                 .sharedConfig(Map.of("routingCode", "us"))
-                .executionSpec(taskExecutionSpec(null, 1, 60, 0))
+                .executionSpec(taskExecutionOptions(null, 1, 60, 0))
                 .build();
 
-        Task result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
+        TaskDetailSnapshot result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
                 Map.of("url", "https://example.test/page-1"),
                 Map.of("url", "https://example.test/page-2")
         ), true);
 
-        assertSame(hydratedTask, result);
+        assertNotNull(result);
+        Assertions.assertEquals("task-stream-001", result.getTaskId());
+        Assertions.assertEquals("demoApp", result.getProject());
         var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
         verify(engine).createTaskShell(captor.capture());
         TaskShellCreateRequestDto dto = captor.getValue();
@@ -1968,11 +1974,11 @@ class MassSdkTest {
                     .eventCodes(List.of("chatbot.reply"))
                     .build());
 
-            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
                     .sourceRef("custom-project-task")
-                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
                     .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), false);
 
             assertNotNull(task);
@@ -2009,11 +2015,11 @@ class MassSdkTest {
                     .eventCodes(List.of("bot.command"))
                     .build());
 
-            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppCatalogTest")
                     .sourceRef("bot-command-task")
-                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
                     .build(), "bot.command", List.of(Map.of("text", "/start")), false);
 
             assertNotNull(task);
@@ -2490,7 +2496,12 @@ class MassSdkTest {
                     .adapterId("websocket")
                     .transportHint("realtime")
                     .build());
-            app.getWorker("realtime-worker-websocket").setOnlineStrategy(null);
+            Worker worker = requireDelegate(app).getEngine().getConfig()
+                    .getWorkerStorage()
+                    .getWorker("realtime-worker-websocket")
+                    .orElseThrow();
+            worker.setOnlineStrategy(null);
+            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerStorage().updateWorker(worker));
 
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
         } finally {
@@ -2680,15 +2691,15 @@ class MassSdkTest {
             PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
 
-            Task task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
                     .project("demoApp")
                     .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
-                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
                     .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), false);
 
-            assertTrue(app.approveTask(task.getTid()));
+            assertTrue(app.approveTask(task.getTaskId()));
 
             TaskDispatchItem dispatchItem = waitFor(
                     Duration.ofSeconds(10),
@@ -2698,7 +2709,7 @@ class MassSdkTest {
                     }
             );
             assertNotNull(dispatchItem);
-            Assertions.assertEquals(task.getTid(), dispatchItem.getTaskId());
+            Assertions.assertEquals(task.getTaskId(), dispatchItem.getTaskId());
             Assertions.assertEquals("https://example.test/page-1", dispatchItem.getInput().get("url"));
             Assertions.assertEquals("pull", dispatchItem.getSharedConfig().get("mode"));
 
@@ -2709,21 +2720,21 @@ class MassSdkTest {
                     Map.of("httpStatus", 200, "bodyLength", 42)
             ));
 
-            Task terminalTask = waitFor(
+            TaskDetailSnapshot terminalTask = waitFor(
                     Duration.ofSeconds(5),
                     () -> {
-                        Task current = app.getTask(task.getTid());
-                        return current != null && current.getStatus() == TaskStatus.TERMINAL ? current : null;
+                        TaskDetailSnapshot current = app.getTaskDetail(task.getTaskId());
+                        return current != null && "TERMINAL".equals(current.getStatus()) ? current : null;
                     }
             );
 
             assertNotNull(terminalTask);
-            Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
+            Assertions.assertEquals("ALL_MESSAGES_SUCCEEDED", terminalTask.getTerminalReason());
 
             com.xa.mass.storage.api.TaskDetailStore.TaskMessageProjection finalMessage =
                     requireDelegate(app).getEngine().getConfig()
                     .getTaskDetailStore()
-                    .getTaskMessageProjections(task.getTid(), 1)
+                    .getTaskMessageProjections(task.getTaskId(), 1)
                     .get(0);
             Assertions.assertEquals("SUCCESS", String.valueOf(finalMessage.status()));
             Assertions.assertEquals(200, finalMessage.output().get("httpStatus"));
@@ -2889,8 +2900,8 @@ class MassSdkTest {
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {
         List<Executable> operations = List.of(
-                () -> app.getTask("task-1"),
-                () -> app.getTasksByStatus(TaskStatus.READY),
+                () -> app.getTaskDetail("task-1"),
+                () -> app.getTaskSummariesByStatus("READY"),
                 () -> app.approveTask("task-1"),
                 () -> app.rejectTask("task-1"),
                 () -> app.blockTask("task-1"),
@@ -2898,7 +2909,7 @@ class MassSdkTest {
                 () -> app.resumeTaskDetailed("task-1"),
                 () -> app.resumeTask("task-1"),
                 () -> app.cancelTask("task-1"),
-                () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
+                () -> app.terminateTask("task-1", "MANUAL_CANCELLED"),
                 () -> app.appendTaskItems("task-1", MassTaskItemBatchAppendRequest.builder().items(List.of()).build()),
                 () -> app.sealTask("task-1"),
                 () -> app.taskDiagnostics().resolveTaskState("task-1"),
@@ -3060,24 +3071,24 @@ class MassSdkTest {
                 ));
     }
 
-    private static Task createShellWithOptionalItems(MassSdkApplication app,
-                                                     MassTaskShellCreateRequest request,
-                                                     String eventCode,
-                                                     List<Object> items,
-                                                     boolean keepIntakeOpen) {
+    private static TaskDetailSnapshot createShellWithOptionalItems(MassSdkApplication app,
+                                                                   MassTaskShellCreateRequest request,
+                                                                   String eventCode,
+                                                                   List<Object> items,
+                                                                   boolean keepIntakeOpen) {
         Objects.requireNonNull(app, "app");
         Objects.requireNonNull(request, "request");
-        Task task = app.createTaskShell(request);
+        String taskId = app.createTaskShell(request).getTaskId();
         if (items != null && !items.isEmpty()) {
-            app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+            app.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(items)
                     .build());
         }
         if (!keepIntakeOpen) {
-            assertTrue(app.sealTask(task.getTid()));
+            assertTrue(app.sealTask(taskId));
         }
-        return app.getTask(task.getTid());
+        return app.getTaskDetail(taskId);
     }
 
     @FunctionalInterface
@@ -3256,6 +3267,18 @@ class MassSdkTest {
                                                        int defaultMaxRetryCount) {
         TaskExecutionSpec spec = new TaskExecutionSpec();
         spec.setWorkloadClass(workloadClass);
+        spec.setBatchSize(batchSize);
+        spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
+    }
+
+    private static TaskExecutionOptions taskExecutionOptions(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
+                                                             int batchSize,
+                                                             int maxRuntimeSeconds,
+                                                             int defaultMaxRetryCount) {
+        TaskExecutionOptions spec = new TaskExecutionOptions();
+        spec.setWorkloadClass(workloadClass == null ? null : workloadClass.name());
         spec.setBatchSize(batchSize);
         spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
         spec.setDefaultMaxRetryCount(defaultMaxRetryCount);

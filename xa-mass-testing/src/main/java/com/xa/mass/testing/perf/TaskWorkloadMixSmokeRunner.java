@@ -136,7 +136,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 registerWorkers(workerManager, config.workerCount());
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
-                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
                 taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
                 taskEvents.addTaskTerminalListener(task -> {
                     if (TaskWorkloadClass.BULK == task.getExecutionSpec().getWorkloadClass()) {
@@ -603,11 +603,6 @@ public final class TaskWorkloadMixSmokeRunner {
         @Override
         public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
-            return true;
         }
 
         @Override

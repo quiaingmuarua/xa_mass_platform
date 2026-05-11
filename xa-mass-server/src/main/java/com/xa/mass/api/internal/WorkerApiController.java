@@ -4,6 +4,8 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,13 +54,13 @@ public class WorkerApiController {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
-                .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
-                    item.put("status", worker.getStatus() != null ? worker.getStatus().name() : null);
+                    item.put("status", worker.getStatus());
                     item.put("workerGroupId", worker.getWorkerGroupId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", worker.getSupportedProjects());
@@ -85,13 +87,13 @@ public class WorkerApiController {
     @GetMapping("/worker-contexts")
     public ApiResponse<Map<String, Object>> listWorkerContexts() {
         List<Map<String, Object>> items = workerQueries.getAllWorkerContexts().stream()
-                .sorted(Comparator.comparing(context -> context.getWorkerContextId(), Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(WorkerContextSnapshot::getWorkerContextId, Comparator.nullsLast(String::compareTo)))
                 .map(workerContext -> {
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerContextId", workerContext.getWorkerContextId());
                     item.put("workerId", workerContext.getWorkerId());
                     item.put("project", workerContext.getProject());
-                    item.put("status", workerContext.getStatus() != null ? workerContext.getStatus().name() : null);
+                    item.put("status", workerContext.getStatus());
                     item.put("routingTags", workerContext.getRoutingTags());
                     item.put("attributes", workerContext.getAttributes());
                     item.put("lastBindTaskId", workerContext.getLastBindTaskId());

@@ -4,16 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -146,9 +144,9 @@ public final class SdkTransportLoadRunner {
                 }
 
                 for (int i = 0; i < config.taskCount(); i++) {
-                    Task task = createTask(app, buildTaskRequest(i));
-                    taskIds.add(task.getTid());
-                    require(app.approveTask(task.getTid()), "task approval should succeed for " + task.getTid());
+                    TaskShellSnapshot task = createTask(app, buildTaskRequest(i));
+                    taskIds.add(task.getTaskId());
+                    require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
                 }
 
                 waitForTerminalTasks(app, taskIds);
@@ -346,25 +344,25 @@ public final class SdkTransportLoadRunner {
             );
         }
 
-        private Task createTask(MassSdkApplication app, TaskCreateSpec request) {
-            Task task = app.createTaskShell(request.shell());
+        private TaskShellSnapshot createTask(MassSdkApplication app, TaskCreateSpec request) {
+            TaskShellSnapshot task = app.createTaskShell(request.shell());
             if (request.items() != null && !request.items().isEmpty()) {
-                app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+                app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                         .eventCode(TASK_EVENT_CODE)
                         .items(request.items())
                         .build());
             }
             if (!request.keepIntakeOpen()) {
-                require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
+                require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
             }
-            return app.getTask(task.getTid());
+            return task;
         }
 
-        private TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
-                                                    int batchSize,
-                                                    int maxRuntimeSeconds,
-                                                    int defaultMaxRetryCount) {
-            TaskExecutionSpec spec = new TaskExecutionSpec();
+        private TaskExecutionOptions taskExecutionSpec(String workloadClass,
+                                                       int batchSize,
+                                                       int maxRuntimeSeconds,
+                                                       int defaultMaxRetryCount) {
+            TaskExecutionOptions spec = new TaskExecutionOptions();
             spec.setWorkloadClass(workloadClass);
             spec.setBatchSize(batchSize);
             spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
@@ -396,8 +394,8 @@ public final class SdkTransportLoadRunner {
                 require(System.nanoTime() < deadlineNanos,
                         "timed out before all SDK load-model tasks reached TERMINAL; pending=" + pending.size());
                 pending.removeIf(taskId -> {
-                    Task task = app.getTask(taskId);
-                    return task != null && task.getStatus() == TaskStatus.TERMINAL;
+                    TaskStateSnapshot task = app.getTaskState(taskId);
+                    return task != null && "TERMINAL".equals(task.getStatus());
                 });
                 if (!pending.isEmpty()) {
                     Thread.sleep(100L);
@@ -409,12 +407,11 @@ public final class SdkTransportLoadRunner {
             Map<String, Long> terminalReasons = new LinkedHashMap<>();
             int terminalTasks = 0;
             for (String taskId : taskIds) {
-                Task task = app.getTask(taskId);
+                TaskStateSnapshot task = app.getTaskState(taskId);
                 require(task != null, "task should exist: " + taskId);
-                require(task.getStatus() == TaskStatus.TERMINAL, "task should be terminal: " + taskId);
+                require("TERMINAL".equals(task.getStatus()), "task should be terminal: " + taskId);
                 terminalTasks++;
-                TaskTerminalReason terminalReason = task.getTerminalReason();
-                String terminalReasonName = terminalReason != null ? terminalReason.name() : "<null>";
+                String terminalReasonName = task.getTerminalReason() != null ? task.getTerminalReason() : "<null>";
                 terminalReasons.merge(terminalReasonName, 1L, Long::sum);
             }
             return new FinalTaskStats(terminalTasks, terminalReasons);
@@ -1186,7 +1183,7 @@ public final class SdkTransportLoadRunner {
                               int pollBatchSize,
                               int workerProcessingThreads,
                               int processingDelayMillis,
-                              TaskWorkloadClass workloadClass,
+                              String workloadClass,
                               int retryFailureEveryNth,
                               int maxRetryCount,
                               int timeoutSeconds) {
@@ -1200,7 +1197,7 @@ public final class SdkTransportLoadRunner {
                     intProperty("mass.sdk.load.pollBatchSize", 4),
                     intProperty("mass.sdk.load.workerProcessingThreads", 2),
                     intProperty("mass.sdk.load.processingDelayMillis", 5),
-                    workloadClassProperty("mass.sdk.load.workloadClass", TaskWorkloadClass.BULK),
+                    workloadClassProperty("mass.sdk.load.workloadClass", "BULK"),
                     intProperty("mass.sdk.load.retryFailureEveryNth", 0),
                     intProperty("mass.sdk.load.maxRetryCount", 2),
                     intProperty("mass.sdk.load.timeoutSeconds", 60)
@@ -1230,7 +1227,7 @@ public final class SdkTransportLoadRunner {
             values.put("pollBatchSize", pollBatchSize);
             values.put("workerProcessingThreads", workerProcessingThreads);
             values.put("processingDelayMillis", processingDelayMillis);
-            values.put("workloadClass", workloadClass.name());
+            values.put("workloadClass", workloadClass);
             values.put("retryFailureEveryNth", retryFailureEveryNth);
             values.put("maxRetryCount", maxRetryCount);
             values.put("timeoutSeconds", timeoutSeconds);
@@ -1405,12 +1402,12 @@ public final class SdkTransportLoadRunner {
         return Integer.parseInt(raw.trim());
     }
 
-    private static TaskWorkloadClass workloadClassProperty(String key, TaskWorkloadClass defaultValue) {
+    private static String workloadClassProperty(String key, String defaultValue) {
         String raw = System.getProperty(key);
         if (raw == null || raw.isBlank()) {
             return defaultValue;
         }
-        return TaskWorkloadClass.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        return raw.trim().toUpperCase(Locale.ROOT);
     }
 
     private static boolean booleanProperty(String key, boolean defaultValue) {

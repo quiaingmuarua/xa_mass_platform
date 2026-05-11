@@ -1,9 +1,5 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -12,6 +8,8 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.WorkerContextSnapshot;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,18 +64,20 @@ class WorkerApiControllerTest {
 
     @Test
     void listWorkersReturnsReadModel() throws Exception {
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-001");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setWorkerGroupId("group-a");
-        worker.setAgentVersion("1.2.3");
-        worker.setAdapterId("websocket");
-        worker.setOnlineStrategy("realtime");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("demo.dispatch"));
-        worker.setAttributes(Map.of("region", "us"));
-        worker.setLastHeartbeat(LocalDateTime.of(2026, 4, 21, 10, 15));
-        worker.setUpdateTime(LocalDateTime.of(2026, 4, 21, 10, 16));
+        WorkerSnapshot worker = new WorkerSnapshot(
+                "worker-001",
+                "ONLINE",
+                "1.2.3",
+                LocalDateTime.of(2026, 4, 21, 10, 15),
+                List.of("demoApp"),
+                List.of("demo.dispatch"),
+                "group-a",
+                "websocket",
+                "realtime",
+                Map.of("region", "us"),
+                null,
+                LocalDateTime.of(2026, 4, 21, 10, 16)
+        );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
@@ -111,16 +111,19 @@ class WorkerApiControllerTest {
 
     @Test
     void listWorkerContextsReturnsReadModel() throws Exception {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-001");
-        workerContext.setWorkerId("worker-001");
-        workerContext.setProject("demoApp");
-        workerContext.setStatus(WorkerContextStatus.OCCUPIED);
-        workerContext.setRoutingTags(java.util.Set.of("telegram", "sms"));
-        workerContext.setAttributes(Map.of("account", "acc-01"));
-        workerContext.setLastBindTaskId("task-123");
-        workerContext.setLastUsedTime(LocalDateTime.of(2026, 4, 21, 9, 50));
-        workerContext.setUpdateTime(LocalDateTime.of(2026, 4, 21, 9, 55));
+        WorkerContextSnapshot workerContext = new WorkerContextSnapshot(
+                "ctx-001",
+                "worker-001",
+                "demoApp",
+                "OCCUPIED",
+                java.util.Set.of("telegram", "sms"),
+                "task-123",
+                null,
+                null,
+                LocalDateTime.of(2026, 4, 21, 9, 55),
+                LocalDateTime.of(2026, 4, 21, 9, 50),
+                Map.of("account", "acc-01")
+        );
 
         when(workerQueries.getAllWorkerContexts()).thenReturn(List.of(workerContext));
 

@@ -1,12 +1,11 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -57,11 +56,11 @@ class SdkMetadataControllerTest {
                 .description("Test demo app")
                 .eventCodes(java.util.List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
-        Worker crawlerWorker = worker("crawler-worker-1", WorkerStatus.ONLINE,
+        WorkerSnapshot crawlerWorker = worker("crawler-worker-1", "ONLINE",
                 List.of("otherApp"), List.of("crawler.fetch-page"));
-        Worker offlineChatWorker = worker("chat-worker-1", WorkerStatus.OFFLINE,
+        WorkerSnapshot offlineChatWorker = worker("chat-worker-1", "OFFLINE",
                 List.of("demoApp"), List.of("chatbot.reply"));
-        Worker scopeOnlyWorker = worker("scope-only-worker", WorkerStatus.ONLINE,
+        WorkerSnapshot scopeOnlyWorker = worker("scope-only-worker", "ONLINE",
                 List.of("demoApp"), List.of());
         WorkerQueryOperations workerQueries = mock(WorkerQueryOperations.class);
         when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
@@ -162,22 +161,32 @@ class SdkMetadataControllerTest {
                 .andExpect(jsonPath("$.code").value(404));
     }
 
-    private Worker worker(String workerId,
-                          WorkerStatus status,
-                          List<String> supportedProjects,
-                          List<String> supportedEventCodes) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setStatus(status);
-        worker.setSupportedProjects(supportedProjects);
-        worker.setSupportedEventCodes(supportedEventCodes);
+    private WorkerSnapshot worker(String workerId,
+                                  String status,
+                                  List<String> supportedProjects,
+                                  List<String> supportedEventCodes) {
+        String adapterId = null;
+        String transportHint = null;
         if ("crawler-worker-1".equals(workerId)) {
-            worker.setAdapterId("websocket");
-            worker.setOnlineStrategy("realtime");
+            adapterId = "websocket";
+            transportHint = "realtime";
         } else if ("scope-only-worker".equals(workerId)) {
-            worker.setAdapterId("polling");
-            worker.setOnlineStrategy("polling");
+            adapterId = "polling";
+            transportHint = "polling";
         }
-        return worker;
+        return new WorkerSnapshot(
+                workerId,
+                status,
+                null,
+                null,
+                supportedProjects,
+                supportedEventCodes,
+                null,
+                adapterId,
+                transportHint,
+                java.util.Map.of(),
+                null,
+                null
+        );
     }
 }

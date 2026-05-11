@@ -90,7 +90,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = app.getTask(taskId);
+        Task task = taskStorage.getTask(taskId).orElseThrow();
         task.setStatus(TaskStatus.RUNNING);
         task.setTerminalReason(null);
         assertTrue(updateStoredTask(task));
@@ -121,7 +121,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = app.getTask(taskId);
+        Task task = taskStorage.getTask(taskId).orElseThrow();
         task.setTerminalReason(null);
         assertTrue(updateStoredTask(task));
 
@@ -148,7 +148,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = app.getTask(taskId);
+        Task task = taskStorage.getTask(taskId).orElseThrow();
         task.setTerminalReason(TaskTerminalReason.ALL_MESSAGES_FAILED);
         assertTrue(updateStoredTask(task));
 

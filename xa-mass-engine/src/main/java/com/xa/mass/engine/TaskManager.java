@@ -61,7 +61,6 @@ import java.util.function.Supplier;
 public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort, TaskResultIngestPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
-    static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
@@ -508,7 +507,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * Audit-only invariant validation. This path is intentionally bounded and
      * should not be treated as a hot-path runtime query surface. This method
      * validates task/runtime aggregates without scanning the full
-     * compatibility message projection.
+     * compatibility work projection residue.
      */
     @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
@@ -518,7 +517,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     /**
      * Explicit deep audit of the persisted compatibility projection plus
      * attempt aggregates. This is diagnostic-only and may require a full
-     * bounded message snapshot.
+     * bounded work-projection snapshot.
      */
     @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {

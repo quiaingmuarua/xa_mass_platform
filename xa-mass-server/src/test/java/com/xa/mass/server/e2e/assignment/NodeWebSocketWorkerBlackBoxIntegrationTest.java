@@ -2,10 +2,10 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -78,7 +78,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 ))
         ), workerHeaders);
         assertApiOk(registerResponse);
-        Worker registeredWorker = app.getWorker(WORKER_ID);
+        WorkerSnapshot registeredWorker = app.getWorker(WORKER_ID);
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
@@ -151,7 +151,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 ))
         ), workerHeaders);
         assertApiOk(registerResponse);
-        Worker registeredWorker = app.getWorker(STOCK_WORKER_ID);
+        WorkerSnapshot registeredWorker = app.getWorker(STOCK_WORKER_ID);
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
