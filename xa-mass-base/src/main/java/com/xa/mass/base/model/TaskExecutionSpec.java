@@ -16,9 +16,9 @@ public class TaskExecutionSpec {
     private int defaultMaxRetryCount;
 
     public TaskExecutionSpec() {
-        this.contract = TaskContract.BATCH;
+        this.contract = null;
         this.profile = TaskExecutionProfile.STANDARD;
-        this.workloadClass = TaskWorkloadClass.BULK;
+        this.workloadClass = null;
         this.batchSize = 1;
         this.maxRuntimeSeconds = 0;
         this.defaultMaxRetryCount = 0;
@@ -43,7 +43,7 @@ public class TaskExecutionSpec {
     }
 
     public void setContract(TaskContract contract) {
-        this.contract = contract == null ? TaskContract.BATCH : contract;
+        this.contract = contract;
     }
 
     public TaskExecutionProfile getProfile() {
@@ -59,7 +59,7 @@ public class TaskExecutionSpec {
     }
 
     public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        this.workloadClass = workloadClass == null ? TaskWorkloadClass.BULK : workloadClass;
+        this.workloadClass = workloadClass;
     }
 
     public int getBatchSize() {

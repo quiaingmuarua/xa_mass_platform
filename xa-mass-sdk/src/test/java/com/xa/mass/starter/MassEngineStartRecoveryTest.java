@@ -3,6 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -56,12 +57,12 @@ class MassEngineStartRecoveryTest {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setUserId("user-1");
         dto.setProject("demoApp");
-        dto.setTaskName("startup-recovery");
+        dto.setSourceRef("startup-recovery");
         dto.setSharedConfig(Map.of());
-        dto.setBatchSize(1);
+        dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
         Task task = taskCommands.createTaskShell(dto);
-        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")), 3);
+        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
         assertTrue(taskCommands.sealTask(task.getTid()));
         assertTrue(taskCommands.approveTask(task.getTid()));
 
@@ -134,12 +135,12 @@ class MassEngineStartRecoveryTest {
             TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
             dto.setUserId("user-1");
             dto.setProject("demoApp");
-            dto.setTaskName("batch-delayed-retry-recovery");
+            dto.setSourceRef("batch-delayed-retry-recovery");
             dto.setSharedConfig(Map.of());
-            dto.setBatchSize(1);
+            dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
             Task task = taskCommands.createTaskShell(dto);
-            taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")), 3);
+            taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
             assertTrue(taskCommands.sealTask(task.getTid()));
             assertTrue(taskCommands.approveTask(task.getTid()));
 
@@ -177,7 +178,7 @@ class MassEngineStartRecoveryTest {
                 TaskDispatchBinding firstDispatch = firstDispatchRef.get();
                 assertNotNull(firstDispatch);
 
-                assertTrue(resultIngestFacade.handleTaskMessageResult(
+                assertTrue(resultIngestFacade.ingestTaskResult(
                         task.getTid(),
                         firstDispatch.messageId(),
                         false,
@@ -199,6 +200,13 @@ class MassEngineStartRecoveryTest {
         } finally {
             restoreProperty("xa.mass.engine.bulkWorkRetryDelayMillis", previousBulkRetryDelay);
         }
+    }
+
+    private static TaskExecutionSpec taskExecutionSpec(int batchSize, int defaultMaxRetryCount) {
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(batchSize);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
     }
 
     private static void restoreProperty(String key, String previousValue) {

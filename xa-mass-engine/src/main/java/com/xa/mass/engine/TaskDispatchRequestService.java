@@ -108,7 +108,7 @@ class TaskDispatchRequestService {
         if (refreshedTask == null || refreshedTask.getStatus().isFinal()) {
             return;
         }
-        if (!taskManager.hasPendingDispatchableMessages(taskId)) {
+        if (!taskManager.hasDispatchReadyWork(taskId)) {
             return;
         }
         taskManager.publishTaskDispatchRequested(refreshedTask);

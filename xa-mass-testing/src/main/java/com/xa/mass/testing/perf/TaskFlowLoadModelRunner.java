@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -133,7 +134,7 @@ public final class TaskFlowLoadModelRunner {
                                 callbackMetrics.recordSyntheticRetry();
                             }
                             long startNanos = System.nanoTime();
-                            boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
+                            boolean accepted = taskResultIngestFacade.ingestTaskResult(
                                     taskId,
                                     messageId,
                                     !failFirstAttempt,
@@ -266,13 +267,11 @@ public final class TaskFlowLoadModelRunner {
 
         private static TaskCreatePlan buildRequest(LoadConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName("task-flow-load-model");
+            shell.setSourceRef("task-flow-load-model");
             shell.setProject("demoApp");
             shell.setUserId("load-model");
-            shell.setBatchSize(config.batchSize());
-            shell.setWorkloadClass(config.workloadClass());
+            shell.setExecutionSpec(taskExecutionSpec(config.workloadClass(), config.batchSize(), config.maxRetryCount()));
             shell.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
-            shell.setDefaultMaxRetryCount(config.maxRetryCount());
             return new TaskCreatePlan(shell, buildInputs(config.messageCount()), false);
         }
 
@@ -290,6 +289,16 @@ public final class TaskFlowLoadModelRunner {
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
                                       boolean keepIntakeOpen) {
+        }
+
+        private static TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                           int batchSize,
+                                                           int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private static EngineConfig buildEngineConfig(InstrumentedTaskStorage taskStorage,

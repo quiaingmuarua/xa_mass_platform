@@ -54,17 +54,16 @@ engine-internal listener packages.
 
 Keep these facts fixed unless the owning global baselines change:
 
-- task classification is now three-axis, not one-axis:
+- task classification is now two-axis, not ingress-shaped:
   - `Task.contract`: kernel lifecycle/dispatch/terminal contract
-  - `Task.sourceType`: intake/source shape only
   - `Task.workloadClass`: runtime tuning intent only
+  - ingress form such as inline append, file import, or streaming source is not a persisted kernel type axis
 - current mainstream combinations are:
   - `SESSION + INTERACTIVE`
   - `BATCH + BULK`
-- `SESSION` shell lifecycle stays open even when the current runtime work set
-  drains; the current kernel slice does not treat `sealTask` as a session
-  lifecycle owner, so session closure stays explicit or policy-driven rather
-  than reusing batch intake-seal semantics
+- `sealTask(...)` is a contract-neutral intake close action:
+  `OPEN -> SEALED` applies to both `SESSION` and `BATCH`, but only `BATCH`
+  uses `SEALED + all final` as an automatic terminal condition
 - `BATCH` lease expiry is attempt loss, not a stable per-item timeout contract:
   runtime retry budget decides `retry reset` vs `FAILED + RETRY_EXHAUSTED`
 - `Task.workloadClass` is the explicit workload tuning input; scheduling

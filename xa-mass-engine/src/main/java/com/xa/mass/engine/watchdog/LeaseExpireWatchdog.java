@@ -19,8 +19,8 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li><b>Lease expiry</b>: any active leased work item whose
  *       {@code leaseExpireTime} has passed is expired via
- *       {@link TaskRuntimeMaintenancePort#expireTaskMessage}, which releases the worker
- *       context and re-queues the message (or finalizes it if retries are
+ *       {@link TaskRuntimeMaintenancePort#expireLeasedWork}, which releases the worker
+ *       context and re-queues the work item (or finalizes it if retries are
  *       exhausted).</li>
  *   <li><b>Max task runtime</b>: any non-terminal {@code Task} with
  *       {@code maxRuntimeSeconds > 0} that has been running longer than
@@ -86,7 +86,7 @@ public class LeaseExpireWatchdog {
         for (ActiveLeaseRecord lease : expiredLeases) {
             log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
                     lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());
-            maintenancePort.expireTaskMessage(lease.taskId(), lease.messageId());
+            maintenancePort.expireLeasedWork(lease.taskId(), lease.messageId());
         }
     }
 

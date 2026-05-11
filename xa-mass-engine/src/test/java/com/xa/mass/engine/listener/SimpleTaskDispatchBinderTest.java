@@ -142,7 +142,7 @@ class SimpleTaskDispatchBinderTest {
 
     @Test
     void assignmentUsesConfiguredTaskMessageLeaseWindow() {
-        taskManager.setTaskMessageLeaseSeconds(2L);
+        taskManager.setWorkLeaseSeconds(2L);
         Task task = createTask(1);
         task.setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
@@ -193,7 +193,7 @@ class SimpleTaskDispatchBinderTest {
 
     @Test
     void interactiveWorkloadCapsLeaseWindowToShortProfile() {
-        taskManager.setTaskMessageLeaseSeconds(120L);
+        taskManager.setWorkLeaseSeconds(120L);
         Task task = createTask(1);
         task.setBatchSize(3);
         task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
@@ -352,7 +352,7 @@ class SimpleTaskDispatchBinderTest {
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
         verify(workerManager, times(2)).updateWorkerContextById(eq("tk1"), same(wc));
-        assertEquals(2, taskManager.countPendingDispatchableMessages(task.getTid()));
+        assertEquals(2, taskManager.countDispatchReadyWork(task.getTid()));
 
         AtomicReference<List<TaskDispatchBinding>> recoveredDispatch = new AtomicReference<>();
         listener = new SimpleTaskDispatchBinder(
@@ -543,15 +543,18 @@ class SimpleTaskDispatchBinderTest {
 
     private Task createTask(int messageCount) {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
-        dto.setTaskName("task");
+        dto.setSourceRef("task");
         dto.setProject("demoApp");
         dto.setSharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"));
         dto.setUserId("agent");
-        dto.setBatchSize(1);
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(1);
+        spec.setDefaultMaxRetryCount(3);
+        dto.setExecutionSpec(spec);
         Task task = taskCommands.createTaskShell(dto);
         taskCommands.appendTaskItems(task.getTid(), IntStream.range(0, messageCount)
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
-                .collect(Collectors.toCollection(ArrayList::new)), 3);
+                .collect(Collectors.toCollection(ArrayList::new)));
         assertTrue(taskCommands.sealTask(task.getTid()));
         return taskQueries.getTask(task.getTid());
     }

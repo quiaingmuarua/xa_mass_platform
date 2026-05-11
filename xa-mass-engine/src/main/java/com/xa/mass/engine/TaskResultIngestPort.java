@@ -9,12 +9,12 @@ import java.util.Map;
  */
 public interface TaskResultIngestPort {
 
-    boolean handleTaskMessageResult(String taskId,
-                                    String messageId,
-                                    boolean success,
-                                    String detail,
-                                    String errorCode,
-                                    Map<String, Object> output);
+    boolean ingestTaskResult(String taskId,
+                             String messageId,
+                             boolean success,
+                             String detail,
+                             String errorCode,
+                             Map<String, Object> output);
 
     TaskResultCorrelation getResultCorrelation(String taskId, String messageId);
 }

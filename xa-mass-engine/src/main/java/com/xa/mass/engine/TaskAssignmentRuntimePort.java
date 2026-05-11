@@ -17,9 +17,9 @@ import java.util.List;
  */
 public interface TaskAssignmentRuntimePort {
 
-    int countPendingDispatchableMessages(String taskId);
+    int countDispatchReadyWork(String taskId);
 
-    long getTaskMessageLeaseSeconds();
+    long getWorkLeaseSeconds();
 
     boolean updateTask(Task task);
 

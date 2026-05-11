@@ -121,7 +121,7 @@ curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId}
 
 Task create/update:
 
-- Shell create supports `userId`, `project`, `sharedConfig`, `executionSpec`, `sourceType`, and `sourceRef`.
+- Shell create supports `userId`, `project`, `sharedConfig`, `executionSpec`, and optional opaque `sourceRef`.
 - `POST /api/v1/tasks` is the public shell-create route.
 - `taskName` is server-derived and persisted on the shell; callers do not provide it.
 - `eventCode` is not task shell truth; append requests declare capability at the batch level or per item.
@@ -129,7 +129,7 @@ Task create/update:
 - Work items are appended explicitly through `POST /api/v1/tasks/{taskId}/items`.
 - Append requires explicit `eventCode` either on the batch request or on each item payload.
 - Unknown or retired create fields fail fast.
-- Update is metadata-only and supports `userId`, `project`, `sharedConfig`, and `batchSize`.
+- Update is metadata-only and supports `userId`, `project`, and `sharedConfig`.
 - Updates are allowed only while the task is `NEW` or `BLOCKED`.
 
 Assignment and dispatch:

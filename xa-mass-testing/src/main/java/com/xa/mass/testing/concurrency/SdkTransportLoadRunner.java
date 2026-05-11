@@ -8,6 +8,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -328,15 +329,17 @@ public final class SdkTransportLoadRunner {
                             .userId("sdk-load")
                             .project("demoApp")
                             .sourceRef("sdk-transport-load-" + taskIndex)
-                            .workloadClass(config.workloadClass())
+                            .executionSpec(taskExecutionSpec(
+                                    config.workloadClass(),
+                                    config.batchSize(),
+                                    config.timeoutSeconds(),
+                                    config.maxRetryCount()
+                            ))
                             .sharedConfig(Map.of(
                                     "source", "SdkTransportLoadRunner",
                                     "taskIndex", taskIndex,
                                     "routingCode", "us"
                             ))
-                            .batchSize(config.batchSize())
-                            .maxRuntimeSeconds(config.timeoutSeconds())
-                            .defaultMaxRetryCount(config.maxRetryCount())
                             .build(),
                     new ArrayList<>(buildInputs(taskIndex)),
                     false
@@ -355,6 +358,18 @@ public final class SdkTransportLoadRunner {
                 require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
             }
             return app.getTask(task.getTid());
+        }
+
+        private TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                    int batchSize,
+                                                    int maxRuntimeSeconds,
+                                                    int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private record TaskCreateSpec(MassTaskShellCreateRequest shell,

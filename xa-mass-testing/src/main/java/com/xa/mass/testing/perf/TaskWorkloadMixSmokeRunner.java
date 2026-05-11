@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -204,7 +205,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
                 }
-                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
+                boolean accepted = taskResultIngestFacade.ingestTaskResult(
                         task.taskId(),
                         binding.messageId(),
                         true,
@@ -223,13 +224,11 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName("bulk-workload-smoke");
+            shell.setSourceRef("bulk-workload-smoke");
             shell.setProject("demoApp");
             shell.setUserId("workload-smoke");
-            shell.setWorkloadClass(TaskWorkloadClass.BULK);
-            shell.setBatchSize(config.bulkBatchSize());
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
-            shell.setDefaultMaxRetryCount(3);
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
@@ -245,13 +244,11 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName("interactive-workload-smoke");
+            shell.setSourceRef("interactive-workload-smoke");
             shell.setProject("demoApp");
             shell.setUserId("workload-smoke");
-            shell.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            shell.setBatchSize(config.interactiveBatchSize());
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, config.interactiveBatchSize(), 3));
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
-            shell.setDefaultMaxRetryCount(3);
             return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
         }
 
@@ -269,6 +266,16 @@ public final class TaskWorkloadMixSmokeRunner {
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
                                       boolean keepIntakeOpen) {
+        }
+
+        private static TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                           int batchSize,
+                                                           int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {

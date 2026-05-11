@@ -63,21 +63,21 @@ Still too heavy on the hot path:
 
 Keep these decisions stable:
 
-- `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, ingest state, aggregate counters, terminal reason
+- `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, intake state, aggregate counters, terminal reason
 - runtime queue/lease/counter ownership should stay behind shared runtime modules instead of being re-embedded back into engine-local packages
 - runtime workload selection should resolve once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
 - task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-message rule matching as a scaling fallback
 - the default runnable unit is a queue-native envelope, not a thick compatibility object graph
 - convergence is counter-driven, not full-message-scan-driven
 - attempt truth splits into active hot-path lease truth and optional off-path audit history
-- `batch`, `stream`, and `file` source modes may differ at ingest, but converge after ingest into one runnable-unit shape
+- ingress sources may differ at the API edge, but converge after ingest into one runnable-unit shape
 - observability stays in logs, traces, counters, indexed reads, and explicit export sinks
 - idempotent result, retry, and timeout handling matter more than rich mid-flight projections
 - engine-owned task-detail reads stay bounded; large-scale detail analysis belongs in structured trace, audit sinks, or downstream storage engines
 
 Minimal target shape:
 
-- task shell: `taskId`, `status`, `project`, `user`, `sharedConfig`, `contract`, `sourceType`, `ingestStatus`, `intakeStatus`, aggregate counters, `terminalReason`, timestamps
+- task shell: `taskId`, `status`, `project`, `user`, `sharedConfig`, `contract`, `intakeStatus`, aggregate counters, `terminalReason`, timestamps
 - runnable envelope: `taskId`, `messageId`, `eventCode`, `payload` or `payloadRef`, `retryCount`, `leaseToken`, worker or routing hints, visibility/scheduling timestamp
 - active lease truth: `taskId`, `messageId`, `leaseToken`, `workerId`, `workerContextId`, `payloadRef`, `leaseExpireAt`, `retryCount`
 - trace or audit export event: task lifecycle, dispatch binding, attempt state transition, result acceptance or rejection, retry reset, lease-loss/expiry, terminal closure
@@ -97,7 +97,7 @@ Compression work must preserve these unless explicitly approved otherwise:
 Allowed migration slices:
 
 1. shrink `Task` toward a control-plane shell
-2. add or tighten explicit ingest for `batch`, `stream`, and `file`
+2. add or tighten explicit ingest for different API-edge source forms
 3. move dispatch toward queue-native runtime state
 4. move result convergence toward counters and output processing
 5. downgrade full attempt history from default hot-path truth

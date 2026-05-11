@@ -2,6 +2,7 @@ package com.xa.mass.runtime.redis;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -97,7 +98,7 @@ class RedisRuntimeTraceIntegrationTest {
     void successfulResultOnRedisRuntimeFinalizesTaskAndEmitsCanonicalTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-success-trace", 0);
 
-        boolean handled = resultFacade.handleTaskMessageResult(
+        boolean handled = resultFacade.ingestTaskResult(
                 fixture.task().getTid(),
                 fixture.message().messageId(),
                 true,
@@ -124,7 +125,7 @@ class RedisRuntimeTraceIntegrationTest {
     void duplicateCallbackOnRedisRuntimeKeepsFirstFinalResultAndEmitsDuplicateTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-duplicate-trace", 0);
 
-        boolean firstHandled = resultFacade.handleTaskMessageResult(
+        boolean firstHandled = resultFacade.ingestTaskResult(
                 fixture.task().getTid(),
                 fixture.message().messageId(),
                 true,
@@ -132,7 +133,7 @@ class RedisRuntimeTraceIntegrationTest {
                 null,
                 Map.of("status", "SUCCESS", "mockData", "ok-first")
         );
-        boolean duplicateHandled = resultFacade.handleTaskMessageResult(
+        boolean duplicateHandled = resultFacade.ingestTaskResult(
                 fixture.task().getTid(),
                 fixture.message().messageId(),
                 false,
@@ -164,7 +165,7 @@ class RedisRuntimeTraceIntegrationTest {
                 Map.of("status", "SUCCESS", "mockData", "runtime-only-success")
         )).status();
 
-        boolean handled = resultFacade.handleTaskMessageResult(
+        boolean handled = resultFacade.ingestTaskResult(
                 fixture.task().getTid(),
                 fixture.message().messageId(),
                 true,
@@ -191,7 +192,7 @@ class RedisRuntimeTraceIntegrationTest {
         fixture.task().setTerminalReason(com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED);
         taskStorage.updateTask(fixture.task());
 
-        boolean handled = resultFacade.handleTaskMessageResult(
+        boolean handled = resultFacade.ingestTaskResult(
                 fixture.task().getTid(),
                 fixture.message().messageId(),
                 true,
@@ -215,7 +216,7 @@ class RedisRuntimeTraceIntegrationTest {
     void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
         RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
 
-        boolean expired = maintenancePort.expireTaskMessage(fixture.task().getTid(), fixture.message().messageId());
+        boolean expired = maintenancePort.expireLeasedWork(fixture.task().getTid(), fixture.message().messageId());
 
         assertTrue(expired);
         TaskDetailStore.TaskMessageProjection updated =
@@ -226,15 +227,15 @@ class RedisRuntimeTraceIntegrationTest {
         assertEquals(1, runtime.stats(fixture.task().getTid()).readyCount());
 
         assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.LEASE_EXPIRED);
-        assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
         assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_RETRY_RESET);
         assertTraceContains(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED);
         assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_LOGICALLY_FINAL);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.message().messageId(), ExecutionEventType.TASK_MSG_STATUS_TRANSITION);
     }
 
     private RunningTaskFixture createAssignedTask(String taskName, int maxRetryCount) {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
-        dto.setTaskName(taskName);
+        dto.setSourceRef(taskName);
         dto.setProject("demoApp");
         dto.setSharedConfig(Map.of(
                 "textContent", "hello",
@@ -242,9 +243,12 @@ class RedisRuntimeTraceIntegrationTest {
                 "_sdk", Map.of("eventCode", "crawler.fetch-page")
         ));
         dto.setUserId("agent");
-        dto.setBatchSize(1);
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(1);
+        spec.setDefaultMaxRetryCount(maxRetryCount);
+        dto.setExecutionSpec(spec);
         Task task = taskCommands.createTaskShell(dto);
-        taskCommands.appendTaskItems(task.getTid(), List.<Map<String, Object>>of(Map.of("target", "alpha")), maxRetryCount);
+        taskCommands.appendTaskItems(task.getTid(), List.<Map<String, Object>>of(Map.of("target", "alpha")));
         assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);

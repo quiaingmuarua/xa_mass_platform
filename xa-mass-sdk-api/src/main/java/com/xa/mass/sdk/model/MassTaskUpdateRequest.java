@@ -16,13 +16,11 @@ public final class MassTaskUpdateRequest {
     private final String userId;
     private final String project;
     private final Map<String, Object> sharedConfig;
-    private final Integer batchSize;
 
     private MassTaskUpdateRequest(Builder builder) {
         this.userId = normalizeString(builder.userId);
         this.project = normalizeString(builder.project);
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
-        this.batchSize = builder.batchSize;
     }
 
     public static Builder builder() {
@@ -41,23 +39,18 @@ public final class MassTaskUpdateRequest {
         return sharedConfig;
     }
 
-    public Integer getBatchSize() {
-        return batchSize;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof MassTaskUpdateRequest that)) return false;
         return Objects.equals(userId, that.userId)
                 && Objects.equals(project, that.project)
-                && Objects.equals(sharedConfig, that.sharedConfig)
-                && Objects.equals(batchSize, that.batchSize);
+                && Objects.equals(sharedConfig, that.sharedConfig);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(userId, project, sharedConfig, batchSize);
+        return Objects.hash(userId, project, sharedConfig);
     }
 
     @Override
@@ -66,7 +59,6 @@ public final class MassTaskUpdateRequest {
                 "userId='" + userId + '\'' +
                 ", project='" + project + '\'' +
                 ", sharedConfig=" + sharedConfig +
-                ", batchSize=" + batchSize +
                 '}';
     }
 
@@ -74,7 +66,6 @@ public final class MassTaskUpdateRequest {
         private String userId;
         private String project;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
-        private Integer batchSize;
 
         private Builder() {
         }
@@ -91,11 +82,6 @@ public final class MassTaskUpdateRequest {
 
         public Builder sharedConfig(Map<String, Object> sharedConfig) {
             this.sharedConfig = sharedConfig;
-            return this;
-        }
-
-        public Builder batchSize(Integer batchSize) {
-            this.batchSize = batchSize;
             return this;
         }
 

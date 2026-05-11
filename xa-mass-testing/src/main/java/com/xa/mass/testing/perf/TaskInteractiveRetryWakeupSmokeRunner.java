@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -255,7 +256,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 boolean success = !interactive || attemptNo > 1;
                 String detail = success ? "ok" : "synthetic retryable failure";
                 String errorCode = success ? null : "SYNTHETIC_RETRY";
-                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
+                boolean accepted = taskResultIngestFacade.ingestTaskResult(
                         task.taskId(),
                         messageId,
                         success,
@@ -281,13 +282,11 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
         private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName("bulk-retry-wakeup-smoke");
+            shell.setSourceRef("bulk-retry-wakeup-smoke");
             shell.setProject("demoApp");
             shell.setUserId("retry-wakeup-smoke");
-            shell.setWorkloadClass(TaskWorkloadClass.BULK);
-            shell.setBatchSize(config.bulkBatchSize());
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
             shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
-            shell.setDefaultMaxRetryCount(3);
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
@@ -303,13 +302,11 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
         private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-            shell.setTaskName("interactive-retry-wakeup-smoke");
+            shell.setSourceRef("interactive-retry-wakeup-smoke");
             shell.setProject("demoApp");
             shell.setUserId("retry-wakeup-smoke");
-            shell.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            shell.setBatchSize(1);
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, 1, 1));
             shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
-            shell.setDefaultMaxRetryCount(1);
             return new TaskCreatePlan(shell, buildInputs("interactive", 1), false);
         }
 
@@ -327,6 +324,16 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,
                                       List<Map<String, Object>> inputs,
                                       boolean keepIntakeOpen) {
+        }
+
+        private static TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                           int batchSize,
+                                                           int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {

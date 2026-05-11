@@ -78,9 +78,7 @@ class TaskStateValidator {
 
         boolean finalStatus = task.getStatus() != null && task.getStatus().isFinal();
         boolean hasTerminalReason = task.getTerminalReason() != null;
-        if (finalStatus
-                && task.getIntakeStatus() == TaskIntakeStatus.OPEN
-                && (!hasTerminalReason || !task.getTerminalReason().allowsOpenIntakeClosure())) {
+        if (finalStatus && task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
             violations.add(TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY);
         }
         if (finalStatus && !hasTerminalReason) {

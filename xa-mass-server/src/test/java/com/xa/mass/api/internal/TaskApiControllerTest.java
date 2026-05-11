@@ -94,8 +94,8 @@ class TaskApiControllerTest {
         assertEquals("demoApp", request.getProject());
         assertEquals(TenantConstants.DEFAULT_TENANT_ID, request.getTenantId());
         assertEquals("agent", request.getUserId());
-        assertEquals(2, request.getBatchSize());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, request.getWorkloadClass());
+        assertEquals(2, request.getExecutionSpec().getBatchSize());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, request.getExecutionSpec().getWorkloadClass());
     }
 
     @Test
@@ -273,7 +273,7 @@ class TaskApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "batchSize":4
+                                  "sharedConfig":{"routingCode":"us"}
                                 }
                                 """))
                 .andExpect(status().isOk())

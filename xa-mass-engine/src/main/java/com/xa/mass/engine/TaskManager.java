@@ -418,11 +418,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         addRuntimeIngressItems(task, List.of(ingressItem));
     }
 
-    public long getTaskMessageLeaseSeconds() {
+    public long getWorkLeaseSeconds() {
         return taskMessageLeaseSeconds;
     }
 
-    public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+    public void setWorkLeaseSeconds(long taskMessageLeaseSeconds) {
         if (taskMessageLeaseSeconds <= 0) {
             throw new IllegalArgumentException("taskMessageLeaseSeconds must be greater than 0");
         }
@@ -430,12 +430,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     /**
-     * Expires a single in-flight task message and recalculates task convergence.
+     * Expires a single in-flight leased work item and recalculates task convergence.
      */
     @Override
-    public boolean expireTaskMessage(String taskId, String messageId) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.expireTaskMessage(taskId, messageId));
+    public boolean expireLeasedWork(String taskId, String messageId) {
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.expireLeasedWork(taskId, messageId));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
         }
@@ -443,18 +443,18 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     @Override
-    public int countPendingDispatchableMessages(String taskId) {
+    public int countDispatchReadyWork(String taskId) {
         long readyCount = taskWorkRuntime.stats(taskId).readyCount();
         return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
     @Override
-    public boolean hasPendingDispatchableMessages(String taskId) {
-        return countPendingDispatchableMessages(taskId) > 0;
+    public boolean hasDispatchReadyWork(String taskId) {
+        return countDispatchReadyWork(taskId) > 0;
     }
 
     @Override
-    public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
+    public boolean hasActiveWorkForWorker(String taskId, String workerId) {
         return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
     }
 
@@ -546,18 +546,18 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         taskWorkRuntime.shutdown();
     }
 
-    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
+    boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
         }
         return outcome.accepted();
     }
 
-    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
+    boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
         }
@@ -565,14 +565,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     @Override
-    public boolean handleTaskMessageResult(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
+    public boolean ingestTaskResult(String taskId,
+                                    String messageId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
+        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
         }
@@ -600,8 +600,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         });
     }
 
-    private <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
-        return concurrencyCoordinator.withTaskMessageReadLock(taskId, messageId, action);
+    private <T> T withTaskWorkReadLock(String taskId, String messageId, Supplier<T> action) {
+        return concurrencyCoordinator.withTaskWorkReadLock(taskId, messageId, action);
     }
 
     private void reconcileTaskProgress(String taskId) {
@@ -618,17 +618,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
         }
         TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
-        TaskContract contract = resolveShellContract(dto, normalizedSpec);
+        TaskContract contract = resolveShellContract(normalizedSpec);
         normalizedSpec.setContract(contract);
         normalizedSpec.setWorkloadClass(resolveWorkloadClass(contract, normalizedSpec));
         dto.setExecutionSpec(normalizedSpec);
     }
 
-    private TaskContract resolveShellContract(TaskShellCreateRequestDto dto, TaskExecutionSpec normalizedSpec) {
-        if (normalizedSpec != null
-                && normalizedSpec.getWorkloadClass() == com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE) {
-            return TaskContract.SESSION;
-        }
+    private TaskContract resolveShellContract(TaskExecutionSpec normalizedSpec) {
         if (normalizedSpec != null && normalizedSpec.getContract() != null) {
             return normalizedSpec.getContract();
         }
@@ -638,9 +634,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
                                                                                TaskExecutionSpec normalizedSpec) {
         if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
-            if (contract == TaskContract.SESSION) {
-                return com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE;
-            }
             return normalizedSpec.getWorkloadClass();
         }
         return contract == TaskContract.SESSION
@@ -760,7 +753,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 continue;
             }
             String messageId = dispatchBinding.messageId();
-            TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(task.getTid(), messageId,
+            TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
                     () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
             if (!outcome.accepted()) {
                 return false;
@@ -802,7 +795,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
-        return createTaskRecord(dto, resolveInitialIntakeStatus(dto.getContract()));
+        return createTaskRecord(dto, resolveInitialIntakeStatus());
     }
 
     private Task createTaskRecord(TaskShellCreateRequestDto dto,
@@ -829,7 +822,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return task;
     }
 
-    private TaskIntakeStatus resolveInitialIntakeStatus(TaskContract contract) {
+    private TaskIntakeStatus resolveInitialIntakeStatus() {
         return TaskIntakeStatus.OPEN;
     }
 

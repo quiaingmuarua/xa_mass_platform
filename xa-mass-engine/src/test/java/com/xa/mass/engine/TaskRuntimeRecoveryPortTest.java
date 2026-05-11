@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -65,7 +66,7 @@ class TaskRuntimeRecoveryPortTest {
 
     private static TaskCreateSpec buildRequest(String taskName) {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
-        dto.setTaskName(taskName);
+        dto.setSourceRef(taskName);
         dto.setProject("demoApp");
         dto.setUserId("agent");
         return new TaskCreateSpec(dto, List.of(
@@ -75,7 +76,7 @@ class TaskRuntimeRecoveryPortTest {
     }
 
     private static Task createTask(TaskManager manager, TaskCreateSpec request) {
-        request.shell().setDefaultMaxRetryCount(3);
+        request.shell().setExecutionSpec(taskExecutionSpec(3));
         Task task = manager.createTaskShell(request.shell());
         manager.appendTaskItems(task.getTid(), request.inputs());
         manager.sealTask(task.getTid());
@@ -83,6 +84,12 @@ class TaskRuntimeRecoveryPortTest {
     }
 
     private record TaskCreateSpec(TaskShellCreateRequestDto shell, List<java.util.Map<String, Object>> inputs) {
+    }
+
+    private static TaskExecutionSpec taskExecutionSpec(int defaultMaxRetryCount) {
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
     }
 
     private static final class ReadyTaskIdsOverrideRuntime implements TaskWorkRuntime {

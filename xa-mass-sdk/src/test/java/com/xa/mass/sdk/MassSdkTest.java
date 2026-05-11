@@ -24,6 +24,7 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -1200,8 +1201,7 @@ class MassSdkTest {
                 .project("demoApp")
                 .sourceRef("sdk-task")
                 .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
-                .batchSize(2)
-                .maxRuntimeSeconds(600)
+                .executionSpec(taskExecutionSpec(null, 2, 600, 0))
                 .build();
 
         Task result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
@@ -1215,7 +1215,6 @@ class MassSdkTest {
         TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertNull(dto.getTaskName());
         Assertions.assertEquals("sdk-task", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
@@ -1224,8 +1223,8 @@ class MassSdkTest {
                 ),
                 dto.getSharedConfig()
         );
-        Assertions.assertEquals(2, dto.getBatchSize());
-        Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
+        Assertions.assertEquals(2, dto.getExecutionSpec().getBatchSize());
+        Assertions.assertEquals(600, dto.getExecutionSpec().getMaxRuntimeSeconds());
         verify(taskCommandService).appendTaskItems("task-001", List.of(
                 Map.of("target", "target-a", "eventCode", "demo.dispatch"),
                 Map.of("target", "target-b", "eventCode", "demo.dispatch")
@@ -1332,7 +1331,6 @@ class MassSdkTest {
                 .project("testApp")
                 .userId("user-2")
                 .sharedConfig(Map.of("routingCode", "us"))
-                .batchSize(4)
                 .build());
         boolean deleted = app.deleteTask("task-1");
 
@@ -1343,7 +1341,6 @@ class MassSdkTest {
         assertEquals("testApp", task.getProject());
         assertEquals("user-2", task.getUser().getUserId());
         assertEquals(Map.of("routingCode", "us"), task.getSharedConfig());
-        assertEquals(4, task.getBatchSize());
         assertTrue(deleted);
         verify(taskCommands).resumeTaskDetailed("task-1");
         verify(taskCommands).updateTask(task);
@@ -1412,12 +1409,12 @@ class MassSdkTest {
         assertSame(runtime, config.getTaskWorkRuntime());
         List<Map<String, Object>> inputs = List.of(Map.of("target", "alpha"));
         TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setTaskName("runtime-assembly");
+        shell.setSourceRef("runtime-assembly");
         shell.setProject("demoApp");
         shell.setUserId("sdk-test");
-        shell.setBatchSize(1);
+        shell.setExecutionSpec(taskExecutionSpec(null, 1, 0, 3));
         Task task = config.getTaskCommandService().createTaskShell(shell);
-        config.getTaskCommandService().appendTaskItems(task.getTid(), inputs, 3);
+        config.getTaskCommandService().appendTaskItems(task.getTid(), inputs);
         assertTrue(config.getTaskCommandService().sealTask(task.getTid()));
         assertEquals(1, runtime.stats(task.getTid()).readyCount());
     }
@@ -1515,8 +1512,7 @@ class MassSdkTest {
                 .project("demoApp")
                 .sourceRef("crawler-stream")
                 .sharedConfig(Map.of("routingCode", "us"))
-                .batchSize(1)
-                .maxRuntimeSeconds(60)
+                .executionSpec(taskExecutionSpec(null, 1, 60, 0))
                 .build();
 
         Task result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
@@ -1530,7 +1526,6 @@ class MassSdkTest {
         TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertNull(dto.getTaskName());
         Assertions.assertEquals("crawler-stream", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
@@ -1977,7 +1972,7 @@ class MassSdkTest {
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
                     .sourceRef("custom-project-task")
-                    .batchSize(1)
+                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
                     .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), false);
 
             assertNotNull(task);
@@ -2018,7 +2013,7 @@ class MassSdkTest {
                     .userId("bot-agent")
                     .project("botAppCatalogTest")
                     .sourceRef("bot-command-task")
-                    .batchSize(1)
+                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
                     .build(), "bot.command", List.of(Map.of("text", "/start")), false);
 
             assertNotNull(task);
@@ -2690,7 +2685,7 @@ class MassSdkTest {
                     .project("demoApp")
                     .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
-                    .batchSize(1)
+                    .executionSpec(taskExecutionSpec(null, 1, 0, 0))
                     .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), false);
 
             assertTrue(app.approveTask(task.getTid()));
@@ -3253,6 +3248,18 @@ class MassSdkTest {
         public void shutdown() {
             shutdownCalled.set(true);
         }
+    }
+
+    private static TaskExecutionSpec taskExecutionSpec(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
+                                                       int batchSize,
+                                                       int maxRuntimeSeconds,
+                                                       int defaultMaxRetryCount) {
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setWorkloadClass(workloadClass);
+        spec.setBatchSize(batchSize);
+        spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
     }
 
 }

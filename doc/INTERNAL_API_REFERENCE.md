@@ -236,7 +236,6 @@ Supported request fields:
 - `project`
 - `sharedConfig`
 - `executionSpec`
-- `sourceType`
 - `sourceRef`
 
 Not supported on this route:
@@ -253,7 +252,6 @@ Contract rules:
 - `eventCode` is not part of task shell truth and must not be provided on this
   route
 - omitted `executionSpec` resolves to default task execution policy
-- omitted `sourceType` defaults to `STREAM`
 - public create creates only the task shell and opens normal intake for later
   append/seal flow
 
@@ -313,7 +311,6 @@ Supported request fields:
 - `userId`
 - `project`
 - `sharedConfig`
-- `batchSize`
 
 Contract rules:
 

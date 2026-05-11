@@ -38,7 +38,7 @@ States:
 - `NEW`: created, not yet approved
 - `BLOCKED`: intentionally prevented from scheduling; `holdReason` is required
 - `READY`: eligible for matching and dispatch
-- `RUNNING`: at least one persisted message projection entered execution
+- `RUNNING`: at least one runtime-owned work item is actively leased or executing
 - `PAUSED`: temporarily not dispatchable; old callbacks may still finish
 - `TERMINAL`: lifecycle closed
 
@@ -59,7 +59,7 @@ Current entry points:
 - `resumeTask`: `PAUSED -> READY` or `PAUSED -> TERMINAL`
 - `cancelTask`: non-terminal -> `TERMINAL`
 - assignment success: `READY -> RUNNING`
-- batch message convergence: non-terminal -> `TERMINAL`
+- batch runtime convergence: non-terminal -> `TERMINAL`
 
 Must hold:
 
@@ -73,21 +73,20 @@ Must hold:
 
 States:
 
-- `OPEN`: task may accept new message rows through append
+- `OPEN`: task may accept new work-item ingress through append
 - `SEALED`: append window is closed
 
 Current entry points:
 
-- create: non-file `SESSION` and `BATCH` shells initialize `intakeStatus=OPEN`
-- create: file-backed `BATCH` shells initialize `intakeStatus=SEALED`
-- `sealTask`: `BATCH` / file-ingest close action; `SESSION` does not use `sealTask` as a lifecycle owner in the current kernel slice
+- create: `SESSION` and `BATCH` shells initialize `intakeStatus=OPEN`
+- `sealTask`: contract-neutral intake close action; `OPEN -> SEALED` for both `SESSION` and `BATCH`
 
 Must hold:
 
 - automatic message-driven terminal closure only happens for `BATCH` tasks after intake has been sealed
-- `SESSION` tasks keep their append window open while alive in the current kernel slice; draining current work is not sufficient for automatic terminal closure
-- `intakeStatus=OPEN` may still close only for explicit stop reasons that allow open-intake closure: `MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, or `RETRY_BUDGET_EXHAUSTED`
-- `intakeStatus` is the active append-window lifecycle truth for `BATCH`; `SESSION` currently keeps the window open until terminal control closes it
+- `SESSION` tasks may close intake explicitly without becoming terminal; draining current work is not sufficient for automatic terminal closure
+- every terminal task must have `intakeStatus=SEALED`
+- `intakeStatus` is the active append-window lifecycle truth for both `SESSION` and `BATCH`
 
 ## 4. Message Projection Status
 
@@ -221,7 +220,7 @@ Must hold:
 - terminal task -> non-null `terminalReason`
 - non-terminal task -> null `terminalReason`
 - batch message-driven closure must match engine work-runtime aggregate counters; message projection remains the compatibility projection/audit view
-- open-intake task closure is only valid for `MANUAL_CANCELLED` or policy-driven stop reasons; normal batch message-convergence reasons must wait until `intakeStatus=SEALED`
+- persisted terminal task state must always carry `intakeStatus=SEALED`; batch message-convergence reasons still require intake to be sealed before automatic closure
 - `SESSION` tasks do not auto-close to `ALL_MESSAGES_SUCCEEDED` / `ALL_MESSAGES_FAILED` / `MIXED_MESSAGE_RESULTS` just because the current runtime work set drained
 
 ## 8. Time-Based Policy Enforcement
@@ -229,7 +228,7 @@ Must hold:
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
 - **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
-  the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireTaskMessage(...)`). This always marks the
+  the engine runtime-maintenance path (`TaskRuntimeMaintenancePort.expireLeasedWork(...)`). This always marks the
   concrete compatibility attempt `EXPIRED` and publishes
   `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
   `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without `taskMessageLogicallyFinal`. When retry
@@ -241,7 +240,7 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
   `maxRuntimeSeconds = 0` (default) to disable the limit.
 
 Must hold:
-- `expireTaskMessage` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`
+- `expireLeasedWork` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`
   can release the worker context; skipping this call leaves the context permanently `OCCUPIED`
 - retryable lease expiry must follow the same logical-reset rule as retryable failure: close the attempt,
   clear latest-attempt projections, increment `retryCount`, and avoid logical-final publication until the

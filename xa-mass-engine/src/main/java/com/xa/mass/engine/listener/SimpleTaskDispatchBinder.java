@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Binds persisted task messages to matched workers and emits the dispatch queue.
+ * Claims runtime-ready work for matched workers and emits the dispatch queue.
  */
 public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private static final Logger log = LoggerFactory.getLogger(SimpleTaskDispatchBinder.class);
@@ -86,9 +86,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return List.of();
         }
 
-        int totalMessages = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
-        if (totalMessages == 0) {
-            log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
+        int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
+        if (readyWorkCount == 0) {
+            log.info("[MsgAssign] Skip task {} because there is no runtime-ready work to dispatch", task.getTid());
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -100,7 +100,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     Math.max(task.getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
                     "SimpleTaskDispatchBinder",
-                    "there are no pending task messages to dispatch",
+                    "there is no runtime-ready work to dispatch",
                     "SKIPPED"
             );
             return List.of();
@@ -110,14 +110,14 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         TaskWorkClaimOptions claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
                 resolvedWorkerCount,
-                assignmentRuntime.getTaskMessageLeaseSeconds()
+                assignmentRuntime.getWorkLeaseSeconds()
         );
         int perWorkerBatchLimit = claimOptions.perWorkerCapacity();
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, totalMessages={}, perWorkerBatchLimit={}",
-                task.getTid(), matchedWorkers.size(), totalMessages, perWorkerBatchLimit);
+        log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, readyWorkCount={}, perWorkerBatchLimit={}",
+                task.getTid(), matchedWorkers.size(), readyWorkCount, perWorkerBatchLimit);
 
         for (int i = 0; i < matchedWorkers.size(); i++) {
             MatchedWorkerContext matchedWorker = matchedWorkers.get(i);
@@ -148,7 +148,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
                 Math.max(dispatchSlots.size(), 1),
-                assignmentRuntime.getTaskMessageLeaseSeconds()
+                assignmentRuntime.getWorkLeaseSeconds()
         );
         List<ClaimedTaskWork> claimed = assignmentRuntime.claimReady(task.getTid(), claimTargets, claimOptions);
 
@@ -190,7 +190,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 .count();
         traceEventLogger.dispatchBindingSummary(
                 task,
-                totalMessages,
+                readyWorkCount,
                 matchedWorkers.size(),
                 dispatchSlots.size(),
                 dispatchBindings.size(),
@@ -201,12 +201,12 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 "SimpleTaskDispatchBinder",
                 dispatchBindings.isEmpty()
                         ? "matched workers produced no dispatchable bindings"
-                        : "task messages bound to dispatch slots",
+                        : "runtime work bound to dispatch slots",
                 dispatchBindings.isEmpty() ? "SKIPPED" : "SUCCESS"
         );
 
-        log.info("[MsgAssign] Task {} pushQueue size: {} (expected pending={})",
-                task.getTid(), dispatchBindings.size(), totalMessages);
+        log.info("[MsgAssign] Task {} pushQueue size: {} (expected readyWork={})",
+                task.getTid(), dispatchBindings.size(), readyWorkCount);
 
         if (dispatchListener != null && !dispatchBindings.isEmpty()) {
             TaskDispatchContext dispatchContext = TaskDispatchContext.from(task);
@@ -226,7 +226,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 }
                 traceEventLogger.dispatchBindingSummary(
                         task,
-                        totalMessages,
+                        readyWorkCount,
                         matchedWorkers.size(),
                         dispatchSlots.size(),
                         0,

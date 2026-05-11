@@ -504,7 +504,6 @@ public class TaskApiController {
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .batchSize(requestBody.getBatchSize())
                 .build();
     }
 
@@ -519,8 +518,7 @@ public class TaskApiController {
     private boolean isEmptyUpdateRequest(TaskUpdateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
-                && requestBody.getSharedConfig() == null
-                && requestBody.getBatchSize() == null;
+                && requestBody.getSharedConfig() == null;
     }
 
     private boolean blockTask(Task task) {

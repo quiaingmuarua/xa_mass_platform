@@ -85,6 +85,14 @@ public class ProjectionAwareTaskManager extends TaskManager {
         return getActiveLease(taskId, messageId).orElse(null);
     }
 
+    public boolean expireLeasedWork(String taskId, String messageId) {
+        return super.expireLeasedWork(taskId, messageId);
+    }
+
+    public long getWorkLeaseSeconds() {
+        return super.getWorkLeaseSeconds();
+    }
+
     public ProjectionTestSupport.MessageSnapshot getTaskMessageSnapshot(String taskId, int limit) {
         java.util.List<TaskDetailStore.TaskMessageProjection> messages = new java.util.ArrayList<>();
         TaskCompatibilityProjectionAccess.SnapshotPage snapshot = compatibilityProjectionAccess.visitTaskMessageSnapshot(

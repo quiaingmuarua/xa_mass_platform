@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
@@ -302,13 +303,11 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     .userId("sdk-chaos")
                     .project(PROJECT_CODE)
                     .sourceRef(taskName)
+                    .executionSpec(taskExecutionSpec(1, config.timeoutSeconds(), 1))
                     .sharedConfig(Map.of(
                             TaskSharedConfig.ROUTING_CODE, ROUTING_CODE,
                             "source", "SdkWebSocketLeaseExpiryRedispatchChaosRunner"
                     ))
-                    .batchSize(1)
-                    .maxRuntimeSeconds(config.timeoutSeconds())
-                    .defaultMaxRetryCount(1)
                     .build(),
                     List.of(Map.of(
                             "seq", 0,
@@ -335,6 +334,16 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 require(app.sealTask(task.getTid()), "task seal should succeed for " + task.getTid());
             }
             return app.getTask(task.getTid());
+        }
+
+        private TaskExecutionSpec taskExecutionSpec(int batchSize,
+                                                    int maxRuntimeSeconds,
+                                                    int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setBatchSize(batchSize);
+            spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private void waitForWorkerOnline(MassSdkApplication app, String workerId, String failureMessage) throws Exception {

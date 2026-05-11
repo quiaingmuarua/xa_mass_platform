@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -315,25 +316,22 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private MassTaskShellCreateRequest toShellCreateRequest(BootstrapTaskFixture dto) {
-        String sourceRef = dto.getSourceRef();
-        if ((sourceRef == null || sourceRef.isBlank()) && dto.getTaskName() != null && !dto.getTaskName().isBlank()) {
-            sourceRef = dto.getTaskName();
-        }
+        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        executionSpec.setBatchSize(dto.getBatchSize());
+        executionSpec.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
+        executionSpec.setWorkloadClass(dto.getWorkloadClass());
         return MassTaskShellCreateRequest.builder()
                 .userId(dto.getUserId())
                 .project(dto.getProject())
                 .sharedConfig(dto.getSharedConfig())
-                .batchSize(dto.getBatchSize())
-                .maxRuntimeSeconds(dto.getMaxRuntimeSeconds())
-                .workloadClass(dto.getWorkloadClass())
-                .sourceRef(sourceRef)
+                .executionSpec(executionSpec)
+                .sourceRef(dto.getSourceRef())
                 .build();
     }
 
     private static final class BootstrapTaskFixture {
         private String userId;
         private String project;
-        private String taskName;
         private java.util.Map<String, Object> sharedConfig;
         private java.util.List<java.util.Map<String, Object>> inputs;
         private int batchSize;
@@ -356,14 +354,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
         public void setProject(String project) {
             this.project = project;
-        }
-
-        public String getTaskName() {
-            return taskName;
-        }
-
-        public void setTaskName(String taskName) {
-            this.taskName = taskName;
         }
 
         public java.util.Map<String, Object> getSharedConfig() {

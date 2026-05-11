@@ -40,7 +40,7 @@ Stable kernel slots:
 - worker: `Worker`
 - optional worker context: `WorkerContext`
 - task contract boundary: `Task.contract`
-- task source boundary: `Task.sourceType`
+- task intake boundary: `Task.intakeStatus`
 - task-level workload boundary: `Task.workloadClass`
 - runtime work item identity: `taskId + messageId`
 - per-item runtime payload boundary: runtime ingress payload or `payloadRef`
@@ -61,8 +61,7 @@ Boundary rules:
 
 - do not let protocol fields become business or lifecycle truth
 - `EventDefinition.code` is globally unique capability identity
-- task contract owns lifecycle, terminal, and default dispatch expectation;
-  `sourceType` must not keep carrying that meaning by itself
+- task contract owns lifecycle, terminal, and default dispatch expectation
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
 - task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
 - message/attempt read surfaces are bounded compatibility or audit helpers, not
@@ -126,6 +125,9 @@ Read them to verify three things quickly:
 - `executionSpec` is the task-level execution policy envelope; current defaults
   remain `contract=BATCH`, `profile=STANDARD`, `workloadClass=BULK`,
   `batchSize=1`, `maxRuntimeSeconds=0`
+- ingress form such as inline create, repeated append, file import, or
+  `sourceRef` metadata does not define the runtime contract; engine lifecycle,
+  dispatch, and terminal semantics come from `Task.contract`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item runtime truth stays on the runtime ingress item and dispatch/result
   flow; bounded compatibility projection may retain payload summary or

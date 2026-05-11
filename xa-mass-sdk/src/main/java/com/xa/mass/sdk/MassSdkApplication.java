@@ -227,9 +227,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (request.getUserId() != null) {
             task.setUser(UserRef.of(request.getUserId()));
         }
-        if (request.getBatchSize() != null && request.getBatchSize() > 0) {
-            task.setBatchSize(request.getBatchSize());
-        }
         return requireStartedTaskCommands().updateTask(task);
     }
 

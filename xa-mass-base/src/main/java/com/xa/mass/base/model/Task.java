@@ -316,28 +316,6 @@ public class Task {
         executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
     }
 
-    @JsonIgnore
-    public String getDisplayStatusLabel() {
-        if (status == null) {
-            return "-";
-        }
-        if (!status.isFinal()) {
-            return status.getDescription();
-        }
-        if (terminalReason == null) {
-            return status.getDescription();
-        }
-        return switch (terminalReason) {
-            case MANUAL_CANCELLED -> "Cancelled";
-            case ALL_MESSAGES_SUCCEEDED -> "Completed";
-            case ALL_MESSAGES_FAILED -> "Completed (Failed)";
-            case MIXED_MESSAGE_RESULTS -> "Completed (Mixed)";
-            case MAX_RUNTIME_REACHED -> "Stopped (Max Runtime)";
-            case SUCCESS_RATE_REACHED -> "Completed (Target Reached)";
-            case RETRY_BUDGET_EXHAUSTED -> "Stopped (Retry Exhausted)";
-        };
-    }
-
     public boolean isSchedulable() {
         return status.isSchedulable() && taskNonSuccessNumber > 0;
     }

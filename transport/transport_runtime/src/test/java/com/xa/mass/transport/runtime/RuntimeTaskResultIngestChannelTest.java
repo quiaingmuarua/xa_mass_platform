@@ -420,7 +420,7 @@ class RuntimeTaskResultIngestChannelTest {
                 task.getTid(),
                 List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
                 1,
-                assignmentRuntimePort.getTaskMessageLeaseSeconds()
+                assignmentRuntimePort.getWorkLeaseSeconds()
         );
         String attemptId = TaskMessageAttemptSupport.runtimeAttemptId(
                 taskMsg.messageId(),

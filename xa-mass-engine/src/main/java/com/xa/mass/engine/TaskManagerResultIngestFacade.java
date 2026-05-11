@@ -18,13 +18,13 @@ public final class TaskManagerResultIngestFacade implements TaskResultIngestFaca
     }
 
     @Override
-    public boolean handleTaskMessageResult(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
-        return resultIngestPort.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
+    public boolean ingestTaskResult(String taskId,
+                                    String messageId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
+        return resultIngestPort.ingestTaskResult(taskId, messageId, success, detail, errorCode, output);
     }
 
     @Override

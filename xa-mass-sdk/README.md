@@ -39,6 +39,7 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -90,7 +91,7 @@ var task = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
         .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
-        .batchSize(1)
+        .executionSpec(new TaskExecutionSpec())
         .build());
 
 app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
@@ -140,7 +141,7 @@ app.registerProject(ProjectMetadata.builder()
 var botTask = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("bot-user")
         .project("botApp")
-        .batchSize(1)
+        .executionSpec(new TaskExecutionSpec())
         .build());
 
 app.appendTaskItems(botTask.getTid(), MassTaskItemBatchAppendRequest.builder()

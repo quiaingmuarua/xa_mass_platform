@@ -356,7 +356,7 @@ public class EngineConfig {
     public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
         this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
         if (taskManager != null) {
-            taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
+            taskManager.setWorkLeaseSeconds(taskMessageLeaseSeconds);
         }
     }
 
@@ -376,7 +376,7 @@ public class EngineConfig {
                     getExecutionEventSink()
             );
         }
-        taskManager.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
+        taskManager.setWorkLeaseSeconds(taskMessageLeaseSeconds);
         return taskManager;
     }
 

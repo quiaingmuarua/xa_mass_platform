@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -269,9 +268,6 @@ class TaskLifecycleService {
         int added = ingressItems.size();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
-        if (task.getContract() == TaskContract.SESSION) {
-            task.setIntakeStatus(TaskIntakeStatus.OPEN);
-        }
         taskManager.updateTask(task);
         if (task.getStatus().isActive()) {
             taskManager.requestTaskDispatch(task);
@@ -285,10 +281,6 @@ class TaskLifecycleService {
         if (task == null) {
             return false;
         }
-        if (task.getContract() == TaskContract.SESSION) {
-            logger.info("[sealTask] Session task {} ignores seal semantics; lifecycle closes through explicit stop policies", taskId);
-            return false;
-        }
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return false;
         }
@@ -300,21 +292,14 @@ class TaskLifecycleService {
     }
 
     private boolean canAcceptTaskInputs(Task task) {
-        if (task.getStatus() == null || task.getStatus().isFinal()) {
-            return false;
-        }
-        return switch (task.getContract()) {
-            case SESSION -> true;
-            case BATCH -> task.getIntakeStatus() == TaskIntakeStatus.OPEN;
-        };
+        return task.getStatus() != null
+                && !task.getStatus().isFinal()
+                && task.getIntakeStatus() == TaskIntakeStatus.OPEN;
     }
 
     private String describeInputAppendRejection(Task task, String taskId) {
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
-            return switch (task.getContract()) {
-                case SESSION -> "Session task is terminal and cannot accept more inputs: " + taskId;
-                case BATCH -> "Batch task intake is sealed: " + taskId;
-            };
+            return "Task intake is sealed: " + taskId;
         }
         return "Task intake is closed or task is terminal: " + task.getStatus();
     }

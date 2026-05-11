@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * Owns task-message callback handling, retry sequencing, and result-side event ordering.
+ * Owns runtime work-result handling, retry sequencing, and result-side event ordering.
  */
 class TaskResultService {
 
@@ -51,7 +51,7 @@ class TaskResultService {
         this.traceEventLogger = traceEventLogger;
     }
 
-    TaskMessageMutationOutcome expireTaskMessage(String taskId, String messageId) {
+    TaskMessageMutationOutcome expireLeasedWork(String taskId, String messageId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId, "messageId", messageId);
@@ -178,20 +178,20 @@ class TaskResultService {
         return TaskMessageMutationOutcome.acceptedDirty();
     }
 
-    TaskMessageMutationOutcome handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
-        return handleTaskMessageResult(taskId, messageId, success, detail, null, null);
+    TaskMessageMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
+        return ingestTaskResult(taskId, messageId, success, detail, null, null);
     }
 
-    TaskMessageMutationOutcome handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        return handleTaskMessageResult(taskId, messageId, success, detail, errorCode, null);
+    TaskMessageMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+        return ingestTaskResult(taskId, messageId, success, detail, errorCode, null);
     }
 
-    TaskMessageMutationOutcome handleTaskMessageResult(String taskId,
-                                                       String messageId,
-                                                       boolean success,
-                                                       String detail,
-                                                       String errorCode,
-                                                       Map<String, Object> output) {
+    TaskMessageMutationOutcome ingestTaskResult(String taskId,
+                                                String messageId,
+                                                boolean success,
+                                                String detail,
+                                                String errorCode,
+                                                Map<String, Object> output) {
         // Load task ONCE — threaded through to all handlers to avoid repeat storage reads.
         Task task = taskManager.getTask(taskId);
         if (task == null) {

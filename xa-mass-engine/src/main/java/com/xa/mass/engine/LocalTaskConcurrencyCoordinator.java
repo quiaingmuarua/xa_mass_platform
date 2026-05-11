@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 final class LocalTaskConcurrencyCoordinator implements TaskConcurrencyStrategy {
 
     private final Map<String, TaskLockHandle> taskLocks = new ConcurrentHashMap<>();
-    private final Map<String, MessageLockHandle> taskMessageLocks = new ConcurrentHashMap<>();
+    private final Map<String, MessageLockHandle> taskWorkLocks = new ConcurrentHashMap<>();
     private final Map<String, TaskProgressReconcileHandle> taskProgressReconcileHandles = new ConcurrentHashMap<>();
 
     @Override
@@ -51,7 +51,7 @@ final class LocalTaskConcurrencyCoordinator implements TaskConcurrencyStrategy {
     }
 
     @Override
-    public <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
+    public <T> T withTaskWorkReadLock(String taskId, String messageId, Supplier<T> action) {
         if (messageId == null || messageId.isBlank()) {
             return withTaskReadLock(taskId, action);
         }
@@ -189,7 +189,7 @@ final class LocalTaskConcurrencyCoordinator implements TaskConcurrencyStrategy {
     }
 
     private MessageLockHandle acquireMessageLockHandle(String lockKey) {
-        return taskMessageLocks.compute(lockKey, (ignored, existing) -> {
+        return taskWorkLocks.compute(lockKey, (ignored, existing) -> {
             MessageLockHandle handle = existing == null ? new MessageLockHandle() : existing;
             handle.referenceCount++;
             return handle;
@@ -197,7 +197,7 @@ final class LocalTaskConcurrencyCoordinator implements TaskConcurrencyStrategy {
     }
 
     private void releaseMessageLockHandle(String lockKey, MessageLockHandle lockHandle) {
-        taskMessageLocks.computeIfPresent(lockKey, (ignored, existing) -> {
+        taskWorkLocks.computeIfPresent(lockKey, (ignored, existing) -> {
             if (existing != lockHandle) {
                 return existing;
             }

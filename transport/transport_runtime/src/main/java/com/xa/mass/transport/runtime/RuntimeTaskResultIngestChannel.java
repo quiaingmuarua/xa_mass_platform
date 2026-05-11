@@ -33,7 +33,7 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
         }
         logger.debug("Ingest task result via runtime channel: taskId={}, messageId={}, success={}",
                 report.getTaskId(), report.getMessageId(), report.isSuccess());
-        return taskResultIngestFacade.handleTaskMessageResult(
+        return taskResultIngestFacade.ingestTaskResult(
                 report.getTaskId(),
                 report.getMessageId(),
                 report.isSuccess(),

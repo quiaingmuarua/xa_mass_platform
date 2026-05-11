@@ -85,13 +85,13 @@ public class TaskResourceReleaseListener {
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         if (task.getStatus() == TaskStatus.RUNNING
-                && maintenancePort.hasPendingDispatchableMessages(task.getTid())) {
+                && maintenancePort.hasDispatchReadyWork(task.getTid())) {
             maintenancePort.requestTaskDispatch(task);
         }
     }
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId) {
-        return maintenancePort.hasProcessingMessagesForWorker(taskId, workerId);
+        return maintenancePort.hasActiveWorkForWorker(taskId, workerId);
     }
 
     private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {

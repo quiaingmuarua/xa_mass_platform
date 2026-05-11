@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
@@ -65,6 +66,7 @@ class TaskStateResolver {
         TaskStatus fromStatus = task.getStatus();
         boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
         if (result) {
+            task.setIntakeStatus(TaskIntakeStatus.SEALED);
             traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
             traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,

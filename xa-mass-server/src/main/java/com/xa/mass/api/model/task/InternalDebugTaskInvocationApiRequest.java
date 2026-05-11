@@ -14,7 +14,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
 
     private String userId;
     private String project;
-    private String taskName;
     private String eventCode;
     private TaskMode mode;
     private PayloadType payloadType;
@@ -39,14 +38,6 @@ public class InternalDebugTaskInvocationApiRequest extends AbstractUnknownFieldR
 
     public void setProject(String project) {
         this.project = project;
-    }
-
-    public String getTaskName() {
-        return taskName;
-    }
-
-    public void setTaskName(String taskName) {
-        this.taskName = taskName;
     }
 
     public String getEventCode() {

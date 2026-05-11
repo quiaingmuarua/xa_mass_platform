@@ -114,8 +114,8 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasPendingDispatchableMessages("task-1")).thenReturn(true);
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -139,8 +139,8 @@ class TaskResourceReleaseListenerTest {
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
-        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasPendingDispatchableMessages("task-1")).thenReturn(true);
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
         when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
         when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
@@ -160,7 +160,7 @@ class TaskResourceReleaseListenerTest {
         TaskMessageAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
-        when(maintenancePort.hasProcessingMessagesForWorker("task-1", "worker-1")).thenReturn(true);
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(true);
 
         listener.onTaskMessageAttemptClosed(task, closedAttempt);
 

@@ -47,39 +47,6 @@ public class TaskShellCreateApiRequest extends AbstractUnknownFieldRequest {
         this.executionSpec = executionSpec;
     }
 
-    public int getBatchSize() {
-        return executionSpec == null ? 0 : executionSpec.getBatchSize();
-    }
-
-    public void setBatchSize(int batchSize) {
-        if (this.executionSpec == null) {
-            this.executionSpec = new TaskExecutionSpec();
-        }
-        this.executionSpec.setBatchSize(batchSize);
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return executionSpec == null ? 0 : executionSpec.getMaxRuntimeSeconds();
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        if (this.executionSpec == null) {
-            this.executionSpec = new TaskExecutionSpec();
-        }
-        this.executionSpec.setMaxRuntimeSeconds(maxRuntimeSeconds);
-    }
-
-    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
-        return executionSpec == null ? null : executionSpec.getWorkloadClass();
-    }
-
-    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
-        if (this.executionSpec == null) {
-            this.executionSpec = new TaskExecutionSpec();
-        }
-        this.executionSpec.setWorkloadClass(workloadClass);
-    }
-
     public String getSourceRef() {
         return sourceRef;
     }

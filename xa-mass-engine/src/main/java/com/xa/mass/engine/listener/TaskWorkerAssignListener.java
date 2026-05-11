@@ -89,17 +89,17 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        int pendingDispatchCount = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
-        if (pendingDispatchCount <= 0) {
+        int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
+        if (readyWorkCount <= 0) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "no pending INIT task messages", null);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, 0, 0, 0,
+                    "no runtime-ready work", null);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, 0, 0, 0,
                     0, 0, 0, 0,
-                    "no pending INIT task messages", "SKIPPED");
+                    "no runtime-ready work", "SKIPPED");
             return false;
         }
 
-        int desiredDispatchWorkerCount = getDesiredDispatchWorkerCount(task, pendingDispatchCount);
+        int desiredDispatchWorkerCount = getDesiredDispatchWorkerCount(task, readyWorkCount);
         int requiredStartWorkerCount = initialStatus == TaskStatus.READY
                 ? getRequiredStartWorkerCount(task)
                 : 1;
@@ -110,7 +110,7 @@ public class TaskWorkerAssignListener {
         if (matched.isEmpty()) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "no matched worker-context candidates", requiredStartWorkerCount);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     0, 0, 0, 0,
                     "no matched worker-context candidates", "SKIPPED");
@@ -122,7 +122,7 @@ public class TaskWorkerAssignListener {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "matched workers below minimum start gate", requiredStartWorkerCount);
             unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), 0, 0, 0,
                     "matched workers below minimum start gate", "SKIPPED");
@@ -135,7 +135,7 @@ public class TaskWorkerAssignListener {
                     "task status changed during matching from " + initialStatus + " to " + task.getStatus(),
                     requiredStartWorkerCount);
             unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), 0, 0, 0,
                     "task status changed during matching from " + initialStatus + " to " + task.getStatus(), "SKIPPED");
@@ -148,7 +148,7 @@ public class TaskWorkerAssignListener {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "no dispatch candidates remained after capacity trim", requiredStartWorkerCount);
             unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), 0, 0, 0,
                     "no dispatch candidates remained after capacity trim", "SKIPPED");
@@ -164,23 +164,23 @@ public class TaskWorkerAssignListener {
                 .count();
         if (usedWorkerCount <= 0) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "matched candidates produced no bound task messages", requiredStartWorkerCount);
+                    "matched candidates produced no bound work", requiredStartWorkerCount);
             unlockWorkers(dispatchCandidates);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), 0,
-                    "matched candidates produced no bound task messages", "SKIPPED");
+                    "matched candidates produced no bound work", "SKIPPED");
             return false;
         }
 
-            traceEventLogger.dispatchRequested(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                "matched candidates produced dispatchable task messages");
+        traceEventLogger.dispatchRequested(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                "matched candidates produced dispatchable work");
 
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
             unlockWorkers(dispatchCandidates);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                     requiredStartWorkerCount, matchRequestCount,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                     "task failed to transition from READY to RUNNING after dispatch", "FAILED");
@@ -196,7 +196,7 @@ public class TaskWorkerAssignListener {
                     "matched workers dispatched"
             );
         }
-        emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
+        emitAssignmentSummary(task, initialStatus, readyWorkCount, desiredDispatchWorkerCount,
                 requiredStartWorkerCount, matchRequestCount,
                 matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
@@ -205,8 +205,8 @@ public class TaskWorkerAssignListener {
         return true;
     }
 
-    private int getDesiredDispatchWorkerCount(Task task, int pendingDispatchCount) {
-        int remainingMessages = Math.max(pendingDispatchCount, 1);
+    private int getDesiredDispatchWorkerCount(Task task, int readyWorkCount) {
+        int remainingMessages = Math.max(readyWorkCount, 1);
         return Math.max(1, (int) Math.ceil((double) remainingMessages / task.getBatchSize()));
     }
 

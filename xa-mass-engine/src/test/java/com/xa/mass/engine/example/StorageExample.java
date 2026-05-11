@@ -151,7 +151,7 @@ public class StorageExample {
 
         for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
-            log.info("Testing task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
+            log.info("Testing task: {} (routingCode: {}, project: {})", dto.getSourceRef(), routingCode, dto.getProject());
 
             List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
@@ -181,7 +181,7 @@ public class StorageExample {
                 }
             }
 
-            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
+            log.info("Task {} matched {} workers", dto.getSourceRef(), matchedWorkers.size());
 
             for (Worker w : matchedWorkers) {
                 workerManager.unlockWorker(w.getWorkerId());
@@ -219,7 +219,7 @@ public class StorageExample {
 
         for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
-            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getSourceRef(), routingCode, dto.getProject());
 
             List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
@@ -239,7 +239,7 @@ public class StorageExample {
                 }
             }
 
-            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
+            log.info("Task {} matched {} workers", dto.getSourceRef(), matchedWorkers.size());
 
             for (Worker w : matchedWorkers) {
                 workerManager.unlockWorker(w.getWorkerId());
@@ -301,7 +301,7 @@ public class StorageExample {
 
         for (TaskFixture dto : taskDtos) {
             String routingCode = routingCode(dto);
-            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getSourceRef(), routingCode, dto.getProject());
 
             List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
@@ -333,7 +333,7 @@ public class StorageExample {
                 }
             }
 
-            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
+            log.info("Task {} matched {} workers", dto.getSourceRef(), matchedWorkers.size());
 
             for (Worker w : matchedWorkers) {
                 workerManager.unlockWorker(w.getWorkerId());

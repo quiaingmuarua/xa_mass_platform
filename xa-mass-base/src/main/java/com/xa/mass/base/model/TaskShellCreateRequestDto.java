@@ -2,6 +2,7 @@ package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.base.enums.task.TaskContract;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.Map;
 
@@ -29,16 +30,6 @@ public class TaskShellCreateRequestDto {
 
     public void setTenantId(String tenantId) {
         this.tenantId = tenantId;
-    }
-
-    @Deprecated(forRemoval = false)
-    public String getTaskName() {
-        return null;
-    }
-
-    @Deprecated(forRemoval = false)
-    public void setTaskName(String taskName) {
-        // taskName is server-derived; legacy callers are ignored.
     }
 
     public String getProject() {
@@ -97,11 +88,11 @@ public class TaskShellCreateRequestDto {
         executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
     }
 
-    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
+    public TaskWorkloadClass getWorkloadClass() {
         return executionSpecOrDefault().getWorkloadClass();
     }
 
-    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
+    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
         executionSpecOrDefault().setWorkloadClass(workloadClass);
     }
 

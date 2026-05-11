@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -75,8 +76,8 @@ class TaskConcurrencyAcceptanceTest {
         Map<String, Object> secondOutput = Map.of("winner", "second");
 
         runConcurrently(
-                () -> taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done-first", null, firstOutput),
-                () -> taskManager.handleTaskMessageResult(task.getTid(), message.messageId(), true, "done-second", null, secondOutput)
+                () -> taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-first", null, firstOutput),
+                () -> taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-second", null, secondOutput)
         );
 
         Task finalTask = taskManager.getTask(task.getTid());
@@ -112,7 +113,7 @@ class TaskConcurrencyAcceptanceTest {
         registerCounts(task.getTid(), attemptClosedCount, logicallyFinalCount, terminalCount);
 
         runConcurrently(
-                () -> taskManager.handleTaskMessageResult(
+                () -> taskManager.ingestTaskResult(
                         task.getTid(),
                         message.messageId(),
                         true,
@@ -120,7 +121,7 @@ class TaskConcurrencyAcceptanceTest {
                         null,
                         Map.of("outcome", "success")
                 ),
-                () -> taskManager.expireTaskMessage(task.getTid(), message.messageId())
+                () -> taskManager.expireLeasedWork(task.getTid(), message.messageId())
         );
 
         Task finalTask = taskManager.getTask(task.getTid());
@@ -175,7 +176,7 @@ class TaskConcurrencyAcceptanceTest {
         });
 
         runConcurrently(
-                () -> taskManager.handleTaskMessageResult(
+                () -> taskManager.ingestTaskResult(
                         task.getTid(),
                         message.messageId(),
                         false,
@@ -183,7 +184,7 @@ class TaskConcurrencyAcceptanceTest {
                         "SYNTHETIC_RETRY",
                         Map.of("outcome", "retry")
                 ),
-                () -> taskManager.handleTaskMessageResult(
+                () -> taskManager.ingestTaskResult(
                         task.getTid(),
                         message.messageId(),
                         true,
@@ -235,7 +236,7 @@ class TaskConcurrencyAcceptanceTest {
         assignMessage(task, message);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(taskManager.handleTaskMessageResult(
+            assertTrue(taskManager.ingestTaskResult(
                     task.getTid(),
                     message.messageId(),
                     true,
@@ -276,7 +277,7 @@ class TaskConcurrencyAcceptanceTest {
             Future<Boolean> firstFuture = executor.submit(() -> {
                 ready.countDown();
                 assertTrue(start.await(5, TimeUnit.SECONDS));
-                return concurrentTaskManager.handleTaskMessageResult(
+                return concurrentTaskManager.ingestTaskResult(
                         task.getTid(),
                         first.messageId(),
                         true,
@@ -288,7 +289,7 @@ class TaskConcurrencyAcceptanceTest {
             Future<Boolean> secondFuture = executor.submit(() -> {
                 ready.countDown();
                 assertTrue(start.await(5, TimeUnit.SECONDS));
-                return concurrentTaskManager.handleTaskMessageResult(
+                return concurrentTaskManager.ingestTaskResult(
                         task.getTid(),
                         second.messageId(),
                         true,
@@ -329,7 +330,7 @@ class TaskConcurrencyAcceptanceTest {
         TaskDetailStore.TaskMessageProjection message = countingTaskManager.getTaskMessageRecords(task.getTid()).get(0);
         assignMessage(countingTaskManager, task, message);
 
-        assertTrue(countingTaskManager.handleTaskMessageResult(
+        assertTrue(countingTaskManager.ingestTaskResult(
                 task.getTid(),
                 message.messageId(),
                 true,
@@ -339,7 +340,7 @@ class TaskConcurrencyAcceptanceTest {
         ));
         assertEquals(1, countingTaskManager.progressUpdateCount(task.getTid()));
 
-        assertTrue(countingTaskManager.handleTaskMessageResult(
+        assertTrue(countingTaskManager.ingestTaskResult(
                 task.getTid(),
                 message.messageId(),
                 true,
@@ -365,7 +366,7 @@ class TaskConcurrencyAcceptanceTest {
         assignMessage(recoveringTaskManager, task, message);
         taskStorage.suppressNextTaskMessageLookup(task.getTid(), message.messageId());
 
-        assertTrue(recoveringTaskManager.handleTaskMessageResult(
+        assertTrue(recoveringTaskManager.ingestTaskResult(
                 task.getTid(),
                 message.messageId(),
                 true,
@@ -412,7 +413,7 @@ class TaskConcurrencyAcceptanceTest {
                 futures[i] = executor.submit(() -> {
                     ready.countDown();
                     assertTrue(start.await(5, TimeUnit.SECONDS));
-                    return coalescingTaskManager.handleTaskMessageResult(
+                    return coalescingTaskManager.ingestTaskResult(
                             task.getTid(),
                             message.messageId(),
                             true,
@@ -472,7 +473,7 @@ class TaskConcurrencyAcceptanceTest {
 
     private TaskCreateSpec buildRequestWithRetry(String taskName, int messageCount, int defaultMaxRetryCount) {
         TaskCreateSpec dto = buildRequest(taskName, messageCount);
-        dto.shell().setDefaultMaxRetryCount(defaultMaxRetryCount);
+        dto.shell().setExecutionSpec(taskExecutionSpec(1, defaultMaxRetryCount));
         return dto;
     }
 
@@ -503,12 +504,11 @@ class TaskConcurrencyAcceptanceTest {
 
     private TaskCreateSpec buildRequest(String taskName, int messageCount) {
         TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setTaskName(taskName);
+        shell.setSourceRef(taskName);
         shell.setProject("demoApp");
         shell.setSharedConfig(Map.of("textContent", "concurrency", "routingCode", "us"));
         shell.setUserId("agent");
-        shell.setBatchSize(1);
-        shell.setDefaultMaxRetryCount(3);
+        shell.setExecutionSpec(taskExecutionSpec(1, 3));
         List<Map<String, Object>> inputs = java.util.stream.IntStream.range(0, messageCount)
                 .mapToObj(index -> Map.<String, Object>of("target", "alpha-" + index))
                 .toList();
@@ -533,6 +533,13 @@ class TaskConcurrencyAcceptanceTest {
                                   List<Map<String, Object>> inputs) {
     }
 
+    private TaskExecutionSpec taskExecutionSpec(int batchSize, int defaultMaxRetryCount) {
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(batchSize);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
+    }
+
     private TaskDetailStore.TaskMessageProjection assignMessage(ProjectionAwareTaskManager manager,
                                                                 Task task,
                                                                 TaskDetailStore.TaskMessageProjection message) {
@@ -547,7 +554,7 @@ class TaskConcurrencyAcceptanceTest {
                             1
                     )),
                     1,
-                    manager.getTaskMessageLeaseSeconds()
+                    manager.getWorkLeaseSeconds()
             );
         }
         int attemptNo = Math.max(1, message.retryCount() + 1);
@@ -871,4 +878,5 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 }
+
 
