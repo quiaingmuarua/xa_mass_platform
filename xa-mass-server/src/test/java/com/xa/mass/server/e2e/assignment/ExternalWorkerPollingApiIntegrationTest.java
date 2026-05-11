@@ -68,8 +68,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "crawler.fetch-page"
         );
 
-        HttpHeaders realtimeHeaders = sdkCredentialHeaders("realtime-worker-key");
-        HttpHeaders aliasHeaders = sdkCredentialHeaders("alias-worker-key");
+        HttpHeaders realtimeHeaders = credentialHeaders("realtime-worker-key");
+        HttpHeaders aliasHeaders = credentialHeaders("alias-worker-key");
 
         Map<String, Object> realtimeRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-001",
@@ -105,8 +105,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
                 rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
         ));
-        HttpHeaders workerHeaders = sdkCredentialHeaders(credential);
-        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
+        HttpHeaders workerHeaders = credentialHeaders(credential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -205,7 +205,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should converge transport presence");
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

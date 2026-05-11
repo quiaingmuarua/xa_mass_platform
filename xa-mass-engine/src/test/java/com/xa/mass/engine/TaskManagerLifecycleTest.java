@@ -348,8 +348,12 @@ class TaskManagerLifecycleTest {
                 java.util.Map.of("outcome", "success")
         ));
 
-        TaskDetailStore.TaskMessageProjection projection =
-                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection projection = awaitVisibleTaskMessageProjection(
+                manager,
+                task.getTid(),
+                messageId,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertNotNull(projection);
         assertEquals(TaskMessageProjectionStatus.SUCCESS, projection.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, projection.finalReason());
@@ -395,8 +399,12 @@ class TaskManagerLifecycleTest {
                 java.util.Map.of("outcome", "success")
         ));
 
-        TaskDetailStore.TaskMessageProjection projection =
-                manager.getVisibleTaskMessageProjection(task.getTid(), claimed.messageId());
+        TaskDetailStore.TaskMessageProjection projection = awaitVisibleTaskMessageProjection(
+                manager,
+                task.getTid(),
+                claimed.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertNotNull(projection);
         assertEquals(TaskMessageProjectionStatus.SUCCESS, projection.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, projection.finalReason());
@@ -446,10 +454,18 @@ class TaskManagerLifecycleTest {
 
         assertTrue(manager.expireLeasedWork(task.getTid(), messageId));
 
-        TaskDetailStore.TaskMessageProjection projection =
-                manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                manager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection projection = awaitVisibleTaskMessageProjection(
+                manager,
+                task.getTid(),
+                messageId,
+                TaskMessageProjectionStatus.EXPIRED
+        );
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt = awaitVisibleTaskMessageAttemptProjection(
+                manager,
+                task.getTid(),
+                messageId,
+                TaskMessageAttemptProjectionStatus.EXPIRED
+        );
         assertNotNull(projection);
         assertEquals(TaskMessageProjectionStatus.EXPIRED, projection.status());
         assertEquals(TaskMessageProjectionFinalReason.LEASE_EXPIRED, projection.finalReason());
@@ -729,10 +745,18 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(2, updatedTask.getTaskSuccessNumber());
-        TaskDetailStore.TaskMessageProjection first =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), messages.get(0).messageId());
-        TaskDetailStore.TaskMessageProjection second =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), messages.get(1).messageId());
+        TaskDetailStore.TaskMessageProjection first = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                messages.get(0).messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
+        TaskDetailStore.TaskMessageProjection second = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                messages.get(1).messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, first.status());
         assertEquals(TaskMessageProjectionStatus.SUCCESS, second.status());
         assertTrue(first.input() == null || first.input().isEmpty());
@@ -1291,7 +1315,12 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
 
         TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageAttemptProjection(
+                        taskManager,
+                        task.getTid(),
+                        message.messageId(),
+                        TaskMessageAttemptProjectionStatus.SUCCEEDED
+                );
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, recoveredAttempt.status());
         assertEquals("worker-recover", recoveredAttempt.workerId());
@@ -1525,8 +1554,12 @@ class TaskManagerLifecycleTest {
 
         assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
                 "expiry hot path should converge from runtime lease without reading message projection residue");
-        TaskDetailStore.TaskMessageProjection finalProjection =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection finalProjection = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.FAILED
+        );
         assertNotNull(finalProjection);
         assertEquals(TaskMessageProjectionStatus.FAILED, finalProjection.status());
     }
@@ -2636,10 +2669,18 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.expireLeasedWork(task.getTid(), initialMessage.messageId()));
 
-        TaskDetailStore.TaskMessageProjection updatedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), initialMessage.messageId());
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), initialMessage.messageId());
+        TaskDetailStore.TaskMessageProjection updatedMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                initialMessage.messageId(),
+                TaskMessageProjectionStatus.FAILED
+        );
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt = awaitVisibleTaskMessageAttemptProjection(
+                taskManager,
+                task.getTid(),
+                initialMessage.messageId(),
+                TaskMessageAttemptProjectionStatus.EXPIRED
+        );
         assertEquals(TaskMessageProjectionStatus.FAILED, updatedMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, updatedMessage.finalReason());
         assertNotNull(latestAttempt);
@@ -2679,10 +2720,12 @@ class TaskManagerLifecycleTest {
 
             assertTrue(taskManager.expireLeasedWork(task.getTid(), message.messageId()));
 
-            TaskDetailStore.TaskMessageProjection retriedMessage =
-                    taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-            TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                    taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+            TaskDetailStore.TaskMessageProjection retriedMessage = awaitVisibleTaskMessageProjection(
+                    taskManager,
+                    task.getTid(),
+                    message.messageId(),
+                    TaskMessageProjectionStatus.INIT
+            );
             Task updatedTask = taskManager.getTask(task.getTid());
 
             assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
@@ -2693,9 +2736,14 @@ class TaskManagerLifecycleTest {
             assertNull(retriedMessage.latestAttemptBatchId());
             assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
 
-            assertNotNull(latestAttempt);
-            assertEquals(TaskMessageAttemptProjectionStatus.EXPIRED, latestAttempt.status());
-            assertEquals(TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED, latestAttempt.finalReason());
+            List<TaskDetailStore.TaskMessageAttemptProjection> attemptProjections =
+                    taskStorage.getTaskMessageAttemptProjections(task.getTid(), message.messageId());
+            assertTrue(
+                    attemptProjections.stream().anyMatch(attempt ->
+                            attempt.status() == TaskMessageAttemptProjectionStatus.EXPIRED
+                                    && attempt.finalReason() == TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED),
+                    "attempt audit should retain the expired closed attempt even after redispatch window reopens"
+            );
 
             assertEquals(TaskStatus.RUNNING, updatedTask.getStatus());
             assertEquals(List.of("attempt-closed:EXPIRED", "dispatch:RUNNING"), events);

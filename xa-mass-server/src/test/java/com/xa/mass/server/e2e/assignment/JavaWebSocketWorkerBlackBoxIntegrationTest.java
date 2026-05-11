@@ -64,7 +64,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                 .attributes(Map.of("workerId", WORKER_ID))
                 .build());
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
+        HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
@@ -132,7 +132,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         waitForWorkerOffline(WORKER_ID, "realtime java websocket worker should go offline after disconnect");
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

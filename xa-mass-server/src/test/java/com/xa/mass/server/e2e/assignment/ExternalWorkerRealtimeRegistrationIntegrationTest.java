@@ -69,7 +69,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
                 ))
-        ), sdkCredentialHeaders(WORKER_KEY));
+        ), credentialHeaders(WORKER_KEY));
 
         assertApiError(registerResponse, 400);
         assertTrue(apiMsg(registerResponse).contains(
@@ -77,7 +77,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
         assertFalse(app.getAllWorkers().stream().anyMatch(worker -> WORKER_ID.equals(worker.getWorkerId())));
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

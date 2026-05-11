@@ -53,7 +53,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void createTaskThroughUnifiedTaskApiWithSdkCredentialCompletesOverRealRuntime() throws Exception {
+    void createTaskThroughUnifiedTaskApiWithSubmitterCredentialCompletesOverRealRuntime() throws Exception {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("crawler-agent")
                 .credential("sdk-test-key")
@@ -64,9 +64,9 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "demoApp",
-                "sharedConfig", Map.of("source", "sdk"),
+                "sharedConfig", Map.of("source", "submitter"),
                 "executionSpec", Map.of("batchSize", 1)
-        ), sdkHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -96,7 +96,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("SERVICE", securityView.get("createdByPrincipalType"));
 
         Map<String, Object> listResponse = exchange("/api/v1/tasks", HttpMethod.GET, null,
-                sdkHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+                submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
         assertApiOk(listResponse);
         List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(listResponse).get("items");
         assertTrue(items.stream().anyMatch(item -> taskId.equals(String.valueOf(item.get("id")))));
@@ -114,7 +114,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
                 "userId", "bot-user"
-        ), sdkHeaders(Map.of("Authorization", "Bearer telegram-key")));
+        ), submitterCredentialHeaders(Map.of("Authorization", "Bearer telegram-key")));
 
         assertApiError(createResponse, 403);
         assertEquals("Submitter credential project scope denied: crawlerApp", apiMsg(createResponse));
@@ -133,7 +133,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
                 "userId", "crawler-user"
-        ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -141,14 +141,14 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> appendResponse = exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
                 "items", java.util.List.of(Map.of("url", "https://example.test/page-1"))
-        ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiError(appendResponse, 403);
         assertEquals("Submitter credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
     }
 
     @SuppressWarnings("unchecked")
-    private HttpHeaders sdkHeaders(Map<String, String> headers) {
+    private HttpHeaders submitterCredentialHeaders(Map<String, String> headers) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.set("Content-Type", "application/json");
         headers.forEach(httpHeaders::set);

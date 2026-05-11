@@ -65,7 +65,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     void externalNodeSocketWorkerCompletesTaskThroughExplicitSocketAdapterRegistration() throws Exception {
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(SOCKET_WORKER_KEY);
+        HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "adapterId", "socket",
@@ -149,7 +149,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                         "eventCode", "demo.dispatch",
                         "projectCodes", List.of("demoApp")
                 ))
-        ), sdkCredentialHeaders(WEBSOCKET_WORKER_KEY)));
+        ), credentialHeaders(WEBSOCKET_WORKER_KEY)));
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
@@ -160,7 +160,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
                 ))
-        ), sdkCredentialHeaders(SOCKET_WORKER_KEY)));
+        ), credentialHeaders(SOCKET_WORKER_KEY)));
 
         try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
@@ -238,7 +238,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         return taskId;
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

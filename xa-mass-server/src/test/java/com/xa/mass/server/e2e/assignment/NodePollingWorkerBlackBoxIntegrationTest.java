@@ -70,7 +70,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                     () -> workerProcess.assertAlive("External Node polling worker exited before reaching transport-online state"),
                     workerProcess::capturedOutput
             );
-            assertSdkMetadataProjection(WORKER_ID);
+            assertCatalogCapabilityProjection(WORKER_ID);
 
             Map<String, Object> createBody = new LinkedHashMap<>();
             createBody.put("project", "crawlerApp");
@@ -78,7 +78,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             createBody.put("sharedConfig", Map.of("routingCode", "us"));
             createBody.put("executionSpec", Map.of("batchSize", 1));
 
-            Map<String, Object> createResponse = createTaskShell(createBody, sdkCredentialHeaders(SUBMITTER_KEY));
+            Map<String, Object> createResponse = createTaskShell(createBody, submitterCredentialHeaders(SUBMITTER_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
             assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
@@ -107,7 +107,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         waitForWorkerOffline(WORKER_ID, "external node polling worker should go offline after shutdown");
     }
 
-    private void assertSdkMetadataProjection(String workerId) {
+    private void assertCatalogCapabilityProjection(String workerId) {
         Map<String, Object> workerCapabilityResponse = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
         Map<String, Object> eventCapabilityResponse = exchange("/api/v1/catalog/event-capabilities", HttpMethod.GET, null);
         assertApiOk(workerCapabilityResponse);
@@ -135,7 +135,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ));
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders submitterCredentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

@@ -83,8 +83,8 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
-        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
+        HttpHeaders workerHeaders = credentialHeaders(workerCredential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -181,7 +181,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertJdbcProjection(taskId, workerId);
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

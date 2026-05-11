@@ -66,7 +66,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
-        HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
+        HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
@@ -138,7 +138,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
-        HttpHeaders workerHeaders = sdkCredentialHeaders(STOCK_WORKER_KEY);
+        HttpHeaders workerHeaders = credentialHeaders(STOCK_WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
                 "adapterId", "websocket",
@@ -260,7 +260,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         waitForWorkerOffline(STOCK_WORKER_ID, "stock websocket worker should go offline after disconnect");
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
