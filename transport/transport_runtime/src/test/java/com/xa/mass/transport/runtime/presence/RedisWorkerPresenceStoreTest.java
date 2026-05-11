@@ -15,6 +15,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisWorkerPresenceStoreTest {
@@ -104,6 +105,8 @@ class RedisWorkerPresenceStoreTest {
             assertFalse(shortLeaseStore.isRouteOnline("socket", "route-2"));
             assertEquals(1, shortLeaseStore.pruneExpired());
             assertTrue(shortLeaseStore.listActivePresences().isEmpty());
+            assertNull(shortLeaseStore.getPresence("worker-2"));
+            assertNull(observerCommands.get(namespacePrefix + ":route:socket" + '\u0000' + "route-2"));
         }
     }
 

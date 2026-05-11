@@ -8,7 +8,9 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -263,6 +265,7 @@ class TaskLifecycleService {
                     task.getExecutionSpec().getDefaultMaxRetryCount()
             ));
         }
+        validateAtomicAppendAdmission(task, addedItemCount(ingressItems));
         taskManager.addRuntimeIngressItems(task, ingressItems);
         int added = ingressItems.size();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
@@ -273,6 +276,27 @@ class TaskLifecycleService {
         }
         logger.info("[appendTaskItems] Added {} items to task {}", added, taskId);
         return added;
+    }
+
+    private void validateAtomicAppendAdmission(Task task, int itemCount) {
+        if (task == null || itemCount <= 0) {
+            return;
+        }
+        WorkEnqueueOptions enqueueOptions = taskManager.enqueueOptionsResolver().resolve(task);
+        TaskWorkStats taskStats = taskManager.getTaskWorkRuntime().stats(task.getTid());
+        long projectedReadyCount = taskStats.readyCount() + itemCount;
+        if (projectedReadyCount > enqueueOptions.maxReadyItemsPerTask()) {
+            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=task ready backlog is full");
+        }
+        TaskWorkRuntimeStats runtimeStats = taskManager.getTaskWorkRuntime().stats();
+        long projectedQueuedCount = runtimeStats.readyItems() + runtimeStats.delayedItems() + itemCount;
+        if (projectedQueuedCount > runtimeStats.maxQueuedItems()) {
+            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=engine work backlog is full");
+        }
+    }
+
+    private int addedItemCount(List<RuntimeTaskIngressItem> ingressItems) {
+        return ingressItems == null ? 0 : ingressItems.size();
     }
 
     boolean sealTask(String taskId) {
@@ -376,4 +400,3 @@ class TaskLifecycleService {
         task.sealIntake();
     }
 }
-

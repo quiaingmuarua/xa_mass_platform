@@ -132,9 +132,24 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     @Override
     public synchronized void shutdown() {
-        List<SocketWorkerEndpoint> endpoints = routeIndex.entries().stream()
+        List<RouteEndpointIndex.Entry<String, SocketWorkerEndpoint>> entries = routeIndex.entries();
+        List<SocketWorkerEndpoint> endpoints = entries.stream()
                 .map(RouteEndpointIndex.Entry::endpoint)
                 .toList();
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
+            if (entry.endpoint().isActive()) {
+                workerPresenceStore.markOffline(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        entry.handle(),
+                        "socket adapter shutdown"
+                );
+                if (systemEventChannel != null) {
+                    systemEventChannel.publishWorkerOffline(entry.workerId(), "socket adapter shutdown", null);
+                }
+            }
+        }
         routeIndex.clear();
         for (SocketWorkerEndpoint endpoint : endpoints) {
             closeQuietly(endpoint);

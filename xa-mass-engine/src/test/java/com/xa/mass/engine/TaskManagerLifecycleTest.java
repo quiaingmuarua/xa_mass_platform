@@ -667,6 +667,43 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
+        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
+                new RecordingTaskScheduler(),
+                managerStorage,
+                managerStorage,
+                new InMemoryTaskWorkRuntime(2)
+        );
+        TaskCreateSpec dto = new TaskCreateSpec();
+        dto.setSourceRef("append-atomic-backlog");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setContract(TaskContract.BATCH);
+        dto.setSealIntakeAfterCreate(false);
+        dto.setInputs(List.of(java.util.Map.<String, Object>of("target", "alpha")));
+
+        Task task = createTask(manager, dto);
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(1, manager.getTaskMessageRecords(task.getTid()).size());
+        assertEquals(1, manager.getTask(task.getTid()).getTaskTargetNumber());
+        assertEquals(1, manager.getTask(task.getTid()).getTaskEligibleNumber());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                manager.appendTaskItems(task.getTid(), List.of(
+                        java.util.Map.<String, Object>of("target", "beta"),
+                        java.util.Map.<String, Object>of("target", "gamma")
+                )));
+
+        assertTrue(error.getMessage().contains("engine work backlog is full"));
+        assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(1, manager.getTaskWorkRuntime().stats().readyItems());
+        assertEquals(1, manager.getTaskMessageRecords(task.getTid()).size());
+        assertEquals(1, manager.getTask(task.getTid()).getTaskTargetNumber());
+        assertEquals(1, manager.getTask(task.getTid()).getTaskEligibleNumber());
+    }
+
+    @Test
     void createTaskRejectsWhenProjectIsMissing() {
         TaskCreateSpec dto = buildRequest("missing-project");
         dto.setProject(null);
@@ -3399,4 +3436,3 @@ class TaskManagerLifecycleTest {
         }
     }
 }
-

@@ -181,7 +181,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void mismatchedEnvelopeAttemptIdentityStillDelegatesDuringLogOnlyStage() {
+    void mismatchedEnvelopeAttemptIdentityIsAcceptedAsNoop() {
         RunningTaskFixture fixture = createRunningTask("task-envelope-attempt-mismatch");
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
@@ -195,8 +195,47 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(handled);
         TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
-        assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
-        assertEquals("ok-mismatch", updated.output().get("mockData"));
+        assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
+        assertNull(updated.output());
+    }
+
+    @Test
+    void mismatchedEnvelopeLeaseIdentityIsAcceptedAsNoop() {
+        RunningTaskFixture fixture = createRunningTask("task-envelope-lease-mismatch");
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                fixture.attemptId(),
+                "wrong-lease-token",
+                null,
+                report(fixture, "SUCCESS", "ok-lease-mismatch", null)
+        ));
+
+        assertTrue(handled);
+        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
+        assertNull(updated.output());
+    }
+
+    @Test
+    void envelopeWithoutActiveLeaseIsAcceptedAsNoop() {
+        RunningTaskFixture fixture = createRunningTask("task-envelope-no-active-lease");
+        taskWorkRuntime.discardTask(fixture.taskId());
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                fixture.attemptId(),
+                null,
+                null,
+                report(fixture, "SUCCESS", "ok-no-active-lease", null)
+        ));
+
+        assertTrue(handled);
+        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
+        assertNull(updated.output());
     }
 
     @Test
@@ -670,7 +709,6 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
-
 
 
 

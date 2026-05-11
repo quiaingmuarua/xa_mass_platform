@@ -67,12 +67,12 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.equals("/api/v1/projects") && "GET".equals(method)) {
             return sdkCredentialAttempt
-                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
         if (uri.matches("^/api/v1/projects/[^/]+(/events|/submitters)?$") && "GET".equals(method)) {
             return sdkCredentialAttempt
-                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
         if (uri.startsWith("/api/v1/catalog/") && "GET".equals(method)) {

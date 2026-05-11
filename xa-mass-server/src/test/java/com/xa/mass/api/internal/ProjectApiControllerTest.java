@@ -1,6 +1,8 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.sdk.SubmitterOperations;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
@@ -105,6 +107,48 @@ class ProjectApiControllerTest {
                 .andExpect(jsonPath("$.data[?(@.principalId=='crawler-submitter')]").exists())
                 .andExpect(jsonPath("$.data[?(@.principalId=='demo-admin')]").exists())
                 .andExpect(jsonPath("$.data[?(@.principalId=='test-only')]").doesNotExist());
+    }
+
+    @Test
+    void scopedSubmitterOnlySeesAuthorizedProjectsAndEvents() throws Exception {
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("crawler-reader")
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build();
+
+        mockMvc.perform(get("/api/v1/projects")
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.code=='crawlerApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='demoApp')]").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/projects/crawlerApp/events")
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply')]").doesNotExist());
+    }
+
+    @Test
+    void scopedSubmitterCannotEnumerateOtherProjectResources() throws Exception {
+        PrincipalContext principal = PrincipalContext.builder()
+                .principalId("crawler-reader")
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build();
+
+        mockMvc.perform(get("/api/v1/projects/demoApp")
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/projects/demoApp/events")
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/projects/demoApp/submitters")
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
+                .andExpect(status().isNotFound());
     }
 
     @Test

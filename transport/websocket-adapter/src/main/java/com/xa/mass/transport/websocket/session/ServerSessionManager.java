@@ -154,6 +154,16 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         logger.info("Shutting down session manager, closing {} route connections...", routeIndex.routeCount());
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
+                workerPresenceStore.markOffline(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        entry.handle().id().asShortText(),
+                        "websocket adapter shutdown"
+                );
+                systemEventChannel.publishWorkerOffline(entry.workerId(), "websocket adapter shutdown", null);
+            }
+            if (entry.endpoint().isActive()) {
                 entry.endpoint().channel().close();
             }
         }

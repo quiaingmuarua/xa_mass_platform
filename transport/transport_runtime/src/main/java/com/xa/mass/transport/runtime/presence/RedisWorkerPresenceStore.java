@@ -351,6 +351,9 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         for (String workerId : commands.smembers(workersKey())) {
             WorkerPresence presence = getPresence(workerId);
             if (presence != null && presence.getPresenceState() == WorkerPresenceState.STALE) {
+                clearPreviousRoute(presence, workerId);
+                commands.del(workerKey(workerId));
+                commands.srem(workersKey(), workerId);
                 stale++;
             }
         }

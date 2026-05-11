@@ -1,6 +1,8 @@
 package com.xa.mass.api.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -15,6 +17,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.Map;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,7 +30,23 @@ class ApiAuthInterceptorTest {
 
     @BeforeEach
     void setUp() {
-        ApiAuthInterceptor interceptor = new ApiAuthInterceptor(new ApiAuthService(), new ObjectMapper());
+        AuthProvider authProvider = mock(AuthProvider.class);
+        when(authProvider.authenticate("sdk-key")).thenReturn(PrincipalContext.builder()
+                .principalId("sdk-reader")
+                .projectScopes(java.util.List.of("demoApp"))
+                .eventScopes(java.util.List.of("demo.dispatch"))
+                .build());
+        when(authProvider.authenticate("wildcard-sdk-key")).thenReturn(PrincipalContext.builder()
+                .principalId("sdk-admin")
+                .projectScopes(java.util.List.of(PrincipalContext.WILDCARD_SCOPE))
+                .eventScopes(java.util.List.of(PrincipalContext.WILDCARD_SCOPE))
+                .build());
+        ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
+                new ApiAuthService(),
+                new ObjectMapper(),
+                new ApiAuthorizationService(authProvider, null),
+                new ApiRouteAuthorizationCatalog()
+        );
         mockMvc = MockMvcBuilders.standaloneSetup(new ProtectedApiController())
                 .addInterceptors(interceptor)
                 .build();
@@ -168,6 +188,30 @@ class ApiAuthInterceptorTest {
                 .andExpect(jsonPath("$.ok").value(true));
     }
 
+    @Test
+    void validSdkCredentialCanReachProjectRoutesWithoutOperatorHeaders() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/projects/demoApp")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void invalidSdkCredentialCannotReachProjectRoutes() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "missing-key"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
     @Controller
     static class ProtectedApiController {
         @GetMapping("/api/v1/tasks")
@@ -186,6 +230,18 @@ class ApiAuthInterceptorTest {
         @ResponseBody
         public Map<String, Object> taskDetail(@PathVariable String taskId) {
             return Map.of("ok", true, "taskId", taskId);
+        }
+
+        @GetMapping("/api/v1/projects")
+        @ResponseBody
+        public Map<String, Object> projectList() {
+            return Map.of("ok", true);
+        }
+
+        @GetMapping("/api/v1/projects/{projectCode}")
+        @ResponseBody
+        public Map<String, Object> project(@PathVariable String projectCode) {
+            return Map.of("ok", true, "projectCode", projectCode);
         }
 
         @PostMapping("/internal/v1/debug/task-invocations:sync")

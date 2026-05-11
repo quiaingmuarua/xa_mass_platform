@@ -176,9 +176,12 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
     public int pruneExpired() {
         int pruned = 0;
         long now = System.currentTimeMillis();
-        for (WorkerPresence stored : presenceByWorkerId.values()) {
+        for (WorkerPresence stored : List.copyOf(presenceByWorkerId.values())) {
             WorkerPresence materialized = materialize(stored, now);
             if (materialized != null && materialized.getPresenceState() == WorkerPresenceState.STALE) {
+                presenceByWorkerId.remove(materialized.getWorkerId(), materialized);
+                workerIdByRoute.remove(routeIdentity(materialized.getAdapterId(), materialized.getRouteKey()),
+                        materialized.getWorkerId());
                 pruned++;
             }
         }

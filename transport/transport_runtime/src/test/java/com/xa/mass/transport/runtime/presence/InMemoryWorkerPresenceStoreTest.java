@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryWorkerPresenceStoreTest {
@@ -30,6 +31,9 @@ class InMemoryWorkerPresenceStoreTest {
         assertFalse(store.isRouteOnline("websocket", "route-1"));
         assertTrue(store.listActivePresences().isEmpty());
         assertEquals(1, store.pruneExpired());
+        assertEquals(0, store.pruneExpired());
+        assertEquals(0, store.listActivePresences().size());
+        assertNull(store.getPresence("worker-1"));
     }
 
     @Test

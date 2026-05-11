@@ -650,6 +650,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskWorkRuntime;
     }
 
+    TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver() {
+        return enqueueOptionsResolver;
+    }
+
     com.xa.mass.engine.util.TraceEventLogger traceEvents() {
         return traceEventLogger;
     }

@@ -176,6 +176,21 @@ class ServerSessionManagerShutdownTest {
         verify(inactive, never()).close();
     }
 
+    @Test
+    void shutdownMarksPresenceOfflineBeforeClearingRoutes() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        manager.shutdown();
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+    }
+
     private Channel mockActiveChannel(String idText) {
         Channel ch = mock(Channel.class);
         ChannelId chId = mock(ChannelId.class);
