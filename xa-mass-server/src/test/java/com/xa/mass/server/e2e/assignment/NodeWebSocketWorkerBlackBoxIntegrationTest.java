@@ -82,7 +82,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
+        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not create realtime transport presence");
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
@@ -155,7 +155,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not mark realtime worker online");
+        assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
 
         Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + STOCK_WORKER_ID + "/contexts", HttpMethod.POST, Map.of(
                 "workerContextId", "ctx-" + STOCK_WORKER_ID,

@@ -78,7 +78,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(registerResponse);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
+        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not create realtime transport presence");
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",

@@ -16,6 +16,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Objects;
@@ -135,6 +136,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions presenceStoreFactory(Supplier<WorkerPresenceStore> presenceStoreFactory) {
+            delegate.presenceStoreFactory(presenceStoreFactory);
+            return this;
+        }
+
         public TransportOptions redisDeliveryStore(String redisUri) {
             delegate.redisDeliveryStore(redisUri);
             return this;
@@ -145,6 +151,16 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions redisPresenceStore(String redisUri) {
+            delegate.redisPresenceStore(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisPresenceStore(String redisUri, String namespacePrefix) {
+            delegate.redisPresenceStore(redisUri, namespacePrefix);
+            return this;
+        }
+
         public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
             return this;
@@ -152,6 +168,11 @@ public final class MassSdk {
 
         public TransportOptions maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
             delegate.maxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+            return this;
+        }
+
+        public TransportOptions workerPresenceLeaseMillis(long workerPresenceLeaseMillis) {
+            delegate.workerPresenceLeaseMillis(workerPresenceLeaseMillis);
             return this;
         }
 

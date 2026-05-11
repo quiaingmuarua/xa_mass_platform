@@ -880,6 +880,36 @@ class MassSdkTest {
         assertFalse(app.isRunning());
     }
 
+    @Test
+    void massApplicationStopsCustomPresenceStore() {
+        StubWorkerPresenceStore store = new StubWorkerPresenceStore();
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .presenceStoreFactory(() -> store)
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        app.start();
+        app.stop();
+
+        assertTrue(store.closed.get());
+    }
+
+    @Test
+    void sdkBuilderAcceptsRedisPresenceStoreNamespaceOverride() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .workerPresenceLeaseMillis(5_000L)
+                        .redisPresenceStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:presence")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        assertNotNull(app);
+        assertFalse(app.isRunning());
+    }
+
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
         MassSdkApplication app = explicitRealtimeRuntime(18080, 8, 1000);
 
@@ -3357,6 +3387,65 @@ class MassSdkTest {
         @Override
         public void shutdown() {
             shutdownCalled.set(true);
+        }
+    }
+
+    private static final class StubWorkerPresenceStore
+            implements com.xa.mass.transport.presence.WorkerPresenceStore, AutoCloseable {
+
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final InMemoryWorkerPresenceStore delegate = new InMemoryWorkerPresenceStore();
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence markOnline(String workerId,
+                                                                        String adapterId,
+                                                                        String routeKey,
+                                                                        String connectionId,
+                                                                        String reason) {
+            return delegate.markOnline(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence refreshHeartbeat(String workerId,
+                                                                              String adapterId,
+                                                                              String routeKey,
+                                                                              String connectionId,
+                                                                              String reason) {
+            return delegate.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence markOffline(String workerId,
+                                                                         String adapterId,
+                                                                         String routeKey,
+                                                                         String connectionId,
+                                                                         String reason) {
+            return delegate.markOffline(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence getPresence(String workerId) {
+            return delegate.getPresence(workerId);
+        }
+
+        @Override
+        public boolean isRouteOnline(String adapterId, String routeKey) {
+            return delegate.isRouteOnline(adapterId, routeKey);
+        }
+
+        @Override
+        public List<com.xa.mass.transport.presence.WorkerPresence> listActivePresences() {
+            return delegate.listActivePresences();
+        }
+
+        @Override
+        public int pruneExpired() {
+            return delegate.pruneExpired();
+        }
+
+        @Override
+        public void close() {
+            closed.set(true);
         }
     }
 

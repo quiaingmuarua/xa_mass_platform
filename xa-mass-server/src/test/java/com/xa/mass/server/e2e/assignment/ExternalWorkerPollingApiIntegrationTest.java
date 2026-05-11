@@ -128,12 +128,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "attributes", Map.of("region", "us")
         ), workerHeaders);
         assertApiOk(contextResponse);
-        assertFalse(app.isWorkerOnline(workerId), "register must not mark external worker online");
+        assertFalse(app.isWorkerOnline(workerId), "registration must not create external worker transport presence");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "external-worker-api-online"
         ), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "external worker online should update runtime status");
+        waitUntil(() -> app.isWorkerOnline(workerId), "external worker online should surface transport presence");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":heartbeat", HttpMethod.POST, Map.of(
                 "reason", "external-worker-api-heartbeat"
@@ -202,7 +202,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "external-worker-api-offline"
         ), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should update runtime status");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should converge transport presence");
     }
 
     private HttpHeaders sdkCredentialHeaders(String credential) {

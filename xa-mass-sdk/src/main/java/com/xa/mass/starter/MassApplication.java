@@ -141,6 +141,7 @@ public class MassApplication {
             } finally {
                 stopTaskDispatchHandoff();
                 stopTransportDeliveryService();
+                stopWorkerPresenceStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             }
@@ -186,6 +187,12 @@ public class MassApplication {
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop transport delivery service after startup failure", cleanupError);
+        }
+        try {
+            stopWorkerPresenceStore();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop worker presence store after startup failure", cleanupError);
         }
         try {
             stopTransportRuntimeTaskExecutor();
@@ -390,6 +397,14 @@ public class MassApplication {
         transportDeliveryService = null;
         if (deliveryService != null) {
             deliveryService.shutdown();
+        }
+    }
+
+    private void stopWorkerPresenceStore() throws Exception {
+        WorkerPresenceStore presenceStore = workerPresenceStore;
+        workerPresenceStore = null;
+        if (presenceStore instanceof AutoCloseable closeable) {
+            closeable.close();
         }
     }
 

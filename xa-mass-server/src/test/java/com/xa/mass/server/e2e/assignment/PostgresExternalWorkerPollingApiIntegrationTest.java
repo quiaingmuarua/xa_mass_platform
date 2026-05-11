@@ -121,7 +121,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-online"
         ), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
+        waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
@@ -170,7 +170,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-offline"
         ), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
         assertJdbcProjection(taskId, String.valueOf(item.get("messageId")), workerId);
     }

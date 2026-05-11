@@ -60,13 +60,13 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
 
         String workerId = "late-worker-0";
         addMatchingWorker(workerId);
-        assertFalse(app.isWorkerOnline(workerId), "SDK worker registration must not mark delayed worker online");
+        assertFalse(app.isWorkerOnline(workerId), "SDK worker registration must not create delayed worker transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
         try {
             assertClientConnects(client, "late worker client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(workerId), "late worker connect must mark worker online");
+            waitUntil(() -> app.isWorkerOnline(workerId), "late worker connect must surface transport presence online");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
@@ -83,7 +83,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
         } finally {
             client.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(workerId), "late worker disconnect must mark worker offline");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "late worker disconnect must converge transport presence offline");
     }
 
     private void addMatchingWorker(String workerId) {

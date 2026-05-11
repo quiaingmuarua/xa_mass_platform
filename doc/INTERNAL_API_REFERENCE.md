@@ -109,14 +109,14 @@ Notes:
 - does not expose raw credential material
 - returns HTTP `401` when the credential is missing or invalid
 
-## 3. Metadata API
+## 3. Project API
 
-Base path: `/api/v1/meta`
+Base path: `/api/v1/projects`
 
 ### 3.1 List Projects
 
 - Method: `GET`
-- Path: `/api/v1/meta/projects`
+- Path: `/api/v1/projects`
 - Status: `Implemented`
 
 Returns the registered `ProjectMetadata` list.
@@ -124,7 +124,7 @@ Returns the registered `ProjectMetadata` list.
 ### 3.2 Get Project
 
 - Method: `GET`
-- Path: `/api/v1/meta/projects/{projectCode}`
+- Path: `/api/v1/projects/{projectCode}`
 - Status: `Implemented`
 
 Returns HTTP `404` when `projectCode` does not exist.
@@ -132,7 +132,7 @@ Returns HTTP `404` when `projectCode` does not exist.
 ### 3.3 List Project Events
 
 - Method: `GET`
-- Path: `/api/v1/meta/projects/{projectCode}/events`
+- Path: `/api/v1/projects/{projectCode}/events`
 - Status: `Implemented`
 
 Returns the full `EventDefinition` list for the project's declared
@@ -141,7 +141,7 @@ Returns the full `EventDefinition` list for the project's declared
 ### 3.4 List Project Submitters
 
 - Method: `GET`
-- Path: `/api/v1/meta/projects/{projectCode}/submitters`
+- Path: `/api/v1/projects/{projectCode}/submitters`
 - Status: `Implemented`
 
 Returns the effective `SubmitterMetadata` list visible for the project scope.
@@ -152,7 +152,11 @@ Notes:
   submitters whose scopes still authorize the project
 - this is a control-plane ownership view; it does not expose raw credentials
 
-### 3.5 List Events
+## 4. Metadata API
+
+Base path: `/api/v1/meta`
+
+### 4.1 List Events
 
 - Method: `GET`
 - Path: `/api/v1/meta/events`
@@ -164,7 +168,7 @@ Notes:
 - `taskModes=[]` means the event is direct runtime discovery/dispatch, not a
   task-backed event
 
-### 3.6 Get Event
+### 4.2 Get Event
 
 - Method: `GET`
 - Path: `/api/v1/meta/events/{eventCode}`
@@ -172,7 +176,7 @@ Notes:
 
 Returns HTTP `404` when `eventCode` does not exist.
 
-### 3.7 List Event Capabilities
+### 4.3 List Event Capabilities
 
 - Method: `GET`
 - Path: `/api/v1/meta/event-capabilities`
@@ -188,7 +192,7 @@ Notes:
 - `ready=true` means either a direct runtime handler exists or at least one
   online worker declares the event
 
-### 3.8 List Worker Capability Snapshots
+### 4.4 List Worker Capability Snapshots
 
 - Method: `GET`
 - Path: `/api/v1/meta/worker-capabilities`
@@ -206,7 +210,7 @@ Notes:
 - `connections` and `hasActiveEndpoint` are reachability facts from the
   transport/session layer, not capability truth
 
-## 4. Task API
+## 5. Task API
 
 Base path: `/api/v1/tasks`
 

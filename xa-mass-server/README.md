@@ -104,9 +104,9 @@ Control-console routing note:
 
 - `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
-- project metadata is still read from `/api/v1/meta/projects/**`, but the
-  console now exposes project as a first-class navigation entry through
-  `Resources -> Projects`
+- project now has a dedicated read/control-plane surface under
+  `/api/v1/projects/**`, and the console exposes it as a first-class navigation
+  entry through `Resources -> Projects`
 
 ## Dev Demo Bootstrap
 

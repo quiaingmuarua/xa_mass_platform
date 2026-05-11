@@ -113,4 +113,10 @@ class ProjectApiControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404));
     }
+
+    @Test
+    void legacyMetaProjectRoutesAreNotMapped() throws Exception {
+        mockMvc.perform(get("/api/v1/meta/projects"))
+                .andExpect(status().isNotFound());
+    }
 }

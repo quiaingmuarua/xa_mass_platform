@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         classes = XaMassServerApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+                "mass.mock.bootstrap.register-dev-catalog=true",
+                "mass.mock.bootstrap.register-dev-submitters=true",
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",

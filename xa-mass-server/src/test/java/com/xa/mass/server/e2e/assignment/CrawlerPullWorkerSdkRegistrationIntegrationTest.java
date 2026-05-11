@@ -86,12 +86,12 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
                 .attributes(Map.of("region", "us"))
                 .build());
 
-        assertFalse(app.isWorkerOnline(workerId), "SDK registration must not mark a worker online");
+        assertFalse(app.isWorkerOnline(workerId), "SDK registration must not create transport presence");
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
-            waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
+            waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must surface transport presence online");
             TaskExecutionOptions executionSpec = new TaskExecutionOptions();
             executionSpec.setBatchSize(1);
 
@@ -145,7 +145,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
             session.disconnect();
         }
 
-        waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must mark the worker offline");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must converge transport presence offline");
     }
 
     private TaskShellSnapshot createShellWithOptionalItems(MassTaskShellCreateRequest request,

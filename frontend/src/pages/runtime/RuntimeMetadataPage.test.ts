@@ -73,7 +73,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                 }),
             )
         }
-        if (input.includes('/api/v1/meta/projects')) {
+        if (input.includes('/api/v1/projects')) {
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
@@ -358,7 +358,7 @@ describe('RuntimeMetadataPage', () => {
                         ),
                     )
                 }
-                if (input.includes('/api/v1/meta/projects')) {
+                if (input.includes('/api/v1/projects')) {
                     return Promise.resolve(
                         jsonResponse({
                             code: 0,

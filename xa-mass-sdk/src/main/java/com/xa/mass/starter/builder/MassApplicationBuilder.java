@@ -25,6 +25,7 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -231,6 +232,32 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder presenceStoreFactory(Supplier<com.xa.mass.transport.presence.WorkerPresenceStore> presenceStoreFactory) {
+            config.setPresenceStoreFactory(Objects.requireNonNull(presenceStoreFactory, "presenceStoreFactory"));
+            return this;
+        }
+
+        public TransportBuilder redisPresenceStore(String redisUri) {
+            return redisPresenceStore(redisUri, RedisWorkerPresenceStore.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisPresenceStore(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
+            if (normalizedRedisUri.isBlank()) {
+                throw new IllegalArgumentException("redisUri must not be blank");
+            }
+            String normalizedNamespacePrefix = Objects.requireNonNull(namespacePrefix, "namespacePrefix").trim();
+            if (normalizedNamespacePrefix.isBlank()) {
+                throw new IllegalArgumentException("namespacePrefix must not be blank");
+            }
+            config.setPresenceStoreFactory(() -> new RedisWorkerPresenceStore(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    config.getWorkerPresenceLeaseMillis()
+            ));
+            return this;
+        }
+
         public TransportBuilder maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             config.setMaxDeliveryQueuedItems(maxDeliveryQueuedItems);
             return this;
@@ -238,6 +265,11 @@ public class MassApplicationBuilder {
 
         public TransportBuilder maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
             config.setMaxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+            return this;
+        }
+
+        public TransportBuilder workerPresenceLeaseMillis(long workerPresenceLeaseMillis) {
+            config.setWorkerPresenceLeaseMillis(workerPresenceLeaseMillis);
             return this;
         }
 

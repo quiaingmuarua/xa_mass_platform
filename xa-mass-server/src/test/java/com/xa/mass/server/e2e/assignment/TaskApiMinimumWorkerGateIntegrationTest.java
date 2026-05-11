@@ -45,7 +45,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
     void readyTaskWaitsUntilMinimumWorkerCountIsSatisfied() throws Exception {
         String firstWorkerId = "min-gate-worker-0";
         registerWorker(firstWorkerId);
-        assertFalse(app.isWorkerOnline(firstWorkerId), "worker registration must not mark first worker online");
+        assertFalse(app.isWorkerOnline(firstWorkerId), "worker registration must not create first worker transport presence");
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
         Task task = taskStorage.getTask(taskId).orElseThrow();
@@ -62,14 +62,14 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);
-        assertFalse(app.isWorkerOnline(secondWorkerId), "worker registration must not mark second worker online");
+        assertFalse(app.isWorkerOnline(secondWorkerId), "worker registration must not create second worker transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient firstClient = new SampleWorkerWebSocketClient(uri, firstWorkerId);
         SampleWorkerWebSocketClient secondClient = new SampleWorkerWebSocketClient(uri, secondWorkerId);
         try {
             assertClientConnects(firstClient, "first sample client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must mark worker online");
+            waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must surface transport presence online");
 
             TaskSnapshot stillReadyWithSingleOnlineWorker = waitForTaskSnapshot(taskId, "READY", 8, 250L);
             assertEquals(0, ((Number) stillReadyWithSingleOnlineWorker.task().get("peakAssignedWorkerCount")).intValue());
@@ -77,7 +77,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
             assertEquals(null, stillReadyWithSingleOnlineWorker.messages().get(0).get("latestAttemptWorkerId"));
 
             assertClientConnects(secondClient, "second sample client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(secondWorkerId), "second worker connect must mark worker online");
+            waitUntil(() -> app.isWorkerOnline(secondWorkerId), "second worker connect must surface transport presence online");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
@@ -87,8 +87,8 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
             firstClient.disconnect();
             secondClient.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(firstWorkerId), "first worker disconnect must mark worker offline");
-        waitUntil(() -> !app.isWorkerOnline(secondWorkerId), "second worker disconnect must mark worker offline");
+        waitUntil(() -> !app.isWorkerOnline(firstWorkerId), "first worker disconnect must converge transport presence offline");
+        waitUntil(() -> !app.isWorkerOnline(secondWorkerId), "second worker disconnect must converge transport presence offline");
     }
 
     private void registerWorker(String workerId) {

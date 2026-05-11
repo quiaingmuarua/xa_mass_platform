@@ -79,7 +79,7 @@ class RedisRuntimeLateReplayE2eScenario extends AbstractSampleE2eTest {
             JsonObject firstDispatch = chaosClient.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(firstDispatch, "chaos worker should receive the first dispatch");
             chaosClient.disconnect();
-            waitUntil(() -> !app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker disconnect must mark worker offline");
+            waitUntil(() -> !app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker disconnect must converge transport presence offline");
 
             SampleWorkerWebSocketClient steadyClient = connectClientWithRetries(
                     () -> new SampleWorkerWebSocketClient(wsUri, STEADY_WORKER_ID),

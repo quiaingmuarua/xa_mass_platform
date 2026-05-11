@@ -2,15 +2,10 @@ import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/conf
 import {
     listEventCapabilities,
     listEventDefinitions,
-    listProjectEventDefinitions,
-    listProjectMetadata,
-    listProjectSubmitters,
 } from '@/api/metadata'
 import {
     listEventCapabilitiesReal,
     listEventDefinitionsReal,
-    listProjectMetadataReal,
-    listProjectSubmittersReal,
 } from '@/api/metadata.real'
 
 function jsonResponse(body: unknown): Response {
@@ -28,26 +23,16 @@ describe('metadata API facade', () => {
         vi.unstubAllGlobals()
     })
 
-    it('serves SDK project and event metadata from the mock adapter', async () => {
+    it('serves SDK event metadata from the mock adapter', async () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
-        const projects = await listProjectMetadata()
         const events = await listEventDefinitions()
         const capabilities = await listEventCapabilities()
-        const demoEvents = await listProjectEventDefinitions('demoApp')
-        const demoSubmitters = await listProjectSubmitters('demoApp')
 
-        expect(projects.some((project) => project.code === 'demoApp')).toBe(true)
         expect(events.some((event) => event.code === 'demo.dispatch')).toBe(
             true,
         )
         expect(capabilities.some((item) => item.eventCode === 'tool.country.capital.lookup')).toBe(true)
-        expect(demoEvents.map((event) => event.code)).toContain('demo.dispatch')
-        expect(
-            demoSubmitters.some(
-                (submitter) => submitter.principalId === 'demo-app-submitter',
-            ),
-        ).toBe(true)
     })
 })
 
@@ -100,56 +85,18 @@ describe('metadata.real', () => {
                     }),
                 )
             }
-            if (input.endsWith('/api/v1/meta/projects/demoApp/submitters')) {
-                return Promise.resolve(
-                    jsonResponse({
-                        code: 0,
-                        msg: 'ok',
-                        data: [
-                            {
-                                principalId: 'demo-app-submitter',
-                                principalType: 'SERVICE',
-                                keyPrefix: 'demo',
-                                userId: 'demo-app-user',
-                                projectScope: 'demoApp',
-                                permissions: ['task:create'],
-                                projectScopes: ['demoApp'],
-                                eventScopes: ['demo.dispatch'],
-                                enabled: true,
-                                attributes: {},
-                            },
-                        ],
-                    }),
-                )
-            }
-
             return Promise.resolve(
                 jsonResponse({
                     code: 0,
                     msg: 'ok',
-                    data: [
-                        {
-                            code: 'demoApp',
-                            name: 'Demo App',
-                            description: 'Demo project.',
-                            enabled: true,
-                            eventCodes: ['demo.dispatch'],
-                        },
-                    ],
+                    data: [],
                 }),
             )
         })
         vi.stubGlobal('fetch', fetchMock)
 
-        const projects = await listProjectMetadataReal()
         const events = await listEventDefinitionsReal()
         const capabilities = await listEventCapabilitiesReal()
-        const submitters = await listProjectSubmittersReal('demoApp')
-
-        expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/meta/projects',
-            expect.any(Object),
-        )
         expect(fetchMock).toHaveBeenCalledWith(
             '/backend/api/v1/meta/events',
             expect.any(Object),
@@ -158,13 +105,7 @@ describe('metadata.real', () => {
             '/backend/api/v1/meta/event-capabilities',
             expect.any(Object),
         )
-        expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/meta/projects/demoApp/submitters',
-            expect.any(Object),
-        )
-        expect(projects[0].code).toBe('demoApp')
         expect(events[0].code).toBe('demo.dispatch')
         expect(capabilities[0].eventCode).toBe('demo.dispatch')
-        expect(submitters[0].principalId).toBe('demo-app-submitter')
     })
 })

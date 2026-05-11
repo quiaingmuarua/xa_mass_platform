@@ -62,7 +62,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
-            waitUntil(() -> app.isWorkerOnline(workerId), "poll worker connect must mark worker online");
+            waitUntil(() -> app.isWorkerOnline(workerId), "poll worker connect must surface transport presence online");
             String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
 
             Map<String, Object> auditResponse = exchange(
@@ -100,7 +100,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
         } finally {
             session.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(workerId), "poll worker disconnect must mark worker offline");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "poll worker disconnect must converge transport presence offline");
     }
 
     @Test

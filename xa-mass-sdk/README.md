@@ -109,6 +109,11 @@ app.pullWorker("crawler-worker-1").connect();
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
+When runtime reachability needs cross-instance truth, configure transport
+presence explicitly through `redisPresenceStore(...)` or `presenceStoreFactory(...)`.
+Adapters still own local session/connect/heartbeat ingress, but shared presence
+projection belongs to transport runtime rather than engine-local worker status.
+
 For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
 same concept. For example, two bundled WebSocket instances might use adapter ids
 such as `ws-public` and `ws-internal`; both still belong to transport hint
