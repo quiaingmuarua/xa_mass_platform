@@ -4,6 +4,10 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -24,9 +28,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public final class ChaosRuntimeHarness implements AutoCloseable {
+    private static final List<PayloadType> DEFAULT_PAYLOAD_TYPES = List.of(PayloadType.JSON);
+    private static final List<TaskMode> DEFAULT_TASK_MODES = List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING);
 
     private final MassSdkApplication app;
     private final TaskDetailStore taskDetailStore;
@@ -72,7 +79,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return new ChaosRuntimeHarness(builder.build(), taskStorage, transportPort, config.endpointPath());
+        return createBootstrappedHarness(builder.build(), taskStorage, transportPort, config.endpointPath());
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
@@ -99,7 +106,79 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return new ChaosRuntimeHarness(builder.build(), taskStorage, 0, "");
+        return createBootstrappedHarness(builder.build(), taskStorage, 0, "");
+    }
+
+    private static ChaosRuntimeHarness createBootstrappedHarness(MassSdkApplication app,
+                                                                 TaskDetailStore taskDetailStore,
+                                                                 int transportPort,
+                                                                 String endpointPath) {
+        bootstrapCatalog(app);
+        return new ChaosRuntimeHarness(app, taskDetailStore, transportPort, endpointPath);
+    }
+
+    private static void bootstrapCatalog(MassSdkApplication app) {
+        Objects.requireNonNull(app, "app");
+        registerEventIfMissing(app, EventDefinition.builder()
+                .code("demo.dispatch")
+                .name("Demo Dispatch")
+                .description("Dispatch a generic demo work item to an online demo worker.")
+                .payloadTypes(DEFAULT_PAYLOAD_TYPES)
+                .taskModes(DEFAULT_TASK_MODES)
+                .projectCodes(List.of("demoApp", "testApp", "otherApp"))
+                .build());
+        registerEventIfMissing(app, EventDefinition.builder()
+                .code("demo.dispatch.gb")
+                .name("Demo Dispatch (GB)")
+                .description("Dispatch a generic demo work item to the GB demo lane.")
+                .payloadTypes(DEFAULT_PAYLOAD_TYPES)
+                .taskModes(DEFAULT_TASK_MODES)
+                .projectCodes(List.of("demoApp", "otherApp"))
+                .build());
+        registerEventIfMissing(app, EventDefinition.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
+                .payloadTypes(DEFAULT_PAYLOAD_TYPES)
+                .taskModes(DEFAULT_TASK_MODES)
+                .projectCodes(List.of("crawlerApp"))
+                .build());
+        registerProjectIfMissing(app, ProjectDefinition.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .description("Chaos test demo project.")
+                .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build());
+        registerProjectIfMissing(app, ProjectDefinition.builder()
+                .code("testApp")
+                .name("Test App")
+                .description("Chaos test regression project.")
+                .eventCodes(List.of("demo.dispatch"))
+                .build());
+        registerProjectIfMissing(app, ProjectDefinition.builder()
+                .code("otherApp")
+                .name("Other App")
+                .description("Chaos test secondary demo project.")
+                .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build());
+        registerProjectIfMissing(app, ProjectDefinition.builder()
+                .code("crawlerApp")
+                .name("Crawler")
+                .description("Chaos test crawler project.")
+                .eventCodes(List.of("crawler.fetch-page"))
+                .build());
+    }
+
+    private static void registerEventIfMissing(MassSdkApplication app, EventDefinition definition) {
+        if (app.getEvent(definition.getCode()) == null) {
+            app.registerEventDefinition(definition);
+        }
+    }
+
+    private static void registerProjectIfMissing(MassSdkApplication app, ProjectDefinition definition) {
+        if (app.getProject(definition.getCode()) == null) {
+            app.registerProject(definition);
+        }
     }
 
     public MassSdkApplication app() {
