@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
@@ -398,7 +399,7 @@ class RuntimeTaskResultIngestChannelTest {
 
     private RunningTaskFixture createRunningTask(String taskName, boolean persistAttemptResidue) {
         TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setTaskName(taskName);
+        shell.setSourceRef(taskName);
         shell.setProject("demoApp");
         shell.setSharedConfig(java.util.Map.of(
                 "textContent", "hello",
@@ -406,10 +407,13 @@ class RuntimeTaskResultIngestChannelTest {
                 "_sdk", java.util.Map.of("eventCode", "crawler.fetch-page")
         ));
         shell.setUserId("agent");
-        shell.setBatchSize(1);
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(1);
+        spec.setDefaultMaxRetryCount(3);
+        shell.setExecutionSpec(spec);
         List<Map<String, Object>> inputs = List.of(Map.of("target", "alpha"));
         Task task = taskCommands.createTaskShell(shell);
-        taskCommands.appendTaskItems(task.getTid(), inputs, 3);
+        taskCommands.appendTaskItems(task.getTid(), inputs);
         assertTrue(taskCommands.sealTask(task.getTid()));
         taskCommands.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
