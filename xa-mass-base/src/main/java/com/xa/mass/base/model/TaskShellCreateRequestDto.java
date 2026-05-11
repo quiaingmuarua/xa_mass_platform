@@ -1,8 +1,6 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.util.Map;
 
@@ -49,51 +47,11 @@ public class TaskShellCreateRequestDto {
     }
 
     public TaskExecutionSpec getExecutionSpec() {
-        return executionSpec;
+        return executionSpecOrDefault();
     }
 
     public void setExecutionSpec(TaskExecutionSpec executionSpec) {
         this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
-    }
-
-    public TaskContract getContract() {
-        return executionSpecOrDefault().getContract();
-    }
-
-    public void setContract(TaskContract contract) {
-        executionSpecOrDefault().setContract(contract);
-    }
-
-    public int getBatchSize() {
-        return executionSpecOrDefault().getBatchSize();
-    }
-
-    public void setBatchSize(int batchSize) {
-        executionSpecOrDefault().setBatchSize(batchSize);
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return executionSpecOrDefault().getMaxRuntimeSeconds();
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        executionSpecOrDefault().setMaxRuntimeSeconds(maxRuntimeSeconds);
-    }
-
-    public int getDefaultMaxRetryCount() {
-        return executionSpecOrDefault().getDefaultMaxRetryCount();
-    }
-
-    public void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
-        executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
-    }
-
-    public TaskWorkloadClass getWorkloadClass() {
-        return executionSpecOrDefault().getWorkloadClass();
-    }
-
-    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        executionSpecOrDefault().setWorkloadClass(workloadClass);
     }
 
     public String getSourceRef() {

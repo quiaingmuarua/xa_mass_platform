@@ -1,7 +1,6 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -199,29 +198,11 @@ public class Task {
     }
 
     public TaskExecutionSpec getExecutionSpec() {
-        return executionSpec;
+        return executionSpecOrDefault();
     }
 
     public void setExecutionSpec(TaskExecutionSpec executionSpec) {
         this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
-        this.updateTime = LocalDateTime.now();
-    }
-
-    public TaskContract getContract() {
-        return executionSpecOrDefault().getContract();
-    }
-
-    public void setContract(TaskContract contract) {
-        executionSpecOrDefault().setContract(contract);
-        this.updateTime = LocalDateTime.now();
-    }
-
-    public com.xa.mass.base.enums.task.TaskWorkloadClass getWorkloadClass() {
-        return executionSpecOrDefault().getWorkloadClass();
-    }
-
-    public void setWorkloadClass(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass) {
-        executionSpecOrDefault().setWorkloadClass(workloadClass);
         this.updateTime = LocalDateTime.now();
     }
 
@@ -283,37 +264,12 @@ public class Task {
         this.endTime = endTime;
     }
 
-    public int getBatchSize() {
-        return executionSpecOrDefault().getBatchSize();
-    }
-
-    public void setBatchSize(int batchSize) {
-        executionSpecOrDefault().setBatchSize(batchSize);
-        this.updateTime = LocalDateTime.now();
-    }
-
     public TaskTerminalReason getTerminalReason() {
         return terminalReason;
     }
 
     public void setTerminalReason(TaskTerminalReason terminalReason) {
         this.terminalReason = terminalReason;
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return executionSpecOrDefault().getMaxRuntimeSeconds();
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        executionSpecOrDefault().setMaxRuntimeSeconds(maxRuntimeSeconds);
-    }
-
-    public int getDefaultMaxRetryCount() {
-        return executionSpecOrDefault().getDefaultMaxRetryCount();
-    }
-
-    public void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
-        executionSpecOrDefault().setDefaultMaxRetryCount(defaultMaxRetryCount);
     }
 
     public boolean isSchedulable() {

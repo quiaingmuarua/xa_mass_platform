@@ -581,7 +581,7 @@ public final class TraceEventLogger {
                 "taskNonSuccessNumber", task.getTaskNonSuccessNumber(),
                 "peakAssignedWorkerCount", task.getPeakAssignedWorkerCount(),
                 "minRequiredWorkerCount", task.getMinRequiredWorkerCount(),
-                "batchSize", task.getBatchSize(),
+                "batchSize", task.getExecutionSpec().getBatchSize(),
                 "intakeStatus", enumName(task.getIntakeStatus()),
                 "holdReason", enumName(task.getHoldReason()),
                 "schedulable", task.isSchedulable(),
@@ -831,7 +831,7 @@ public final class TraceEventLogger {
             return;
         }
         TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
-        attrs.put("workloadClass", enumName(task.getWorkloadClass()));
+        attrs.put("workloadClass", enumName(task.getExecutionSpec().getWorkloadClass()));
         attrs.put("dispatchLane", enumName(profile.dispatchLane()));
         attrs.put("dispatchPriority", enumName(profile.dispatchPriority()));
         attrs.put("batchPolicy", enumName(profile.batchPolicy()));

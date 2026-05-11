@@ -293,7 +293,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
         context.put("taskStatus", task.getStatus().name());
         context.put("taskTargetNumber", task.getTaskTargetNumber());
-        context.put("batchSize", task.getBatchSize());
+        context.put("batchSize", task.getExecutionSpec().getBatchSize());
         context.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
         context.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         context.put("supportsProject", worker.supportsProject(task.getProject()));

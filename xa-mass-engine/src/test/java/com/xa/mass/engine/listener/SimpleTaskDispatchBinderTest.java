@@ -61,7 +61,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void usesPersistedTaskMessagesInsteadOfGeneratingNewOnes() {
         Task task = createTask(3);
-        task.setBatchSize(10);
+        task.getExecutionSpec().setBatchSize(10);
         List<String> storedMsgIds = storedMessages(task.getTid()).stream()
                 .map(TaskDetailStore.TaskMessageProjection::messageId)
                 .collect(Collectors.toList());
@@ -88,7 +88,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void assignmentExposesAssignedViewThroughQueryWithoutRestampingStoredMessages() {
         Task task = createTask(4);
-        task.setBatchSize(10);
+        task.getExecutionSpec().setBatchSize(10);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
@@ -144,7 +144,7 @@ class SimpleTaskDispatchBinderTest {
     void assignmentUsesConfiguredTaskMessageLeaseWindow() {
         taskManager.setWorkLeaseSeconds(2L);
         Task task = createTask(1);
-        task.setBatchSize(1);
+        task.getExecutionSpec().setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -169,8 +169,8 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void interactiveWorkloadUsesSmallPerWorkerClaimWindow() {
         Task task = createTask(5);
-        task.setBatchSize(4);
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setBatchSize(4);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
@@ -195,8 +195,8 @@ class SimpleTaskDispatchBinderTest {
     void interactiveWorkloadCapsLeaseWindowToShortProfile() {
         taskManager.setWorkLeaseSeconds(120L);
         Task task = createTask(1);
-        task.setBatchSize(3);
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setBatchSize(3);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -227,7 +227,7 @@ class SimpleTaskDispatchBinderTest {
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
@@ -248,7 +248,7 @@ class SimpleTaskDispatchBinderTest {
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(1);
-        task.setBatchSize(1);
+        task.getExecutionSpec().setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -277,7 +277,7 @@ class SimpleTaskDispatchBinderTest {
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(3);
-        task.setBatchSize(3);
+        task.getExecutionSpec().setBatchSize(3);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -298,7 +298,7 @@ class SimpleTaskDispatchBinderTest {
         listener = newAssignmentListener(taskManager);
 
         Task task = createTask(1);
-        task.setBatchSize(1);
+        task.getExecutionSpec().setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -316,7 +316,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerContextForRetry() {
         Task task = createTask(2);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -371,7 +371,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void assignmentEmitsAttemptAndWorkerContextTraceEvents() {
         Task task = createTask(1);
-        task.setBatchSize(1);
+        task.getExecutionSpec().setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
@@ -406,7 +406,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void assignmentEmitsDispatchBindingSummary() {
         Task task = createTask(3);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
@@ -431,7 +431,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void assignmentRespectsPerWorkerBatchSizeAndLeavesRemainingMessagesPending() {
         Task task = createTask(5);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
@@ -455,7 +455,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void singleWorkerDoesNotExceedBatchSizeWithinOneDispatchRound() {
         Task task = createTask(4);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
@@ -477,7 +477,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void finalDispatchRoundCanUseLessThanBatchSizeWhenFewerMessagesRemain() {
         Task task = createTask(3);
-        task.setBatchSize(2);
+        task.getExecutionSpec().setBatchSize(2);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
@@ -499,7 +499,7 @@ class SimpleTaskDispatchBinderTest {
     @Test
     void nullWorkerContextIsHandledGracefully() {
         Task task = createTask(2);
-        task.setBatchSize(10);
+        task.getExecutionSpec().setBatchSize(10);
         assertDoesNotThrow(() -> listener.bindDispatches(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());

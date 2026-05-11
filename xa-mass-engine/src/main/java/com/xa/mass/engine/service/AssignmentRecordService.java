@@ -131,7 +131,7 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         snapshot.setTaskNonSuccessNumber(task.getTaskNonSuccessNumber());
         snapshot.setMinRequiredWorkerCount(task.getMinRequiredWorkerCount());
         snapshot.setPeakAssignedWorkerCount(task.getPeakAssignedWorkerCount());
-        snapshot.setBatchSize(task.getBatchSize());
+        snapshot.setBatchSize(task.getExecutionSpec().getBatchSize());
         snapshot.setCreateTime(task.getCreateTime());
         snapshot.setUpdateTime(task.getUpdateTime());
         return snapshot;

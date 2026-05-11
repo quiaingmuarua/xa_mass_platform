@@ -261,7 +261,7 @@ class TaskLifecycleService {
                     taskId,
                     java.util.UUID.randomUUID().toString(),
                     input,
-                    task.getDefaultMaxRetryCount()
+                    task.getExecutionSpec().getDefaultMaxRetryCount()
             ));
         }
         taskManager.addRuntimeIngressItems(task, ingressItems);

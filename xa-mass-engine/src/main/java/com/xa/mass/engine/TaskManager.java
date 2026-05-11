@@ -82,14 +82,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     /**
      * Async executor for best-effort compatibility projection writes.
      *
-     * <p>Projection writes are {@link CompatibilityProjectionOnly} residue —
-     * they must not block the runtime callback hot path. Submitting them here
+     * <p>Projection writes are {@link CompatibilityProjectionOnly} residue - they must not block the runtime callback hot path. Submitting them here
      * offloads the blocking storage I/O to a virtual-thread pool so the caller
      * returns as soon as the runtime mutation completes.</p>
      */
     private final VirtualThreadRuntimeTaskExecutor projectionWriteExecutor;
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
-    private long taskMessageLeaseSeconds = 300L;
+    private long workLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler,
                        TaskStorage taskStorage,
@@ -181,7 +180,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             Task task = createTaskShellInternal(dto);
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
-                    + ", contract=" + task.getContract()
+                    + ", contract=" + task.getExecutionSpec().getContract()
                     + ", intakeStatus=" + task.getIntakeStatus(), duration);
             return task;
         } catch (Exception e) {
@@ -350,17 +349,17 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * Runtime-first ingest for one logical work item.
      *
      * <p>Runtime admission happens before compatibility projection write so
-     * The legacy compatibility message projection is not the canonical ingest product for execution
+     * the bounded compatibility projection is not the canonical ingest product for execution
      * correctness.</p>
      */
-    void addTaskInput(String taskId,
+    void ingestRuntimeInput(String taskId,
                       String messageId,
                       java.util.Map<String, Object> input,
                       int maxRetryCount) {
         addRuntimeIngressItem(RuntimeTaskIngressItem.fromInput(taskId, messageId, input, maxRetryCount));
     }
 
-    void addTaskPayloadRef(String taskId,
+    void ingestRuntimePayloadRef(String taskId,
                            String messageId,
                            String payloadRef,
                            int maxRetryCount) {
@@ -383,7 +382,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
         LogUtils.setTaskId(task.getTid());
-        LogUtils.logOperationStart("ADD_TASK_MESSAGE_BATCH", "TaskManager",
+        LogUtils.logOperationStart("ADD_RUNTIME_WORK_BATCH", "TaskManager",
                 "taskId", task.getTid(),
                 "messageCount", String.valueOf(ingressItems.size()));
         for (RuntimeTaskIngressItem ingressItem : ingressItems) {
@@ -400,11 +399,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                         + outcome.status() + ", reason=" + outcome.reason());
             }
             if (!compatibilityProjectionStore.upsertRuntimeIngressAccepted(ingressItem)) {
-                logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
+                logger.warn("Compatibility projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
                         ingressItem.taskId(), ingressItem.messageId());
             }
         }
-        LogUtils.logOperationSuccess("task message batch added: count=" + ingressItems.size(), 0);
+        LogUtils.logOperationSuccess("runtime work batch added: count=" + ingressItems.size(), 0);
     }
 
     private void addRuntimeIngressItem(RuntimeTaskIngressItem ingressItem) {
@@ -419,14 +418,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     public long getWorkLeaseSeconds() {
-        return taskMessageLeaseSeconds;
+        return workLeaseSeconds;
     }
 
-    public void setWorkLeaseSeconds(long taskMessageLeaseSeconds) {
-        if (taskMessageLeaseSeconds <= 0) {
-            throw new IllegalArgumentException("taskMessageLeaseSeconds must be greater than 0");
+    public void setWorkLeaseSeconds(long workLeaseSeconds) {
+        if (workLeaseSeconds <= 0) {
+            throw new IllegalArgumentException("workLeaseSeconds must be greater than 0");
         }
-        this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
+        this.workLeaseSeconds = workLeaseSeconds;
     }
 
     /**
@@ -434,7 +433,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      */
     @Override
     public boolean expireLeasedWork(String taskId, String messageId) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.expireLeasedWork(taskId, messageId));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -547,7 +546,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -556,7 +555,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -571,7 +570,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                                     String detail,
                                     String errorCode,
                                     Map<String, Object> output) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -726,7 +725,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      *
      * <p>The task is dropped (with a warning) if the executor's pending-task
      * capacity is exhausted. Callers must not treat this as a durable write
-     * path — projection residue is secondary to runtime truth.</p>
+     * path - projection residue is secondary to runtime truth.</p>
      *
      * @param task the projection write to execute off the hot path
      */
@@ -735,7 +734,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         try {
             projectionWriteExecutor.submit(task);
         } catch (java.util.concurrent.RejectedExecutionException ex) {
-            logger.warn("Projection write executor at capacity — dropping best-effort projection write: {}",
+            logger.warn("Projection write executor at capacity - dropping best-effort projection write: {}",
                     ex.getMessage());
         }
     }
@@ -753,7 +752,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 continue;
             }
             String messageId = dispatchBinding.messageId();
-            TaskResultService.TaskMessageMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
+            TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
                     () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
             if (!outcome.accepted()) {
                 return false;
@@ -828,7 +827,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
         String project = dto.getProject() != null ? dto.getProject().trim() : "task";
-        TaskContract contract = dto.getContract() != null ? dto.getContract() : TaskContract.BATCH;
+        TaskContract contract = dto.getExecutionSpec().getContract() != null
+                ? dto.getExecutionSpec().getContract()
+                : TaskContract.BATCH;
         String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
         String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
                 ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)

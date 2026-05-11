@@ -317,7 +317,7 @@ class TaskWorkerAssignListenerTest {
         task.setTid("task-1");
         task.setSharedConfig(java.util.Map.of("routingCode", "us"));
         task.setTaskTargetNumber(targetNumber);
-        task.setBatchSize(batchSize);
+        task.getExecutionSpec().setBatchSize(batchSize);
         task.setMinRequiredWorkerCount(minWorkerCount);
         task.setStatus(status);
         return task;

@@ -304,7 +304,7 @@ class InMemoryTaskStorageTest {
         task.setTid(taskId);
         task.setStatus(TaskStatus.RUNNING);
         task.setStartTime(startTime);
-        task.setMaxRuntimeSeconds(maxRuntimeSeconds);
+        task.getExecutionSpec().setMaxRuntimeSeconds(maxRuntimeSeconds);
         return task;
     }
 

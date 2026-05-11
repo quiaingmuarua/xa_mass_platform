@@ -44,7 +44,7 @@ class JdbcStoragePostgresTest {
             Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
             task.setStatus(TaskStatus.READY);
             task.setStartTime(LocalDateTime.now().minusSeconds(20));
-            task.setMaxRuntimeSeconds(1);
+            task.getExecutionSpec().setMaxRuntimeSeconds(1);
 
             storage.saveTask(task);
 

@@ -61,7 +61,7 @@ final class TaskCompatibilityProjectionStore {
     }
 
     void upsertTaskMessageSummaryBestEffort(String taskId,
-                                            TaskResultService.RuntimeMessageView taskMsg,
+                                            TaskResultService.RuntimeWorkSummary taskMsg,
                                             String action) {
         if (taskMsg == null) {
             return;
@@ -113,7 +113,7 @@ final class TaskCompatibilityProjectionStore {
         return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private TaskDetailStore.TaskMessageProjection toTaskMessageProjectionRecord(TaskResultService.RuntimeMessageView taskMsg) {
+    private TaskDetailStore.TaskMessageProjection toTaskMessageProjectionRecord(TaskResultService.RuntimeWorkSummary taskMsg) {
         return new TaskDetailStore.TaskMessageProjection(
                 taskMsg.messageId(),
                 taskMsg.taskId(),

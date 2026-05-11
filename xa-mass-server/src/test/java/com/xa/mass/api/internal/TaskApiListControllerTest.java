@@ -45,7 +45,7 @@ class TaskApiListControllerTest {
         runningTask.setProject("demoApp");
         runningTask.setTaskEligibleNumber(10);
         runningTask.setTaskSuccessNumber(6);
-        runningTask.setBatchSize(2);
+        runningTask.getExecutionSpec().setBatchSize(2);
         runningTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 9, 30));
 
         Task pausedTask = new Task();
@@ -55,7 +55,7 @@ class TaskApiListControllerTest {
         pausedTask.setProject("demoApp");
         pausedTask.setTaskEligibleNumber(8);
         pausedTask.setTaskSuccessNumber(2);
-        pausedTask.setBatchSize(1);
+        pausedTask.getExecutionSpec().setBatchSize(1);
         pausedTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 8, 0));
 
         when(taskQueries.getTasksByStatus(TaskStatus.RUNNING)).thenReturn(List.of(runningTask));

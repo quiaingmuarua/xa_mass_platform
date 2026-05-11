@@ -89,7 +89,7 @@ public class WorkerMatchContext {
         ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
         ctx.put("taskStatus", task.getStatus().name());
         ctx.put("taskTargetNumber", task.getTaskTargetNumber());
-        ctx.put("batchSize", task.getBatchSize());
+        ctx.put("batchSize", task.getExecutionSpec().getBatchSize());
         ctx.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);

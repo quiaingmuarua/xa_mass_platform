@@ -358,8 +358,10 @@ public final class TaskFlowLoadModelRunner {
                     "status", task.getStatus().name(),
                     "terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : "",
                     "peakAssignedWorkerCount", task.getPeakAssignedWorkerCount(),
-                    "batchSize", task.getBatchSize(),
-                    "workloadClass", task.getWorkloadClass() != null ? task.getWorkloadClass().name() : null
+                    "batchSize", task.getExecutionSpec().getBatchSize(),
+                    "workloadClass", task.getExecutionSpec().getWorkloadClass() != null
+                            ? task.getExecutionSpec().getWorkloadClass().name()
+                            : null
             ));
             report.put("wallClock", Map.of(
                     "totalMillis", nanosToMillis(totalWallNanos),

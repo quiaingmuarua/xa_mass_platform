@@ -10,8 +10,8 @@ import com.xa.mass.base.model.Task;
 public class TaskRuntimeProfileResolver {
 
     public TaskRuntimeProfile resolve(Task task) {
-        TaskWorkloadClass workloadClass = task != null && task.getWorkloadClass() != null
-                ? task.getWorkloadClass()
+        TaskWorkloadClass workloadClass = task != null && task.getExecutionSpec().getWorkloadClass() != null
+                ? task.getExecutionSpec().getWorkloadClass()
                 : TaskWorkloadClass.BULK;
 
         return switch (workloadClass) {

@@ -139,10 +139,10 @@ public final class TaskWorkloadMixSmokeRunner {
                 taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
                 taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
                 taskEvents.addTaskTerminalListener(task -> {
-                    if (TaskWorkloadClass.BULK == task.getWorkloadClass()) {
+                    if (TaskWorkloadClass.BULK == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         bulkTerminalLatch.countDown();
-                    } else if (TaskWorkloadClass.INTERACTIVE == task.getWorkloadClass()) {
+                    } else if (TaskWorkloadClass.INTERACTIVE == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         interactiveTerminalLatch.countDown();
                     }
@@ -150,7 +150,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 assignWorker.start();
 
                 Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
-                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getWorkloadClass());
+                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
@@ -160,7 +160,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
                 Task interactiveTask = materializeTask(taskCommands, buildInteractiveRequest(config));
-                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getWorkloadClass());
+                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
@@ -377,10 +377,10 @@ public final class TaskWorkloadMixSmokeRunner {
         private volatile String interactiveTaskId;
 
         private void onCreated(Task task) {
-            workloadByTaskId.put(task.getTid(), task.getWorkloadClass());
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            workloadByTaskId.put(task.getTid(), task.getExecutionSpec().getWorkloadClass());
+            if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK) {
                 bulkTaskId = task.getTid();
-            } else if (task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            } else if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
                 interactiveTaskId = task.getTid();
             }
         }

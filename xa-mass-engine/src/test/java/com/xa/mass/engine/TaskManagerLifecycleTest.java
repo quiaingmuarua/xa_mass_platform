@@ -51,8 +51,8 @@ class TaskManagerLifecycleTest {
         Task task = createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
+        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskWorkloadClass.BULK, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertNotNull(task.getProjectRef());
         assertEquals("demoApp", task.getProjectRef().getCode());
@@ -78,8 +78,8 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.SESSION, task.getContract());
-        assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
+        assertEquals(TaskContract.SESSION, task.getExecutionSpec().getContract());
+        assertEquals(TaskWorkloadClass.BULK, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
     }
 
@@ -90,8 +90,8 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
+        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
 
@@ -200,8 +200,8 @@ class TaskManagerLifecycleTest {
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.SESSION, task.getContract());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getWorkloadClass());
+        assertEquals(TaskContract.SESSION, task.getExecutionSpec().getContract());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
         assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
@@ -221,7 +221,7 @@ class TaskManagerLifecycleTest {
         Task task = createTask(dto);
 
         assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.BATCH, task.getContract());
+        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals("mock/input/demo.csv", task.getSourceRef());
         assertEquals(0, task.getTaskTargetNumber());
@@ -255,7 +255,7 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(TaskContract.BATCH, task.getContract());
+        assertEquals(TaskContract.BATCH, task.getExecutionSpec().getContract());
         assertEquals(1, task.getTaskTargetNumber());
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
@@ -274,7 +274,7 @@ class TaskManagerLifecycleTest {
         String messageId = java.util.UUID.randomUUID().toString();
         String payloadRef = "s3://bucket/payloads/demo-1.json";
 
-        taskManager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 5);
+        taskManager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 5);
 
         TaskDetailStore.TaskMessageProjection projection =
                 taskManager.getVisibleTaskMessageProjection(task.getTid(), messageId);
@@ -319,7 +319,7 @@ class TaskManagerLifecycleTest {
         String payloadRef = "s3://bucket/payloads/demo-best-effort.json";
         failingStorage.failNextTaskMessageAdd();
 
-        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 2);
+        manager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 2);
 
         assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
         assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
@@ -425,7 +425,7 @@ class TaskManagerLifecycleTest {
         String payloadRef = "s3://bucket/payloads/demo-best-effort-expiry.json";
         failingStorage.failNextTaskMessageAdd();
 
-        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 0);
+        manager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 0);
 
         assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
         assertEquals(1, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
@@ -481,7 +481,7 @@ class TaskManagerLifecycleTest {
         String payloadRef = "s3://bucket/payloads/demo-best-effort-overlay.json";
         failingStorage.failNextTaskMessageAdd();
 
-        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 1);
+        manager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 1);
 
         assertNull(manager.getStoredTaskMessageRecord(task.getTid(), messageId));
 
@@ -534,7 +534,7 @@ class TaskManagerLifecycleTest {
         String payloadRef = "s3://bucket/payloads/demo-retry-budget-overlay.json";
         failingStorage.failNextTaskMessageAdd();
 
-        manager.addTaskPayloadRef(task.getTid(), messageId, payloadRef, 7);
+        manager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 7);
 
         TaskDetailStore.TaskMessageProjection visible =
                 manager.getVisibleTaskMessageProjection(task.getTid(), messageId);
@@ -687,7 +687,7 @@ class TaskManagerLifecycleTest {
 
         Task task = createTask(dto);
 
-        assertEquals(3, task.getBatchSize());
+        assertEquals(3, task.getExecutionSpec().getBatchSize());
     }
 
     @Test
@@ -2878,7 +2878,7 @@ class TaskManagerLifecycleTest {
 
         String payloadRef = "s3://bucket/payloads/snapshot-bounded-runtime-overlay.json";
         failingStorage.failNextTaskMessageAdd();
-        manager.addTaskPayloadRef(task.getTid(), java.util.UUID.randomUUID().toString(), payloadRef, 1);
+        manager.ingestRuntimePayloadRef(task.getTid(), java.util.UUID.randomUUID().toString(), payloadRef, 1);
 
         List<ClaimedTaskWork> claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
@@ -2921,7 +2921,7 @@ class TaskManagerLifecycleTest {
         manager.updateTask(task);
 
         failingStorage.failNextTaskMessageAdd();
-        manager.addTaskPayloadRef(
+        manager.ingestRuntimePayloadRef(
                 task.getTid(),
                 java.util.UUID.randomUUID().toString(),
                 "s3://bucket/payloads/runtime-total-only.json",
@@ -3067,6 +3067,34 @@ class TaskManagerLifecycleTest {
 
         void setSealIntakeAfterCreate(boolean sealIntakeAfterCreate) {
             this.sealIntakeAfterCreate = sealIntakeAfterCreate;
+        }
+
+        TaskContract getContract() {
+            return getExecutionSpec().getContract();
+        }
+
+        void setContract(TaskContract contract) {
+            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
+            executionSpec.setContract(contract);
+            setExecutionSpec(executionSpec);
+        }
+
+        void setWorkloadClass(TaskWorkloadClass workloadClass) {
+            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
+            executionSpec.setWorkloadClass(workloadClass);
+            setExecutionSpec(executionSpec);
+        }
+
+        void setBatchSize(int batchSize) {
+            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
+            executionSpec.setBatchSize(batchSize);
+            setExecutionSpec(executionSpec);
+        }
+
+        void setDefaultMaxRetryCount(int defaultMaxRetryCount) {
+            TaskExecutionSpec executionSpec = TaskExecutionSpec.normalized(getExecutionSpec());
+            executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            setExecutionSpec(executionSpec);
         }
 
         TaskShellCreateRequestDto toShellRequest(TaskContract contract) {
@@ -3358,13 +3386,3 @@ class TaskManagerLifecycleTest {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-

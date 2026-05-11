@@ -207,7 +207,7 @@ public class TaskWorkerAssignListener {
 
     private int getDesiredDispatchWorkerCount(Task task, int readyWorkCount) {
         int remainingMessages = Math.max(readyWorkCount, 1);
-        return Math.max(1, (int) Math.ceil((double) remainingMessages / task.getBatchSize()));
+        return Math.max(1, (int) Math.ceil((double) remainingMessages / task.getExecutionSpec().getBatchSize()));
     }
 
     private int getRequiredStartWorkerCount(Task task) {

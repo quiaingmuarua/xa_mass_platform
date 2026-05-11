@@ -243,10 +243,10 @@ public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, 
 
     private LocalDateTime maxRuntimeDeadline(Task task) {
         if (task == null || task.getStatus() == null || task.getStatus().isFinal()
-                || task.getMaxRuntimeSeconds() <= 0 || task.getStartTime() == null) {
+                || task.getExecutionSpec().getMaxRuntimeSeconds() <= 0 || task.getStartTime() == null) {
             return null;
         }
-        return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
+        return task.getStartTime().plusSeconds(task.getExecutionSpec().getMaxRuntimeSeconds());
     }
 }
 

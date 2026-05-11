@@ -467,13 +467,13 @@ class TaskAssignWorkerTest {
 
     private Task interactiveTask(String tid) {
         Task t = readyTask(tid);
-        t.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        t.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
         return t;
     }
 
     private Task bulkTask(String tid) {
         Task t = readyTask(tid);
-        t.setWorkloadClass(TaskWorkloadClass.BULK);
+        t.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
         return t;
     }
 

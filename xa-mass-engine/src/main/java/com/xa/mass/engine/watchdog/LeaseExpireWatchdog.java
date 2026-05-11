@@ -94,7 +94,7 @@ public class LeaseExpireWatchdog {
         List<Task> expiredTasks = maintenancePort.pollExpiredMaxRuntimeTasks(now, EXPIRED_TASK_RUNTIME_SCAN_LIMIT);
         for (Task task : expiredTasks) {
             log.warn("[Watchdog] Task {} exceeded max runtime of {}s (started {}), terminating",
-                    task.getTid(), task.getMaxRuntimeSeconds(), task.getStartTime());
+                    task.getTid(), task.getExecutionSpec().getMaxRuntimeSeconds(), task.getStartTime());
             maintenancePort.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED);
         }
     }

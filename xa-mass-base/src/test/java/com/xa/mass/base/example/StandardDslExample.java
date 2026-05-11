@@ -106,7 +106,7 @@ public class StandardDslExample {
         List<Task> tasks = JsonDslEngine.generateList(legacyDsl, Task.class);
         System.out.println("Legacy/mock generation still works through JsonDslEngine:");
         tasks.forEach(task ->
-                System.out.println("  - " + task.getTaskName() + " (batch: " + task.getBatchSize() + ")")
+                System.out.println("  - " + task.getTaskName() + " (batch: " + task.getExecutionSpec().getBatchSize() + ")")
         );
         System.out.println();
     }

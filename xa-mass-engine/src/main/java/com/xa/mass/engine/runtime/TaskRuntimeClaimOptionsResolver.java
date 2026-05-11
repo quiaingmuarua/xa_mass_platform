@@ -26,7 +26,7 @@ public class TaskRuntimeClaimOptionsResolver {
 
     public TaskWorkClaimOptions resolve(Task task, int workerCount, long defaultLeaseSeconds) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
-        int taskBatchSize = task != null ? Math.max(task.getBatchSize(), 1) : 1;
+        int taskBatchSize = task != null ? Math.max(task.getExecutionSpec().getBatchSize(), 1) : 1;
         int perWorkerCapacity = switch (profile.batchPolicy()) {
             case SMALL -> Math.min(taskBatchSize, DEFAULT_INTERACTIVE_PER_WORKER_CAP);
             case LARGE -> taskBatchSize;

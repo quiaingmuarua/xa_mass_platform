@@ -17,7 +17,7 @@ class TaskRuntimeEnqueueOptionsResolverTest {
                 new TaskRuntimeProfileResolver()
         );
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         WorkEnqueueOptions options = resolver.resolve(task);
 
@@ -32,7 +32,7 @@ class TaskRuntimeEnqueueOptionsResolverTest {
                 new TaskRuntimeProfileResolver()
         );
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.BULK);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
 
         WorkEnqueueOptions options = resolver.resolve(task);
 

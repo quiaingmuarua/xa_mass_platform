@@ -143,19 +143,19 @@ public abstract class TaskStorageContractTest {
 
         Task expired = readyTask("t-expired", "proj-a");
         expired.setStatus(TaskStatus.RUNNING);
-        expired.setMaxRuntimeSeconds(60);
+        expired.getExecutionSpec().setMaxRuntimeSeconds(60);
         expired.setStartTime(now.minusSeconds(120));  // started 2 min ago, limit 1 min → expired
         storage.saveTask(expired);
 
         Task notYet = readyTask("t-not-yet", "proj-a");
         notYet.setStatus(TaskStatus.RUNNING);
-        notYet.setMaxRuntimeSeconds(600);
+        notYet.getExecutionSpec().setMaxRuntimeSeconds(600);
         notYet.setStartTime(now.minusSeconds(30));  // started 30s ago, limit 10 min → ok
         storage.saveTask(notYet);
 
         Task noLimit = readyTask("t-no-limit", "proj-a");
         noLimit.setStatus(TaskStatus.RUNNING);
-        noLimit.setMaxRuntimeSeconds(0);  // 0 = unlimited
+        noLimit.getExecutionSpec().setMaxRuntimeSeconds(0);  // 0 = unlimited
         noLimit.setStartTime(now.minusSeconds(9999));
         storage.saveTask(noLimit);
 
@@ -169,7 +169,7 @@ public abstract class TaskStorageContractTest {
         for (int i = 0; i < 5; i++) {
             Task task = readyTask("t-expired-" + i, "proj-a");
             task.setStatus(TaskStatus.RUNNING);
-            task.setMaxRuntimeSeconds(10);
+            task.getExecutionSpec().setMaxRuntimeSeconds(10);
             task.setStartTime(now.minusSeconds(60));
             storage.saveTask(task);
         }

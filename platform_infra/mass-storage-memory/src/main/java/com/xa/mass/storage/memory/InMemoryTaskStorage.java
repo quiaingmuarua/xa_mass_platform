@@ -285,11 +285,11 @@ public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
         if (task == null
                 || task.getStatus() == null
                 || task.getStatus().isFinal()
-                || task.getMaxRuntimeSeconds() <= 0
+                || task.getExecutionSpec().getMaxRuntimeSeconds() <= 0
                 || task.getStartTime() == null) {
             return null;
         }
-        return task.getStartTime().plusSeconds(task.getMaxRuntimeSeconds());
+        return task.getStartTime().plusSeconds(task.getExecutionSpec().getMaxRuntimeSeconds());
     }
 
     private void addTaskIndexes(Task task) {

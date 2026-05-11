@@ -121,12 +121,12 @@ public class MassEngine {
 
             resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
             taskReadyListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
+                if (task != null && task.getExecutionSpec().getContract() == TaskContract.SESSION) {
                     assignWorker.submit(task);
                 }
             };
             taskDispatchSignalListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
+                if (task != null && task.getExecutionSpec().getContract() == TaskContract.SESSION) {
                     assignWorker.submit(task);
                 }
             };
@@ -232,7 +232,7 @@ public class MassEngine {
         for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
             TaskStatus status = task.getStatus();
             if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
-                    && task.getContract() == TaskContract.SESSION) {
+                    && task.getExecutionSpec().getContract() == TaskContract.SESSION) {
                 assignWorker.submit(task);
             }
         }

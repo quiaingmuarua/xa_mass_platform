@@ -84,7 +84,7 @@ public class RuleDebugExample {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
         task.setTaskTargetNumber(100);
-        task.setBatchSize(10);
+        task.getExecutionSpec().setBatchSize(10);
         task.setMinRequiredWorkerCount(5);
         return task;
     }
