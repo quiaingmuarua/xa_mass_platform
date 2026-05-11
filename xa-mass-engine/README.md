@@ -93,13 +93,13 @@ Keep these facts fixed unless the owning global baselines change:
 - batch/bulk redispatch is runtime-driven from `TaskWorkRuntime.readyTaskIds`
   through starter-owned recovery/pump wiring; task-signal queues are not the
   only batch redispatch owner anymore
-- bounded message/attempt compatibility residue is not the hot-path runtime
+- bounded work/message compatibility residue is not the hot-path runtime
   owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow message/attempt residue reads back into it
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
   compatibility projection audit belongs to `TaskProjectionStateAuditor`
-- `TaskWorkProjectionState` is the engine-owned message/attempt residue
+- `TaskWorkProjectionState` is the engine-owned work/attempt residue
   state owner; do not let storage-edge projection enums leak back into
   runtime/result/trace code as native engine state
 - `TaskCompatibilityProjectionStore` is the engine-internal storage-edge owner

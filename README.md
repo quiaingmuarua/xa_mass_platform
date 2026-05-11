@@ -20,8 +20,8 @@ Design-only reference:
 XA Mass Platform is a general distributed task scheduling platform.
 
 It solves one recurring kernel problem: match a batch of structured work items
-(`TaskMsg`) to a batch of heterogeneous, stateful workers, track each result,
-and converge task-level completion state.
+to a batch of heterogeneous, stateful workers, track each result, and
+converge task-level completion state.
 
 Current mainline execution path:
 
@@ -31,7 +31,7 @@ Common scenarios include IM bots, crawlers, LLM agents, and device/RPA workers.
 The shared kernel is:
 
 - `stateful worker + capability/routing match + per-item result tracking + task-level convergence`
-- stable kernel types: `Task`, `TaskMsg`, `TaskMsgAttempt`
+- stable kernel truth: `Task`, assignment, result, audit, and terminal policy
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
 - SDK-first runtime entry; HTTP pages and demo APIs are validation shells
 - hot-path observability through logs, traces, and bounded diagnostics rather than scan-heavy projections
@@ -46,8 +46,8 @@ The shared kernel is:
 - Current task shell create HTTP route: `POST /api/v1/tasks`
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
-- `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; `TaskMsg.input/output` are per-item payload boundaries
-- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and result application; `TaskMsg` / `TaskMsgAttempt` remain bounded compatibility/audit vocabulary
+- `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; runtime ingress payload or `payloadRef` is the per-item payload boundary
+- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and result application; message/attempt projection residue remains bounded compatibility/audit material rather than kernel runtime truth
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 
 ## Module Map

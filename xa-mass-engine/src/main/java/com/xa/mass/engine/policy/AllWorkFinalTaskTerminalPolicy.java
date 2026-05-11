@@ -1,7 +1,6 @@
 package com.xa.mass.engine.policy;
 
 import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
@@ -21,7 +20,7 @@ public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         if (stats.totalCount() <= 0) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
-        if (task.getIntakeStatus() != TaskIntakeStatus.SEALED) {
+        if (!task.isIntakeSealed()) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
         if (stats.finalCount() != stats.totalCount()) {

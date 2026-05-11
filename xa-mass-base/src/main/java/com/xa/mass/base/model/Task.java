@@ -231,9 +231,25 @@ public class Task {
         return intakeStatus;
     }
 
+    public boolean isIntakeOpen() {
+        return intakeStatus == TaskIntakeStatus.OPEN;
+    }
+
+    public boolean isIntakeSealed() {
+        return !isIntakeOpen();
+    }
+
     public void setIntakeStatus(TaskIntakeStatus intakeStatus) {
         this.intakeStatus = intakeStatus == null ? TaskIntakeStatus.SEALED : intakeStatus;
         this.updateTime = LocalDateTime.now();
+    }
+
+    public boolean sealIntake() {
+        if (isIntakeSealed()) {
+            return false;
+        }
+        setIntakeStatus(TaskIntakeStatus.SEALED);
+        return true;
     }
 
     public UserRef getUser() {

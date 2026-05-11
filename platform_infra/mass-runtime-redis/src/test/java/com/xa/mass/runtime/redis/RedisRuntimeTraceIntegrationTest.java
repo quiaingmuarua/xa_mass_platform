@@ -377,11 +377,6 @@ class RedisRuntimeTraceIntegrationTest {
         }
 
         @Override
-        public boolean retryTaskMessage(String taskId, String messageId) {
-            return true;
-        }
-
-        @Override
         public boolean cancelTask(String taskId) {
             return true;
         }

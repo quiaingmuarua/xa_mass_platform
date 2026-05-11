@@ -12,7 +12,7 @@ import java.util.List;
  * {@code EngineConfig#setScheduler} or {@code MassEngineBuilder#scheduler(TaskScheduler)}
  * when you need custom scheduling logic (e.g. Quartz, Spring Scheduler).
  *
- * <p><b>Note:</b> These methods are advisory hooks â€?the mainline dispatch loop in
+ * <p><b>Note:</b> These methods are advisory hooks ï¿½?the mainline dispatch loop in
  * {@code TaskAssignWorker} does not call them directly. They are reserved for future
  * integration with external scheduling systems.
  */
@@ -21,8 +21,6 @@ public interface TaskScheduler {
     SchedulingResult scheduleTask(Task task);
 
     List<SchedulingResult> scheduleTasks(List<Task> tasks);
-
-    boolean retryTaskDispatchUnit(String taskId, String messageId);
 
     boolean cancelTask(String taskId);
 

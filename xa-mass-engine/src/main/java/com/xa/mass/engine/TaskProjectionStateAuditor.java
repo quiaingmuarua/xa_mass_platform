@@ -33,7 +33,7 @@ final class TaskProjectionStateAuditor {
                 new ArrayList<>(runtimeSnapshot.violations());
         boolean needsResolution = runtimeSnapshot.needsResolution();
         if (runtimeSnapshot.task() != null) {
-            needsResolution = needsResolution || auditTaskMessageProjection(taskId, violations);
+            needsResolution = needsResolution || auditWorkProjectionResidue(taskId, violations);
         }
         TaskStateValidationResult result = new TaskStateValidationResult(
                 violations.isEmpty(),
@@ -62,10 +62,10 @@ final class TaskProjectionStateAuditor {
         return result;
     }
 
-    private boolean auditTaskMessageProjection(String taskId,
+    private boolean auditWorkProjectionResidue(String taskId,
                                                List<TaskStateValidationResult.ViolationCode> violations) {
         boolean attemptNeedsResolution = false;
-        for (TaskDetailStore.TaskMessageProjection messageProjection : getTaskMessagesForProjectionAudit(taskId)) {
+        for (TaskDetailStore.TaskMessageProjection messageProjection : getWorkProjectionsForProjectionAudit(taskId)) {
             if (messageProjection == null) {
                 continue;
             }
@@ -79,7 +79,7 @@ final class TaskProjectionStateAuditor {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             TaskDetailStore.TaskMessageAttemptStats attemptStats =
-                    compatibilityProjectionStore.getTaskMessageAttemptStats(taskId, messageProjection.messageId());
+                    compatibilityProjectionStore.getWorkAttemptStats(taskId, messageProjection.messageId());
             long activeAttemptCount = attemptStats.getActiveAttempts();
             boolean hasActiveAttempt = activeAttemptCount > 0;
             if (activeAttemptCount > 1) {
@@ -100,12 +100,12 @@ final class TaskProjectionStateAuditor {
         return attemptNeedsResolution;
     }
 
-    private List<TaskDetailStore.TaskMessageProjection> getTaskMessagesForProjectionAudit(String taskId) {
-        long total = compatibilityProjectionStore.countTaskMessageProjections(taskId);
+    private List<TaskDetailStore.TaskMessageProjection> getWorkProjectionsForProjectionAudit(String taskId) {
+        long total = compatibilityProjectionStore.countWorkProjections(taskId);
         if (total <= 0) {
             return List.of();
         }
-        return compatibilityProjectionStore.getTaskMessageProjections(taskId, Math.toIntExact(total));
+        return compatibilityProjectionStore.getWorkProjections(taskId, Math.toIntExact(total));
     }
 
     private boolean isCompleted(TaskDetailStore.TaskMessageProjection messageProjection) {

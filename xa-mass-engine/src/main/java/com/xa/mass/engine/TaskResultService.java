@@ -122,7 +122,7 @@ class TaskResultService {
                     "EXPIRE_LEASED_WORK", "TaskManager", "lease expired but retry budget allows re-dispatch");
             final RuntimeWorkSummary capturedRetrySummary = retrySummary;
             taskManager.submitProjectionWrite(() ->
-                    persistTaskMessageProjection(taskId, capturedRetrySummary,
+                    persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
                             "persist expiry retry-reset compatibility summary"));
             currentSummary = retrySummary;
         } else {
@@ -141,7 +141,7 @@ class TaskResultService {
             );
             final RuntimeWorkSummary capturedFinalSummary = logicallyFinalSummary;
             taskManager.submitProjectionWrite(() ->
-                    persistTaskMessageProjection(taskId, capturedFinalSummary,
+                    persistWorkProjectionBestEffort(taskId, capturedFinalSummary,
                             "persist expiry compatibility summary"));
             currentSummary = logicallyFinalSummary;
         }
@@ -159,13 +159,13 @@ class TaskResultService {
                 expiryDetail
         );
         if (freshTask != null && activeAttempt != null) {
-            publishAttemptClosed(freshTask, currentSummary, activeAttempt,
+            publishWorkAttemptClosed(freshTask, currentSummary, activeAttempt,
                     "EXPIRE_LEASED_WORK", retryScheduled
                             ? "lease expiry closed the current attempt before re-dispatch"
                             : expiryDetail);
         }
         if (!retryScheduled && freshTask != null) {
-            publishMessageLogicallyFinal(freshTask, logicallyFinalSummary, activeAttempt,
+            publishWorkLogicallyFinal(freshTask, logicallyFinalSummary, activeAttempt,
                     "EXPIRE_LEASED_WORK", expiryDetail);
         }
         LogUtils.logOperationSuccess(expiryDetail, 0);
@@ -277,10 +277,7 @@ class TaskResultService {
         if (success) {
             return handleSuccess(task, taskId, messageState, activeAttempt, detail, output);
         }
-        if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
-            return handleRetryableFailure(task, taskId, messageState, activeAttempt, detail, errorCode, output);
-        }
-        return handleRetryExhaustedFailure(task, taskId, messageState, activeAttempt, detail, errorCode, output);
+        return handleRuntimeAcceptedFailure(task, taskId, messageState, activeAttempt, applyStatus, detail, errorCode, output);
     }
 
     WorkMutationOutcome compensateDispatchSubmitFailure(Task task,
@@ -505,14 +502,14 @@ class TaskResultService {
         taskManager.submitProjectionWrite(() -> {
             persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
                     "mark attempt success");
-            persistTaskMessageProjection(taskId, capturedSummary,
+            persistWorkProjectionBestEffort(taskId, capturedSummary,
                     "persist success compatibility summary");
         });
         // Event publishing is kept synchronous - it drives downstream state transitions.
         if (task != null) {
-            publishAttemptClosed(task, successSummary, activeAttempt,
+            publishWorkAttemptClosed(task, successSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work attempt succeeded");
-            publishMessageLogicallyFinal(task, successSummary, activeAttempt,
+            publishWorkLogicallyFinal(task, successSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work item reached stable success");
         }
         return WorkMutationOutcome.acceptedDirty();
@@ -541,7 +538,7 @@ class TaskResultService {
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         // Event publishing kept synchronous; use the already-loaded task (no extra storage read).
         if (task != null) {
-            publishAttemptClosed(task, retrySummary, activeAttempt,
+            publishWorkAttemptClosed(task, retrySummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "retryable failure closed the current attempt");
             if (!task.getStatus().isFinal()) {
                 requestRetryDispatch(task, workRetryDelayMillis);
@@ -621,7 +618,7 @@ class TaskResultService {
         // Message projection write is @CompatibilityProjectionOnly - submit async.
         final RuntimeWorkSummary capturedRetrySummary = retrySummary;
         taskManager.submitProjectionWrite(() ->
-                persistTaskMessageProjection(taskId, capturedRetrySummary,
+                persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
                         "persist retry-reset compatibility summary"));
         return retrySummary;
     }
@@ -678,14 +675,14 @@ class TaskResultService {
         taskManager.submitProjectionWrite(() -> {
             persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
                     "mark attempt failure");
-            persistTaskMessageProjection(taskId, capturedSummary,
+            persistWorkProjectionBestEffort(taskId, capturedSummary,
                     "persist exhausted-failure compatibility summary");
         });
         // Event publishing kept synchronous; use the already-loaded task.
         if (task != null) {
-            publishAttemptClosed(task, failureSummary, activeAttempt,
+            publishWorkAttemptClosed(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "retry budget exhausted closed the current attempt");
-            publishMessageLogicallyFinal(task, failureSummary, activeAttempt,
+            publishWorkLogicallyFinal(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
         }
         return WorkMutationOutcome.acceptedDirty();
@@ -714,10 +711,10 @@ class TaskResultService {
     private RuntimeWorkSummary summarizeLeaseExpiryFinal(Task task,
                                                          RuntimeWorkSummary base,
                                                          String detail) {
-        if (isBatchTask(task)) {
-            return summarizeRetryExhaustedFailure(base, detail, LEASE_EXPIRED_ERROR_CODE, null);
-        }
-        return summarizeExpired(base, detail);
+        return switch (resultContractMode(task)) {
+            case BATCH -> summarizeBatchLeaseExpiryFinal(base, detail);
+            case SESSION -> summarizeSessionLeaseExpiryFinal(base, detail);
+        };
     }
 
     private RuntimeWorkSummary summarizeRetryReset(RuntimeWorkSummary failedView) {
@@ -739,10 +736,10 @@ class TaskResultService {
      * expiry, or retry convergence.</p>
      */
     @CompatibilityProjectionOnly
-    private void persistTaskMessageProjection(String taskId,
-                                              RuntimeWorkSummary workSummary,
-                                              String action) {
-        compatibilityProjectionStore.upsertTaskMessageSummaryBestEffort(taskId, workSummary, action);
+    private void persistWorkProjectionBestEffort(String taskId,
+                                                 RuntimeWorkSummary workSummary,
+                                                 String action) {
+        compatibilityProjectionStore.upsertWorkSummaryBestEffort(taskId, workSummary, action);
     }
 
     @CompatibilityProjectionOnly
@@ -836,9 +833,9 @@ class TaskResultService {
         );
     }
 
-    private boolean isExpiryAcceptableMessageState(MessageStatus taskMsgStatus) {
-        return taskMsgStatus == MessageStatus.ASSIGNED
-                || taskMsgStatus == MessageStatus.RUNNING;
+    private boolean isExpiryAcceptableMessageState(MessageStatus workStatus) {
+        return workStatus == MessageStatus.ASSIGNED
+                || workStatus == MessageStatus.RUNNING;
     }
 
     private ResultApplyOutcome applyWorkResult(Task task,
@@ -877,11 +874,16 @@ class TaskResultService {
     }
 
     private boolean shouldRetryExpiredLease(Task task, MessageStatus fromStatus) {
-        return isBatchTask(task) || fromStatus == MessageStatus.ASSIGNED;
+        return switch (resultContractMode(task)) {
+            case BATCH -> true;
+            case SESSION -> fromStatus == MessageStatus.ASSIGNED;
+        };
     }
 
-    private boolean isBatchTask(Task task) {
-        return task != null && task.getContract() == TaskContract.BATCH;
+    private ResultContractMode resultContractMode(Task task) {
+        return task != null && task.getContract() == TaskContract.BATCH
+                ? ResultContractMode.BATCH
+                : ResultContractMode.SESSION;
     }
 
     private boolean isManualOrPolicyTerminalStop(Task task) {
@@ -917,11 +919,11 @@ class TaskResultService {
         taskManager.requestTaskRetryDispatch(task, workRetryDelayMillis);
     }
 
-    private void publishAttemptClosed(Task task,
-                                      RuntimeWorkSummary workSummary,
-                                      AttemptProjectionView attempt,
-                                      String trigger,
-                                      String reason) {
+    private void publishWorkAttemptClosed(Task task,
+                                          RuntimeWorkSummary workSummary,
+                                          AttemptProjectionView attempt,
+                                          String trigger,
+                                          String reason) {
         traceEventLogger.taskWorkAttemptClosed(
                 task,
                 workSummary.toTraceView(),
@@ -952,11 +954,11 @@ class TaskResultService {
         );
     }
 
-    private void publishMessageLogicallyFinal(Task task,
-                                              RuntimeWorkSummary workSummary,
-                                              AttemptProjectionView attempt,
-                                              String trigger,
-                                              String reason) {
+    private void publishWorkLogicallyFinal(Task task,
+                                           RuntimeWorkSummary workSummary,
+                                           AttemptProjectionView attempt,
+                                           String trigger,
+                                           String reason) {
         traceEventLogger.taskWorkLogicallyFinal(
                 task,
                 workSummary.toTraceView(),
@@ -982,6 +984,63 @@ class TaskResultService {
                         workSummary.output()
                 )
         );
+    }
+
+    private WorkMutationOutcome handleRuntimeAcceptedFailure(Task task,
+                                                             String taskId,
+                                                             RuntimeWorkSummary workSummary,
+                                                             AttemptProjectionView activeAttempt,
+                                                             ResultApplyStatus applyStatus,
+                                                             String detail,
+                                                             String errorCode,
+                                                             Map<String, Object> output) {
+        return switch (resultContractMode(task)) {
+            case BATCH -> handleBatchRuntimeAcceptedFailure(
+                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
+            case SESSION -> handleSessionRuntimeAcceptedFailure(
+                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
+        };
+    }
+
+    private WorkMutationOutcome handleBatchRuntimeAcceptedFailure(Task task,
+                                                                  String taskId,
+                                                                  RuntimeWorkSummary workSummary,
+                                                                  AttemptProjectionView activeAttempt,
+                                                                  ResultApplyStatus applyStatus,
+                                                                  String detail,
+                                                                  String errorCode,
+                                                                  Map<String, Object> output) {
+        if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
+            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+        }
+        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+    }
+
+    private WorkMutationOutcome handleSessionRuntimeAcceptedFailure(Task task,
+                                                                    String taskId,
+                                                                    RuntimeWorkSummary workSummary,
+                                                                    AttemptProjectionView activeAttempt,
+                                                                    ResultApplyStatus applyStatus,
+                                                                    String detail,
+                                                                    String errorCode,
+                                                                    Map<String, Object> output) {
+        if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
+            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+        }
+        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+    }
+
+    private RuntimeWorkSummary summarizeBatchLeaseExpiryFinal(RuntimeWorkSummary base, String detail) {
+        return summarizeRetryExhaustedFailure(base, detail, LEASE_EXPIRED_ERROR_CODE, null);
+    }
+
+    private RuntimeWorkSummary summarizeSessionLeaseExpiryFinal(RuntimeWorkSummary base, String detail) {
+        return summarizeExpired(base, detail);
+    }
+
+    private enum ResultContractMode {
+        SESSION,
+        BATCH
     }
 
     static final class WorkMutationOutcome {

@@ -7,7 +7,7 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 ## 0. TL;DR
 
 - XA Mass Platform is a general distributed task scheduling platform.
-- Stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
+- Stable kernel: `Task / assignment / result / audit / terminal policy`.
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
 - Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.
@@ -35,8 +35,8 @@ Common misreads to avoid:
 
 - `TaskManager` implementing multiple engine seams is current owner design, not
   proof that a second internal bridge layer is needed
-- stable kernel vocabulary such as `TaskMsg` / `TaskMsgAttempt` does not mean
-  those names are still the current hot-path runtime owner shape in code
+- historical message/attempt vocabulary does not mean those names are still
+  the current hot-path runtime owner shape in code
 - refusing a new wrapper is not "less design"; it is often the design choice
   that keeps owner boundaries visible
 
@@ -109,8 +109,8 @@ Planning rule for multi-file or core changes:
 
 - do not let transport-specific shapes redefine the kernel
 - `engine` is a runtime kernel, not a CRUD backend module
-- `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries
-- `target` is only a conventional key inside `TaskMsg.input`, not a model field
+- `Task.sharedConfig` plus runtime item payload or `payloadRef` are the generic payload boundaries
+- `target` is only a conventional key inside the runtime item payload, not a model field
 - task shell create enters through `POST /api/v1/tasks`, and work-item ingest is explicit through `POST /api/v1/tasks/{taskId}/items`
 - `eventCode` is globally unique capability identity
 - do not add scan-heavy observability or reconciliation loops to hot paths

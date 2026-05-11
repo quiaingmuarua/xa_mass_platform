@@ -20,9 +20,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Lane-aware assignment signal worker.
  *
- * <p>This component keeps the task-level matching plus message-level claim
- * model, while separating assignment signals into workload lanes so later
- * throughput work is not forced back into a single global queue.
+ * <p>This component owns session/interactive assignment signals and keeps the
+ * task-level matching plus runtime work-claim model, while separating signals
+ * into workload lanes so interactive dispatch is not forced back into a
+ * single global queue.
  */
 public class TaskAssignWorker {
     private static final Logger log = LoggerFactory.getLogger(TaskAssignWorker.class);
@@ -474,8 +475,8 @@ public class TaskAssignWorker {
     }
 
     private void completeRejectedBatchSubmission(Task task) {
-        completeUnprocessedTrackedTask(task, resolveLaneState(task), "BATCH_SUBMIT_REJECTED",
-                "task did not enter the tracked assignment batch", "SKIPPED");
+        completeUnprocessedTrackedTask(task, resolveLaneState(task), "SUBMIT_REJECTED",
+                "task did not enter the tracked assignment signal flow", "SKIPPED");
     }
 
     public enum SubmitResult {

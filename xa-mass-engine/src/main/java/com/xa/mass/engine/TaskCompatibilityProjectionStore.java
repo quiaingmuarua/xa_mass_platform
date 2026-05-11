@@ -60,23 +60,23 @@ final class TaskCompatibilityProjectionStore {
         }
     }
 
-    void upsertTaskMessageSummaryBestEffort(String taskId,
-                                            TaskResultService.RuntimeWorkSummary taskMsg,
-                                            String action) {
-        if (taskMsg == null) {
+    void upsertWorkSummaryBestEffort(String taskId,
+                                     TaskResultService.RuntimeWorkSummary workSummary,
+                                     String action) {
+        if (workSummary == null) {
             return;
         }
         try {
-            if (taskDetailStore.upsertTaskMessageProjection(taskId, toTaskMessageProjectionRecord(taskMsg))) {
+            if (taskDetailStore.upsertTaskMessageProjection(taskId, toWorkProjectionRecord(workSummary))) {
                 return;
             }
         } catch (RuntimeException e) {
             logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
-                    taskId, taskMsg.messageId(), action, e);
+                    taskId, workSummary.messageId(), action, e);
             return;
         }
         logger.warn("Compatibility task message projection write failed for taskId={}, messageId={} during {}; runtime truth already converged",
-                taskId, taskMsg.messageId(), action);
+                taskId, workSummary.messageId(), action);
     }
 
     void upsertAttemptSummaryBestEffort(String taskId,
@@ -90,7 +90,7 @@ final class TaskCompatibilityProjectionStore {
             taskDetailStore.upsertTaskMessageAttemptProjection(
                     taskId,
                     messageId,
-                    toTaskMessageAttemptProjectionRecord(attempt)
+                    toWorkAttemptProjectionRecord(attempt)
             );
         } catch (RuntimeException e) {
             logger.warn("Failed to upsert compatibility attempt projection for taskId={}, messageId={}, attemptId={} during {}; runtime result convergence continues",
@@ -98,47 +98,47 @@ final class TaskCompatibilityProjectionStore {
         }
     }
 
-    long countTaskMessageProjections(String taskId) {
+    long countWorkProjections(String taskId) {
         return taskDetailStore.getTaskMessageStats(taskId).getTotal();
     }
 
-    List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
+    List<TaskDetailStore.TaskMessageProjection> getWorkProjections(String taskId, int limit) {
         if (limit <= 0) {
             return List.of();
         }
         return taskDetailStore.getTaskMessageProjections(taskId, limit);
     }
 
-    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
+    TaskDetailStore.TaskMessageAttemptStats getWorkAttemptStats(String taskId, String messageId) {
         return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
     }
 
-    private TaskDetailStore.TaskMessageProjection toTaskMessageProjectionRecord(TaskResultService.RuntimeWorkSummary taskMsg) {
+    private TaskDetailStore.TaskMessageProjection toWorkProjectionRecord(TaskResultService.RuntimeWorkSummary workSummary) {
         return new TaskDetailStore.TaskMessageProjection(
-                taskMsg.messageId(),
-                taskMsg.taskId(),
+                workSummary.messageId(),
+                workSummary.taskId(),
                 null,
-                taskMsg.payloadRef(),
-                taskMsg.status().toProjection(),
-                taskMsg.assignedTime(),
-                taskMsg.createTime(),
-                taskMsg.updateTime(),
-                taskMsg.startTime(),
-                taskMsg.completeTime(),
-                taskMsg.retryCount(),
-                taskMsg.maxRetryCount(),
-                taskMsg.errorMessage(),
-                taskMsg.errorCode(),
-                taskMsg.finalReason() != null ? taskMsg.finalReason().toProjection() : null,
-                taskMsg.output() == null ? null : new java.util.LinkedHashMap<>(taskMsg.output()),
-                taskMsg.latestAttemptId(),
-                taskMsg.latestAttemptWorkerId(),
-                taskMsg.latestAttemptWorkerContextId(),
-                taskMsg.latestAttemptBatchId()
+                workSummary.payloadRef(),
+                workSummary.status().toProjection(),
+                workSummary.assignedTime(),
+                workSummary.createTime(),
+                workSummary.updateTime(),
+                workSummary.startTime(),
+                workSummary.completeTime(),
+                workSummary.retryCount(),
+                workSummary.maxRetryCount(),
+                workSummary.errorMessage(),
+                workSummary.errorCode(),
+                workSummary.finalReason() != null ? workSummary.finalReason().toProjection() : null,
+                workSummary.output() == null ? null : new java.util.LinkedHashMap<>(workSummary.output()),
+                workSummary.latestAttemptId(),
+                workSummary.latestAttemptWorkerId(),
+                workSummary.latestAttemptWorkerContextId(),
+                workSummary.latestAttemptBatchId()
         );
     }
 
-    private TaskDetailStore.TaskMessageAttemptProjection toTaskMessageAttemptProjectionRecord(TaskResultService.AttemptProjectionView attempt) {
+    private TaskDetailStore.TaskMessageAttemptProjection toWorkAttemptProjectionRecord(TaskResultService.AttemptProjectionView attempt) {
         return new TaskDetailStore.TaskMessageAttemptProjection(
                 attempt.attemptId(),
                 attempt.taskId(),

@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 
 /**
- * Listener for a logical task message reaching a stable final state.
+ * Listener for a logical work item reaching a stable final state.
  */
 @FunctionalInterface
 public interface TaskWorkLogicallyFinalListener {

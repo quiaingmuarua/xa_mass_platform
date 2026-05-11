@@ -1,7 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
-import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
@@ -281,10 +280,10 @@ class TaskLifecycleService {
         if (task == null) {
             return false;
         }
-        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
+        if (!task.isIntakeOpen()) {
             return false;
         }
-        task.setIntakeStatus(TaskIntakeStatus.SEALED);
+        task.sealIntake();
         taskManager.updateTask(task);
         stateResolver.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);
@@ -294,11 +293,11 @@ class TaskLifecycleService {
     private boolean canAcceptTaskItems(Task task) {
         return task.getStatus() != null
                 && !task.getStatus().isFinal()
-                && task.getIntakeStatus() == TaskIntakeStatus.OPEN;
+                && task.isIntakeOpen();
     }
 
     private String describeItemAppendRejection(Task task, String taskId) {
-        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
+        if (task.isIntakeSealed()) {
             return "Task intake is sealed: " + taskId;
         }
         return "Task intake is closed or task is terminal: " + task.getStatus();
@@ -374,7 +373,7 @@ class TaskLifecycleService {
         if (task == null) {
             return;
         }
-        task.setIntakeStatus(TaskIntakeStatus.SEALED);
+        task.sealIntake();
     }
 }
 

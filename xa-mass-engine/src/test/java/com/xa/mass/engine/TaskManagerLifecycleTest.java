@@ -1136,7 +1136,7 @@ class TaskManagerLifecycleTest {
             capture.assertHasEvent("CALLBACK_REJECTED_NO_ACTIVE_LEASE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
-                            && "INIT".equals(mdc.get("taskMsgStatus")));
+                            && "INIT".equals(mdc.get("workStatus")));
         }
     }
 
@@ -1174,7 +1174,7 @@ class TaskManagerLifecycleTest {
             capture.assertHasEvent("CALLBACK_REJECTED_NO_ACTIVE_LEASE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
-                            && "INIT".equals(mdc.get("taskMsgStatus")));
+                            && "INIT".equals(mdc.get("workStatus")));
         }
         assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
                 "runtime-owned queued work should reject no-lease callbacks without reading message projection residue");
@@ -1214,7 +1214,7 @@ class TaskManagerLifecycleTest {
             capture.assertHasEvent("CALLBACK_REJECTED_NO_ACTIVE_LEASE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && message.messageId().equals(mdc.get("messageId"))
-                            && "INIT".equals(mdc.get("taskMsgStatus")));
+                            && "INIT".equals(mdc.get("workStatus")));
         }
         assertEquals(0, trackingStorage.taskMessageProjectionReadCount.get(),
                 "no-active-lease callback rejection should not consult final compatibility projection residue");
@@ -2494,7 +2494,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, validationResult.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, policyAwareManager.getTask(task.getTid()).getIntakeStatus());
         assertFalse(validationResult.getViolations().contains(
-                TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY));
+                TaskStateValidationResult.ViolationCode.TERMINAL_TASK_WITH_OPEN_INTAKE));
     }
 
     @Test
@@ -2520,7 +2520,7 @@ class TaskManagerLifecycleTest {
             assertEquals(TaskStatus.TERMINAL, result.getStatus(), terminalReason.name());
             assertEquals(terminalReason, result.getTerminalReason(), terminalReason.name());
             assertTrue(result.getViolations().contains(
-                    TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY), terminalReason.name());
+                    TaskStateValidationResult.ViolationCode.TERMINAL_TASK_WITH_OPEN_INTAKE), terminalReason.name());
         }
     }
 
@@ -3270,11 +3270,6 @@ class TaskManagerLifecycleTest {
         @Override
         public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
             return List.of();
-        }
-
-        @Override
-        public boolean retryTaskDispatchUnit(String taskId, String messageId) {
-            return true;
         }
 
         @Override

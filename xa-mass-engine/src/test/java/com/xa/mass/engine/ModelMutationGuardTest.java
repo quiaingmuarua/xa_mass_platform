@@ -47,6 +47,14 @@ class ModelMutationGuardTest {
 
         noClasses()
                 .that().doNotHaveFullyQualifiedName(Task.class.getName())
+                .and().doNotHaveFullyQualifiedName(TaskManager.class.getName())
+                .and().doNotHaveFullyQualifiedName(TaskLifecycleService.class.getName())
+                .and().doNotHaveFullyQualifiedName(TaskStateResolver.class.getName())
+                .should().callMethod(Task.class, "sealIntake")
+                .check(MAIN_CLASSES);
+
+        noClasses()
+                .that().doNotHaveFullyQualifiedName(Task.class.getName())
                 .and().doNotHaveFullyQualifiedName(TaskLifecycleService.class.getName())
                 .should().callMethod(Task.class, "setHoldReason", TaskHoldReason.class)
                 .check(MAIN_CLASSES);

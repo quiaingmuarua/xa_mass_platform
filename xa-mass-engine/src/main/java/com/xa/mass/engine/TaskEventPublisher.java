@@ -168,7 +168,7 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
             try {
                 listener.onTaskWorkAttemptClosed(task, event);
             } catch (Exception e) {
-                logger.error("Task message attempt-closed listener failed for task {}, msg {}, attempt {}",
+                logger.error("Task work attempt-closed listener failed for task {}, msg {}, attempt {}",
                         task.getTid(),
                         event != null ? event.messageId() : "null",
                         event != null ? event.attemptId() : "null",
@@ -182,7 +182,7 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
             try {
                 listener.onTaskWorkLogicallyFinal(task, event);
             } catch (Exception e) {
-                logger.error("Task message logically-final listener failed for task {}, msg {}",
+                logger.error("Task work logically-final listener failed for task {}, msg {}",
                         task.getTid(), event != null ? event.messageId() : "null", e);
             }
         }

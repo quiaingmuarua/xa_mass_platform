@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -78,8 +77,8 @@ class TaskStateValidator {
 
         boolean finalStatus = task.getStatus() != null && task.getStatus().isFinal();
         boolean hasTerminalReason = task.getTerminalReason() != null;
-        if (finalStatus && task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
-            violations.add(TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY);
+        if (finalStatus && task.isIntakeOpen()) {
+            violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_TASK_WITH_OPEN_INTAKE);
         }
         if (finalStatus && !hasTerminalReason) {
             violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISSING);

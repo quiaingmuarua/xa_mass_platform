@@ -83,16 +83,16 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskWorkStatusTransition(TaskWorkTraceView taskMsg,
+    public void taskWorkStatusTransition(TaskWorkTraceView workView,
                                         MessageStatus fromStatus,
                                         MessageStatus toStatus,
                                         String trigger,
                                         String source,
                                         String reason) {
-        taskWorkStatusTransition(taskMsg, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
+        taskWorkStatusTransition(workView, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
     }
 
-    public void taskWorkStatusTransition(TaskWorkTraceView taskMsg,
+    public void taskWorkStatusTransition(TaskWorkTraceView workView,
                                         String attemptId,
                                         String workerId,
                                         String workerContextId,
@@ -102,16 +102,16 @@ public final class TraceEventLogger {
                                         String trigger,
                                         String source,
                                         String reason) {
-        if (taskMsg == null) {
+        if (workView == null) {
             return;
         }
         emit(event(ExecutionEventType.TASK_MSG_STATUS_TRANSITION)
                 .identity(identity -> identity
-                        .taskId(taskMsg.taskId())
-                        .messageId(taskMsg.messageId())
-                        .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
-                        .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId())
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
+                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId())
                         .leaseToken(null))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
                 .attrs(attrs(
@@ -119,8 +119,8 @@ public final class TraceEventLogger {
                         "source", source,
                         "reason", reason,
                         "result", "SUCCESS",
-                        "finalReason", enumName(taskMsg.finalReason()),
-                        "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
+                        "finalReason", enumName(workView.finalReason()),
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
                 ))
                 .build());
     }
@@ -161,15 +161,15 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void taskWorkRetryReset(TaskWorkTraceView taskMsg,
+    public void taskWorkRetryReset(TaskWorkTraceView workView,
                                   Long workRetryDelayMillis,
                                   String trigger,
                                   String source,
                                   String reason) {
-        taskWorkRetryReset(taskMsg, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
+        taskWorkRetryReset(workView, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
     }
 
-    public void taskWorkRetryReset(TaskWorkTraceView taskMsg,
+    public void taskWorkRetryReset(TaskWorkTraceView workView,
                                   String attemptId,
                                   String workerId,
                                   String workerContextId,
@@ -178,25 +178,25 @@ public final class TraceEventLogger {
                                   String trigger,
                                   String source,
                                   String reason) {
-        if (taskMsg == null) {
+        if (workView == null) {
             return;
         }
         emit(event(ExecutionEventType.TASK_MSG_RETRY_RESET)
                 .identity(identity -> identity
-                        .taskId(taskMsg.taskId())
-                        .messageId(taskMsg.messageId())
-                        .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
-                        .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
+                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
                 .transition("FAILED_OR_EXPIRED", MessageStatus.INIT.name(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
                         "reason", reason,
                         "result", "SUCCESS",
-                        "retryCount", taskMsg.retryCount(),
+                        "retryCount", workView.retryCount(),
                         "workRetryDelayMillis", workRetryDelayMillis,
-                        "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
                 ))
                 .build());
     }
@@ -373,30 +373,30 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void callbackAccepted(TaskWorkTraceView taskMsg, String reason) {
-        if (taskMsg == null) {
+    public void callbackAccepted(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, taskMsg, reason, "SUCCESS", true));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, workView, reason, "SUCCESS", true));
     }
 
-    public void callbackIgnoredDuplicate(TaskWorkTraceView taskMsg, String reason) {
-        if (taskMsg == null) {
+    public void callbackIgnoredDuplicate(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, taskMsg, reason, "IGNORED", true));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, workView, reason, "IGNORED", true));
     }
 
-    public void callbackIgnoredLate(TaskWorkTraceView taskMsg, String reason) {
-        if (taskMsg == null) {
+    public void callbackIgnoredLate(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_LATE, taskMsg, reason, "IGNORED", true));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_LATE, workView, reason, "IGNORED", true));
     }
 
     public void callbackRejectedNoActiveAttempt(String taskId,
                                                 String messageId,
-                                                MessageStatus taskMsgStatus,
+                                                MessageStatus workStatus,
                                                 String reason) {
         emit(event(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT)
                 .identity(identity -> identity.taskId(taskId).messageId(messageId))
@@ -405,27 +405,27 @@ public final class TraceEventLogger {
                         "source", "TaskManager",
                         "reason", reason,
                         "result", "REJECTED",
-                        "taskMsgStatus", enumName(taskMsgStatus)
+                        "workStatus", enumName(workStatus)
                 ))
                 .build());
     }
 
-    public void callbackRejectedNoActiveLease(TaskWorkTraceView taskMsg, String reason) {
-        if (taskMsg == null) {
+    public void callbackRejectedNoActiveLease(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, taskMsg, reason, "REJECTED", false));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, workView, reason, "REJECTED", false));
     }
 
-    public void callbackRejectedInvalidState(TaskWorkTraceView taskMsg, String reason) {
-        if (taskMsg == null) {
+    public void callbackRejectedInvalidState(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
             return;
         }
-        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, taskMsg, reason, "REJECTED", false));
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, workView, reason, "REJECTED", false));
     }
 
     public void taskWorkAttemptClosed(Task task,
-                                         TaskWorkTraceView taskMsg,
+                                         TaskWorkTraceView workView,
                                          String attemptId,
                                          Integer attemptNo,
                                          String workerId,
@@ -436,13 +436,13 @@ public final class TraceEventLogger {
                                          String trigger,
                                          String source,
                                          String reason) {
-        if (task == null || taskMsg == null || attemptId == null || attemptId.isBlank()) {
+        if (task == null || workView == null || attemptId == null || attemptId.isBlank()) {
             return;
         }
         emit(event(ExecutionEventType.TASK_MSG_ATTEMPT_CLOSED)
                 .identity(identity -> identity
                         .taskId(task.getTid())
-                        .messageId(taskMsg.messageId())
+                        .messageId(workView.messageId())
                         .attemptId(attemptId)
                         .workerId(workerId)
                         .workerContextId(workerContextId))
@@ -455,15 +455,15 @@ public final class TraceEventLogger {
                         "attemptNo", attemptNo,
                         "attemptStatus", enumName(attemptStatus),
                         "attemptFinalReason", enumName(attemptFinalReason),
-                        "taskMsgStatus", enumName(taskMsg.status()),
-                        "taskMsgFinalReason", enumName(taskMsg.finalReason()),
+                        "workStatus", enumName(workView.status()),
+                        "workFinalReason", enumName(workView.finalReason()),
                         "batchId", batchId
                 ))
                 .build());
     }
 
     public void taskWorkLogicallyFinal(Task task,
-                                          TaskWorkTraceView taskMsg,
+                                          TaskWorkTraceView workView,
                                           String attemptId,
                                           String workerId,
                                           String workerContextId,
@@ -471,26 +471,26 @@ public final class TraceEventLogger {
                                           String trigger,
                                           String source,
                                           String reason) {
-        if (task == null || taskMsg == null) {
+        if (task == null || workView == null) {
             return;
         }
         emit(event(ExecutionEventType.TASK_MSG_LOGICALLY_FINAL)
                 .identity(identity -> identity
                         .taskId(task.getTid())
-                        .messageId(taskMsg.messageId())
-                        .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
-                        .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
-                .outcome(true, taskMsg.errorCode(), reason)
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
+                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
+                .outcome(true, workView.errorCode(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
                         "reason", reason,
                         "result", "SUCCESS",
-                        "taskMsgStatus", enumName(taskMsg.status()),
-                        "taskMsgFinalReason", enumName(taskMsg.finalReason()),
-                        "retryCount", taskMsg.retryCount(),
-                        "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
+                        "workStatus", enumName(workView.status()),
+                        "workFinalReason", enumName(workView.finalReason()),
+                        "retryCount", workView.retryCount(),
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
                 ))
                 .build());
     }
@@ -525,7 +525,7 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void leaseExpired(TaskWorkTraceView taskMsg,
+    public void leaseExpired(TaskWorkTraceView workView,
                              String attemptId,
                              String workerId,
                              String workerContextId,
@@ -536,24 +536,24 @@ public final class TraceEventLogger {
                              String trigger,
                              String source,
                              String reason) {
-        if (taskMsg == null) {
+        if (workView == null) {
             return;
         }
         emit(event(ExecutionEventType.LEASE_EXPIRED)
                 .identity(identity -> identity
-                        .taskId(taskMsg.taskId())
-                        .messageId(taskMsg.messageId())
-                        .attemptId(attemptId != null ? attemptId : taskMsg.latestAttemptId())
-                        .workerId(workerId != null ? workerId : taskMsg.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : taskMsg.latestAttemptWorkerContextId()))
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
+                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
-                .outcome(false, errorCode != null ? errorCode : taskMsg.errorCode(), reason)
+                .outcome(false, errorCode != null ? errorCode : workView.errorCode(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
                         "reason", reason,
                         "result", enumName(toStatus),
-                        "latestAttemptBatchId", batchId != null ? batchId : taskMsg.latestAttemptBatchId()
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
                 ))
                 .build());
     }
@@ -757,24 +757,24 @@ public final class TraceEventLogger {
     }
 
     private ExecutionEvent callbackEvent(ExecutionEventType eventType,
-                                         TaskWorkTraceView taskMsg,
+                                         TaskWorkTraceView workView,
                                          String reason,
                                          String result,
                                          boolean success) {
         return event(eventType)
                 .identity(identity -> identity
-                        .taskId(taskMsg.taskId())
-                        .messageId(taskMsg.messageId())
-                        .attemptId(taskMsg.latestAttemptId())
-                        .workerId(taskMsg.latestAttemptWorkerId())
-                        .workerContextId(taskMsg.latestAttemptWorkerContextId()))
-                .outcome(success, taskMsg.errorCode(), reason)
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(workView.latestAttemptId())
+                        .workerId(workView.latestAttemptWorkerId())
+                        .workerContextId(workView.latestAttemptWorkerContextId()))
+                .outcome(success, workView.errorCode(), reason)
                 .attrs(attrs(
                         "source", "TaskManager",
                         "reason", reason,
                         "result", result,
-                        "taskMsgStatus", enumName(taskMsg.status()),
-                        "latestAttemptBatchId", taskMsg.latestAttemptBatchId()
+                        "workStatus", enumName(workView.status()),
+                        "latestAttemptBatchId", workView.latestAttemptBatchId()
                 ))
                 .build();
     }

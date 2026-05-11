@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 import java.util.Map;
 
 /**
- * Engine event payload for one logical task message reaching stable finality.
+ * Engine event payload for one logical work item reaching stable finality.
  */
 public record TaskWorkLogicallyFinalEvent(
         String taskId,
