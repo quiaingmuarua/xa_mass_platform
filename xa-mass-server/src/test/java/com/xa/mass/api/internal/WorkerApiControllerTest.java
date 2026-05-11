@@ -80,6 +80,7 @@ class WorkerApiControllerTest {
         );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
+        when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
         when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
         when(transportDebugOperations.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
@@ -101,6 +102,8 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].projectCodes[0]").value("demoApp"))
                 .andExpect(jsonPath("$.data.items[0].adapterId").value("websocket"))
                 .andExpect(jsonPath("$.data.items[0].transportHint").value("realtime"))
+                .andExpect(jsonPath("$.data.items[0].transportReachability").value("ONLINE"))
+                .andExpect(jsonPath("$.data.items[0].transportOnline").value(true))
                 .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].routeKey").value("route-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].adapterId").value("ws-public"))

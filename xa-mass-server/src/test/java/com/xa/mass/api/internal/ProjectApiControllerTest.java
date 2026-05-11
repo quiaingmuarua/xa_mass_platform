@@ -1,7 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.SubmitterOperations;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -57,18 +57,18 @@ class ProjectApiControllerTest {
                 .build());
         SubmitterOperations submitterOperations = mock(SubmitterOperations.class);
         when(submitterOperations.listSubmitters()).thenReturn(List.of(
-                SubmitterMetadata.builder()
+                SubmitterProfile.builder()
                         .principalId("crawler-submitter")
                         .projectScope("crawlerApp")
                         .projectScopes(List.of("crawlerApp"))
                         .enabled(true)
                         .build(),
-                SubmitterMetadata.builder()
+                SubmitterProfile.builder()
                         .principalId("demo-admin")
                         .projectScopes(List.of("*"))
                         .enabled(true)
                         .build(),
-                SubmitterMetadata.builder()
+                SubmitterProfile.builder()
                         .principalId("test-only")
                         .projectScopes(List.of("testApp"))
                         .enabled(true)

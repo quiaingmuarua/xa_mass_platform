@@ -118,13 +118,12 @@ class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
                     .filter(worker -> workerId.equals(worker.getWorkerId()))
                     .findFirst()
                     .orElse(null);
-            if (latestWorker != null
-                    && "ONLINE".equals(latestWorker.getStatus())) {
+            if (latestWorker != null && app.isWorkerOnline(workerId)) {
                 return;
             }
             Thread.sleep(250L);
         }
-        throw new AssertionError("Worker did not reach ONLINE: " + workerId + ", lastWorker=" + latestWorker);
+        throw new AssertionError("Worker did not reach transport-online state: " + workerId + ", lastWorker=" + latestWorker);
     }
 
     @SuppressWarnings("unchecked")

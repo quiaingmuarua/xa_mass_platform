@@ -70,14 +70,10 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
         registerPollingWorker(workerId);
         PullWorkerSession session = app.pullWorker(workerId);
 
-        // We verify system events indirectly: connect() marks the worker online through
-        // the runtime system-event channel.
+        // We verify system ingress indirectly: connect() must surface shared
+        // transport presence online for the polling route.
         session.connect();
-        for (int i = 0; i < 20 && !app.isWorkerOnline(workerId); i++) {
-            Thread.sleep(100L);
-        }
-        assertTrue(app.isWorkerOnline(workerId),
-                "WorkerSystemEventChannel.publishWorkerOnline must have been invoked");
+        waitForWorkerPresenceOnline(workerId, 20, 100L, null, null);
         channelCallOrder.add("WorkerSystemEventChannel.publishWorkerOnline");
 
         // Create + approve a task so the runtime dispatches via TaskDispatchChannel.

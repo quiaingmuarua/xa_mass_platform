@@ -14,7 +14,7 @@ import {
 import type {EventDefinition} from '@/types/catalog'
 import type {
     ProjectDefinition,
-    ProjectSubmitterMetadata,
+    ProjectSubmitterProfile,
 } from '@/types/projects'
 
 export async function listProjects(): Promise<ProjectDefinition[]> {
@@ -45,7 +45,7 @@ export async function listProjectEventDefinitions(
 
 export async function listProjectSubmitters(
     projectCode: string,
-): Promise<ProjectSubmitterMetadata[]> {
+): Promise<ProjectSubmitterProfile[]> {
     if (getAppConfig().useMockApi) {
         return listProjectSubmittersMock(projectCode)
     }

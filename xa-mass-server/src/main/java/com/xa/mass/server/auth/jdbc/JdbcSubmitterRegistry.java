@@ -6,7 +6,7 @@ import com.xa.mass.sdk.auth.CredentialHashing;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalType;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -49,8 +49,8 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
         if (existingPrincipalId != null && !existingPrincipalId.equals(registration.getPrincipalId())) {
             throw new IllegalArgumentException("credential is already assigned to another submitter");
         }
-        SubmitterMetadata metadata = registration.toMetadata();
-        String metadataJson = json(StoredSubmitterDocument.from(metadata));
+        SubmitterProfile profile = registration.toProfile();
+        String profileJson = json(StoredSubmitterDocument.from(profile));
         try (var conn = dataSource.getConnection(); var ps = conn.prepareStatement(principalUpsertSql())) {
             ps.setString(1, registration.getPrincipalId());
             ps.setString(2, registration.getPrincipalType().name());
@@ -59,7 +59,7 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
             ps.setString(5, registration.getUserId());
             ps.setString(6, registration.getProjectScope());
             ps.setBoolean(7, registration.isEnabled());
-            ps.setString(8, metadataJson);
+            ps.setString(8, profileJson);
             ps.executeUpdate();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to save submitter " + registration.getPrincipalId(), e);
@@ -68,13 +68,13 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
     }
 
     @Override
-    public synchronized List<SubmitterMetadata> listSubmitters() {
+    public synchronized List<SubmitterProfile> listSubmitters() {
         ensureLoaded();
         return runtimeProjection.listSubmitters();
     }
 
     @Override
-    public synchronized SubmitterMetadata getSubmitter(String principalId) {
+    public synchronized SubmitterProfile getSubmitter(String principalId) {
         ensureLoaded();
         return runtimeProjection.getSubmitter(principalId);
     }
@@ -96,7 +96,7 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
             return;
         }
         for (StoredPrincipalRecord record : queryStoredPrincipals()) {
-            runtimeProjection.loadDurable(record.metadata(), record.credentialHash());
+            runtimeProjection.loadDurable(record.profile(), record.credentialHash());
         }
         loadedFromDb = true;
     }
@@ -108,11 +108,11 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
             List<StoredPrincipalRecord> result = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    SubmitterMetadata metadata = readJson(rs.getString("json"), StoredSubmitterDocument.class).toMetadata();
+                    SubmitterProfile profile = readJson(rs.getString("json"), StoredSubmitterDocument.class).toProfile();
                     result.add(new StoredPrincipalRecord(
                             rs.getString("principal_id"),
                             rs.getString("credential_hash"),
-                            metadata
+                            profile
                     ));
                 }
             }
@@ -161,7 +161,7 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
         try {
             return mapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to serialize submitter metadata", e);
+            throw new IllegalStateException("Failed to serialize submitter profile", e);
         }
     }
 
@@ -169,11 +169,11 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
         try {
             return mapper.readValue(json, type);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to deserialize submitter metadata: " + type.getSimpleName(), e);
+            throw new IllegalStateException("Failed to deserialize submitter profile: " + type.getSimpleName(), e);
         }
     }
 
-    private record StoredPrincipalRecord(String principalId, String credentialHash, SubmitterMetadata metadata) {}
+    private record StoredPrincipalRecord(String principalId, String credentialHash, SubmitterProfile profile) {}
 
     private static final class StoredSubmitterDocument {
         public String principalId;
@@ -187,23 +187,23 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
         public boolean enabled;
         public java.util.Map<String, String> attributes;
 
-        static StoredSubmitterDocument from(SubmitterMetadata metadata) {
+        static StoredSubmitterDocument from(SubmitterProfile profile) {
             StoredSubmitterDocument document = new StoredSubmitterDocument();
-            document.principalId = metadata.getPrincipalId();
-            document.principalType = metadata.getPrincipalType().name();
-            document.keyPrefix = metadata.getKeyPrefix();
-            document.userId = metadata.getUserId();
-            document.projectScope = metadata.getProjectScope();
-            document.permissions = metadata.getPermissions();
-            document.projectScopes = metadata.getProjectScopes();
-            document.eventScopes = metadata.getEventScopes();
-            document.enabled = metadata.isEnabled();
-            document.attributes = metadata.getAttributes();
+            document.principalId = profile.getPrincipalId();
+            document.principalType = profile.getPrincipalType().name();
+            document.keyPrefix = profile.getKeyPrefix();
+            document.userId = profile.getUserId();
+            document.projectScope = profile.getProjectScope();
+            document.permissions = profile.getPermissions();
+            document.projectScopes = profile.getProjectScopes();
+            document.eventScopes = profile.getEventScopes();
+            document.enabled = profile.isEnabled();
+            document.attributes = profile.getAttributes();
             return document;
         }
 
-        SubmitterMetadata toMetadata() {
-            return SubmitterMetadata.builder()
+        SubmitterProfile toProfile() {
+            return SubmitterProfile.builder()
                     .principalId(principalId)
                     .principalType(principalType == null ? null : PrincipalType.valueOf(principalType))
                     .keyPrefix(keyPrefix)

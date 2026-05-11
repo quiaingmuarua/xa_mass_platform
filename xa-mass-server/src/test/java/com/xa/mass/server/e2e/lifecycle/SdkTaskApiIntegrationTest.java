@@ -103,7 +103,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterScopeViolation() {
+    void createTaskThroughUnifiedTaskApiRejectsSubmitterScopeViolation() {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("telegram-bot")
                 .credential("telegram-key")
@@ -117,11 +117,11 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         ), sdkHeaders(Map.of("Authorization", "Bearer telegram-key")));
 
         assertApiError(createResponse, 403);
-        assertEquals("SDK credential project scope denied: crawlerApp", apiMsg(createResponse));
+        assertEquals("Submitter credential project scope denied: crawlerApp", apiMsg(createResponse));
     }
 
     @Test
-    void appendTaskThroughUnifiedTaskApiRejectsSdkSubmitterEventScopeViolation() {
+    void appendTaskThroughUnifiedTaskApiRejectsSubmitterEventScopeViolation() {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("crawler-reader")
                 .credential("crawler-reader-key")
@@ -144,7 +144,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         ), sdkHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiError(appendResponse, 403);
-        assertEquals("SDK credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
+        assertEquals("Submitter credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
     }
 
     @SuppressWarnings("unchecked")

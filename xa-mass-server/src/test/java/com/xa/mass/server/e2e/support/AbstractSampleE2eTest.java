@@ -552,17 +552,17 @@ public abstract class AbstractSampleE2eTest {
     }
 
     /**
-     * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
+     * Asserts that at least {@code minExpected} workers currently have transport reachability.
      *
-     * <p>Call this before dispatching tasks that depend on sample realtime workers being ready.
+     * <p>Call this before dispatching tasks that depend on sample workers being ready.
      * A failure here means SDK resource registration or adapter-specific sample client startup did not
-     * produce the expected workers - surfacing the problem early rather than waiting for a
+     * converge transport presence - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
      */
     @SuppressWarnings("unchecked")
     protected void assertMinOnlineWorkers(int minExpected) throws InterruptedException {
         int online = awaitValue(
-                "Expected at least " + minExpected + " ONLINE worker(s)",
+                "Expected at least " + minExpected + " transport-online worker(s)",
                 20,
                 250L,
                 this::fetchOnlineWorkerCount,
@@ -571,8 +571,8 @@ public abstract class AbstractSampleE2eTest {
         );
         if (online < minExpected) {
             throw new AssertionError(
-                    "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                            + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
+                    "Expected at least " + minExpected + " transport-online worker(s) but found " + online
+                            + " after waiting. Check bootstrap config JSON format, transport presence wiring, and sample transport client startup logs.");
         }
     }
 
@@ -687,18 +687,10 @@ public abstract class AbstractSampleE2eTest {
                 + (latestValue == null ? "<none>" : latestStateRenderer.apply(latestValue)));
     }
 
-    @SuppressWarnings("unchecked")
     private int fetchOnlineWorkerCount() {
-        Map<String, Object> response = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
-        if (!isApiOk(response)) {
-            return 0;
-        }
-        Object data = response.get("data");
-        if (!(data instanceof List<?> list)) {
-            return 0;
-        }
-        return (int) list.stream()
-                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
+        return (int) requireSdkApp().getAllWorkers().stream()
+                .map(WorkerSnapshot::getWorkerId)
+                .filter(workerId -> workerId != null && requireSdkApp().isWorkerOnline(workerId))
                 .count();
     }
 

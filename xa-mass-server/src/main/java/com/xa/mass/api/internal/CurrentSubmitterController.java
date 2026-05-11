@@ -14,11 +14,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/submitters")
-public class SdkSubmitterController {
+public class CurrentSubmitterController {
 
     private final AuthProvider authProvider;
 
-    public SdkSubmitterController(AuthProvider authProvider) {
+    public CurrentSubmitterController(AuthProvider authProvider) {
         this.authProvider = authProvider;
     }
 
@@ -28,7 +28,7 @@ public class SdkSubmitterController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         PrincipalContext submitter = SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
         if (submitter == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing SDK credential"));
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter credential"));
         }
 
         Map<String, Object> data = new LinkedHashMap<>();

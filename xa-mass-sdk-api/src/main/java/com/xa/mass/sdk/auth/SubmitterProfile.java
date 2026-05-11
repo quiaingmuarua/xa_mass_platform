@@ -12,10 +12,10 @@ import java.util.Set;
  * Public read model for a registered submitter.
  *
  * <p>Credentials are accepted only on {@link SubmitterRegistration}. Query
- * operations should expose this metadata shape so SDK callers do not
+ * operations should expose this profile shape so callers do not
  * accidentally leak API keys or service-account tokens.
  */
-public final class SubmitterMetadata {
+public final class SubmitterProfile {
 
     private final String principalId;
     private final PrincipalType principalType;
@@ -28,7 +28,7 @@ public final class SubmitterMetadata {
     private final boolean enabled;
     private final Map<String, String> attributes;
 
-    private SubmitterMetadata(Builder builder) {
+    private SubmitterProfile(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
         this.principalType = builder.principalType == null ? PrincipalType.SERVICE : builder.principalType;
         this.keyPrefix = blankToNull(builder.keyPrefix);
@@ -45,7 +45,7 @@ public final class SubmitterMetadata {
         return new Builder();
     }
 
-    public static SubmitterMetadata from(SubmitterRegistration registration) {
+    public static SubmitterProfile from(SubmitterRegistration registration) {
         Objects.requireNonNull(registration, "registration");
         return builder()
                 .principalId(registration.getPrincipalId())
@@ -117,7 +117,7 @@ public final class SubmitterMetadata {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SubmitterMetadata that)) return false;
+        if (!(o instanceof SubmitterProfile that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
                 && principalType == that.principalType
@@ -137,7 +137,7 @@ public final class SubmitterMetadata {
 
     @Override
     public String toString() {
-        return "SubmitterMetadata{" +
+        return "SubmitterProfile{" +
                 "principalId='" + principalId + '\'' +
                 ", principalType=" + principalType +
                 ", keyPrefix='" + keyPrefix + '\'' +
@@ -261,8 +261,8 @@ public final class SubmitterMetadata {
             return this;
         }
 
-        public SubmitterMetadata build() {
-            return new SubmitterMetadata(this);
+        public SubmitterProfile build() {
+            return new SubmitterProfile(this);
         }
     }
 }

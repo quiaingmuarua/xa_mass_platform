@@ -39,7 +39,7 @@ public class ApiAuthorizationService {
         this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
     }
 
-    public PrincipalContext resolveSdkSubmitter(String apiKeyHeader,
+    public PrincipalContext resolveSubmitterPrincipal(String apiKeyHeader,
                                                 String authorizationHeader,
                                                 ApiSecurityScenario scenario,
                                                 Map<String, Object> context) {
@@ -62,7 +62,7 @@ public class ApiAuthorizationService {
                                                                               String requestedUserId,
                                                                               Map<String, Object> context) {
         PrincipalContext submitter =
-                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_CREATE, context);
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_CREATE, context);
         if (submitter == null) {
             return null;
         }
@@ -113,7 +113,7 @@ public class ApiAuthorizationService {
                                                         Map<String, Object> sharedConfig,
                                                         Map<String, Object> context) {
         PrincipalContext submitter =
-                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
         if (submitter == null) {
             return null;
         }
@@ -124,7 +124,7 @@ public class ApiAuthorizationService {
     public PrincipalContext resolveTaskViewerCredential(String apiKeyHeader,
                                                         String authorizationHeader,
                                                         Map<String, Object> context) {
-        return resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        return resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
     }
 
     public PrincipalContext resolveAuthorizedTaskAppender(String apiKeyHeader,
@@ -135,7 +135,7 @@ public class ApiAuthorizationService {
                                                           List<String> eventCodes,
                                                           Map<String, Object> context) {
         PrincipalContext submitter =
-                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
         if (submitter == null) {
             return null;
         }

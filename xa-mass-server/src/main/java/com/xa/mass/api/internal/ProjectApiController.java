@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -71,7 +71,7 @@ public class ProjectApiController {
     }
 
     @GetMapping("/{projectCode}/submitters")
-    public ResponseEntity<ApiResponse<List<SubmitterMetadata>>> getProjectSubmitters(@PathVariable String projectCode) {
+    public ResponseEntity<ApiResponse<List<SubmitterProfile>>> getProjectSubmitters(@PathVariable String projectCode) {
         ProjectDefinition projectDefinition = catalog.getProject(projectCode);
         if (projectDefinition == null) {
             return ResponseEntity.status(404)
@@ -80,14 +80,14 @@ public class ProjectApiController {
         if (submitterOperations == null) {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
-        List<SubmitterMetadata> submitters = submitterOperations.listSubmitters().stream()
+        List<SubmitterProfile> submitters = submitterOperations.listSubmitters().stream()
                 .filter(submitter -> supportsProject(submitter, projectCode))
-                .sorted(Comparator.comparing(SubmitterMetadata::getPrincipalId, String::compareToIgnoreCase))
+                .sorted(Comparator.comparing(SubmitterProfile::getPrincipalId, String::compareToIgnoreCase))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(submitters));
     }
 
-    private boolean supportsProject(SubmitterMetadata submitter, String projectCode) {
+    private boolean supportsProject(SubmitterProfile submitter, String projectCode) {
         if (submitter == null || projectCode == null || projectCode.isBlank()) {
             return false;
         }

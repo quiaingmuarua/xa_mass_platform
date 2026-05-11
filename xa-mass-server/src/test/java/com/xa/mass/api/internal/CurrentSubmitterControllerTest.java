@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
-class SdkSubmitterControllerTest {
+class CurrentSubmitterControllerTest {
 
     @Mock
     private AuthProvider authProvider;
@@ -28,7 +28,7 @@ class SdkSubmitterControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new SdkSubmitterController(authProvider)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new CurrentSubmitterController(authProvider)).build();
     }
 
     @Test
@@ -78,6 +78,6 @@ class SdkSubmitterControllerTest {
         mockMvc.perform(get("/api/v1/submitters/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401))
-                .andExpect(jsonPath("$.msg").value("Invalid or missing SDK credential"));
+                .andExpect(jsonPath("$.msg").value("Invalid or missing submitter credential"));
     }
 }

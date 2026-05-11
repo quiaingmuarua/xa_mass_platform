@@ -18,11 +18,11 @@ public final class InMemorySubmitterRegistry implements SubmitterRegistry {
         SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
         String credentialHash = CredentialHashing.sha256(registration.getCredential());
         StoredBinding credentialOwner = byCredentialHash.get(credentialHash);
-        if (credentialOwner != null && !credentialOwner.metadata().getPrincipalId().equals(registration.getPrincipalId())) {
+        if (credentialOwner != null && !credentialOwner.profile().getPrincipalId().equals(registration.getPrincipalId())) {
             throw new IllegalArgumentException("credential is already assigned to another submitter");
         }
         StoredBinding binding = new StoredBinding(
-                registration.toMetadata(),
+                registration.toProfile(),
                 registration.toPrincipalContext(),
                 credentialHash
         );
@@ -33,35 +33,35 @@ public final class InMemorySubmitterRegistry implements SubmitterRegistry {
         byCredentialHash.put(credentialHash, binding);
     }
 
-    public synchronized void loadDurable(SubmitterMetadata metadata, String credentialHash) {
-        SubmitterMetadata normalizedMetadata = Objects.requireNonNull(metadata, "metadata");
+    public synchronized void loadDurable(SubmitterProfile profile, String credentialHash) {
+        SubmitterProfile normalizedProfile = Objects.requireNonNull(profile, "profile");
         String normalizedCredentialHash = Objects.requireNonNull(credentialHash, "credentialHash");
         StoredBinding credentialOwner = byCredentialHash.get(normalizedCredentialHash);
-        if (credentialOwner != null && !credentialOwner.metadata().getPrincipalId().equals(normalizedMetadata.getPrincipalId())) {
+        if (credentialOwner != null && !credentialOwner.profile().getPrincipalId().equals(normalizedProfile.getPrincipalId())) {
             throw new IllegalArgumentException("credential is already assigned to another submitter");
         }
         StoredBinding binding = new StoredBinding(
-                normalizedMetadata,
-                normalizedMetadata.toPrincipalContext(),
+                normalizedProfile,
+                normalizedProfile.toPrincipalContext(),
                 normalizedCredentialHash
         );
-        StoredBinding previous = byPrincipalId.put(normalizedMetadata.getPrincipalId(), binding);
+        StoredBinding previous = byPrincipalId.put(normalizedProfile.getPrincipalId(), binding);
         if (previous != null) {
             byCredentialHash.remove(previous.credentialHash());
         }
         byCredentialHash.put(normalizedCredentialHash, binding);
     }
 
-    public synchronized List<SubmitterMetadata> listSubmitters() {
+    public synchronized List<SubmitterProfile> listSubmitters() {
         return byPrincipalId.values().stream()
-                .map(StoredBinding::metadata)
-                .sorted(Comparator.comparing(SubmitterMetadata::getPrincipalId, Comparator.nullsLast(String::compareTo)))
+                .map(StoredBinding::profile)
+                .sorted(Comparator.comparing(SubmitterProfile::getPrincipalId, Comparator.nullsLast(String::compareTo)))
                 .toList();
     }
 
-    public synchronized SubmitterMetadata getSubmitter(String principalId) {
+    public synchronized SubmitterProfile getSubmitter(String principalId) {
         StoredBinding binding = byPrincipalId.get(principalId);
-        return binding != null ? binding.metadata() : null;
+        return binding != null ? binding.profile() : null;
     }
 
     @Override
@@ -76,13 +76,13 @@ public final class InMemorySubmitterRegistry implements SubmitterRegistry {
             return null;
         }
         StoredBinding binding = byCredentialHash.get(CredentialHashing.sha256(credential.trim()));
-        if (binding == null || !binding.metadata().isEnabled()) {
+        if (binding == null || !binding.profile().isEnabled()) {
             return null;
         }
         return binding.principalContext();
     }
 
-    private record StoredBinding(SubmitterMetadata metadata,
+    private record StoredBinding(SubmitterProfile profile,
                                  PrincipalContext principalContext,
                                  String credentialHash) {
     }

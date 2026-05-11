@@ -1,7 +1,7 @@
 import type {EventDefinition, EventCapability} from '@/types/catalog'
 import type {
     ProjectDefinition,
-    ProjectSubmitterMetadata,
+    ProjectSubmitterProfile,
 } from '@/types/projects'
 
 export const mockProjects: ProjectDefinition[] = [
@@ -37,7 +37,7 @@ export const mockProjects: ProjectDefinition[] = [
     },
 ]
 
-export const mockProjectSubmitters: Record<string, ProjectSubmitterMetadata[]> = {
+export const mockProjectSubmitters: Record<string, ProjectSubmitterProfile[]> = {
     demoApp: [
         {
             principalId: 'demo-app-submitter',

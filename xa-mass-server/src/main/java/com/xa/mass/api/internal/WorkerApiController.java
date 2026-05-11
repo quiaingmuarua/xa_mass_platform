@@ -58,9 +58,12 @@ public class WorkerApiController {
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
+                    boolean transportOnline = workerQueries.isWorkerOnline(worker.getWorkerId());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
                     item.put("status", worker.getStatus());
+                    item.put("transportReachability", transportOnline ? "ONLINE" : "OFFLINE");
+                    item.put("transportOnline", transportOnline);
                     item.put("workerGroupId", worker.getWorkerGroupId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", worker.getSupportedProjects());

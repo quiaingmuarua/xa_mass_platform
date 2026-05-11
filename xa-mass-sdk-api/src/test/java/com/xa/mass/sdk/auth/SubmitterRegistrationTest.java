@@ -96,7 +96,7 @@ class SubmitterRegistrationTest {
                 .attributes(Map.of("channel", "telegram"))
                 .build();
 
-        SubmitterMetadata metadata = registration.toMetadata();
+        SubmitterProfile metadata = registration.toProfile();
 
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
         Assertions.assertEquals("bot-user", metadata.getUserId());

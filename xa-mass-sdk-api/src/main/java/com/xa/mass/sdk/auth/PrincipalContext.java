@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Unified authenticated caller context used across operator, SDK submitter,
+ * Unified authenticated caller context used across operator, submitter credential,
  * worker, and event-runtime entry points.
  */
 public final class PrincipalContext {

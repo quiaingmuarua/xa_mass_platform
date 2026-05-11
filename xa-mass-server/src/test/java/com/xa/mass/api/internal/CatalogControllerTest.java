@@ -57,6 +57,9 @@ class CatalogControllerTest {
                 List.of("demoApp"), List.of());
         WorkerQueryOperations workerQueries = mock(WorkerQueryOperations.class);
         when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
+        when(workerQueries.isWorkerOnline("crawler-worker-1")).thenReturn(true);
+        when(workerQueries.isWorkerOnline("chat-worker-1")).thenReturn(false);
+        when(workerQueries.isWorkerOnline("scope-only-worker")).thenReturn(false);
         when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);

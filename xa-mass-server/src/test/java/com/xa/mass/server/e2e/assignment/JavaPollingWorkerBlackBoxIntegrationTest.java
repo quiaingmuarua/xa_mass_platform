@@ -67,12 +67,11 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalJavaWorkerProcess workerProcess =
                      ExternalJavaWorkerProcess.startPollingSample(baseUrl, WORKER_ID, WORKER_KEY)) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     WORKER_ID,
-                    "ONLINE",
                     60,
                     250L,
-                    () -> workerProcess.assertAlive("External Java polling worker exited before reaching ONLINE"),
+                    () -> workerProcess.assertAlive("External Java polling worker exited before reaching transport-online state"),
                     workerProcess::capturedOutput
             );
             assertSdkMetadataProjection(WORKER_ID);

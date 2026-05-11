@@ -252,7 +252,7 @@ import type {
 } from '@/types/catalog'
 import type {
   ProjectDefinition,
-  ProjectSubmitterMetadata,
+  ProjectSubmitterProfile,
 } from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
@@ -265,7 +265,7 @@ const loading = ref(false)
 const errorMessage = ref('')
 const project = ref<ProjectDefinition | null>(null)
 const events = ref<EventDefinition[]>([])
-const submitters = ref<ProjectSubmitterMetadata[]>([])
+const submitters = ref<ProjectSubmitterProfile[]>([])
 const workers = ref<WorkerListItem[]>([])
 const tasks = ref<TaskListItem[]>([])
 

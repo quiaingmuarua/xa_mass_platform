@@ -8,7 +8,7 @@ export interface ProjectDefinition {
     ownerPrincipalId?: string | null
 }
 
-export interface ProjectSubmitterMetadata {
+export interface ProjectSubmitterProfile {
     principalId: string
     principalType: string
     keyPrefix: string | null

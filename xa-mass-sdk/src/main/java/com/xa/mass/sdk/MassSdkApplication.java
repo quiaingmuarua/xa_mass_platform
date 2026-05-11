@@ -475,12 +475,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<SubmitterMetadata> listSubmitters() {
+    public List<SubmitterProfile> listSubmitters() {
         return submitterRegistry.listSubmitters();
     }
 
     @Override
-    public SubmitterMetadata getSubmitter(String principalId) {
+    public SubmitterProfile getSubmitter(String principalId) {
         return submitterRegistry.getSubmitter(principalId);
     }
 

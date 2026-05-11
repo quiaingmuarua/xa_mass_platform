@@ -131,42 +131,42 @@
           </el-col>
         </el-row>
 
-        <el-card class="page-card sdk-submit-card">
+        <el-card class="page-card submitter-access-card">
           <template #header>
-            <strong>SDK submitter access</strong>
+            <strong>Submitter credential access</strong>
           </template>
             <el-alert
-            class="sdk-submit-note"
+            class="submitter-access-note"
             type="info"
             :closable="false"
-            title="SDK submitter identity is only for credential-backed task submission through POST /api/v1/tasks. It is not the control-console login state and does not affect menu permissions."
+            title="Submitter credential identity is only for credential-backed task submission through POST /api/v1/tasks. It is not the control-console login state and does not affect menu permissions."
           />
           <el-descriptions :column="1" border>
             <el-descriptions-item label="Introspection">
-              <el-tag :type="sdkSubmitterStatusType">
-                {{ sdkSubmitterStatusLabel }}
+              <el-tag :type="submitterStatusType">
+                {{ submitterStatusLabel }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="Principal">
-              {{ sdkSubmitterProfile?.principalId ?? '-' }}
+              {{ submitterProfile?.principalId ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Resolved user">
-              {{ sdkSubmitterProfile?.userId ?? '-' }}
+              {{ submitterProfile?.userId ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Project scope">
-              {{ sdkSubmitterProfile?.projectScope ?? '-' }}
+              {{ submitterProfile?.projectScope ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Permissions">
-              {{ sdkSubmitterProfile?.permissions?.join(', ') || '-' }}
+              {{ submitterProfile?.permissions?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Project scopes">
-              {{ sdkSubmitterProfile?.projectScopes?.join(', ') || '-' }}
+              {{ submitterProfile?.projectScopes?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Event scopes">
-              {{ sdkSubmitterProfile?.eventScopes?.join(', ') || '-' }}
+              {{ submitterProfile?.eventScopes?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Attributes">
-              <pre class="inline-json-block">{{ sdkSubmitterAttributesText }}</pre>
+              <pre class="inline-json-block">{{ submitterAttributesText }}</pre>
             </el-descriptions-item>
             <el-descriptions-item label="Create route">
               Use the same task create route:
@@ -540,14 +540,14 @@ import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {listEventCapabilities, listEventDefinitions} from '@/api/catalog'
 import {listProjects} from '@/api/projects'
-import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
+import {getCurrentSubmitter} from '@/api/current-submitter'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {EventCapability, EventInvocationModel, EventDefinition} from '@/types/catalog'
 import type {ProjectDefinition} from '@/types/projects'
-import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
+import type {CurrentSubmitterSnapshot} from '@/types/current-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
@@ -583,7 +583,7 @@ const projects = ref<ProjectDefinition[]>([])
 const events = ref<EventDefinition[]>([])
 const eventCapabilities = ref<EventCapability[]>([])
 const workers = ref<WorkerListItem[]>([])
-const sdkSubmitterSnapshot = ref<SdkSubmitterSnapshot>({
+const submitterSnapshot = ref<CurrentSubmitterSnapshot>({
   state: 'unavailable',
   profile: null,
 })
@@ -759,28 +759,28 @@ const coveredProjectCount = computed(
       (project) => project.enabled && project.onlineWorkerIds.length > 0,
     ).length,
 )
-const sdkSubmitterProfile = computed(() => sdkSubmitterSnapshot.value.profile)
-const sdkSubmitterStatusLabel = computed(() => {
-  if (sdkSubmitterSnapshot.value.state === 'available') {
+const submitterProfile = computed(() => submitterSnapshot.value.profile)
+const submitterStatusLabel = computed(() => {
+  if (submitterSnapshot.value.state === 'available') {
     return 'Credential resolved'
   }
-  if (sdkSubmitterSnapshot.value.state === 'unauthorized') {
-    return 'No SDK credential in this browser session'
+  if (submitterSnapshot.value.state === 'unauthorized') {
+    return 'No submitter credential in this browser session'
   }
   return 'Endpoint unavailable or mock mode'
 })
-const sdkSubmitterStatusType = computed(() => {
-  if (sdkSubmitterSnapshot.value.state === 'available') {
+const submitterStatusType = computed(() => {
+  if (submitterSnapshot.value.state === 'available') {
     return 'success'
   }
-  if (sdkSubmitterSnapshot.value.state === 'unauthorized') {
+  if (submitterSnapshot.value.state === 'unauthorized') {
     return 'warning'
   }
   return 'info'
 })
-const sdkSubmitterAttributesText = computed(() =>
-  sdkSubmitterProfile.value
-    ? JSON.stringify(sdkSubmitterProfile.value.attributes ?? {}, null, 2)
+const submitterAttributesText = computed(() =>
+  submitterProfile.value
+    ? JSON.stringify(submitterProfile.value.attributes ?? {}, null, 2)
     : '{}',
 )
 const selectedScopeTitle = computed(() => {
@@ -898,26 +898,26 @@ async function loadDiscovery(): Promise<void> {
       eventRowsData,
       eventCapabilityRows,
       workerResponse,
-      submitterSnapshot,
+      submitterSnapshotData,
     ] =
       await Promise.all([
         listProjects(),
         listEventDefinitions(),
         listEventCapabilities(),
         listWorkers(),
-        getCurrentSdkSubmitter(),
+        getCurrentSubmitter(),
       ])
     projects.value = projectRowsData
     events.value = eventRowsData
     eventCapabilities.value = eventCapabilityRows
     workers.value = workerResponse.items
-    sdkSubmitterSnapshot.value = submitterSnapshot
+    submitterSnapshot.value = submitterSnapshotData
   } catch (error) {
     projects.value = []
     events.value = []
     eventCapabilities.value = []
     workers.value = []
-    sdkSubmitterSnapshot.value = {
+    submitterSnapshot.value = {
       state: 'unavailable',
       profile: null,
     }
@@ -1109,11 +1109,11 @@ watch(
   height: 100%;
 }
 
-.sdk-submit-card {
+.submitter-access-card {
   margin-top: 20px;
 }
 
-.sdk-submit-note {
+.submitter-access-note {
   margin-bottom: 16px;
   border-radius: 12px;
 }

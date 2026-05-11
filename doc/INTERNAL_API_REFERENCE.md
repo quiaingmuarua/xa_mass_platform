@@ -83,10 +83,10 @@ Base path: `/api/v1/auth`
 Notes:
 
 - These routes are for control-console/operator auth state.
-- SDK submitter credentials use API-key/Bearer auth and do not participate in
+- submitter credentials use API-key/Bearer auth and do not participate in
   operator session login.
 
-### 2.2 SDK Submitter Introspection
+### 2.2 Submitter Credential Introspection
 
 Base path: `/api/v1/submitters`
 
@@ -207,6 +207,7 @@ Notes:
 - `eventBindings` is the richer capability view derived from event definitions
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
+- `online` follows transport presence truth, not the worker model status field
 - `connections` and `hasActiveEndpoint` are reachability facts from the
   transport/session layer, not capability truth
 
@@ -240,7 +241,7 @@ Query params:
 Notes:
 
 - operator callers require normal task-view authorization
-- SDK credential callers may also use this route
+- submitter credential callers may also use this route
 - current SDK list behavior is ownership-scoped
 - project filtering is shell-level ownership filtering, not item-level
   `eventCode` filtering
@@ -318,10 +319,10 @@ Response notes:
 - returns `task`
 - returns `security`
 - does not return item payload snapshots by default
-- SDK credential callers may use this route under the same ownership-based
+- submitter credential callers may use this route under the same ownership-based
   task-view gate
 
-### 4.4 Update Task Shell Metadata
+### 4.4 Update Task Shell
 
 - Method: `PATCH`
 - Path: `/api/v1/tasks/{taskId}`
@@ -542,6 +543,9 @@ Behavior:
 
 Notes:
 
+- `status` is the control-plane worker model status
+- `transportReachability` and `transportOnline` are transport-owned reachability
+  facts read through the SDK/transport presence view
 - joins worker state with current connection snapshots
 - `eventBindings` remains the richer capability read model
 
@@ -557,7 +561,7 @@ Notes:
 - Path: `/api/v1/runtime/rules`
 - Status: `Implemented`
 
-### 5.9 Rule Metadata
+### 5.9 Rule Catalog
 
 - Method: `GET`
 - Path: `/api/v1/runtime/rules/meta`
@@ -584,7 +588,7 @@ Request notes:
 - `eventBindings` is required and is the canonical capability declaration
 - `transportHint` defaults to `polling`
 - `adapterId` is optional for polling and required for realtime
-- caller must authenticate with an SDK credential that includes `worker:poll`
+- caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
 
 ### 6.2 Register Worker Context

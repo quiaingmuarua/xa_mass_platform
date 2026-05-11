@@ -161,7 +161,7 @@ class ExternalWorkerApiControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential worker binding denied: other-worker"));
+                .andExpect(jsonPath("$.msg").value("Worker credential binding denied: other-worker"));
     }
 
     @Test
@@ -181,7 +181,7 @@ class ExternalWorkerApiControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential event scope denied: mock.reset"));
+                .andExpect(jsonPath("$.msg").value("Worker credential event scope denied: mock.reset"));
     }
 
     @Test
@@ -206,7 +206,7 @@ class ExternalWorkerApiControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential permission denied: worker:poll"));
+                .andExpect(jsonPath("$.msg").value("Worker credential permission denied: worker:poll"));
     }
 
     @Test

@@ -37,7 +37,7 @@ Create an SDK application handle:
 ```java
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -174,11 +174,11 @@ app.registerSubmitter(SubmitterRegistration.builder()
         .build());
 
 var submitter = app.authenticateSubmitter("dev-api-key");
-SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
+SubmitterProfile submitterProfile = app.getSubmitter("telegram-bot");
 ```
 
 `registerSubmitter(...)` accepts the raw credential. `listSubmitters()` and
-`getSubmitter(...)` return `SubmitterMetadata` and intentionally do not expose
+`getSubmitter(...)` return `SubmitterProfile` and intentionally do not expose
 the credential back to callers. Registering the same credential for a different
 principal is rejected. A single `userId` can own multiple credentials; each
 credential keeps its own permissions, project scopes, and event scopes.
@@ -190,7 +190,7 @@ The returned `MassSdkApplication` exposes:
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
 - transport/session/queue raw diagnostics are internal/operator-only through `TransportDebugOperations` created from `app.runtimeApplication()`; they are not part of the stable embedding mainline
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
-- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
+- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
 - stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
@@ -203,7 +203,7 @@ Current SDK contracts:
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online) |
 | resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
-| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
+| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterProfile`, not credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |

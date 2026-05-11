@@ -2,7 +2,7 @@ import {mockEvents, mockProjects, mockProjectSubmitters} from '@/api/mockCatalog
 import type {EventDefinition} from '@/types/catalog'
 import type {
     ProjectDefinition,
-    ProjectSubmitterMetadata,
+    ProjectSubmitterProfile,
 } from '@/types/projects'
 
 function delay<T>(value: T): Promise<T> {
@@ -41,7 +41,7 @@ export async function listProjectEventDefinitionsMock(
 
 export async function listProjectSubmittersMock(
     projectCode: string,
-): Promise<ProjectSubmitterMetadata[]> {
+): Promise<ProjectSubmitterProfile[]> {
     const project = mockProjects.find((item) => item.code === projectCode)
     if (!project) {
         throw new Error(`Project not found: ${projectCode}`)

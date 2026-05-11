@@ -257,7 +257,7 @@ describe('RuntimeDiscoveryPage', () => {
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
         expect(wrapper.text()).toContain('Start event draft')
-        expect(wrapper.text()).toContain('SDK submitter access')
+        expect(wrapper.text()).toContain('Submitter credential access')
         expect(wrapper.text()).toContain('Credential resolved')
         expect(wrapper.text()).toContain('crawler-agent')
         expect(wrapper.text()).toContain('task:create')
@@ -294,7 +294,7 @@ describe('RuntimeDiscoveryPage', () => {
         expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })
 
-    it('renders SDK submitter unauthorized state without treating it as console auth', async () => {
+    it('renders submitter credential unauthorized state without treating it as console auth', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         vi.stubGlobal(
             'fetch',
@@ -303,7 +303,7 @@ describe('RuntimeDiscoveryPage', () => {
                     jsonResponseWithStatus(
                         {
                             code: 401,
-                            msg: 'Invalid or missing SDK credential',
+                            msg: 'Invalid or missing submitter credential',
                             data: null,
                         },
                         401,
@@ -314,11 +314,11 @@ describe('RuntimeDiscoveryPage', () => {
 
         const { wrapper } = await mountRuntimeDiscoveryPage()
 
-        expect(wrapper.text()).toContain('No SDK credential in this browser session')
+        expect(wrapper.text()).toContain('No submitter credential in this browser session')
         expect(wrapper.text()).toContain('It is not the control-console login state')
     })
 
-    it('renders SDK submitter unavailable state when introspection is not exposed', async () => {
+    it('renders submitter credential unavailable state when introspection is not exposed', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         vi.stubGlobal(
             'fetch',

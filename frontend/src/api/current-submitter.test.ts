@@ -1,6 +1,6 @@
 import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
-import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
-import {getCurrentSdkSubmitterReal} from '@/api/sdk-submitter.real'
+import {getCurrentSubmitter} from '@/api/current-submitter'
+import {getCurrentSubmitterReal} from '@/api/current-submitter.real'
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
     })
 }
 
-describe('sdk submitter API facade', () => {
+describe('current submitter API facade', () => {
     afterEach(() => {
         resetRuntimeConfigOverrides()
         vi.unstubAllGlobals()
@@ -20,14 +20,14 @@ describe('sdk submitter API facade', () => {
     it('returns unavailable in mock mode', async () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
-        await expect(getCurrentSdkSubmitter()).resolves.toEqual({
+        await expect(getCurrentSubmitter()).resolves.toEqual({
             state: 'unavailable',
             profile: null,
         })
     })
 })
 
-describe('sdk-submitter.real', () => {
+describe('current-submitter.real', () => {
     afterEach(() => {
         vi.unstubAllGlobals()
     })
@@ -53,7 +53,7 @@ describe('sdk-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSdkSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentSubmitterReal()).resolves.toEqual({
             state: 'available',
             profile: {
                 principalId: 'crawler-agent',
@@ -74,7 +74,7 @@ describe('sdk-submitter.real', () => {
                     jsonResponse(
                         {
                             code: 401,
-                            msg: 'Invalid or missing SDK credential',
+                            msg: 'Invalid or missing submitter credential',
                             data: null,
                         },
                         401,
@@ -83,7 +83,7 @@ describe('sdk-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSdkSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentSubmitterReal()).resolves.toEqual({
             state: 'unauthorized',
             profile: null,
         })
@@ -106,7 +106,7 @@ describe('sdk-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSdkSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentSubmitterReal()).resolves.toEqual({
             state: 'unavailable',
             profile: null,
         })

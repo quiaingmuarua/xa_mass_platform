@@ -72,7 +72,7 @@ public class CatalogController {
                 .map(event -> {
                     boolean directRuntime = event.getTaskModes().isEmpty();
                     List<String> onlineWorkerIds = workers.stream()
-                            .filter(worker -> "ONLINE".equals(worker.getStatus()))
+                            .filter(worker -> isTransportOnline(worker.getWorkerId()))
                             .filter(worker -> worker.getSupportedEventCodes() != null
                                     && worker.getSupportedEventCodes().contains(event.getCode()))
                             .map(worker -> worker.getWorkerId())
@@ -130,7 +130,7 @@ public class CatalogController {
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("online", "ONLINE".equals(worker.getStatus()));
+                    item.put("online", isTransportOnline(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));
@@ -161,6 +161,13 @@ public class CatalogController {
                 .distinct()
                 .sorted(String::compareToIgnoreCase)
                 .toList();
+    }
+
+    private boolean isTransportOnline(String workerId) {
+        return workerQueries != null
+                && workerId != null
+                && !workerId.isBlank()
+                && workerQueries.isWorkerOnline(workerId);
     }
 
 }

@@ -35,10 +35,10 @@ Controller/console ownership now includes:
 
 ## Security Wiring
 
-- operator, SDK submitter, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
+- operator, submitter credential, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
-- `TaskApiController` keeps the existing HTTP contract but routes SDK submitter create checks through the shared policy
-- `TaskApiController` now also supports SDK submitter task read on `list / detail / messages` through centralized ownership checks derived from the internal task ownership stamp
+- `TaskApiController` keeps the existing HTTP contract but routes submitter credential create checks through the shared policy
+- `TaskApiController` now also supports submitter credential task read on `list / detail / messages` through centralized ownership checks derived from the internal task ownership stamp
 - `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
 - host-side authorization adaptation is centralized in `com.xa.mass.api.auth.ApiAuthorizationService`, including deny-message mapping and structured deny logging
 - operator route-to-permission declarations are centralized in `com.xa.mass.api.auth.ApiRouteAuthorizationCatalog`
@@ -54,9 +54,9 @@ Current host security matrix:
 
 | Scenario | Principal surface | Resource/action | Current gate |
 | --- | --- | --- | --- |
-| `SUBMITTER_TASK_CREATE` | SDK credential | `TASK / CREATE` | `task:create` + project/user scope |
-| `SUBMITTER_TASK_VIEW` | SDK credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
-| `SUBMITTER_TASK_APPEND` | SDK credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
+| `SUBMITTER_TASK_CREATE` | submitter credential | `TASK / CREATE` | `task:create` + project/user scope |
+| `SUBMITTER_TASK_VIEW` | submitter credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
+| `SUBMITTER_TASK_APPEND` | submitter credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
 | `WORKER_CONTEXT_REGISTER` | external worker credential | `WORKER_CONTEXT / REGISTER` | `worker:poll` + worker binding + project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
@@ -292,7 +292,7 @@ JDBC storage scope:
 - JDBC storage persists task truth, worker/context registration truth, and rule
   definitions
 - JDBC storage also persists low-frequency principal credential truth used by
-  SDK submitter and external worker API-key authentication
+  submitter and external worker API-key authentication
 - `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and context
   occupancy churn stay process-local runtime projection state
 - do not use JDBC storage as a cross-task message-status analytics surface;

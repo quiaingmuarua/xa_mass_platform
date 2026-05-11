@@ -42,7 +42,7 @@ class InMemorySubmitterRegistryTest {
                 .eventScopes(List.of("tool.time.now"))
                 .build();
 
-        registry.loadDurable(registration.toMetadata(), CredentialHashing.sha256(registration.getCredential()));
+        registry.loadDurable(registration.toProfile(), CredentialHashing.sha256(registration.getCredential()));
 
         PrincipalContext principal = registry.authenticate("ops-secret");
         assertThat(principal).isNotNull();

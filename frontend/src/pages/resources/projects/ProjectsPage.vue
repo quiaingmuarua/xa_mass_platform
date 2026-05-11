@@ -122,7 +122,7 @@ import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
   ProjectDefinition,
-  ProjectSubmitterMetadata,
+  ProjectSubmitterProfile,
 } from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
@@ -142,7 +142,7 @@ const errorMessage = ref('')
 const projects = ref<ProjectDefinition[]>([])
 const tasks = ref<TaskListItem[]>([])
 const workers = ref<WorkerListItem[]>([])
-const submittersByProject = ref<Record<string, ProjectSubmitterMetadata[]>>({})
+const submittersByProject = ref<Record<string, ProjectSubmitterProfile[]>>({})
 
 const enabledProjectCount = computed(
   () => projects.value.filter((project) => project.enabled).length,
@@ -195,7 +195,7 @@ async function loadProjects(): Promise<void> {
   }
 }
 
-function submittersForProject(projectCode: string): ProjectSubmitterMetadata[] {
+function submittersForProject(projectCode: string): ProjectSubmitterProfile[] {
   return submittersByProject.value[projectCode] ?? []
 }
 

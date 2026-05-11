@@ -42,7 +42,7 @@ import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -1906,7 +1906,7 @@ class MassSdkTest {
 
         Assertions.assertTrue(app instanceof AuthProvider);
         Assertions.assertTrue(app.hasSubmitter("telegram-bot"));
-        SubmitterMetadata submitterMetadata = SubmitterMetadata.from(submitterRegistration);
+        SubmitterProfile submitterMetadata = SubmitterProfile.from(submitterRegistration);
         Assertions.assertEquals(List.of(submitterMetadata), app.listSubmitters());
         Assertions.assertEquals(submitterMetadata, app.getSubmitter("telegram-bot"));
         PrincipalContext submitterContext = app.authenticateSubmitter("test-api-key");
@@ -1963,7 +1963,7 @@ class MassSdkTest {
                 .projectScope("telegramApp")
                 .build());
 
-        SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
+        SubmitterProfile metadata = app.getSubmitter("telegram-bot");
 
         Assertions.assertNotNull(metadata);
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());

@@ -12,21 +12,21 @@ public enum ApiSecurityScenario {
             PlatformResourceType.TASK,
             PlatformAction.CREATE,
             PrincipalContext.TASK_CREATE_PERMISSION,
-            CredentialAudience.SDK_SUBMITTER
+            CredentialAudience.SUBMITTER
     ),
     SUBMITTER_TASK_VIEW(
             "task-view",
             PlatformResourceType.TASK,
             PlatformAction.VIEW,
             null,
-            CredentialAudience.SDK_SUBMITTER
+            CredentialAudience.SUBMITTER
     ),
     SUBMITTER_TASK_APPEND(
             "task-append",
             PlatformResourceType.TASK,
             PlatformAction.EDIT,
             PrincipalContext.TASK_CREATE_PERMISSION,
-            CredentialAudience.SDK_SUBMITTER
+            CredentialAudience.SUBMITTER
     ),
     WORKER_REGISTER(
             "worker-register",
@@ -114,45 +114,45 @@ public enum ApiSecurityScenario {
 
     public String unauthenticatedMessage() {
         return switch (credentialAudience) {
-            case SDK_SUBMITTER -> "Invalid or missing SDK credential";
+            case SUBMITTER -> "Invalid or missing submitter credential";
             case EXTERNAL_WORKER -> "Invalid or missing worker credential";
         };
     }
 
     public String deniedMessage(AuthorizationDecision decision) {
         if (decision == null || decision.getReason() == null || decision.getReason().isBlank()) {
-            return "SDK credential authorization denied";
+            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential authorization denied" : "Worker credential authorization denied";
         }
         AuthorizationReasonCode reasonCode = decision.getReasonCode();
         String reason = decision.getReason();
         if (reasonCode == AuthorizationReasonCode.PERMISSION_DENIED) {
-            return "SDK credential permission denied: " + suffixAfter(reason, "permission denied: ");
+            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential permission denied: " + suffixAfter(reason, "permission denied: ") : "Worker credential permission denied: " + suffixAfter(reason, "permission denied: ");
         }
         if (reasonCode == AuthorizationReasonCode.PROJECT_SCOPE_DENIED) {
-            return "SDK credential project scope denied: " + suffixAfter(reason, "project scope denied: ");
+            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential project scope denied: " + suffixAfter(reason, "project scope denied: ") : "Worker credential project scope denied: " + suffixAfter(reason, "project scope denied: ");
         }
         if (reasonCode == AuthorizationReasonCode.EVENT_SCOPE_DENIED) {
-            return "SDK credential event scope denied: " + suffixAfter(reason, "event scope denied: ");
+            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential event scope denied: " + suffixAfter(reason, "event scope denied: ") : "Worker credential event scope denied: " + suffixAfter(reason, "event scope denied: ");
         }
-        if (credentialAudience == CredentialAudience.SDK_SUBMITTER
+        if (credentialAudience == CredentialAudience.SUBMITTER
                 && reasonCode == AuthorizationReasonCode.USER_SCOPE_DENIED) {
-            return "SDK credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
+            return "Submitter credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
         }
-        if (credentialAudience == CredentialAudience.SDK_SUBMITTER
+        if (credentialAudience == CredentialAudience.SUBMITTER
                 && reasonCode == AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING) {
             return "Task is missing ownership metadata";
         }
-        if (credentialAudience == CredentialAudience.SDK_SUBMITTER
+        if (credentialAudience == CredentialAudience.SUBMITTER
                 && reasonCode == AuthorizationReasonCode.OWNER_MISMATCH) {
-            return "SDK credential owner mismatch: " + suffixAfter(reason, "task owner mismatch: ");
+            return "Submitter credential owner mismatch: " + suffixAfter(reason, "task owner mismatch: ");
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
                 && reasonCode == AuthorizationReasonCode.WORKER_BINDING_MISSING) {
-            return "SDK credential is missing workerId binding";
+            return "Worker credential is missing workerId binding";
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
                 && reasonCode == AuthorizationReasonCode.WORKER_BINDING_DENIED) {
-            return "SDK credential worker binding denied: " + suffixAfter(reason, "worker binding denied: ");
+            return "Worker credential binding denied: " + suffixAfter(reason, "worker binding denied: ");
         }
         return reason;
     }
@@ -168,7 +168,7 @@ public enum ApiSecurityScenario {
     }
 
     private enum CredentialAudience {
-        SDK_SUBMITTER,
+        SUBMITTER,
         EXTERNAL_WORKER
     }
 }
