@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 Status: current global HTTP/API reference.
 
@@ -52,8 +52,8 @@ For verified startup and validation flows, use
   supported ownership state through `data.security`, not the raw reserved
   envelope.
 - task detail is now shell-oriented and does not implicitly return item payload
-  snapshots. Public v1 does not expose item, attempt, or
-  compatibility/projection-audit read routes.
+  snapshots. Public v1 keeps task item/result visibility behind an explicit
+  review/export surface instead of mixing it into shell detail.
 - public task create is now shell-only. Public ingest is explicit and happens
   after shell creation by `taskId`.
 - request safety for item ingest is enforced at the server ingress layer with:
@@ -407,11 +407,51 @@ Behavior:
 ### 4.8 Task Detail Boundaries
 
 - `GET /api/v1/tasks/{taskId}` returns task shell, aggregate state, and security view
-- public task API does not expose task-item snapshot, per-item detail, attempt
-  audit, or projection-audit routes
-- residue or projection diagnostics are not part of the public v1 task surface
+- task shell detail remains separate from task review/export payload visibility
+- residue or projection diagnostics are not part of the default task detail contract
 
-### 4.9 Approve Task
+### 4.9 Task Review Preview
+
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/review`
+- Status: `Implemented`
+
+Behavior:
+
+- returns bounded seed preview rows and result preview rows for console review
+- returns summary counters and export URLs
+- keeps compatibility projection residue out of the default shell detail route
+- current preview is bounded by server config, default `12`
+
+Response notes:
+
+- `seedPreview[*]` includes `messageId`, `eventCode`, input snapshot, and ingest/runtime residue timestamps
+- `resultPreview[*]` includes `messageId`, final/result status, latest attempt worker attribution, and output snapshot
+- this is a read-only review surface for console/demo use; it is not a CRUD or paging contract
+
+### 4.10 Task Seed Export
+
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/review/seed-export`
+- Status: `Implemented`
+
+Behavior:
+
+- downloads a JSON attachment containing the visible task seed rows
+- export size is bounded by server config, default `20000`
+
+### 4.11 Task Result Export
+
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/review/result-export`
+- Status: `Implemented`
+
+Behavior:
+
+- downloads a JSON attachment containing the visible task result rows
+- includes latest visible worker / worker-context / batch attribution per row
+
+### 4.12 Approve Task
 
 - Method: `POST`
 - Path: `/api/v1/tasks/{taskId}:approve`

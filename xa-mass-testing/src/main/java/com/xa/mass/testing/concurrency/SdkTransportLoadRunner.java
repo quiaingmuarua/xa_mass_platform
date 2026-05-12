@@ -7,6 +7,10 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -18,11 +22,10 @@ import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -138,6 +141,7 @@ public final class SdkTransportLoadRunner {
 
             try {
                 app.start();
+                bootstrapCatalog(app);
                 registerWorkers(app, config.workerCount(), config.transport());
                 workers = startWorkers(app, runtime);
                 waitForRealtimeWorkersReady(app, workers);
@@ -155,7 +159,7 @@ public final class SdkTransportLoadRunner {
 
                 long wallNanos = System.nanoTime() - wallStartNanos;
                 FinalTaskStats finalTaskStats = collectFinalTaskStats(app, taskIds);
-                FinalMessageStats finalMessageStats = collectFinalMessageStats(runtime.taskDetailStore(), taskIds);
+                FinalMessageStats finalMessageStats = collectFinalMessageStats(runtime, taskIds);
                 DeliveryQueueSnapshot deliveryQueue = collectDeliveryQueueSnapshot(app, finalMessageStats.totalMessages());
                 Path reportPath = writeReport(config, runtime, finalTaskStats, finalMessageStats,
                         deliveryQueue, wallNanos, metrics.snapshot());
@@ -201,6 +205,7 @@ public final class SdkTransportLoadRunner {
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -216,9 +221,31 @@ public final class SdkTransportLoadRunner {
                             .queueMode())
                     .engine(engine -> engine.enabled(true)
                             .taskStorage(taskStorage)
-                            .taskDetailStore(taskStorage))
+                            .taskDetailStore(taskStorage)
+                            .taskWorkRuntime(taskWorkRuntime))
                     .build();
-            return new EmbeddedRuntime(app, taskStorage, transportPort, ENDPOINT_PATH);
+            return new EmbeddedRuntime(app, taskWorkRuntime, transportPort, ENDPOINT_PATH);
+        }
+
+        private void bootstrapCatalog(MassSdkApplication app) {
+            if (app.getEvent(TASK_EVENT_CODE) == null) {
+                app.registerEventDefinition(EventDefinition.builder()
+                        .code(TASK_EVENT_CODE)
+                        .name("Demo Dispatch")
+                        .description("Dispatch a generic SDK transport load work item.")
+                        .payloadTypes(List.of(PayloadType.JSON))
+                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                        .projectCodes(List.of("demoApp"))
+                        .build());
+            }
+            if (app.getProject("demoApp") == null) {
+                app.registerProject(ProjectDefinition.builder()
+                        .code("demoApp")
+                        .name("Demo App")
+                        .description("SDK transport load project.")
+                        .eventCodes(List.of(TASK_EVENT_CODE))
+                        .build());
+            }
         }
 
         private void registerWorkers(MassSdkApplication app,
@@ -315,7 +342,7 @@ public final class SdkTransportLoadRunner {
                         continue;
                     }
                     if (Boolean.TRUE.equals(connectionInfo.get("active"))
-                            && Objects.equals(adapterId, connectionInfo.get("transport"))) {
+                            && Objects.equals(adapterId, connectionInfo.get("adapterId"))) {
                         active++;
                     }
                 }
@@ -419,31 +446,27 @@ public final class SdkTransportLoadRunner {
             return new FinalTaskStats(terminalTasks, terminalReasons);
         }
 
-        private FinalMessageStats collectFinalMessageStats(TaskDetailStore taskDetailStore, List<String> taskIds) {
+        private FinalMessageStats collectFinalMessageStats(EmbeddedRuntime runtime, List<String> taskIds) {
             long total = 0;
             long success = 0;
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                CompatibilityMessageSnapshot messageSnapshot =
-                        ProjectionTestViews.snapshot(taskDetailStore, taskId, config.messagesPerTask());
-                List<CompatibilityMessageView> messages = messageSnapshot.messages();
-                total += messages.size();
-                for (CompatibilityMessageView message : messages) {
-                    if ("SUCCESS".equals(message.status())) {
-                        success++;
-                    } else if ("FAILED".equals(message.status())) {
-                        failed++;
-                    } else if ("EXPIRED".equals(message.status())) {
-                        expired++;
-                    }
-                }
+                TaskWorkStats stats = runtime.taskWorkRuntime().stats(taskId);
+                require(stats.totalCount() == config.messagesPerTask(),
+                        "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
+                require(stats.finalCount() == stats.totalCount(),
+                        "runtime work should be final after terminal convergence for task=" + taskId);
+                total += stats.totalCount();
+                success += stats.successCount();
+                failed += stats.failedCount();
+                expired += stats.expiredCount();
             }
             require(total == (long) config.taskCount() * config.messagesPerTask(),
-                    "unexpected logical message count");
+                    "unexpected runtime work count");
             if (config.retryFailureEveryNth() > 0) {
                 require(success == total,
-                        "retry-enabled SDK load model should converge to success for all logical messages");
+                        "retry-enabled SDK load model should converge to success for all runtime work");
             }
             return new FinalMessageStats(total, success, failed, expired);
         }
@@ -451,8 +474,8 @@ public final class SdkTransportLoadRunner {
         @SuppressWarnings("unchecked")
         private DeliveryQueueSnapshot collectDeliveryQueueSnapshot(MassSdkApplication app, long totalMessages) {
             Map<String, Object> queueDetail = transportDebug(app).getQueueDetail();
-            Map<String, Object> deliveryQueue = (Map<String, Object>) queueDetail.get("deliveryQueue");
-            require(deliveryQueue != null, "deliveryQueue diagnostics should be available");
+            Map<String, Object> deliveryQueue = (Map<String, Object>) queueDetail.get("deliveryDiagnostics");
+            require(deliveryQueue != null, "deliveryDiagnostics should be available");
             DeliveryQueueSnapshot snapshot = DeliveryQueueSnapshot.from(deliveryQueue);
             require(snapshot.available(), "deliveryQueue should be available during SDK transport load run");
             require(snapshot.queuedItems() == 0,
@@ -1013,7 +1036,7 @@ public final class SdkTransportLoadRunner {
     }
 
     private record EmbeddedRuntime(MassSdkApplication app,
-                                   TaskDetailStore taskDetailStore,
+                                   TaskWorkRuntime taskWorkRuntime,
                                    int transportPort,
                                    String endpointPath) {
         private URI serverUri(String workerId) {

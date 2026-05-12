@@ -38,6 +38,22 @@ public class ApiRouteAuthorizationCatalog {
                 default -> null;
             };
         }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/review$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/review/(seed-export|result-export)$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
+        }
         if (uri.matches("^/api/v1/tasks/[^/:]+/items$")) {
             return switch (method) {
                 case "POST" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
