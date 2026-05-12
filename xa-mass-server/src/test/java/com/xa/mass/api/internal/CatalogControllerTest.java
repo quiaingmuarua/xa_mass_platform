@@ -1,10 +1,10 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.WorkerQueryOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CatalogControllerTest {
 
     private MockMvc mockMvc;
-    private TransportDebugOperations transportDebugOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
     @BeforeEach
     void setUp() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
@@ -63,8 +63,8 @@ class CatalogControllerTest {
         when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
-        transportDebugOperations = mock(TransportDebugOperations.class);
-        when(transportDebugOperations.listSessions()).thenReturn(List.of(
+        runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
                         "workerId", "crawler-worker-1",
                         "connections", java.util.List.of(java.util.Map.of(
@@ -85,7 +85,7 @@ class CatalogControllerTest {
                 )
         ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new CatalogController(catalog, workerQueries, transportDebugOperations)
+                new CatalogController(catalog, workerQueries, runtimeDiagnostics)
         ).build();
     }
 

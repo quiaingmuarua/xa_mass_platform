@@ -1,9 +1,9 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,35 +24,35 @@ public class WorkerApiController {
 
     private final WorkerQueryOperations workerQueries;
     private final ControlPlaneCatalog catalog;
-    private final TransportDebugOperations transportDebugOperations;
+    private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     public WorkerApiController(WorkerQueryOperations workerQueries) {
-        this(workerQueries, (ControlPlaneCatalog) null, (TransportDebugOperations) null);
+        this(workerQueries, (ControlPlaneCatalog) null, (RuntimeDiagnosticsOperations) null);
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
                                ControlPlaneCatalog catalog,
-                               TransportDebugOperations transportDebugOperations) {
+                               RuntimeDiagnosticsOperations runtimeDiagnostics) {
         this.workerQueries = workerQueries;
         this.catalog = catalog;
-        this.transportDebugOperations = transportDebugOperations;
+        this.runtimeDiagnostics = runtimeDiagnostics;
     }
 
     @Autowired
     public WorkerApiController(WorkerQueryOperations workerQueries,
                                ObjectProvider<ControlPlaneCatalog> metadataCatalogProvider,
-                               ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
+                               ObjectProvider<RuntimeDiagnosticsOperations> runtimeDiagnosticsProvider) {
         this(
                 workerQueries,
                 metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
-                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
+                runtimeDiagnosticsProvider == null ? null : runtimeDiagnosticsProvider.getIfAvailable()
         );
     }
 
     @GetMapping("/workers")
     public ApiResponse<Map<String, Object>> listWorkers() {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {

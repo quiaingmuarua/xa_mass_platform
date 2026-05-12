@@ -21,7 +21,9 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskWorkLogicallyFinalEvent;
 import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
+import com.xa.mass.engine.TaskWorkProjectionState;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
@@ -58,6 +60,7 @@ import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
+import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -1498,12 +1501,16 @@ class MassSdkTest {
     }
 
     @Test
-    void taskMessageFinalListenerUsesSdkCommandEventSurface() {
+    void taskWorkFinalListenerUsesSdkOwnedNotificationSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskEventService taskEvents = mock(TaskEventService.class);
         EngineConfig config = mock(EngineConfig.class);
-        TaskWorkLogicallyFinalListener listener = mock(TaskWorkLogicallyFinalListener.class);
+        java.util.concurrent.atomic.AtomicReference<TaskWorkFinalNotification> capturedNotification =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        TaskWorkFinalListener listener = capturedNotification::set;
+        Task task = new Task();
+        task.setSharedConfig(Map.of("route", "alpha"));
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1512,9 +1519,34 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        app.addTaskWorkLogicallyFinalListener(listener);
+        app.addTaskWorkFinalListener(listener);
 
-        verify(taskEvents).addTaskWorkLogicallyFinalListener(listener);
+        org.mockito.ArgumentCaptor<TaskWorkLogicallyFinalListener> captor =
+                org.mockito.ArgumentCaptor.forClass(TaskWorkLogicallyFinalListener.class);
+        verify(taskEvents).addTaskWorkLogicallyFinalListener(captor.capture());
+
+        captor.getValue().onTaskWorkLogicallyFinal(task, new TaskWorkLogicallyFinalEvent(
+                "task-1",
+                "msg-1",
+                TaskWorkProjectionState.MessageStatus.SUCCESS,
+                TaskWorkProjectionState.MessageFinalReason.BUSINESS_SUCCESS,
+                2,
+                null,
+                null,
+                "payload-ref-1",
+                Map.of("answer", 42)
+        ));
+
+        TaskWorkFinalNotification notification = capturedNotification.get();
+        assertNotNull(notification);
+        assertEquals("task-1", notification.taskId());
+        assertEquals(Map.of("route", "alpha"), notification.sharedConfig());
+        assertEquals("msg-1", notification.finalSnapshot().messageId());
+        assertEquals("SUCCESS", notification.finalSnapshot().status());
+        assertEquals("BUSINESS_SUCCESS", notification.finalSnapshot().finalReason());
+        assertEquals(2, notification.finalSnapshot().retryCount());
+        assertEquals("payload-ref-1", notification.finalSnapshot().payloadRef());
+        assertEquals(Map.of("answer", 42), notification.finalSnapshot().output());
     }
 
     @Test

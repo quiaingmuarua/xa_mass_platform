@@ -257,7 +257,10 @@ Proves:
 - lifecycle and result correctness under race-sensitive conditions
 - retry/reset/release/finality invariants
 - contract/intake/runtime owner boundaries without reading compatibility projection as hot-path truth
-- source-level guardrail that keeps compatibility projection helpers out of the scheduling-core mainline suite
+- source-level guardrail that derives its scan list from
+  `EngineSchedulingCoreSuite` `@SelectClasses` and keeps compatibility
+  projection helpers and implicit `var` declarations out of the
+  scheduling-core mainline suite
 
 Does not prove:
 
@@ -299,6 +302,7 @@ Primary groups:
 
 High-signal classes include:
 
+- `ServerMainSourceArchitectureGuardTest`
 - `ServerMainlineE2eArchitectureGuardTest`
 - `TaskApiMultiTaskAssignmentIntegrationTest`
 - `TaskApiMinimumWorkerGateIntegrationTest`
@@ -318,8 +322,13 @@ Proves:
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
   truth first; it does not use compatibility message projection as its main
   proof surface
-- source-level guardrail keeps projection-first helpers and implicit `var`
-  declarations out of mainline server scheduling/lifecycle E2E suites
+- source-level guardrail derives its scan list from `ServerSchedulingE2eSuite`
+  and `ServerLifecycleResultConvergenceSuite` `@SelectClasses`, keeping
+  projection-first helpers and implicit `var` declarations out of mainline
+  server scheduling/lifecycle E2E suites
+- projection-backed server E2E helpers are available only through
+  `ProjectionSampleE2eTest`; `AbstractSampleE2eTest` remains the default
+  runtime-first fixture for scheduling/lifecycle mainline tests
 
 Does not prove:
 

@@ -40,8 +40,11 @@ Use with:
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` no longer carries projection-heavy residue classes directly; compatibility residue and audit live in explicit secondary suites
-- `EngineSchedulingCoreArchitectureGuardTest` keeps projection-first helpers out
-  of the scheduling-core mainline test set
+- `EngineSchedulingCoreArchitectureGuardTest` derives its scan list from
+  `EngineSchedulingCoreSuite` `@SelectClasses`, so newly added scheduling-core
+  tests are covered automatically and projection-first helpers stay out of the
+  mainline test set; it also rejects implicit `var` declarations in the core
+  scheduling proof surface so assertion ownership stays grep-friendly
 
 ## 2. Lane Map
 
@@ -138,8 +141,17 @@ minimum verification set.
   `ServerProjectionResidueSuite` and `ServerProjectionAuditSuite` are valid
   supporting lanes; `ServerSchedulingE2eSuite` and
   `ServerLifecycleResultConvergenceSuite` stay runtime/aggregate-first
-- `ServerMainlineE2eArchitectureGuardTest` keeps projection-first helpers and
-  implicit `var` declarations out of the mainline server E2E suites
+- `ServerMainlineE2eArchitectureGuardTest` derives its scan list from
+  `ServerSchedulingE2eSuite` and `ServerLifecycleResultConvergenceSuite`
+  `@SelectClasses`, so newly added mainline server E2E tests are covered
+  automatically and projection-first helpers plus implicit `var` declarations
+  stay out of the mainline suites
+- `ServerMainSourceArchitectureGuardTest` scans `xa-mass-server/src/main/java`
+  and fails if server mainline imports `com.xa.mass.base.*`,
+  `com.xa.mass.engine.*`, or `com.xa.mass.sdk.internal.*`
+- server E2E projection helpers live behind the explicit
+  `ProjectionSampleE2eTest` support base; the default `AbstractSampleE2eTest`
+  only exposes runtime-first task snapshot helpers
 - when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
 - chaos/perf reports may read bounded compatibility residue for diagnostics,
   but the runner's pass/fail proof must stay runtime/aggregate/trace-first

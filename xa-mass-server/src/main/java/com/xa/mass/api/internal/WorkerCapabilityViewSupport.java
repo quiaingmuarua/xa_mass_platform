@@ -2,7 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.ArrayList;
@@ -17,13 +17,13 @@ final class WorkerCapabilityViewSupport {
     private WorkerCapabilityViewSupport() {
     }
 
-    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(TransportDebugOperations transportDebugOperations) {
-        if (transportDebugOperations == null) {
+    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(RuntimeDiagnosticsOperations runtimeDiagnostics) {
+        if (runtimeDiagnostics == null) {
             return Map.of();
         }
 
         Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
-        List<Map<String, Object>> sessions = transportDebugOperations.listSessions();
+        List<Map<String, Object>> sessions = runtimeDiagnostics.listSessions();
         if (sessions == null || sessions.isEmpty()) {
             return grouped;
         }

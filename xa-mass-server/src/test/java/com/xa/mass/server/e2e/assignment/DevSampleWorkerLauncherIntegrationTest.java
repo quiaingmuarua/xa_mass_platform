@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class DevSampleWorkerLauncherIntegrationTest extends AbstractSampleE2eTest {
+class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WAIT_ATTEMPTS = 80;
     private static final int WEBSOCKET_PORT = findFreePort();

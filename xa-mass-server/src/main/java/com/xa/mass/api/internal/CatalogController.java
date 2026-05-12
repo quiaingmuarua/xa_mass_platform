@@ -1,10 +1,10 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
@@ -29,7 +29,7 @@ public class CatalogController {
 
     private final ControlPlaneCatalog catalog;
     private final WorkerQueryOperations workerQueries;
-    private final TransportDebugOperations transportDebugOperations;
+    private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     public CatalogController(ControlPlaneCatalog catalog) {
         this(catalog, (WorkerQueryOperations) null, null);
@@ -38,11 +38,11 @@ public class CatalogController {
     @Autowired
     public CatalogController(ControlPlaneCatalog catalog,
                                  ObjectProvider<WorkerQueryOperations> workerQueriesProvider,
-                                 ObjectProvider<TransportDebugOperations> transportDebugOperationsProvider) {
+                                 ObjectProvider<RuntimeDiagnosticsOperations> runtimeDiagnosticsProvider) {
         this(
                 catalog,
                 workerQueriesProvider == null ? null : workerQueriesProvider.getIfAvailable(),
-                transportDebugOperationsProvider == null ? null : transportDebugOperationsProvider.getIfAvailable()
+                runtimeDiagnosticsProvider == null ? null : runtimeDiagnosticsProvider.getIfAvailable()
         );
     }
 
@@ -53,10 +53,10 @@ public class CatalogController {
 
     public CatalogController(ControlPlaneCatalog catalog,
                                  WorkerQueryOperations workerQueries,
-                                 TransportDebugOperations transportDebugOperations) {
+                                 RuntimeDiagnosticsOperations runtimeDiagnostics) {
         this.catalog = catalog;
         this.workerQueries = workerQueries;
-        this.transportDebugOperations = transportDebugOperations;
+        this.runtimeDiagnostics = runtimeDiagnostics;
     }
 
     @GetMapping("/events")
@@ -112,7 +112,7 @@ public class CatalogController {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
         Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportDebugOperations);
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {

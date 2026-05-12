@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,18 +20,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class QueueControllerTest {
 
     @Mock
-    private TransportDebugOperations transportDebugOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new QueueController(transportDebugOperations)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new QueueController(runtimeDiagnostics)).build();
     }
 
     @Test
     void queueStatusUsesSdkTransportFacade() throws Exception {
-        when(transportDebugOperations.getQueueDetail()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
                 "inputQueueSize", 3,
                 "outputQueueSize", 7,
                 "transporterAvailable", true
@@ -46,7 +46,7 @@ class QueueControllerTest {
 
     @Test
     void queueDetailIncludesRuntimeDeliveryStats() throws Exception {
-        when(transportDebugOperations.getQueueDetail()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
                 "inputQueueSize", -1,
                 "outputQueueSize", -1,
                 "transporterAvailable", false,

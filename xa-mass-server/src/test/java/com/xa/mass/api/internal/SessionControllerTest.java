@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,18 +21,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SessionControllerTest {
 
     @Mock
-    private TransportDebugOperations transportDebugOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new SessionController(transportDebugOperations)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new SessionController(runtimeDiagnostics)).build();
     }
 
     @Test
     void listSessionsReturnsTransportNeutralEndpointSnapshots() throws Exception {
-        when(transportDebugOperations.listSessions()).thenReturn(List.of(Map.of(
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-1",
                 "connections", List.of(Map.of(
                         "active", true,
@@ -54,7 +54,7 @@ class SessionControllerTest {
 
     @Test
     void sessionStatsUseSdkCounts() throws Exception {
-        when(transportDebugOperations.getSessionStats()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getSessionStats()).thenReturn(Map.of(
                 "activeConnections", 2,
                 "workerCount", 2L,
                 "activeConnectionsByAdapter", Map.of("ws-public", 1L, "socket-edge", 1L)

@@ -1,39 +1,26 @@
 package com.xa.mass.server.e2e.support;
 
 import org.junit.jupiter.api.Test;
+import org.junit.platform.suite.api.SelectClasses;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerMainlineE2eArchitectureGuardTest {
 
-    private static final List<Path> MAINLINE_E2E_FILES = List.of(
-            source("assignment", "TaskApiMultiTaskAssignmentIntegrationTest.java"),
-            source("assignment", "TaskApiMinimumWorkerGateIntegrationTest.java"),
-            source("assignment", "TaskApiDelayedWorkerAvailabilityIntegrationTest.java"),
-            source("assignment", "TaskApiSingleWorkerReuseIntegrationTest.java"),
-            source("assignment", "TaskApiWorkerContextAttributeRoutingIntegrationTest.java"),
-            source("assignment", "TaskApiWorkerWithoutContextIntegrationTest.java"),
-            source("assignment", "PollingWorkerTaskFlowIntegrationTest.java"),
-            source("assignment", "ExternalWorkerPollingApiIntegrationTest.java"),
-            source("assignment", "TransportChannelWiringIntegrationTest.java"),
-            source("lifecycle", "TaskApiIntegrationTest.java"),
-            source("lifecycle", "TaskApiLifecycleGuardsIntegrationTest.java"),
-            source("lifecycle", "TaskApiBlockedRunningIntegrationTest.java"),
-            source("lifecycle", "TaskApiPauseCompletionIntegrationTest.java"),
-            source("lifecycle", "TaskApiResumeAndCompleteIntegrationTest.java"),
-            source("lifecycle", "TaskApiTerminateRunningIntegrationTest.java"),
-            resultSource("TaskApiFailureResultIntegrationTest.java"),
-            resultSource("TaskApiMixedResultsIntegrationTest.java"),
-            resultSource("TaskApiAllMessagesFailedIntegrationTest.java")
+    private static final List<String> MAINLINE_SUITE_CLASS_NAMES = List.of(
+            "com.xa.mass.server.e2e.assignment.ServerSchedulingE2eSuite",
+            "com.xa.mass.server.e2e.lifecycle.ServerLifecycleResultConvergenceSuite"
     );
 
     private static final Map<String, Pattern> FORBIDDEN_MAINLINE_PATTERNS = Map.ofEntries(
@@ -51,7 +38,11 @@ public class ServerMainlineE2eArchitectureGuardTest {
     @Test
     void mainlineServerE2eSuitesDoNotUseProjectionFirstProofHelpers() throws IOException {
         List<String> violations = new ArrayList<>();
-        for (Path file : MAINLINE_E2E_FILES) {
+        for (Path file : selectedMainlineSuiteSourceFiles()) {
+            if (!Files.isRegularFile(file)) {
+                violations.add(file + " is selected by a mainline server E2E suite but its source file was not found");
+                continue;
+            }
             String source = Files.readString(file, StandardCharsets.UTF_8);
             FORBIDDEN_MAINLINE_PATTERNS.forEach((label, pattern) -> {
                 if (pattern.matcher(source).find()) {
@@ -65,22 +56,39 @@ public class ServerMainlineE2eArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
-    private static Path source(String packageName, String fileName) {
-        return Path.of(
-                "src",
-                "test",
-                "java",
-                "com",
-                "xa",
-                "mass",
-                "server",
-                "e2e",
-                packageName,
-                fileName
-        );
+    private static List<Path> selectedMainlineSuiteSourceFiles() {
+        List<Path> sourceFiles = MAINLINE_SUITE_CLASS_NAMES.stream()
+                .map(ServerMainlineE2eArchitectureGuardTest::loadSuiteClass)
+                .map(ServerMainlineE2eArchitectureGuardTest::selectedClasses)
+                .flatMap(selectedClasses -> Arrays.stream(selectedClasses.value()))
+                .filter(Objects::nonNull)
+                .filter(testClass -> testClass != ServerMainlineE2eArchitectureGuardTest.class)
+                .distinct()
+                .map(ServerMainlineE2eArchitectureGuardTest::sourcePathFor)
+                .toList();
+        assertTrue(!sourceFiles.isEmpty(), "Mainline server E2E suites must select at least one guarded test class");
+        return sourceFiles;
     }
 
-    private static Path resultSource(String fileName) {
-        return source("results", fileName);
+    private static SelectClasses selectedClasses(Class<?> suiteClass) {
+        SelectClasses selectedClasses = suiteClass.getAnnotation(SelectClasses.class);
+        if (selectedClasses == null) {
+            throw new IllegalStateException("Mainline server E2E suite must declare @SelectClasses: "
+                    + suiteClass.getName());
+        }
+        return selectedClasses;
+    }
+
+    private static Class<?> loadSuiteClass(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Mainline server E2E suite not found: " + className, e);
+        }
+    }
+
+    private static Path sourcePathFor(Class<?> testClass) {
+        String relativeSourcePath = testClass.getName().replace('.', '/') + ".java";
+        return Path.of("src/test/java").resolve(relativeSourcePath);
     }
 }

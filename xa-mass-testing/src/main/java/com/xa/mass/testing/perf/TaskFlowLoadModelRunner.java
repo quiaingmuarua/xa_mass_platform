@@ -24,10 +24,9 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
@@ -53,7 +52,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Supplier;
 
 /**
  * Runnable load model focused on the engine hot path:
@@ -89,8 +87,9 @@ public final class TaskFlowLoadModelRunner {
         }
 
         private LoadReport run() throws Exception {
-            InstrumentedTaskStorage taskStorage = new InstrumentedTaskStorage();
-            EngineConfig engineConfig = buildEngineConfig(taskStorage, new InMemoryTaskWorkRuntime());
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
+            EngineConfig engineConfig = buildEngineConfig(taskStorage, taskWorkRuntime);
             TaskCommandService taskCommands = engineConfig.getTaskCommandService();
             TaskEventService taskEvents = engineConfig.getTaskEventService();
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
@@ -221,20 +220,21 @@ public final class TaskFlowLoadModelRunner {
                 require(finalTask != null, "task should be captured on terminal transition");
 
                 long totalWallNanos = System.nanoTime() - wallStartNanos;
-                TaskDetailStore.TaskMessageStats finalMessageStats = taskStorage.getTaskMessageStats(task.getTid());
-                TaskDetailStore.TaskMessageAttemptStats finalAttemptStats = taskStorage.getTaskMessageAttemptStats(task.getTid());
+                TaskWorkStats finalWorkStats = taskWorkRuntime.stats(task.getTid());
 
-                require(finalMessageStats.getTotal() == config.messageCount(),
-                        "unexpected final logical message count");
-                require(finalMessageStats.getSuccess() == config.messageCount(),
-                        "all logical messages should converge to success in the default model");
-                require(finalMessageStats.getFailed() == 0 && finalMessageStats.getExpired() == 0,
-                        "default model should not leave failed or expired logical messages");
+                require(finalWorkStats.totalCount() == config.messageCount(),
+                        "unexpected final runtime work count");
+                require(finalWorkStats.successCount() == config.messageCount(),
+                        "all runtime work should converge to success in the default model");
+                require(finalWorkStats.failedCount() == 0 && finalWorkStats.expiredCount() == 0,
+                        "default model should not leave failed or expired runtime work");
+                require(finalWorkStats.pendingCount() == 0 && finalWorkStats.inflightCount() == 0,
+                        "default model should not leave pending or in-flight runtime work");
                 require(finalTask.getTerminalReason() == TaskTerminalReason.ALL_MESSAGES_SUCCEEDED,
                         "task should converge with ALL_MESSAGES_SUCCEEDED");
 
                 Path reportPath = writeReport(config, finalTask, totalWallNanos, dispatchMetrics, callbackMetrics,
-                        releaseMetrics, finalMessageStats, finalAttemptStats, taskStorage.probe);
+                        releaseMetrics, finalWorkStats);
 
                 return new LoadReport(
                         config,
@@ -254,9 +254,7 @@ public final class TaskFlowLoadModelRunner {
                         releaseMetrics.taskTerminalInvocations.sum(),
                         nanosToMillis(releaseMetrics.totalAttemptClosedNanos.sum()),
                         nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum()),
-                        FinalMessageStats.from(finalMessageStats),
-                        FinalAttemptStats.from(finalAttemptStats),
-                        taskStorage.probe.snapshot(),
+                        FinalWorkStats.from(finalWorkStats),
                         reportPath
                 );
             } finally {
@@ -301,7 +299,7 @@ public final class TaskFlowLoadModelRunner {
             return spec;
         }
 
-        private static EngineConfig buildEngineConfig(InstrumentedTaskStorage taskStorage,
+        private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
                                                       InMemoryTaskWorkRuntime taskWorkRuntime) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setScheduler(new NoOpTaskScheduler());
@@ -347,9 +345,7 @@ public final class TaskFlowLoadModelRunner {
                                         DispatchMetrics dispatchMetrics,
                                         CallbackMetrics callbackMetrics,
                                         ReleaseMetrics releaseMetrics,
-                                        TaskDetailStore.TaskMessageStats finalMessageStats,
-                                        TaskDetailStore.TaskMessageAttemptStats finalAttemptStats,
-                                        StorageProbe storageProbe) throws Exception {
+                                        TaskWorkStats finalWorkStats) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>();
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             report.put("config", config.toMap());
@@ -368,8 +364,8 @@ public final class TaskFlowLoadModelRunner {
                     "dispatchCycles", dispatchMetrics.dispatchCycles.sum(),
                     "redispatchCycles", Math.max(dispatchMetrics.dispatchCycles.sum() - 1, 0L),
                     "totalDispatchItems", dispatchMetrics.totalDispatchItems.sum(),
-                    "logicalMessages", finalMessageStats.getTotal(),
-                    "dispatchOverheadItems", Math.max(dispatchMetrics.totalDispatchItems.sum() - finalMessageStats.getTotal(), 0L)
+                    "runtimeWorkItems", finalWorkStats.totalCount(),
+                    "dispatchOverheadItems", Math.max(dispatchMetrics.totalDispatchItems.sum() - finalWorkStats.totalCount(), 0L)
             ));
             report.put("callbacks", Map.of(
                     "invocations", callbackMetrics.totalInvocations.sum(),
@@ -387,9 +383,7 @@ public final class TaskFlowLoadModelRunner {
                     "attemptClosedMillis", nanosToMillis(releaseMetrics.totalAttemptClosedNanos.sum()),
                     "taskTerminalMillis", nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum())
             ));
-            report.put("finalMessageStats", FinalMessageStats.from(finalMessageStats).toMap());
-            report.put("finalAttemptStats", FinalAttemptStats.from(finalAttemptStats).toMap());
-            report.put("storageProbe", storageProbe.snapshot());
+            report.put("finalWorkStats", FinalWorkStats.from(finalWorkStats).toMap());
 
             Path reportDir = TestingPaths.reportDir("perf-reports");
             Files.createDirectories(reportDir);
@@ -492,55 +486,6 @@ public final class TaskFlowLoadModelRunner {
         @Override
         public boolean resumeTask(String taskId) {
             return true;
-        }
-    }
-
-    private static final class InstrumentedTaskStorage extends InMemoryTaskStorage {
-        private final StorageProbe probe = new StorageProbe();
-
-        @Override
-        public TaskMessageStats getTaskMessageStats(String taskId) {
-            return probe.measure("getTaskMessageStats", () -> super.getTaskMessageStats(taskId));
-        }
-
-        @Override
-        public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
-            return probe.measure("getTaskMessageAttemptStats", () -> super.getTaskMessageAttemptStats(taskId));
-        }
-    }
-
-    private static final class StorageProbe {
-        private final Map<String, LongAdder> callCounts = new ConcurrentHashMap<>();
-        private final Map<String, LongAdder> totalNanos = new ConcurrentHashMap<>();
-
-        private <T> T measure(String operation, Supplier<T> action) {
-            long start = System.nanoTime();
-            try {
-                return action.get();
-            } finally {
-                record(operation, System.nanoTime() - start);
-            }
-        }
-
-        private void record(String operation, long elapsedNanos) {
-            callCounts.computeIfAbsent(operation, ignored -> new LongAdder()).increment();
-            totalNanos.computeIfAbsent(operation, ignored -> new LongAdder()).add(elapsedNanos);
-        }
-
-        private Map<String, Object> snapshot() {
-            Map<String, Object> snapshot = new LinkedHashMap<>();
-            List<String> operations = new ArrayList<>(callCounts.keySet());
-            operations.sort(String::compareTo);
-            for (String operation : operations) {
-                long calls = callCounts.get(operation).sum();
-                long nanos = totalNanos.getOrDefault(operation, new LongAdder()).sum();
-                Map<String, Object> metrics = new LinkedHashMap<>();
-                metrics.put("calls", calls);
-                metrics.put("totalMillis", nanosToMillis(nanos));
-                metrics.put("avgMicros", formatDecimal(safeDivide(nanos, calls, 1_000.0)));
-                snapshot.put(operation, metrics);
-            }
-            return snapshot;
         }
     }
 
@@ -653,9 +598,7 @@ public final class TaskFlowLoadModelRunner {
                               long taskTerminalInvocations,
                               double attemptClosedMillis,
                               double taskTerminalMillis,
-                              FinalMessageStats finalMessageStats,
-                              FinalAttemptStats finalAttemptStats,
-                              Map<String, Object> storageProbe,
+                              FinalWorkStats finalWorkStats,
                               Path reportPath) {
 
         private String toConsoleSummary() {
@@ -674,54 +617,40 @@ public final class TaskFlowLoadModelRunner {
         }
     }
 
-    private record FinalMessageStats(long totalMessages,
-                                     long successMessages,
-                                     long failedMessages,
-                                     long expiredMessages,
-                                     long processingMessages) {
-        private static FinalMessageStats from(TaskDetailStore.TaskMessageStats stats) {
-            return new FinalMessageStats(
-                    stats.getTotal(),
-                    stats.getSuccess(),
-                    stats.getFailed(),
-                    stats.getExpired(),
-                    stats.getProcessing()
+    private record FinalWorkStats(long totalWorkItems,
+                                  long readyWorkItems,
+                                  long inflightWorkItems,
+                                  long delayedWorkItems,
+                                  long successWorkItems,
+                                  long failedWorkItems,
+                                  long expiredWorkItems,
+                                  long finalWorkItems,
+                                  long pendingWorkItems) {
+        private static FinalWorkStats from(TaskWorkStats stats) {
+            return new FinalWorkStats(
+                    stats.totalCount(),
+                    stats.readyCount(),
+                    stats.inflightCount(),
+                    stats.delayedCount(),
+                    stats.successCount(),
+                    stats.failedCount(),
+                    stats.expiredCount(),
+                    stats.finalCount(),
+                    stats.pendingCount()
             );
         }
 
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
-            values.put("totalMessages", totalMessages);
-            values.put("successMessages", successMessages);
-            values.put("failedMessages", failedMessages);
-            values.put("expiredMessages", expiredMessages);
-            values.put("processingMessages", processingMessages);
-            return values;
-        }
-    }
-
-    private record FinalAttemptStats(long totalAttempts,
-                                     long activeAttempts,
-                                     long runningAttempts,
-                                     long failedAttempts,
-                                     long expiredAttempts) {
-        private static FinalAttemptStats from(TaskDetailStore.TaskMessageAttemptStats stats) {
-            return new FinalAttemptStats(
-                    stats.getTotalAttempts(),
-                    stats.getActiveAttempts(),
-                    stats.getRunningAttempts(),
-                    stats.getFailedAttempts(),
-                    stats.getExpiredAttempts()
-            );
-        }
-
-        private Map<String, Object> toMap() {
-            Map<String, Object> values = new LinkedHashMap<>();
-            values.put("totalAttempts", totalAttempts);
-            values.put("activeAttempts", activeAttempts);
-            values.put("runningAttempts", runningAttempts);
-            values.put("failedAttempts", failedAttempts);
-            values.put("expiredAttempts", expiredAttempts);
+            values.put("totalWorkItems", totalWorkItems);
+            values.put("readyWorkItems", readyWorkItems);
+            values.put("inflightWorkItems", inflightWorkItems);
+            values.put("delayedWorkItems", delayedWorkItems);
+            values.put("successWorkItems", successWorkItems);
+            values.put("failedWorkItems", failedWorkItems);
+            values.put("expiredWorkItems", expiredWorkItems);
+            values.put("finalWorkItems", finalWorkItems);
+            values.put("pendingWorkItems", pendingWorkItems);
             return values;
         }
     }

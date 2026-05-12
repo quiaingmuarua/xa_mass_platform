@@ -81,6 +81,8 @@ FORBIDDEN_MAINLINE_TOKENS=(
   "CompatibilityAttemptView"
   "TaskMessageProjection"
   "TaskMessageAttemptProjection"
+  "TaskMessageStats"
+  "TaskMessageAttemptStats"
   "getTaskMessage"
   "waitForSingleMessage"
   "taskDetailStore()"

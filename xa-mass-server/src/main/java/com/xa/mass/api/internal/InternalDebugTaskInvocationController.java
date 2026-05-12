@@ -20,6 +20,7 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -87,7 +88,7 @@ public class InternalDebugTaskInvocationController {
 
             long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
             String correlationId = UUID.randomUUID().toString();
-            CompletableFuture<com.xa.mass.engine.TaskWorkLogicallyFinalEvent> future = syncBridge.register(correlationId);
+            CompletableFuture<TaskWorkFinalSnapshot> future = syncBridge.register(correlationId);
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
@@ -115,18 +116,18 @@ public class InternalDebugTaskInvocationController {
             taskAdmin.approveTask(task.getTaskId());
 
             String taskId = task.getTaskId();
-            Optional<com.xa.mass.engine.TaskWorkLogicallyFinalEvent> result =
+            Optional<TaskWorkFinalSnapshot> result =
                     syncBridge.await(correlationId, future, resolvedTimeoutMs);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("taskId", taskId);
             if (result.isPresent()) {
-                com.xa.mass.engine.TaskWorkLogicallyFinalEvent msg = result.get();
+                TaskWorkFinalSnapshot msg = result.get();
                 data.put("messageId", msg.messageId() != null ? msg.messageId() : "");
                 data.put("synced", true);
                 data.put("timedOut", false);
-                data.put("status", msg.status() != null ? msg.status().name() : "UNKNOWN");
-                data.put("output", msg.output() != null ? msg.output() : Map.of());
+                data.put("status", msg.status() != null ? msg.status() : "UNKNOWN");
+                data.put("output", msg.output());
                 data.put("errorCode", msg.errorCode() != null ? msg.errorCode() : "");
                 data.put("errorMessage", msg.errorMessage() != null ? msg.errorMessage() : "");
             } else {

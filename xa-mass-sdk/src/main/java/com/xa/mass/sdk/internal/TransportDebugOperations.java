@@ -1,6 +1,7 @@
 package com.xa.mass.sdk.internal;
 
-import java.util.List;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+
 import java.util.Map;
 
 /**
@@ -8,15 +9,7 @@ import java.util.Map;
  *
  * <p>This surface is intentionally outside the stable SDK mainline.
  */
-public interface TransportDebugOperations {
-
-    List<Map<String, Object>> listSessions();
-
-    Map<String, Object> getSessionStats();
+public interface TransportDebugOperations extends RuntimeDiagnosticsOperations {
 
     Map<String, Object> enqueueRawMessage(Map<String, Object> request);
-
-    Map<String, Object> getQueueDetail();
-
-    Map<String, Object> getQueueMetrics();
 }

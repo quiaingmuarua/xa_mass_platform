@@ -13,17 +13,16 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
-import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
-import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.CommandLineRunner;
@@ -280,7 +279,7 @@ public class XaMassServerApplication {
 
                 Thread.sleep(1000L);
 
-                LogUtils.clearMdc();
+                MDC.clear();
                 log.info("Spring Boot HTTP API is ready");
                 log.info("Embedded transport adapters configured: {}", describeConfiguredTransportAdapters(
                         "ws://localhost:" + massWebSocketPort + "/ws",
@@ -291,15 +290,15 @@ public class XaMassServerApplication {
                 log.info("Full-stack runtime startup complete");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                LogUtils.clearMdc();
+                MDC.clear();
                 log.error("Startup interrupted", e);
                 throw new RuntimeException("Startup process was interrupted", e);
             } catch (RuntimeException e) {
-                LogUtils.clearMdc();
+                MDC.clear();
                 log.error("Full-stack startup failed: {}", e.getMessage(), e);
                 throw e;
             } catch (Exception e) {
-                LogUtils.clearMdc();
+                MDC.clear();
                 log.error("Full-stack startup failed", e);
                 throw new RuntimeException("Failed to start full-stack services", e);
             }
@@ -327,8 +326,8 @@ public class XaMassServerApplication {
     @Bean
     @Primary
     @Profile("dev")
-    public TransportDebugOperations serverTransportDebugOperations(MassSdkApplication app) {
-        return new DefaultTransportDebugOperations(app.runtimeApplication());
+    public RuntimeDiagnosticsOperations serverRuntimeDiagnosticsOperations(MassSdkApplication app) {
+        return app.runtimeDiagnostics();
     }
 
     private static List<String> describeConfiguredTransportAdapters(String webSocketUri,

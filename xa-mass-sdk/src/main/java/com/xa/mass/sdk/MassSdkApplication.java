@@ -11,7 +11,6 @@ import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -62,6 +61,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final Map<String, EventHandler> eventHandlerCache;
     private final ControlPlaneCatalog controlPlaneCatalogView;
     private final TaskDiagnosticOperations taskDiagnostics;
+    private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
@@ -95,6 +95,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEventsForProject
         );
         this.taskDiagnostics = new DefaultTaskDiagnosticOperations(this::requireStartedTaskQueries);
+        this.runtimeDiagnostics = new DefaultRuntimeDiagnosticsOperations(delegate);
         this.eventPermissionService = new DefaultEventPermissionService(controlPlaneCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
@@ -236,6 +237,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     public TaskDiagnosticOperations taskDiagnostics() {
         return taskDiagnostics;
+    }
+
+    public RuntimeDiagnosticsOperations runtimeDiagnostics() {
+        return runtimeDiagnostics;
     }
 
     @Override
@@ -1214,9 +1219,25 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
      * {@link #start()} 闁?the listener is registered on the engine command/event
      * surface which exists independent of engine lifecycle.
      */
-    public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+    public void addTaskWorkFinalListener(TaskWorkFinalListener listener) {
         Objects.requireNonNull(listener, "listener");
-        requireStartedTaskEvents().addTaskWorkLogicallyFinalListener(listener);
+        requireStartedTaskEvents().addTaskWorkLogicallyFinalListener((task, event) -> listener.onTaskWorkFinal(
+                new TaskWorkFinalNotification(
+                        event.taskId(),
+                        task == null ? Map.of() : task.getSharedConfig(),
+                        new TaskWorkFinalSnapshot(
+                                event.taskId(),
+                                event.messageId(),
+                                event.status() == null ? null : event.status().name(),
+                                event.finalReason() == null ? null : event.finalReason().name(),
+                                event.retryCount(),
+                                event.errorCode(),
+                                event.errorMessage(),
+                                event.payloadRef(),
+                                event.output()
+                        )
+                )
+        ));
     }
 
     private TaskCommandService requireStartedTaskCommands() {

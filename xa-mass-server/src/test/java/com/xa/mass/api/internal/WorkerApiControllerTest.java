@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -7,7 +8,6 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ class WorkerApiControllerTest {
     private WorkerQueryOperations workerQueries;
 
     @Mock
-    private TransportDebugOperations transportDebugOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     private MockMvc mockMvc;
     private ProjectEventCatalogRegistry metadataCatalog;
@@ -57,7 +57,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, transportDebugOperations))
+                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, runtimeDiagnostics))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -82,7 +82,7 @@ class WorkerApiControllerTest {
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
         when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
-        when(transportDebugOperations.listSessions()).thenReturn(List.of(Map.of(
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
                         "active", true,

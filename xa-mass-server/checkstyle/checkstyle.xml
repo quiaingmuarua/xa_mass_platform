@@ -8,7 +8,7 @@
     </module>
     <module name="TreeWalker">
         <module name="IllegalImport">
-            <property name="illegalPkgs" value="com.xa.mass.base"/>
+            <property name="illegalPkgs" value="com.xa.mass.base,com.xa.mass.engine,com.xa.mass.sdk.internal"/>
         </module>
     </module>
 </module>

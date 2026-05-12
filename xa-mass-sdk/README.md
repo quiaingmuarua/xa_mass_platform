@@ -188,7 +188,8 @@ The returned `MassSdkApplication` exposes:
 - lifecycle: `start()`, `stop()`, `isRunning()`
 - mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
-- transport/session/queue raw diagnostics are internal/operator-only through `TransportDebugOperations` created from `app.runtimeApplication()`; they are not part of the stable embedding mainline
+- operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
+- raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
@@ -327,11 +328,11 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 `EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
-are surfaced through the internal/operator-only `TransportDebugOperations.getQueueDetail()`
+are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
 view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
-`TransportDebugOperations.getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
+`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
 replacement. Realtime direct-send counters are intentionally separate under
-`TransportDebugOperations.getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
+`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.
