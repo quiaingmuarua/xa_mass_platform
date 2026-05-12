@@ -308,11 +308,14 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-bounded-attempt", null));
 
         assertTrue(handled);
-        assertEquals(1, countingStorage.attemptUpsertCount,
-                "result convergence should keep latest-attempt compatibility residue bounded to one upsert when no attempt row exists");
-        TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt = latestAttemptAuditView(fixture);
+        TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt = awaitLatestAttemptAuditView(
+                fixture,
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, recoveredAttempt.status());
+        assertEquals(1, countingStorage.attemptUpsertCount,
+                "result convergence should keep latest-attempt compatibility residue bounded to one upsert when no attempt row exists");
     }
 
     @Test
