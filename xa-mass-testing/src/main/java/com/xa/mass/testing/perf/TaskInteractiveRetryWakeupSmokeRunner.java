@@ -16,6 +16,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
@@ -27,6 +28,7 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
@@ -91,6 +93,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
             TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
             TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+            TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
@@ -131,7 +134,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 }
             };
 
-            TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+            TaskWorkerMatchingStrategy matchingStrategy =
+                    new LaneAwareMatchingStrategy(workerManager, config.reservedInteractiveWorkers());
             SimpleTaskDispatchBinder dispatchBinder =
                     new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
@@ -150,6 +154,12 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
                     new TaskResourceReleaseListener(maintenancePort, workerManager);
+            RuntimeReadyDispatchPump runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
+                    recoveryPort,
+                    workerAssignListener::onTaskAssign,
+                    config.runtimeReadyDispatchIntervalMillis(),
+                    1_000
+            );
 
             try {
                 registerWorkers(workerManager, config.workerCount());
@@ -167,6 +177,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     }
                 });
                 assignWorker.start();
+                runtimeReadyDispatchPump.start();
 
                 Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
@@ -222,6 +233,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 Path reportPath = writeReport(config, observation);
                 return new SmokeReport(config, observation, reportPath);
             } finally {
+                runtimeReadyDispatchPump.stop();
                 assignWorker.stop();
                 interactiveCallbackExecutor.shutdownNow();
                 bulkCallbackExecutor.shutdownNow();
@@ -381,11 +393,13 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
     }
 
-    private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
+    private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
         private final WorkerManager workerManager;
+        private final int reservedInteractiveWorkers;
 
-        private DeterministicMatchingStrategy(WorkerManager workerManager) {
+        private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
             this.workerManager = workerManager;
+            this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
         @Override
@@ -394,6 +408,10 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
+                }
+                if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK
+                        && isReservedInteractiveWorker(worker)) {
+                    continue;
                 }
                 if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
                     continue;
@@ -417,6 +435,24 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 matched.add(new MatchedWorkerContext(worker, selectedContext));
             }
             return matched;
+        }
+
+        private boolean isReservedInteractiveWorker(Worker worker) {
+            if (reservedInteractiveWorkers <= 0 || worker == null || worker.getWorkerId() == null) {
+                return false;
+            }
+            String workerId = worker.getWorkerId();
+            int dash = workerId.lastIndexOf('-');
+            if (dash < 0 || dash == workerId.length() - 1) {
+                return false;
+            }
+            try {
+                int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
+                int totalWorkers = workerManager.getAllWorkers().size();
+                return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
         }
     }
 
@@ -594,6 +630,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
     }
 
     private record SmokeConfig(int workerCount,
+                               int reservedInteractiveWorkers,
                                int bulkMessages,
                                int bulkBatchSize,
                                int bulkProcessingDelayMillis,
@@ -604,14 +641,17 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                long interactiveSubmitDelayMillis,
                                long minRetryDispatchDelayMillis,
                                long assignmentRetryDelayMillis,
+                               long runtimeReadyDispatchIntervalMillis,
                                long awaitSeconds) {
         private static SmokeConfig fromSystemProperties() {
             int workerCount = intProperty("mass.retrywakeup.smoke.workers", 5);
             int bulkMessages = intProperty("mass.retrywakeup.smoke.bulkMessages", 320);
-            int bulkWorkersTarget = Math.max(workerCount - 1, 1);
+            int reservedInteractiveWorkers = intProperty("mass.retrywakeup.smoke.reservedInteractiveWorkers", 1);
+            int bulkWorkersTarget = Math.max(workerCount - reservedInteractiveWorkers, 1);
             int defaultBulkBatchSize = Math.max((int) Math.ceil((double) bulkMessages / bulkWorkersTarget), 1);
             return new SmokeConfig(
                     workerCount,
+                    reservedInteractiveWorkers,
                     bulkMessages,
                     intProperty("mass.retrywakeup.smoke.bulkBatchSize", defaultBulkBatchSize),
                     intProperty("mass.retrywakeup.smoke.bulkProcessingDelayMillis", 80),
@@ -622,6 +662,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     longProperty("mass.retrywakeup.smoke.interactiveSubmitDelayMillis", 20L),
                     longProperty("mass.retrywakeup.smoke.minRetryDispatchDelayMillis", 20L),
                     longProperty("mass.retrywakeup.smoke.assignmentRetryDelayMillis", 25L),
+                    longProperty("mass.retrywakeup.smoke.runtimeReadyDispatchIntervalMillis", 25L),
                     longProperty("mass.retrywakeup.smoke.awaitSeconds", 60L)
             );
         }
@@ -629,6 +670,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("bulkBatchSize", bulkBatchSize);
             values.put("bulkProcessingDelayMillis", bulkProcessingDelayMillis);
@@ -639,6 +681,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             values.put("interactiveSubmitDelayMillis", interactiveSubmitDelayMillis);
             values.put("minRetryDispatchDelayMillis", minRetryDispatchDelayMillis);
             values.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
+            values.put("runtimeReadyDispatchIntervalMillis", runtimeReadyDispatchIntervalMillis);
             values.put("awaitSeconds", awaitSeconds);
             return values;
         }

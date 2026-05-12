@@ -1,6 +1,7 @@
 package com.xa.mass.testing.perf;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -112,7 +113,8 @@ public final class TaskWorkloadMixSmokeRunner {
                 }
             };
 
-            TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+            TaskWorkerMatchingStrategy matchingStrategy =
+                    new LaneAwareMatchingStrategy(workerManager, config.reservedInteractiveWorkers());
             SimpleTaskDispatchBinder dispatchBinder =
                     new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
@@ -227,6 +229,7 @@ public final class TaskWorkloadMixSmokeRunner {
             shell.setSourceRef("bulk-workload-smoke");
             shell.setProject("demoApp");
             shell.setUserId("workload-smoke");
+            shell.setContract(TaskContract.BATCH);
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
@@ -247,6 +250,7 @@ public final class TaskWorkloadMixSmokeRunner {
             shell.setSourceRef("interactive-workload-smoke");
             shell.setProject("demoApp");
             shell.setUserId("workload-smoke");
+            shell.setContract(TaskContract.BATCH);
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, config.interactiveBatchSize(), 3));
             shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
             return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
@@ -322,11 +326,13 @@ public final class TaskWorkloadMixSmokeRunner {
         }
     }
 
-    private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
+    private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
         private final WorkerManager workerManager;
+        private final int reservedInteractiveWorkers;
 
-        private DeterministicMatchingStrategy(WorkerManager workerManager) {
+        private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
             this.workerManager = workerManager;
+            this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
         @Override
@@ -335,6 +341,10 @@ public final class TaskWorkloadMixSmokeRunner {
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
+                }
+                if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK
+                        && isReservedInteractiveWorker(worker)) {
+                    continue;
                 }
                 if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
                     continue;
@@ -358,6 +368,24 @@ public final class TaskWorkloadMixSmokeRunner {
                 matched.add(new MatchedWorkerContext(worker, selectedContext));
             }
             return matched;
+        }
+
+        private boolean isReservedInteractiveWorker(Worker worker) {
+            if (reservedInteractiveWorkers <= 0 || worker == null || worker.getWorkerId() == null) {
+                return false;
+            }
+            String workerId = worker.getWorkerId();
+            int dash = workerId.lastIndexOf('-');
+            if (dash < 0 || dash == workerId.length() - 1) {
+                return false;
+            }
+            try {
+                int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
+                int totalWorkers = workerManager.getAllWorkers().size();
+                return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
         }
     }
 
@@ -438,6 +466,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private SmokeObservation snapshot(SmokeConfig config) {
             return new SmokeObservation(
                     config.workerCount(),
+                    config.reservedInteractiveWorkers(),
                     config.bulkMessages(),
                     config.interactiveMessages(),
                     millisBetweenApprovedAndEvent(bulkTaskId, firstDispatchAtNanos),
@@ -488,6 +517,7 @@ public final class TaskWorkloadMixSmokeRunner {
     }
 
     private record SmokeConfig(int workerCount,
+                               int reservedInteractiveWorkers,
                                int bulkMessages,
                                int bulkBatchSize,
                                int interactiveMessages,
@@ -502,14 +532,15 @@ public final class TaskWorkloadMixSmokeRunner {
         private static SmokeConfig fromSystemProperties() {
             int workerCount = intProperty("mass.workload.smoke.workers", 5);
             int bulkMessages = intProperty("mass.workload.smoke.bulkMessages", 160);
-            int reservedInteractiveWorkers = 1;
+            int reservedInteractiveWorkers = intProperty("mass.workload.smoke.reservedInteractiveWorkers", 1);
             int bulkWorkersTarget = Math.max(workerCount - reservedInteractiveWorkers, 1);
             int defaultBulkBatchSize = Math.max((int) Math.ceil((double) bulkMessages / bulkWorkersTarget), 1);
             return new SmokeConfig(
                     workerCount,
+                    reservedInteractiveWorkers,
                     bulkMessages,
                     intProperty("mass.workload.smoke.bulkBatchSize", defaultBulkBatchSize),
-                    intProperty("mass.workload.smoke.interactiveMessages", 2),
+                    intProperty("mass.workload.smoke.interactiveMessages", 1),
                     intProperty("mass.workload.smoke.interactiveBatchSize", 1),
                     intProperty("mass.workload.smoke.bulkProcessingDelayMillis", 40),
                     intProperty("mass.workload.smoke.interactiveProcessingDelayMillis", 2),
@@ -524,6 +555,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("bulkBatchSize", bulkBatchSize);
             values.put("interactiveMessages", interactiveMessages);
@@ -540,6 +572,7 @@ public final class TaskWorkloadMixSmokeRunner {
     }
 
     private record SmokeObservation(int workerCount,
+                                    int reservedInteractiveWorkers,
                                     int bulkMessages,
                                     int interactiveMessages,
                                     long bulkFirstDispatchMillis,
@@ -558,6 +591,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("interactiveMessages", interactiveMessages);
             values.put("bulkFirstDispatchMillis", bulkFirstDispatchMillis);

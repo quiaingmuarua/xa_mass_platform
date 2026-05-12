@@ -410,6 +410,17 @@ Report-only support:
 - chaos reports may include bounded compatibility projection under
   `task.compatibilityProjection` for diagnosis, but those rows are not the
   correctness owner for chaos smoke success/failure
+- `run-chaos-smokes.sh` enforces a source guard: PR-gated chaos smoke runners
+  may not reference projection helpers or direct task-detail-store projection
+  access. Projection reads remain allowed only in explicit report/audit support
+  or non-gated runners that have not been promoted.
+- `run-perf-smokes.sh` enforces the same ownership shape for perf smokes:
+  smoke runners must stay runtime/timing-first and must not use compatibility
+  message/attempt projection stats as their proof surface.
+- current perf smokes model production risk directly: workload mix reserves an
+  interactive lane worker so the smoke measures lane isolation under bulk
+  pressure, and interactive retry wakeup starts `RuntimeReadyDispatchPump` so
+  delayed retry visibility is consumed from `TaskWorkRuntime`.
 
 Does not prove:
 

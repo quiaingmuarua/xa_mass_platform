@@ -47,8 +47,8 @@ Testing-policy note:
 | --- | --- | --- | --- |
 | `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release cost, storage scan pressure | `target/perf-reports/` |
 | `perf smoke bundle` | `scripts/run-perf-smokes.sh` | current workspace perf smoke fast path for workload mix plus delayed interactive retry wakeup | `target/perf-reports/` |
-| `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; lane split smoke | `target/perf-reports/` |
-| `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; report shows whether retry overlapped active bulk | `target/perf-reports/` |
+| `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; the runner reserves an interactive lane worker so the smoke measures lane isolation instead of bulk worker starvation | `target/perf-reports/` |
+| `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; the runner starts the runtime ready pump so delayed retry truth is consumed from `TaskWorkRuntime` rather than inferred from projection | `target/perf-reports/` |
 | `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket | `target/concurrency-reports/` |
 | `chaos: websocket disconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | disconnect, reconnect, delayed result after reconnect | `target/chaos-reports/` |
 | `chaos: lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another worker | `target/chaos-reports/` |
@@ -84,6 +84,14 @@ Override them with environment variables:
 
 - `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
 - `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
+
+`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` may still include storage/message stats for diagnosis, but those metrics do not define the perf smoke lane.
+
+Current perf smoke modeling:
+
+- workload mix uses a lane-aware matcher with one reserved interactive worker; bulk still creates background pressure, but it cannot consume every worker and turn the smoke into a starvation test
+- workload mix uses a one-item interactive task because the smoke measures first-dispatch latency, not multi-round dispatch
+- interactive retry wakeup starts `RuntimeReadyDispatchPump`; delayed retry visibility is therefore proven through runtime ready truth
 
 Perf load model:
 
@@ -198,5 +206,7 @@ Current chaos probes cover seven distinct scenario branches:
 - per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); runtime counters finalize all work as failed, task closes with `ALL_MESSAGES_FAILED`, and `TASK_WORK_RETRY_RESET` events are verified in trace
 
 The five PR-gated probes (all-messages-failed, mixed-results, retry-exhausted, polling lease-expiry redispatch, websocket late-result replay) are wired to the `chaos-smokes` CI job and gate every PR. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. All seven probes capture `ExecutionEvent` objects via `CapturingExecutionEventSink` when the scenario needs trace proof and write report JSON under `target/chaos-reports/`.
+
+`scripts/run-chaos-smokes.sh` enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers such as `ProjectionTestViews`, `CompatibilityMessageView`, `CompatibilityAttemptView`, `getTaskMessage*`, `waitForSingleMessage`, or direct `taskDetailStore()` access. Report/audit helpers may still live under `chaos.support`, and non-gated runners may keep explicit diagnostic reads until they are promoted to the PR gate.
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.

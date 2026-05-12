@@ -73,6 +73,36 @@ SMOKE_RUNNERS=(
   "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
 )
 
+FORBIDDEN_MAINLINE_TOKENS=(
+  "ProjectionTestViews"
+  "CompatibilityMessageView"
+  "CompatibilityAttemptView"
+  "TaskMessageProjection"
+  "TaskMessageAttemptProjection"
+  "getTaskMessage"
+  "waitForSingleMessage"
+  "taskDetailStore()"
+)
+
+echo "== Checking chaos smoke source guardrails =="
+for runner in "${SMOKE_RUNNERS[@]}"; do
+  runner_path="${runner//.//}.java"
+  source_file="${REPO_ROOT}/xa-mass-testing/src/main/java/${runner_path}"
+  if [[ ! -f "${source_file}" ]]; then
+    echo "FAILED: chaos smoke runner source not found: ${source_file}"
+    exit 1
+  fi
+  for token in "${FORBIDDEN_MAINLINE_TOKENS[@]}"; do
+    if grep -nF "${token}" "${source_file}" >/tmp/xa-mass-chaos-guard-match.txt; then
+      echo "FAILED: ${runner} must stay runtime/aggregate/trace-first; forbidden token '${token}' found:"
+      cat /tmp/xa-mass-chaos-guard-match.txt
+      rm -f /tmp/xa-mass-chaos-guard-match.txt
+      exit 1
+    fi
+  done
+done
+rm -f /tmp/xa-mass-chaos-guard-match.txt
+
 FAILED_RUNNERS=()
 
 for runner in "${SMOKE_RUNNERS[@]}"; do
