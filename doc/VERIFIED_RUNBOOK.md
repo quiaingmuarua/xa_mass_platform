@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 Status: current verified runtime runbook.
 
@@ -194,22 +194,28 @@ Open-ended and targeted worker debug:
 
 ## 5. Core Acceptance Commands
 
-Boot-shell E2E:
+Scheduling correctness core gate:
 
 ```bash
-./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest test
+./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=EngineSchedulingCoreSuite test
+```
+
+Representative server scheduling E2E gate:
+
+```bash
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerSchedulingE2eSuite test
+```
+
+Non-scheduling lifecycle and result convergence gate:
+
+```bash
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerLifecycleResultConvergenceSuite test
 ```
 
 Cross-language external worker samples:
 
 ```bash
 ./scripts/run-external-worker-samples.sh
-```
-
-Engine concurrency acceptance:
-
-```bash
-./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskConcurrencyAcceptanceTest test
 ```
 
 Testing-module perf load model:
@@ -280,13 +286,13 @@ Artifacts:
 
 ## 6. Focused Regression Gate
 
-Focused command used for current high-signal runtime coverage:
+Focused command used for current high-signal scheduling-side runtime coverage:
 
 ```bash
 mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Coverage: lifecycle happy path, failure convergence, callback replay, worker/context routing, stateless workers, worker reuse, minimum-worker gate, refill, targeted worker debug, and control-console routing.
+Coverage: worker/context routing, stateless workers, delayed availability, targeted worker debug, control-console routing, and matching-rule support checks around the representative scheduling path.
 
 ## 7. Known Mainline Gaps
 

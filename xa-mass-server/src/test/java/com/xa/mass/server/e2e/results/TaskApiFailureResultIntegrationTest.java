@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
+public class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 

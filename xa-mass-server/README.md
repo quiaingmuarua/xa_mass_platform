@@ -318,9 +318,11 @@ Mainline stance:
 
 - end-to-end integration coverage is the primary acceptance gate for runtime behavior
 - unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
-- Boot-shell E2E is the default proof surface for host-side mainline behavior,
-  including `project`, `submitter`, `worker`, task shell, dispatch wiring, and
-  result convergence
+- Boot-shell E2E is the representative proof surface for host-side mainline
+  behavior, including `project`, `submitter`, `worker`, task shell, dispatch
+  wiring, and result convergence
+- the full scheduling-correctness matrix belongs engine-first; server E2E keeps
+  representative assignment, polling, routing, and reuse scenarios
 - server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
   API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
@@ -332,6 +334,8 @@ What this module proves:
 - mainline boundary behavior for `project / submitter / worker / workerContext`
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
+- representative scheduling scenarios on the real host path, not the full
+  competition matrix
 
 What this module should not become:
 
@@ -384,6 +388,7 @@ High-signal classes:
   - `TaskApiResumeAndCompleteIntegrationTest`
   - `TaskApiTerminateRunningIntegrationTest`
 - assignment, routing, and capacity:
+  - `TaskApiMultiTaskAssignmentIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
   - `TaskApiMultiRoundDispatchIntegrationTest`
@@ -432,3 +437,10 @@ Project-level gap index: [`../doc/CURRENT_GAPS.md`](../doc/CURRENT_GAPS.md).
 - stronger real-runtime `EXPIRED` message coverage
 - broader `batchSize > 1` multi-worker coverage
 - resume short-circuit where a paused task is already complete underneath
+
+Scheduling-proof note:
+
+- when a scenario's failure means the wrong worker was selected, excluded, or
+  re-selected, strengthen engine acceptance coverage first
+- add server E2E when the real risk is that HTTP/SDK/transport wiring changes
+  the scheduling outcome

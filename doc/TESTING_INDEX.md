@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 Status: current project-level testing index.
 
@@ -34,13 +34,65 @@ Current testing assumptions:
 
 - `project` is part of the mainline business boundary, not just a metadata page
 - `transport` is an explicit subsystem and validation surface, not an engine implementation detail
-- the primary proof surface is integration/E2E/edge-case coverage
+- the highest-value proof surface is scheduling correctness; host E2E stays the representative integrated wiring proof
 - local unit tests are still useful, but new tests should prefer the mainline unless the logic is kernel-critical and easier to prove locally
 - local kernel tests remain first-class PR protection for lifecycle/result invariants; what is being downgraded is projection-first proof style, not local kernel testing itself
 
 ## 2. Test Layers
 
-### 2.1 Mainline Boundary
+### 2.1 Scheduling Correctness
+
+Objects:
+
+- task/worker matching
+- schedulable set membership
+- worker/context eligibility
+- contention and redispatch
+- contract-aware convergence
+
+Purpose:
+
+- prove the platform's core business value under real scheduling scenarios
+- verify the right worker is selected, the wrong worker is excluded, and the task re-enters competition correctly after delay, retry, or lease expiry
+
+Preferred surfaces:
+
+- `xa-mass-engine` acceptance/concurrency tests as the primary matrix
+- representative `xa-mass-server` assignment E2E for real wiring proof
+- cross-language external worker black-box tests when adapter/language parity is the risk
+
+Does not prove:
+
+- host shell usability by itself
+- throughput or degraded-condition resilience by itself
+
+### 2.2 Kernel Convergence
+
+Objects:
+
+- lifecycle
+- retry
+- expiry
+- finality
+- release
+- convergence
+
+Purpose:
+
+- prove shared-kernel correctness under concurrency and edge ordering
+- protect invariants that sit below the scheduling matrix
+
+Preferred surfaces:
+
+- engine acceptance/concurrency tests
+- focused lifecycle/service tests only when they directly protect kernel behavior
+
+Does not prove:
+
+- host HTTP contracts
+- transport adapter routing or endpoint behavior
+
+### 2.3 Mainline Boundary
 
 Objects:
 
@@ -64,33 +116,7 @@ Does not prove:
 - runtime retry/finality correctness by itself
 - transport recovery behavior by itself
 
-### 2.2 Engine Kernel
-
-Objects:
-
-- lifecycle
-- retry
-- expiry
-- finality
-- release
-- convergence
-
-Purpose:
-
-- prove shared-kernel correctness under concurrency and edge ordering
-- protect invariants that are expensive or noisy to isolate at the host layer
-
-Preferred surfaces:
-
-- engine acceptance/concurrency tests
-- focused lifecycle/service tests only when they directly protect kernel behavior
-
-Does not prove:
-
-- host HTTP contracts
-- transport adapter routing or endpoint behavior
-
-### 2.3 Transport Boundary
+### 2.4 Transport Boundary
 
 Objects:
 
@@ -114,7 +140,7 @@ Does not prove:
 - task lifecycle convergence on its own
 - host resource/auth/read-model behavior on its own
 
-### 2.4 Boot-shell E2E / Black-box
+### 2.5 Boot-shell E2E / Black-box
 
 Objects:
 
@@ -122,8 +148,9 @@ Objects:
 
 Purpose:
 
-- primary acceptance proof for the real product mainline
-- preferred home for edge-case behavior that must survive real wiring
+- representative integrated proof for the real product mainline
+- preferred home for wiring-sensitive behavior that must survive real host/runtime integration
+- not the sole or highest-value proof surface for worker/task scheduling correctness
 
 Preferred surfaces:
 
@@ -135,7 +162,7 @@ Does not prove:
 - hot-path throughput regression
 - chaos/recovery robustness beyond the scenario under test
 
-### 2.5 Perf / Chaos
+### 2.6 Perf / Chaos / Distributed-readiness
 
 Objects:
 
@@ -167,7 +194,8 @@ PR/push gates:
 
 - `.github/workflows/maven.yml`
   - `reactor-core`
-  - `server-e2e`
+  - `scheduling-core`
+  - `server-scheduling-e2e`
   - `lifecycle-integration`
   - `chaos-smokes`
 - `.github/workflows/external-worker-samples.yml`
@@ -181,6 +209,7 @@ Scheduled/manual only:
 Current implications:
 
 - `xa-mass-testing` is compiled on PR via the `reactor-core` compilation gate
+- scheduling correctness is an explicit PR gate through engine-first and representative server E2E jobs
 - chaos smoke probes are PR-gated
 - perf smoke remains scheduled/manual and is not a PR gate
 - cross-language black-box remains part of PR validation
@@ -194,9 +223,14 @@ Primary classes:
 - `TaskConcurrencyAcceptanceTest`
 - `TaskManagerLifecycleTest`
 - `TaskResourceReleaseListenerTest`
+- `TaskAssignWorkerTest`
+- `TaskWorkerAssignListenerTest`
+- `RuleBasedTaskWorkerMatchingStrategyTest`
+- `WorkerMatchContextTest`
 
 Proves:
 
+- scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
 - lifecycle and result correctness under race-sensitive conditions
 - retry/reset/release/finality invariants
 
@@ -215,36 +249,40 @@ Testing rule:
 - prefer runtime truth, lease truth, task aggregate truth, and final convergence state as the primary assertion surface
 - do not add new lifecycle/result tests that treat compatibility projection as immediate execution truth
 - keep compatibility projection assertions only when the residue/read-model contract itself is the subject
+- when a scenario fails because the wrong worker was chosen, excluded, or re-chosen, prove it here before duplicating it through more host-shell tests
 
 ### Server Mainline E2E
 
 Primary groups:
 
-- lifecycle
-- assignment
-- results
-- audit
-- console/resource
+- assignment and routing
+- worker/context availability and reuse
+- polling/external-worker wiring
+- representative lifecycle/result shell flows
 
 High-signal classes include:
 
-- `TaskApiIntegrationTest`
-- `TaskApiLifecycleGuardsIntegrationTest`
-- `TaskApiFailureResultIntegrationTest`
-- `TaskApiMixedResultsIntegrationTest`
-- `TaskApiCallbackReplayIntegrationTest`
+- `TaskApiMultiTaskAssignmentIntegrationTest`
+- `TaskApiMinimumWorkerGateIntegrationTest`
+- `TaskApiDelayedWorkerAvailabilityIntegrationTest`
 - `TaskApiMultiRoundDispatchIntegrationTest`
-- `TaskApiStateValidationIntegrationTest`
-- `ControlConsoleRoutingIntegrationTest`
+- `TaskApiSingleWorkerReuseIntegrationTest`
+- `TaskApiTerminateReuseIntegrationTest`
+- `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+- `TaskApiWorkerWithoutContextIntegrationTest`
+- `PollingWorkerTaskFlowIntegrationTest`
+- `ExternalWorkerPollingApiIntegrationTest`
+- `TransportChannelWiringIntegrationTest`
 
 Proves:
 
-- the host shell exposes the mainline correctly
+- the host shell exposes the scheduling mainline correctly
 - project/submitter/worker/task flows survive real wiring
-- edge-case task behavior survives real server + SDK + engine integration
+- representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
 
 Does not prove:
 
+- the full competition matrix by itself; keep that in engine acceptance first
 - long-run throughput
 - distributed recovery on its own; use chaos or black-box when disconnect, replay, late result, or takeover behavior is the real risk
 
@@ -279,6 +317,7 @@ Proves:
 
 - external worker compatibility
 - adapter-specific delivery still lands on the same kernel semantics
+- scheduling semantics stay aligned across Java / Node and multiple adapters
 
 Does not prove:
 
@@ -301,7 +340,7 @@ Proves:
 
 - hot-path regression signal
 - SDK transport composition behavior
-- degraded/recovery behavior
+- degraded/recovery behavior around the scheduling mainline
 
 Does not prove:
 
@@ -316,6 +355,7 @@ Use first when:
 
 ### Keep
 
+- engine-first scheduling correctness coverage for contention, gating, redispatch, and contract-aware convergence
 - Boot-shell E2E
 - cross-language black-box
 - chaos
@@ -341,8 +381,9 @@ Use first when:
 
 | Change type | Minimum verification | Add when needed |
 | --- | --- | --- |
+| task/worker matching, competition, routing, gating | engine scheduling acceptance/concurrency + representative server scheduling E2E | cross-language black-box when adapter/process parity is at risk |
 | `project / submitter / worker / workerContext` boundary | Boot-shell E2E | controller/API contract tests |
-| task lifecycle / contract / intake | engine acceptance/concurrency + Boot-shell E2E | chaos for degraded edge behavior |
+| task lifecycle / contract / intake | engine acceptance/concurrency + representative Boot-shell E2E | chaos for degraded edge behavior |
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |

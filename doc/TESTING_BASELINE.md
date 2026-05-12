@@ -1,6 +1,6 @@
 # Testing Baseline
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 Status: current global testing baseline.
 
@@ -24,10 +24,15 @@ Use with:
 
 - test decisions are organized around the current mainline:
   `project -> submitter / worker capability -> task shell -> item append -> engine runtime -> transport delivery -> result ingest -> convergence`
-- core proof is mainline-first: `Boot-shell E2E + engine concurrency/acceptance + cross-language black-box`
+- core proof is priority-ordered, not flat:
+  1. `Scheduling Correctness`
+  2. `Kernel Convergence`
+  3. `Platform Viability / Boot-shell E2E`
+  4. `Chaos / Perf / Distributed-readiness`
 - core proof is split intentionally:
+  - scheduling correctness proves worker selection, contention, redispatch, and contract-aware convergence under real business scenarios
   - local engine/transport tests protect deterministic kernel and boundary invariants
-  - E2E / black-box / chaos protect real wiring and distributed edge behavior
+  - E2E / black-box / chaos protect real wiring, parity, and distributed edge behavior
 - `project` is a mainline business boundary, not only a metadata/resource surface
 - `transport` is an explicit validation boundary, not an engine implementation detail
 - perf and chaos are part of the project-level test estate, but current CI gate
@@ -38,12 +43,13 @@ Use with:
 
 | Lane | Owner | Weight / placement |
 | --- | --- | --- |
-| `mainline boundary` | `xa-mass-server` | `project / submitter / worker / workerContext` boundary proof on real host surfaces |
-| `engine kernel` | `xa-mass-engine` | lifecycle, retry, expiry, finality, release, convergence invariants |
+| `Scheduling Correctness` | `xa-mass-engine` first, `xa-mass-server` representative E2E | highest-priority proof for matching, contention, redispatch, gating, and contract-aware convergence |
+| `Kernel Convergence` | `xa-mass-engine` | lifecycle, retry, expiry, finality, release, and convergence invariants |
+| `Platform Viability / Boot-shell E2E` | `xa-mass-server` | representative real-host proof that HTTP, SDK, transport, and workers are wired correctly |
+| `cross-language black-box` | `xa-mass-server` | adapter/language parity proof for external workers across Java / Node and multiple adapters |
 | `transport boundary` | `transport/*`, `xa-mass-testing`, `xa-mass-server` | adapter routing, result ingress, and transport/engine decoupling proof |
-| `Boot-shell E2E` | `xa-mass-server` | primary end-to-end acceptance surface for the real mainline |
-| `cross-language black-box` | `xa-mass-server` | external worker compatibility across Java / Node and multiple adapters |
-| `perf / chaos` | `xa-mass-testing` | scale, recovery, disconnect, replay, and degraded-condition proof |
+| `perf / chaos / distributed-readiness` | `xa-mass-testing` | scale, recovery, disconnect, replay, and degraded-condition proof around the scheduling mainline |
+| `mainline boundary` | `xa-mass-server` | `project / submitter / worker / workerContext` boundary proof on real host surfaces |
 | `local invariant / module` | owning module tests | support coverage only when it adds kernel or boundary debugging value |
 
 ## 3. Command Ownership
@@ -57,17 +63,19 @@ Use with:
 
 ## 4. Lane Intent
 
-- `mainline boundary` verifies project, submitter, worker, and worker-context
-  ownership, auth, and capability boundaries at the real host edge
-- `engine kernel` verifies lifecycle and convergence invariants that are easier
-  to prove deterministically under concurrency than through the host shell
+- `Scheduling Correctness` proves the platform's core business value:
+  the right workers are selected, excluded, re-selected, and converged under
+  contention, gating, retry, and contract differences
+- `Kernel Convergence` verifies lifecycle and convergence invariants that are
+  easier to prove deterministically under concurrency than through the host shell
+- `Platform Viability / Boot-shell E2E` proves the host shell exposes the
+  mainline correctly; it does not replace the scheduling matrix
+- `cross-language black-box` proves external worker compatibility and scheduling
+  parity across process and language boundaries
 - `transport boundary` verifies routing, result ingress, and decoupling so
   transport does not redefine kernel semantics
-- `Boot-shell E2E` is the default proof surface for integrated mainline changes
-- `cross-language black-box` proves external worker compatibility across
-  process and language boundaries
-- `perf / chaos` proves scale and degraded-condition resilience; it does not
-  replace ordinary feature acceptance
+- `perf / chaos / distributed-readiness` proves degraded-condition resilience
+  around the real scheduling path; it does not replace ordinary feature acceptance
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).
@@ -76,8 +84,9 @@ For change-type specific minimum verification, use
 
 Identify the dominant boundary first:
 
-- `xa-mass-server` for mainline boundary and Boot-shell E2E
-- `xa-mass-engine` for lifecycle, retry, expiry, release, and convergence
+- `xa-mass-engine` first for scheduling correctness, lifecycle, retry, expiry,
+  release, and convergence
+- `xa-mass-server` for representative Boot-shell E2E and host-boundary proof
 - `transport/*` plus `xa-mass-testing` for transport runtime, routing, perf, and chaos
 
 Read the owner README after [TESTING_INDEX.md](./TESTING_INDEX.md) confirms the

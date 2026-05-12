@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
+public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();

@@ -16,7 +16,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class WorkerMatchContextTest {
+public class WorkerMatchContextTest {
 
     @Test
     void contextIncludesNestedReadOnlyAttributesMaps() {

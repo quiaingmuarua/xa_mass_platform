@@ -24,9 +24,11 @@ What this module proves:
 - degraded-condition and recovery behavior such as disconnect, lease expiry,
   late replay, and retry reset
 - distributed edge behavior that is too wiring-heavy or timing-heavy to treat as authoritative proof through projection-first local tests
+- distributed-readiness pressure around the scheduling mainline
 
 What this module does not replace:
 
+- engine-first scheduling correctness coverage
 - Boot-shell E2E for host HTTP/mainline behavior
 - engine deterministic concurrency tests for kernel-local invariants
 - the repo-level testing map or CI truth
@@ -34,6 +36,7 @@ What this module does not replace:
 Testing-policy note:
 
 - use this module to prove disconnect, replay, lease-expiry, takeover, and other distributed edge behavior on the real runtime path
+- do not use this module as the first home for ordinary worker/task matching correctness; that belongs in engine acceptance first
 - do not add local projection-first tests in engine/transport when the real risk belongs here
 - compatibility projection may still appear in reports or bounded assertions, but it is not the primary correctness surface for runtime convergence
 

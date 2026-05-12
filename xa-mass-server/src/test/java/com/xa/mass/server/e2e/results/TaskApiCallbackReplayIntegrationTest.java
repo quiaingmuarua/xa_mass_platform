@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiCallbackReplayIntegrationTest extends AbstractSampleE2eTest {
+public class TaskApiCallbackReplayIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();

@@ -33,11 +33,11 @@ cd frontend && corepack pnpm build && cd ..
 # Focused regression gate (high-signal coverage)
 mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 
-# Boot-shell E2E core acceptance
-./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest test
+# Representative server scheduling E2E gate
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerSchedulingE2eSuite test
 
 # Engine concurrency acceptance
-./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskConcurrencyAcceptanceTest test
+./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=EngineSchedulingCoreSuite test
 
 # Perf load model
 ./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner
@@ -188,8 +188,8 @@ Use `AGENTS.md` as the single source for agent behavior, refactor discipline, re
 
 | Lane | Owner module | CI gate |
 |---|---|---|
-| `Boot-shell E2E` | `xa-mass-server` | PR-required (`server-e2e`, `lifecycle-integration`) |
-| `concurrency` | `xa-mass-engine` | PR-required (`reactor-core`) |
+| `Scheduling Correctness` | `xa-mass-engine`, `xa-mass-server` | PR-required (`scheduling-core`, `server-scheduling-e2e`) |
+| `Kernel Convergence` | `xa-mass-engine` | PR-required (`reactor-core`, `scheduling-core`) |
 | `chaos-smokes` | `xa-mass-testing` | PR-required (`chaos-smokes`) |
 | `cross-language black-box` | `xa-mass-server` | PR-required (`cross-language-blackbox`) |
 | `perf` | `xa-mass-testing` | Scheduled/manual only (`perf-smokes.yml`) |

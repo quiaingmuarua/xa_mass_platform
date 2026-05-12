@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
+public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {

@@ -213,15 +213,18 @@ relevant routing/integration coverage together.
 
 Core acceptance for this module stays:
 
+- `scheduling correctness`: engine-owned proof for matching, contention,
+  redispatch, gating, and contract-aware convergence
 - `concurrency`: engine-owned correctness under callback/expiry/retry/release
   races
 - `perf`: mainly in `xa-mass-testing`, but engine changes must preserve the
   task-level, queue-first runtime shape
-- `Boot-shell E2E`: mainly in `xa-mass-server`, used to verify lifecycle and
-  workload-class plumbing end to end
+- `Boot-shell E2E`: mainly in `xa-mass-server`, used to verify representative
+  lifecycle and assignment wiring end to end
 
 What engine tests prove:
 
+- the platform's primary scheduling-value matrix
 - kernel lifecycle, retry, expiry, release, and convergence invariants
 - race-sensitive behavior that is cheaper to make deterministic inside the
   engine boundary
@@ -237,6 +240,10 @@ Useful starting tests:
 - `TaskConcurrencyAcceptanceTest`
 - `TaskManagerLifecycleTest`
 - `TaskResourceReleaseListenerTest`
+- `TaskAssignWorkerTest`
+- `TaskWorkerAssignListenerTest`
+- `RuleBasedTaskWorkerMatchingStrategyTest`
+- `WorkerMatchContextTest`
 
 ## Read Map
 

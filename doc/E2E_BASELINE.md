@@ -1,12 +1,17 @@
 # E2E Baseline
 
-Last updated: 2026-04-27
+Last updated: 2026-05-12
 
 Status: current global E2E baseline.
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
+
+E2E is the platform-viability proof surface, not the only or highest-value
+proof of scheduling correctness. The full competition matrix belongs primarily
+to engine acceptance/concurrency tests, while E2E keeps representative real-host
+assignment, polling, routing, and result-convergence scenarios.
 
 ## 1. What Counts As Real E2E
 
@@ -33,6 +38,7 @@ Fixture note:
 Proof-surface note:
 
 - E2E is the preferred proof surface when the real risk is integrated lifecycle wiring, host/runtime interaction, transport interplay, or distributed edge behavior
+- E2E is not where the full worker-selection competition matrix should live; keep engine-first scheduling proof for contention, redispatch, and contract-aware convergence
 - compatibility projection may still be asserted as bounded residue, but it is not the primary proof surface for lifecycle correctness
 
 ## 2. Mandatory Release-Gate Scenarios
@@ -64,6 +70,8 @@ Assignment and capacity:
 - each dispatch creates attempt state that remains consistent with message projection
 - retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
 - `BATCH` lease expiry consumes retry budget as attempt loss; exhausted budget closes the item as failure rather than logical timeout
+- representative multi-task assignment survives real server + SDK + engine wiring without double assignment
+- representative worker/context routing remains correct under the assignment scenarios carried by the server E2E suite
 
 Worker and context:
 
@@ -101,15 +109,17 @@ If a change touches:
 - lifecycle API contracts
 - policy interaction precedence
 
-then acceptance requires both:
+then acceptance requires:
 
-1. E2E coverage for the changed path
-2. trace coverage for the critical transition
+1. engine scheduling/kernel coverage for the changed path
+2. representative E2E coverage for the changed host/runtime path
+3. trace coverage for the critical transition
 
 For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).
 
 ## 4. Relation To Local Kernel Tests
 
 - E2E does not replace deterministic engine/transport invariant tests
+- scheduling correctness should be proved engine-first; E2E should prove that the same behavior survives real host/runtime wiring
 - local kernel tests should continue to prove retry, expiry, release, finality, and convergence ordering directly
 - what should move upward into E2E/chaos/black-box is projection-first proof style for integrated or distributed behavior
