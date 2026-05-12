@@ -125,23 +125,7 @@ public class TaskApiController {
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
                             .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
-                    .map(task -> {
-                        Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("id", task.getTaskId());
-                        item.put("taskName", task.getTaskName());
-                        item.put("tenantId", task.getTenantId());
-                        item.put("project", task.getProject());
-                        item.put("userId", task.getUserId());
-                        item.put("contract", task.getContract());
-                        item.put("status", task.getStatus());
-                        item.put("executionSpec", task.getExecutionSpec());
-                        populateExecutionSpecFields(item, task.getExecutionSpec());
-                        item.put("terminalReason", task.getTerminalReason());
-                        item.put("successCount", task.getTaskSuccessNumber());
-                        item.put("eligibleCount", task.getTaskEligibleNumber());
-                        item.put("updatedAt", formatDateTime(task.getUpdateTime()));
-                        return item;
-                    })
+                    .map(this::toTaskSummaryView)
                     .toList();
             return ok(Map.of("items", items, "total", items.size()));
         });
@@ -407,7 +391,6 @@ public class TaskApiController {
         view.put("taskNonSuccessNumber", task.getTaskNonSuccessNumber());
         view.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
         view.put("peakAssignedWorkerCount", task.getPeakAssignedWorkerCount());
-        view.put("sharedConfig", taskSecurityViewSupport.sanitizeSharedConfig(task.getSharedConfig()));
         view.put("holdReason", task.getHoldReason());
         view.put("executionSpec", task.getExecutionSpec());
         populateExecutionSpecFields(view, task.getExecutionSpec());
@@ -420,6 +403,24 @@ public class TaskApiController {
         view.put("endTime", task.getEndTime());
         view.put("terminalReason", task.getTerminalReason());
         return view;
+    }
+
+    private Map<String, Object> toTaskSummaryView(TaskSummarySnapshot task) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", task.getTaskId());
+        item.put("taskName", task.getTaskName());
+        item.put("tenantId", task.getTenantId());
+        item.put("project", task.getProject());
+        item.put("userId", task.getUserId());
+        item.put("contract", task.getContract());
+        item.put("status", task.getStatus());
+        item.put("executionSpec", task.getExecutionSpec());
+        populateExecutionSpecFields(item, task.getExecutionSpec());
+        item.put("terminalReason", task.getTerminalReason());
+        item.put("successCount", task.getTaskSuccessNumber());
+        item.put("eligibleCount", task.getTaskEligibleNumber());
+        item.put("updatedAt", formatDateTime(task.getUpdateTime()));
+        return item;
     }
 
     private ResponseEntity<?> exportTaskReviewPayload(String apiKeyHeader,

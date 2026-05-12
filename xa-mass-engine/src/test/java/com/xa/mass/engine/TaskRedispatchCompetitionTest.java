@@ -142,6 +142,66 @@ class TaskRedispatchCompetitionTest {
     }
 
     @Test
+    void expiredWorkWaitsUnderCompetitionAndRedispatchesAfterWorkerRelease() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        Task retryingTask = harness.createBatchTask(
+                "competition-expiry-retry",
+                List.of(harness.item("retry")),
+                1,
+                1
+        );
+        Task competingTask = harness.createBatchTask(
+                "competition-expiry-competing",
+                List.of(harness.item("competing")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(retryingTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(competingTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
+        ActiveLeaseRecord firstLease = harness.activeLeases(retryingTask.getTid()).getFirst();
+        assertTrue(harness.taskManager.expireLeasedWork(retryingTask.getTid(), firstLease.messageId()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(competingTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
+
+        ActiveLeaseRecord competingLease = harness.activeLeases(competingTask.getTid()).getFirst();
+        TaskWorkStats retryingStatsWhileBlocked = harness.stats(retryingTask.getTid());
+        assertEquals(1, retryingStatsWhileBlocked.readyCount());
+        assertEquals(0, retryingStatsWhileBlocked.inflightCount());
+        assertTrue(harness.activeLeases(retryingTask.getTid()).isEmpty());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(retryingTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
+        assertEquals("worker-shared", competingLease.workerId());
+        assertEquals("ctx-shared", competingLease.workerContextId());
+
+        assertTrue(harness.taskManager.ingestTaskResult(
+                competingTask.getTid(),
+                competingLease.messageId(),
+                true,
+                "competing task done",
+                null,
+                java.util.Map.of("source", "redispatch-competition")
+        ));
+
+        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(competingTask.getTid()).getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
+
+        List<ActiveLeaseRecord> retryingLeases = harness.activeLeases(retryingTask.getTid());
+        assertEquals(1, retryingLeases.size());
+        assertEquals(firstLease.messageId(), retryingLeases.getFirst().messageId());
+        assertEquals("worker-shared", retryingLeases.getFirst().workerId());
+        assertEquals("ctx-shared", retryingLeases.getFirst().workerContextId());
+        assertEquals(1, retryingLeases.getFirst().retryCount());
+        assertEquals(0, harness.stats(retryingTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(retryingTask.getTid()).inflightCount());
+    }
+
+    @Test
     void retryExhaustedBatchFailureReleasesWorkerForWaitingTaskCompetition() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");

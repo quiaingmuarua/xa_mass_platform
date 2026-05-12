@@ -64,6 +64,53 @@ class TaskSchedulingGateAndTargetingTest {
     }
 
     @Test
+    void minimumWorkerGateReleasesMatchedWorkerSoAnotherReadyTaskCanCompete() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-us", "ctx-us", "us");
+        harness.addWorkerWithContext("worker-gb", "ctx-gb", "gb");
+        Task gatedTask = harness.createBatchTask(
+                "minimum-worker-gate-release",
+                List.of(harness.item("alpha"), harness.item("beta")),
+                0,
+                1,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
+                2
+        );
+        Task competingTask = harness.createBatchTask(
+                "minimum-worker-gate-competing",
+                List.of(harness.item("competing")),
+                0,
+                1,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(gatedTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(competingTask.getTid()));
+
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(gatedTask.getTid())));
+
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(gatedTask.getTid()).getStatus());
+        assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
+        assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
+        assertTrue(harness.activeLeases(gatedTask.getTid()).isEmpty());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-us").getStatus());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(competingTask.getTid())));
+
+        List<ActiveLeaseRecord> competingLeases = harness.activeLeases(competingTask.getTid());
+        assertEquals(1, competingLeases.size());
+        assertEquals("worker-us", competingLeases.getFirst().workerId());
+        assertEquals("ctx-us", competingLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(competingTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(competingTask.getTid()).inflightCount());
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(gatedTask.getTid()).getStatus());
+        assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
+        assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
+    }
+
+    @Test
     void targetWorkerAttributesRemainStableUnderContention() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorkerWithContext(

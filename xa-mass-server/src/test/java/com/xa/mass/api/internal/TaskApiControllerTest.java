@@ -5,6 +5,8 @@ import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.PrincipalType;
+import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
@@ -195,6 +197,9 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
                 .andExpect(jsonPath("$.data.task.taskName").value("detail-task"))
+                .andExpect(jsonPath("$.data.task.sharedConfig").doesNotExist())
+                .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("agent"))
+                .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))
                 .andExpect(jsonPath("$.data.stateValidation").doesNotExist())
                 .andExpect(jsonPath("$.data.items").doesNotExist());
     }
@@ -388,7 +393,10 @@ class TaskApiControllerTest {
                 0,
                 0,
                 0,
-                Map.of(),
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of("routingCode", "us"),
+                        new TaskOwnershipStamp("agent", PrincipalType.SERVICE)
+                ),
                 null,
                 new TaskExecutionOptions(),
                 null,

@@ -96,4 +96,99 @@ class TaskWorkerContextContentionTest {
         assertEquals(WorkerContextStatus.IDLE,
                 harness.workerManager.getWorkerContextById("ctx-gb").getStatus());
     }
+
+    @Test
+    void singleWorkerWithMultipleMatchingContextsDoesNotSatisfyMinimumWorkerGate() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-multi", "ctx-us-a", "us");
+        harness.addContextToWorker("worker-multi", "ctx-us-b", "us");
+        Task task = harness.createBatchTask(
+                "single-worker-multiple-contexts-min-gate",
+                List.of(harness.item("first"), harness.item("second")),
+                0,
+                2,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
+                2
+        );
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(2, harness.stats(task.getTid()).readyCount());
+        assertEquals(0, harness.stats(task.getTid()).inflightCount());
+        assertTrue(harness.activeLeases(task.getTid()).isEmpty());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-us-a").getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-us-b").getStatus());
+
+        List<AssignmentRecord> workerRecords = harness.workerRecords(task.getTid(), "worker-multi");
+        assertEquals(1, workerRecords.size());
+        assertTrue(workerRecords.stream().anyMatch(record ->
+                AssignmentResult.SUCCESS.equals(record.getResult())
+                        && "ctx-us-a".equals(record.getWorkerContextSnapshot().getWorkerContextId())));
+    }
+
+    @Test
+    void waitingTaskUsesItsOwnRouteContextAfterSharedWorkerIsReleased() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-multi", "ctx-us", "us");
+        harness.addContextToWorker("worker-multi", "ctx-gb", "gb");
+        Task firstTask = harness.createBatchTask(
+                "shared-worker-release-first",
+                List.of(harness.item("us")),
+                0,
+                1,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
+                1
+        );
+        Task secondTask = harness.createBatchTask(
+                "shared-worker-release-second",
+                List.of(harness.item("gb")),
+                0,
+                1,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "gb"),
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(secondTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+
+        ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
+        assertEquals("ctx-us", firstLease.workerContextId());
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(1, harness.stats(secondTask.getTid()).readyCount());
+
+        assertTrue(harness.taskManager.ingestTaskResult(
+                firstTask.getTid(),
+                firstLease.messageId(),
+                true,
+                "first route done",
+                null,
+                java.util.Map.of("source", "shared-worker-release")
+        ));
+
+        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(firstTask.getTid()).getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-us").getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-gb").getStatus());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+
+        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        assertEquals(1, secondLeases.size());
+        assertEquals("worker-multi", secondLeases.getFirst().workerId());
+        assertEquals("ctx-gb", secondLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(secondTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(secondTask.getTid()).inflightCount());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-us").getStatus());
+        assertEquals(WorkerContextStatus.OCCUPIED,
+                harness.workerManager.getWorkerContextById("ctx-gb").getStatus());
+    }
 }
