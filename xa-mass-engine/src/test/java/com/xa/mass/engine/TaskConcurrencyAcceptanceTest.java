@@ -132,9 +132,9 @@ class TaskConcurrencyAcceptanceTest {
 
         Task finalTask = taskManager.getTask(task.getTid());
         TaskDetailStore.TaskMessageProjection finalMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageProjectionToLeaveStatus(task.getTid(), message.messageId(), TaskMessageProjectionStatus.ASSIGNED);
         TaskDetailStore.TaskMessageAttemptProjection finalAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageAttemptProjectionToBecomeFinal(task.getTid(), message.messageId());
 
         assertEquals(1, attemptClosedCount.get());
         assertNotNull(finalAttempt);
@@ -202,9 +202,9 @@ class TaskConcurrencyAcceptanceTest {
 
         Task currentTask = taskManager.getTask(task.getTid());
         TaskDetailStore.TaskMessageProjection currentMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageProjectionToLeaveStatus(task.getTid(), message.messageId(), TaskMessageProjectionStatus.ASSIGNED);
         TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+                awaitVisibleTaskMessageAttemptProjectionToBecomeFinal(task.getTid(), message.messageId());
 
         assertEquals(1, attemptClosedCount.get());
         assertNotNull(latestAttempt);
@@ -382,8 +382,12 @@ class TaskConcurrencyAcceptanceTest {
         ));
         taskStorage.clearSuppressedTaskMessageLookup(task.getTid(), message.messageId());
 
-        TaskDetailStore.TaskMessageProjection finalMessage =
-                recoveringTaskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection finalMessage = awaitVisibleTaskMessageProjection(
+                recoveringTaskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertNotNull(finalMessage);
         assertEquals(TaskMessageProjectionStatus.SUCCESS, finalMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
@@ -653,13 +657,14 @@ class TaskConcurrencyAcceptanceTest {
     }
 
     private TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjection(
+            ProjectionAwareTaskManager manager,
             String taskId,
             String messageId,
             TaskMessageProjectionStatus expectedStatus) {
         long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         TaskDetailStore.TaskMessageProjection lastSeen = null;
         while (System.nanoTime() < deadlineNanos) {
-            lastSeen = taskManager.getVisibleTaskMessageProjection(taskId, messageId);
+            lastSeen = manager.getVisibleTaskMessageProjection(taskId, messageId);
             if (lastSeen != null && lastSeen.status() == expectedStatus) {
                 return lastSeen;
             }
@@ -673,6 +678,13 @@ class TaskConcurrencyAcceptanceTest {
         return lastSeen;
     }
 
+    private TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjection(
+            String taskId,
+            String messageId,
+            TaskMessageProjectionStatus expectedStatus) {
+        return awaitVisibleTaskMessageProjection(taskManager, taskId, messageId, expectedStatus);
+    }
+
     private TaskDetailStore.TaskMessageAttemptProjection awaitVisibleTaskMessageAttemptProjection(
             String taskId,
             String messageId,
@@ -682,6 +694,47 @@ class TaskConcurrencyAcceptanceTest {
         while (System.nanoTime() < deadlineNanos) {
             lastSeen = taskManager.getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
             if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
+    }
+
+    private TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjectionToLeaveStatus(
+            String taskId,
+            String messageId,
+            TaskMessageProjectionStatus initialStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskManager.getVisibleTaskMessageProjection(taskId, messageId);
+            if (lastSeen != null && lastSeen.status() != initialStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
+    }
+
+    private TaskDetailStore.TaskMessageAttemptProjection awaitVisibleTaskMessageAttemptProjectionToBecomeFinal(
+            String taskId,
+            String messageId) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageAttemptProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskManager.getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
+            if (lastSeen != null && lastSeen.status().isFinal()) {
                 return lastSeen;
             }
             try {
