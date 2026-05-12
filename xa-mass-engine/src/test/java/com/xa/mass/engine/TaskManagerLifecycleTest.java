@@ -920,9 +920,13 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.ingestTaskResult(task.getTid(), messageId, false, "boom-once"));
 
-        List<TaskDetailStore.TaskMessageProjection> afterRetryMessages = taskManager.getTaskMessageRecords(task.getTid());
-        assertEquals(1, afterRetryMessages.size());
-        TaskDetailStore.TaskMessageProjection retriedMessage = afterRetryMessages.get(0);
+        TaskDetailStore.TaskMessageProjection retriedMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                messageId,
+                TaskMessageProjectionStatus.INIT
+        );
+        assertNotNull(retriedMessage);
         assertEquals(messageId, retriedMessage.messageId());
         assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
         assertEquals(1, retriedMessage.retryCount());
@@ -2654,8 +2658,13 @@ class TaskManagerLifecycleTest {
                             && "FAILED".equals(mdc.get("result")));
         }
 
-        TaskDetailStore.TaskMessageProjection updated =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection updated = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.FAILED
+        );
+        assertNotNull(updated);
         assertEquals(TaskMessageProjectionStatus.FAILED, updated.status());
         assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, updated.finalReason());
 

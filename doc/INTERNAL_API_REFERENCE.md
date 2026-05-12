@@ -256,6 +256,7 @@ Supported request fields:
 
 - `userId`
 - `project`
+- `contract` (`SESSION` or `BATCH`) — top-level field; controls lifecycle/dispatch/terminal contract
 - `sharedConfig`
 - `executionSpec`
 - `sourceRef`
@@ -273,6 +274,8 @@ Contract rules:
   provide it
 - `eventCode` is not part of task shell truth and must not be provided on this
   route
+- `contract` is a top-level field; providing it inside `executionSpec` is
+  rejected with an error
 - omitted `executionSpec` resolves to default task execution policy
 - public create creates only the task shell and opens normal intake for later
   append/seal flow

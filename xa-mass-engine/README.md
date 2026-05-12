@@ -25,7 +25,7 @@ covers engine-owned assets and when to use them.
 Start with these classes before changing behavior:
 
 - `src/main/java/com/xa/mass/engine/TaskManager.java`
-- `src/main/java/com/xa/mass/engine/TaskConcurrencyCoordinator.java`
+- `src/main/java/com/xa/mass/engine/TaskConcurrencyStrategy.java` (interface) / `LocalTaskConcurrencyCoordinator.java` (default impl)
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
 - `src/main/java/com/xa/mass/engine/TaskProjectionStateAuditor.java`
@@ -83,7 +83,7 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskManager` remains the engine-internal orchestration facade and
   composition root; cross-module callers should not treat it as the default
   engine API
-- `TaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
+- `TaskConcurrencyStrategy` / `LocalTaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
   reconciliation
 - `TaskManager` now reaches `TaskWorkRuntime` directly for enqueue, claim,
   lease, retry, and result application; do not reintroduce a pass-through
