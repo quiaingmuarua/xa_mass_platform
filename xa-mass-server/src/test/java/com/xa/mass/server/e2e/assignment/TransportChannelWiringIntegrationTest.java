@@ -10,6 +10,7 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -81,7 +82,7 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
         exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
 
         // Poll confirms TaskDispatchChannel.dispatchTaskItems was called.
-        var items = List.<com.xa.mass.transport.model.TaskDispatchItem>of();
+        List<TaskDispatchItem> items = List.of();
         for (int i = 0; i < 20 && items.isEmpty(); i++) {
             items = session.poll(10);
             if (items.isEmpty()) Thread.sleep(250L);

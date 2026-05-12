@@ -10,11 +10,16 @@ import org.junit.platform.suite.api.Suite;
 
 @Suite
 @SelectClasses({
+        EngineSchedulingCoreArchitectureGuardTest.class,
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
+        TaskContractSchedulingBehaviorTest.class,
         TaskSchedulingContentionTest.class,
         TaskWorkerEligibilityTest.class,
+        TaskWorkerContextContentionTest.class,
         TaskRedispatchCompetitionTest.class,
+        TaskSchedulingGateAndTargetingTest.class,
+        TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
         WorkerManagerTest.class,
         TaskResourceReleaseListenerTest.class,

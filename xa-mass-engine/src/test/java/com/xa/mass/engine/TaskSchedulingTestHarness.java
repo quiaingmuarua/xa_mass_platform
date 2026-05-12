@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -88,18 +89,18 @@ final class TaskSchedulingTestHarness {
         return taskManager.getTask(task.getTid());
     }
 
-    Task createBatchTask(String sourceRef,
-                         List<Map<String, Object>> items,
-                         int defaultMaxRetryCount,
-                         int batchSize) {
+    Task createSessionTask(String sourceRef,
+                           List<Map<String, Object>> items,
+                           int defaultMaxRetryCount,
+                           int batchSize) {
         TaskShellCreateRequestDto request = new TaskShellCreateRequestDto();
         request.setUserId("agent");
         request.setProject("demoApp");
-        request.setContract(TaskContract.BATCH);
+        request.setContract(TaskContract.SESSION);
         request.setSourceRef(sourceRef);
-        request.setSharedConfig(Map.of("routingCode", "us"));
+        request.setSharedConfig(Map.of(TaskSharedConfig.ROUTING_CODE, "us"));
         TaskExecutionSpec executionSpec = new TaskExecutionSpec();
-        executionSpec.setWorkloadClass(TaskWorkloadClass.BULK);
+        executionSpec.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
         executionSpec.setBatchSize(batchSize);
         executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         request.setExecutionSpec(executionSpec);
@@ -108,12 +109,63 @@ final class TaskSchedulingTestHarness {
         if (items != null && !items.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), items);
         }
+        return taskManager.getTask(task.getTid());
+    }
+
+    Task createBatchTask(String sourceRef,
+                         List<Map<String, Object>> items,
+                         int defaultMaxRetryCount,
+                         int batchSize) {
+        return createBatchTask(
+                sourceRef,
+                items,
+                defaultMaxRetryCount,
+                batchSize,
+                Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
+                0
+        );
+    }
+
+    Task createBatchTask(String sourceRef,
+                         List<Map<String, Object>> items,
+                         int defaultMaxRetryCount,
+                         int batchSize,
+                         Map<String, Object> sharedConfig,
+                         int minRequiredWorkerCount) {
+        TaskShellCreateRequestDto request = new TaskShellCreateRequestDto();
+        request.setUserId("agent");
+        request.setProject("demoApp");
+        request.setContract(TaskContract.BATCH);
+        request.setSourceRef(sourceRef);
+        request.setSharedConfig(sharedConfig == null ? Map.of() : sharedConfig);
+        TaskExecutionSpec executionSpec = new TaskExecutionSpec();
+        executionSpec.setWorkloadClass(TaskWorkloadClass.BULK);
+        executionSpec.setBatchSize(batchSize);
+        executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        request.setExecutionSpec(executionSpec);
+
+        Task task = taskManager.createTaskShell(request);
+        if (minRequiredWorkerCount > 0) {
+            task.setMinRequiredWorkerCount(minRequiredWorkerCount);
+            assertTrue(taskManager.updateTask(task));
+        }
+        if (items != null && !items.isEmpty()) {
+            taskManager.appendTaskItems(task.getTid(), items);
+        }
         assertTrue(taskManager.sealTask(task.getTid()));
         return taskManager.getTask(task.getTid());
     }
 
     Worker addWorkerWithContext(String workerId, String contextId, String routingCode) {
+        return addWorkerWithContext(workerId, contextId, routingCode, Map.of());
+    }
+
+    Worker addWorkerWithContext(String workerId,
+                                String contextId,
+                                String routingCode,
+                                Map<String, String> attributes) {
         Worker worker = worker(workerId);
+        worker.setAttributes(attributes);
         workerManager.addWorker(worker);
         workerManager.addWorkerContext(workerContext(workerId, contextId, routingCode, WorkerContextStatus.IDLE));
         return worker;
@@ -133,6 +185,10 @@ final class TaskSchedulingTestHarness {
         return worker;
     }
 
+    void addContextToWorker(String workerId, String contextId, String routingCode) {
+        workerManager.addWorkerContext(workerContext(workerId, contextId, routingCode, WorkerContextStatus.IDLE));
+    }
+
     TaskWorkStats stats(String taskId) {
         return taskManager.getTaskWorkRuntime().stats(taskId);
     }
@@ -147,6 +203,13 @@ final class TaskSchedulingTestHarness {
                 .filter(record -> record.getMessageId() == null)
                 .findFirst()
                 .orElseThrow();
+    }
+
+    List<AssignmentRecord> workerRecords(String taskId, String workerId) {
+        return assignmentRecords.getRecordsByTaskId(taskId).stream()
+                .filter(record -> workerId.equals(record.getWorkerId()))
+                .filter(record -> record.getMessageId() == null)
+                .toList();
     }
 
     long successfulMessageAssignments(String taskId, String workerId) {

@@ -328,6 +328,9 @@ Mainline stance:
 - `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
   `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
   `ServerProjectionAuditSuite`
+- `ServerMainlineE2eArchitectureGuardTest` is included in the mainline
+  scheduling and lifecycle suites to reject projection-first helpers and
+  implicit `var` declarations
 - server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
   API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
@@ -386,6 +389,8 @@ Covered areas:
 
 High-signal classes:
 
+- guardrail:
+  - `ServerMainlineE2eArchitectureGuardTest`
 - lifecycle:
   - `TaskApiIntegrationTest`
   - `TaskApiLifecycleGuardsIntegrationTest`

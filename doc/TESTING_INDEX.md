@@ -221,10 +221,15 @@ Current implications:
 Primary classes:
 
 - `TaskKernelLifecycleTest`
+- `EngineSchedulingCoreArchitectureGuardTest`
 - `TaskContractTerminalBehaviorTest`
+- `TaskContractSchedulingBehaviorTest`
 - `TaskSchedulingContentionTest`
 - `TaskWorkerEligibilityTest`
+- `TaskWorkerContextContentionTest`
 - `TaskRedispatchCompetitionTest`
+- `TaskSchedulingGateAndTargetingTest`
+- `TaskDelayedAvailabilitySchedulingTest`
 - `TaskRuntimeRecoveryPortTest`
 - `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`
@@ -236,12 +241,23 @@ Primary classes:
 Proves:
 
 - scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
+- contract scheduling behavior for `BATCH` drain-to-terminal and `SESSION` open-channel drain without auto-terminal
 - worker/context eligibility filtering and rejection reasons without relying on compatibility projection rows
 - single-context multi-task contention without double assignment
+- multi-worker pool contention without duplicate lease, lost READY work, or resource-release drift
+- single worker / multiple context route selection without context drift or double assignment
+- minimum-worker gate and target worker attributes under contention
 - batch lease expiry returning work to the competition pool and redispatching the same work once
+- degraded transport reachability during active contention excludes the unreachable worker and dispatches to a backup
+- degraded transport reachability keeps minimum-worker gates closed without half-dispatching work
+- target worker id under contention does not drift to an idle backup worker and dispatches to the target after release
+- retry-exhausted batch finality releases worker/context resources for a waiting READY task
+- delayed worker registration and blocked-context recovery dispatch previously waiting READY work
+- paused waiting tasks remain outside the schedulable set after resource release until resumed
 - lifecycle and result correctness under race-sensitive conditions
 - retry/reset/release/finality invariants
 - contract/intake/runtime owner boundaries without reading compatibility projection as hot-path truth
+- source-level guardrail that keeps compatibility projection helpers out of the scheduling-core mainline suite
 
 Does not prove:
 
@@ -283,6 +299,7 @@ Primary groups:
 
 High-signal classes include:
 
+- `ServerMainlineE2eArchitectureGuardTest`
 - `TaskApiMultiTaskAssignmentIntegrationTest`
 - `TaskApiMinimumWorkerGateIntegrationTest`
 - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
@@ -301,6 +318,8 @@ Proves:
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
   truth first; it does not use compatibility message projection as its main
   proof surface
+- source-level guardrail keeps projection-first helpers and implicit `var`
+  declarations out of mainline server scheduling/lifecycle E2E suites
 
 Does not prove:
 

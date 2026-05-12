@@ -238,10 +238,15 @@ What engine tests do not replace:
 Useful starting tests:
 
 - `TaskKernelLifecycleTest`
+- `EngineSchedulingCoreArchitectureGuardTest`
 - `TaskContractTerminalBehaviorTest`
+- `TaskContractSchedulingBehaviorTest`
 - `TaskSchedulingContentionTest`
 - `TaskWorkerEligibilityTest`
+- `TaskWorkerContextContentionTest`
 - `TaskRedispatchCompetitionTest`
+- `TaskSchedulingGateAndTargetingTest`
+- `TaskDelayedAvailabilitySchedulingTest`
 - `TaskRuntimeRecoveryPortTest`
 - `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`
@@ -249,6 +254,20 @@ Useful starting tests:
 - `TaskWorkerAssignListenerTest`
 - `RuleBasedTaskWorkerMatchingStrategyTest`
 - `WorkerMatchContextTest`
+
+Current scheduling-matrix scenarios include:
+
+- multi-task contention on a single context and across a worker pool
+- worker/context eligibility rejection for unreachable, locked, occupied, routing-mismatch, and target-attribute mismatch candidates
+- active contention after transport reachability drops, with backup-worker dispatch
+- reachability-aware minimum-worker gates that avoid half-dispatch when an eligible worker drops
+- retry expiry re-entering the competition pool when retry budget remains
+- retry-exhausted batch finality releasing resources for waiting work
+- delayed worker/context availability moving READY work into dispatch
+- paused waiting tasks staying out of competition until explicit resume
+- `BATCH` drain-to-terminal and `SESSION` queue-drain without auto-terminal
+- minimum-worker gate, target worker id, and targeted worker attributes under contention
+- an executable source guard that fails if scheduling-core mainline tests start using compatibility projection proof helpers again
 
 Explicit secondary residue/audit tests:
 

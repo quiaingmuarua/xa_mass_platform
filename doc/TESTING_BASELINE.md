@@ -40,6 +40,8 @@ Use with:
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` no longer carries projection-heavy residue classes directly; compatibility residue and audit live in explicit secondary suites
+- `EngineSchedulingCoreArchitectureGuardTest` keeps projection-first helpers out
+  of the scheduling-core mainline test set
 
 ## 2. Lane Map
 
@@ -69,8 +71,28 @@ Use with:
   the right workers are selected, excluded, re-selected, and converged under
   contention, gating, retry, and contract differences
 - current engine-first scheduling matrix includes explicit tests for:
-  `TaskSchedulingContentionTest`, `TaskWorkerEligibilityTest`, and
-  `TaskRedispatchCompetitionTest`
+  `TaskContractSchedulingBehaviorTest`, `TaskSchedulingContentionTest`,
+  `TaskWorkerEligibilityTest`,
+  `TaskWorkerContextContentionTest`, `TaskRedispatchCompetitionTest`, and
+  `TaskSchedulingGateAndTargetingTest`
+- that matrix now includes active degraded-presence competition:
+  a worker can lose transport reachability while holding a lease, and later
+  READY tasks must exclude it and choose an eligible backup without projection reads
+- reachability also participates in gate decisions:
+  `minRequiredWorkerCount` is evaluated against currently eligible workers, so
+  a dropped worker keeps the task READY without half-dispatching work
+- target-worker routing is covered under contention:
+  a task with a fixed target worker must not drift to an idle backup worker while
+  the target is locked, and it must dispatch to the target after release
+- retry-exhausted batch expiry is covered as a competition scenario:
+  final convergence must release the worker/context so a waiting READY task can
+  acquire the resource
+- delayed availability is covered in engine-first form:
+  READY work remains queued when no worker/context is eligible, then dispatches
+  when an eligible worker registers or a blocked context becomes allocatable
+- schedulable membership is covered under contention:
+  a waiting task paused before resource release must not acquire the released
+  worker until it is resumed
 - `Kernel Convergence` verifies lifecycle and convergence invariants that are
   easier to prove deterministically under concurrency than through the host shell
 - `Platform Viability / Boot-shell E2E` proves the host shell exposes the
@@ -108,6 +130,8 @@ minimum verification set.
   `ServerProjectionResidueSuite` and `ServerProjectionAuditSuite` are valid
   supporting lanes; `ServerSchedulingE2eSuite` and
   `ServerLifecycleResultConvergenceSuite` stay runtime/aggregate-first
+- `ServerMainlineE2eArchitectureGuardTest` keeps projection-first helpers and
+  implicit `var` declarations out of the mainline server E2E suites
 - when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
 
 ## 7. Documentation Rule

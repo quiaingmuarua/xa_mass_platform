@@ -1,15 +1,20 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskRedispatchCompetitionTest {
@@ -49,5 +54,136 @@ class TaskRedispatchCompetitionTest {
         assertEquals(1, afterRedispatchStats.inflightCount());
         assertEquals(0, afterRedispatchStats.finalCount());
         assertEquals(2, harness.successfulMessageAssignments(task.getTid(), "worker-retry"));
+    }
+
+    @Test
+    void staleResultFromExpiredLeaseDoesNotStealRedispatchedWork() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-retry", "ctx-retry", "us");
+        Task task = harness.createBatchTask("stale-result-after-redispatch", List.of(harness.item("retry")), 1, 1);
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+        ActiveLeaseRecord firstLease = harness.activeLeases(task.getTid()).getFirst();
+        assertTrue(harness.taskManager.expireLeasedWork(task.getTid(), firstLease.messageId()));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+        ActiveLeaseRecord secondLease = harness.activeLeases(task.getTid()).getFirst();
+
+        ResultApplyOutcome staleOutcome = harness.taskManager.applyTaskWorkResult(TaskWorkResult.success(
+                task.getTid(),
+                firstLease.messageId(),
+                firstLease.leaseToken(),
+                "late old result",
+                java.util.Map.of("source", "old-lease")
+        ));
+
+        assertEquals(ResultApplyStatus.STALE_LEASE, staleOutcome.status());
+        List<ActiveLeaseRecord> activeLeasesAfterStaleResult = harness.activeLeases(task.getTid());
+        assertEquals(1, activeLeasesAfterStaleResult.size());
+        assertEquals(secondLease.leaseToken(), activeLeasesAfterStaleResult.getFirst().leaseToken());
+        assertEquals(0, harness.stats(task.getTid()).finalCount());
+        assertEquals(1, harness.stats(task.getTid()).inflightCount());
+
+        assertTrue(harness.taskManager.ingestTaskResult(
+                task.getTid(),
+                secondLease.messageId(),
+                true,
+                "current lease done",
+                null,
+                java.util.Map.of("source", "current-lease")
+        ));
+
+        Task completedTask = harness.taskManager.getTask(task.getTid());
+        TaskWorkStats completedStats = harness.stats(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, completedTask.getStatus());
+        assertEquals(1, completedStats.successCount());
+        assertEquals(1, completedStats.finalCount());
+    }
+
+    @Test
+    void leaseExpiryReleasesWorkerForWaitingTaskCompetition() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        Task firstTask = harness.createBatchTask(
+                "competition-expiry-first",
+                List.of(harness.item("first")),
+                1,
+                1
+        );
+        Task secondTask = harness.createBatchTask(
+                "competition-expiry-second",
+                List.of(harness.item("second")),
+                1,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(secondTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
+
+        assertTrue(harness.taskManager.expireLeasedWork(firstTask.getTid(), firstLease.messageId()));
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
+        assertTrue(harness.activeLeases(firstTask.getTid()).isEmpty());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+
+        List<ActiveLeaseRecord> secondTaskLeases = harness.activeLeases(secondTask.getTid());
+        assertEquals(1, secondTaskLeases.size());
+        assertEquals("worker-shared", secondTaskLeases.getFirst().workerId());
+        assertEquals("ctx-shared", secondTaskLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
+        assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
+        assertEquals(0, harness.stats(secondTask.getTid()).readyCount());
+    }
+
+    @Test
+    void retryExhaustedBatchFailureReleasesWorkerForWaitingTaskCompetition() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        Task exhaustedTask = harness.createBatchTask(
+                "retry-exhausted-first",
+                List.of(harness.item("first")),
+                0,
+                1
+        );
+        Task waitingTask = harness.createBatchTask(
+                "retry-exhausted-waiting",
+                List.of(harness.item("second")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(exhaustedTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(exhaustedTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
+        ActiveLeaseRecord exhaustedLease = harness.activeLeases(exhaustedTask.getTid()).getFirst();
+
+        assertTrue(harness.taskManager.expireLeasedWork(exhaustedTask.getTid(), exhaustedLease.messageId()));
+
+        Task finalizedTask = harness.taskManager.getTask(exhaustedTask.getTid());
+        TaskWorkStats finalizedStats = harness.stats(exhaustedTask.getTid());
+        assertEquals(TaskStatus.TERMINAL, finalizedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, finalizedTask.getTerminalReason());
+        assertEquals(1, finalizedStats.expiredCount());
+        assertEquals(1, finalizedStats.finalCount());
+        assertTrue(harness.activeLeases(exhaustedTask.getTid()).isEmpty());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
+
+        List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
+        assertEquals(1, waitingLeases.size());
+        assertEquals("worker-shared", waitingLeases.getFirst().workerId());
+        assertEquals("ctx-shared", waitingLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(waitingTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(waitingTask.getTid()).inflightCount());
     }
 }

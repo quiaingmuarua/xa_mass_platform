@@ -10,6 +10,8 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,6 +55,68 @@ class TaskSchedulingContentionTest {
     }
 
     @Test
+    void multipleReadyBatchTasksCompeteForWorkerPoolWithoutDuplicateLeaseOrLostReadyWork() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-a", "ctx-a", "us");
+        harness.addWorkerWithContext("worker-b", "ctx-b", "us");
+        Task firstTask = harness.createReadyBatchTask("pool-first", List.of(harness.item("first")));
+        Task secondTask = harness.createReadyBatchTask("pool-second", List.of(harness.item("second")));
+        Task thirdTask = harness.createReadyBatchTask("pool-third", List.of(harness.item("third")));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
+
+        List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        Set<String> leasedWorkers = java.util.stream.Stream.concat(firstLeases.stream(), secondLeases.stream())
+                .map(ActiveLeaseRecord::workerId)
+                .collect(Collectors.toSet());
+        assertEquals(1, firstLeases.size());
+        assertEquals(1, secondLeases.size());
+        assertEquals(Set.of("worker-a", "worker-b"), leasedWorkers);
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
+        assertEquals(1, harness.stats(thirdTask.getTid()).readyCount());
+        assertTrue(harness.activeLeases(thirdTask.getTid()).isEmpty());
+
+        List<AssignmentRecord> thirdTaskWorkerARecords = harness.workerRecords(thirdTask.getTid(), "worker-a");
+        List<AssignmentRecord> thirdTaskWorkerBRecords = harness.workerRecords(thirdTask.getTid(), "worker-b");
+        assertTrue(thirdTaskWorkerARecords.stream().allMatch(record ->
+                AssignmentResult.CONFLICT.equals(record.getResult())
+                        && "worker locked".equals(record.getReason())));
+        assertTrue(thirdTaskWorkerBRecords.stream().allMatch(record ->
+                AssignmentResult.CONFLICT.equals(record.getResult())
+                        && "worker locked".equals(record.getReason())));
+
+        ActiveLeaseRecord firstLease = firstLeases.getFirst();
+        assertTrue(harness.taskManager.ingestTaskResult(
+                firstTask.getTid(),
+                firstLease.messageId(),
+                true,
+                "first done",
+                null,
+                java.util.Map.of("source", "worker-pool")
+        ));
+
+        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(firstTask.getTid()).getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById(firstLease.workerContextId()).getStatus());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
+
+        List<ActiveLeaseRecord> thirdLeases = harness.activeLeases(thirdTask.getTid());
+        assertEquals(1, thirdLeases.size());
+        assertEquals(firstLease.workerId(), thirdLeases.getFirst().workerId());
+        assertEquals(firstLease.workerContextId(), thirdLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(thirdTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(thirdTask.getTid()).inflightCount());
+    }
+
+    @Test
     void pausedBlockedAndTerminatedTasksDoNotDispatchEvenWhenReadyWorkExists() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorkerWithContext("worker-gate", "ctx-gate", "us");
@@ -77,5 +141,44 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.PAUSED, harness.taskManager.getTask(pausedTask.getTid()).getStatus());
         assertEquals(TaskStatus.BLOCKED, harness.taskManager.getTask(blockedTask.getTid()).getStatus());
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(terminalTask.getTid()).getStatus());
+    }
+
+    @Test
+    void pausedWaitingTaskDoesNotAcquireReleasedResourceUntilResumed() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        Task runningTask = harness.createReadyBatchTask("pause-wait-running", List.of(harness.item("running")));
+        Task waitingTask = harness.createReadyBatchTask("pause-wait-waiting", List.of(harness.item("waiting")));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
+        assertTrue(harness.taskManager.pauseTask(waitingTask.getTid()));
+        ActiveLeaseRecord runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
+
+        assertTrue(harness.taskManager.ingestTaskResult(
+                runningTask.getTid(),
+                runningLease.messageId(),
+                true,
+                "running task done",
+                null,
+                java.util.Map.of("source", "pause-wait")
+        ));
+
+        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(runningTask.getTid()).getStatus());
+        assertEquals(WorkerContextStatus.IDLE,
+                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
+        assertEquals(TaskStatus.PAUSED, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
+        assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
+        assertTrue(harness.activeLeases(waitingTask.getTid()).isEmpty());
+
+        assertTrue(harness.taskManager.resumeTask(waitingTask.getTid()));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
+
+        List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
+        assertEquals(1, waitingLeases.size());
+        assertEquals("worker-shared", waitingLeases.getFirst().workerId());
+        assertEquals("ctx-shared", waitingLeases.getFirst().workerContextId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
     }
 }

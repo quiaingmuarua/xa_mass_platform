@@ -1,10 +1,12 @@
 package com.xa.mass.server.e2e.assignment;
 
+import com.xa.mass.server.e2e.support.ServerMainlineE2eArchitectureGuardTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
 @Suite
 @SelectClasses({
+        ServerMainlineE2eArchitectureGuardTest.class,
         TaskApiMultiTaskAssignmentIntegrationTest.class,
         TaskApiMinimumWorkerGateIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
