@@ -7,6 +7,7 @@ import type {
     TaskListItem,
     TaskListQuery,
     TaskListResponse,
+    TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
 } from '@/types/tasks'
@@ -120,6 +121,116 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
     },
 }
 
+const mockTaskReviews: Record<string, TaskReviewResponse> = {
+    'task-001': {
+        summary: {
+            totalItems: 10,
+            successItems: 6,
+            failedItems: 1,
+            expiredItems: 0,
+            processingItems: 3,
+            previewCount: 3,
+            previewLimit: 12,
+            hasMore: true,
+        },
+        seedPreview: [
+            {
+                messageId: 'msg-001',
+                eventCode: 'demo.dispatch',
+                status: 'SUCCESS',
+                payloadRef: null,
+                retryCount: 0,
+                maxRetryCount: 3,
+                createTime: '2026-04-20 08:31:00',
+                assignedTime: '2026-04-20 08:31:03',
+                input: { target: 'warmup-a', region: 'us' },
+            },
+            {
+                messageId: 'msg-002',
+                eventCode: 'demo.dispatch',
+                status: 'SUCCESS',
+                payloadRef: null,
+                retryCount: 0,
+                maxRetryCount: 3,
+                createTime: '2026-04-20 08:31:02',
+                assignedTime: '2026-04-20 08:31:05',
+                input: { target: 'warmup-b', region: 'eu' },
+            },
+            {
+                messageId: 'msg-003',
+                eventCode: 'demo.dispatch',
+                status: 'RUNNING',
+                payloadRef: null,
+                retryCount: 1,
+                maxRetryCount: 3,
+                createTime: '2026-04-20 08:31:05',
+                assignedTime: '2026-04-20 08:31:08',
+                input: { target: 'warmup-c', region: 'apac' },
+            },
+        ],
+        resultPreview: [
+            {
+                messageId: 'msg-001',
+                eventCode: 'demo.dispatch',
+                status: 'SUCCESS',
+                finalReason: 'BUSINESS_SUCCESS',
+                retryCount: 0,
+                maxRetryCount: 3,
+                workerId: 'worker-demo-01',
+                workerContextId: 'ctx-demo-us-01',
+                batchId: 'batch-101',
+                attemptId: 'attempt-101',
+                startTime: '2026-04-20 08:31:04',
+                completeTime: '2026-04-20 08:31:10',
+                updateTime: '2026-04-20 08:31:10',
+                errorCode: null,
+                errorMessage: null,
+                output: { status: 'ok', latencyMs: 612, value: 'warmed' },
+            },
+            {
+                messageId: 'msg-002',
+                eventCode: 'demo.dispatch',
+                status: 'SUCCESS',
+                finalReason: 'BUSINESS_SUCCESS',
+                retryCount: 0,
+                maxRetryCount: 3,
+                workerId: 'worker-demo-03',
+                workerContextId: 'ctx-demo-eu-02',
+                batchId: 'batch-102',
+                attemptId: 'attempt-102',
+                startTime: '2026-04-20 08:31:05',
+                completeTime: '2026-04-20 08:31:12',
+                updateTime: '2026-04-20 08:31:12',
+                errorCode: null,
+                errorMessage: null,
+                output: { status: 'ok', latencyMs: 721, value: 'warmed' },
+            },
+            {
+                messageId: 'msg-003',
+                eventCode: 'demo.dispatch',
+                status: 'RUNNING',
+                finalReason: null,
+                retryCount: 1,
+                maxRetryCount: 3,
+                workerId: 'worker-demo-05',
+                workerContextId: 'ctx-demo-apac-01',
+                batchId: 'batch-109',
+                attemptId: 'attempt-109',
+                startTime: '2026-04-20 08:31:08',
+                completeTime: '',
+                updateTime: '2026-04-20 11:24:00',
+                errorCode: null,
+                errorMessage: null,
+                output: null,
+            },
+        ],
+        exports: {
+            seedUrl: '/api/v1/tasks/task-001/review/seed-export',
+            resultUrl: '/api/v1/tasks/task-001/review/result-export',
+        },
+    },
+}
+
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
         window.setTimeout(() => resolve(value), 80)
@@ -162,6 +273,18 @@ export async function getTaskDetailMock(
     }
 
     return delay(detail)
+}
+
+export async function getTaskReviewMock(
+    taskId: string,
+): Promise<TaskReviewResponse> {
+    const review = mockTaskReviews[taskId]
+
+    if (!review) {
+        throw new Error(`Task review not found for ${taskId}`)
+    }
+
+    return delay(review)
 }
 
 export async function createTaskShellMock(
@@ -208,6 +331,24 @@ export async function createTaskShellMock(
             updateTime: createdAt,
         },
     }
+    mockTaskReviews[taskId] = {
+        summary: {
+            totalItems: 0,
+            successItems: 0,
+            failedItems: 0,
+            expiredItems: 0,
+            processingItems: 0,
+            previewCount: 0,
+            previewLimit: 12,
+            hasMore: false,
+        },
+        seedPreview: [],
+        resultPreview: [],
+        exports: {
+            seedUrl: `/api/v1/tasks/${taskId}/review/seed-export`,
+            resultUrl: `/api/v1/tasks/${taskId}/review/result-export`,
+        },
+    }
 
     return delay({
         taskId,
@@ -221,9 +362,10 @@ export async function appendTaskItemsMock(
 ): Promise<{ added: number }> {
     const detail = mockTaskDetails[taskId]
     const listItem = mockTaskList.find((task) => task.id === taskId)
+    const review = mockTaskReviews[taskId]
     const normalizedItems = request.items ?? []
 
-    if (!detail || !listItem) {
+    if (!detail || !listItem || !review) {
         throw new Error(`Task not found for ${taskId}`)
     }
     if (normalizedItems.length === 0) {
@@ -234,6 +376,47 @@ export async function appendTaskItemsMock(
     detail.task.taskEligibleNumber += normalizedItems.length
     detail.task.taskNonSuccessNumber += normalizedItems.length
     listItem.eligibleCount += normalizedItems.length
+
+    const createdRows = normalizedItems.map((item, index) => {
+        const messageId = `${taskId}-msg-${String(review.seedPreview.length + index + 1).padStart(3, '0')}`
+        return {
+            messageId,
+            eventCode: request.eventCode ?? null,
+            status: 'READY',
+            payloadRef: null,
+            retryCount: 0,
+            maxRetryCount: 3,
+            createTime: detail.task.updateTime,
+            assignedTime: '',
+            input: item,
+        }
+    })
+    review.seedPreview = [...review.seedPreview, ...createdRows].slice(0, review.summary.previewLimit)
+    review.resultPreview = [
+        ...review.resultPreview,
+        ...createdRows.map((row) => ({
+            messageId: row.messageId,
+            eventCode: row.eventCode,
+            status: 'READY',
+            finalReason: null,
+            retryCount: 0,
+            maxRetryCount: 3,
+            workerId: null,
+            workerContextId: null,
+            batchId: null,
+            attemptId: null,
+            startTime: '',
+            completeTime: '',
+            updateTime: detail.task.updateTime,
+            errorCode: null,
+            errorMessage: null,
+            output: null,
+        })),
+    ].slice(0, review.summary.previewLimit)
+    review.summary.totalItems += normalizedItems.length
+    review.summary.processingItems += normalizedItems.length
+    review.summary.previewCount = review.seedPreview.length
+    review.summary.hasMore = review.summary.totalItems > review.summary.previewLimit
 
     return delay({
         added: normalizedItems.length,
@@ -311,6 +494,14 @@ export async function terminateTaskMock(
     taskId: string,
 ): Promise<TaskActionResult> {
     return updateTaskStatusMock(taskId, 'TERMINAL', 'Task terminated')
+}
+
+export function downloadTaskSeedExportMock(_taskId: string): void {
+    // Mock export is intentionally a no-op. The page still exposes the action.
+}
+
+export function downloadTaskResultExportMock(_taskId: string): void {
+    // Mock export is intentionally a no-op. The page still exposes the action.
 }
 
 async function updateTaskStatusMock(

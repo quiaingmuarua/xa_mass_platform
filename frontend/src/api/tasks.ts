@@ -5,19 +5,25 @@ import {
     blockTaskMock,
     createTaskShellMock,
     getTaskDetailMock,
+    getTaskReviewMock,
     invokeSyncTaskDebugMock,
     listTasksMock,
     pauseTaskMock,
     resumeTaskMock,
     sealTaskMock,
     terminateTaskMock,
+    downloadTaskResultExportMock,
+    downloadTaskSeedExportMock,
 } from '@/api/tasks.mock'
 import {
     auditTaskReal,
     appendTaskItemsReal,
     blockTaskReal,
     createTaskShellReal,
+    downloadTaskResultExportReal,
+    downloadTaskSeedExportReal,
     getTaskDetailReal,
+    getTaskReviewReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
     pauseTaskReal,
@@ -33,6 +39,7 @@ import type {
     TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
 } from '@/types/tasks'
@@ -55,6 +62,16 @@ export async function getTaskDetail(
     }
 
     return getTaskDetailReal(taskId)
+}
+
+export async function getTaskReview(
+    taskId: string,
+): Promise<TaskReviewResponse> {
+    if (getAppConfig().useMockApi) {
+        return getTaskReviewMock(taskId)
+    }
+
+    return getTaskReviewReal(taskId)
 }
 
 export async function createTaskShell(
@@ -140,4 +157,22 @@ export async function terminateTask(taskId: string): Promise<TaskActionResult> {
     }
 
     return terminateTaskReal(taskId)
+}
+
+export function downloadTaskSeedExport(taskId: string): void {
+    if (getAppConfig().useMockApi) {
+        downloadTaskSeedExportMock(taskId)
+        return
+    }
+
+    downloadTaskSeedExportReal(taskId)
+}
+
+export function downloadTaskResultExport(taskId: string): void {
+    if (getAppConfig().useMockApi) {
+        downloadTaskResultExportMock(taskId)
+        return
+    }
+
+    downloadTaskResultExportReal(taskId)
 }

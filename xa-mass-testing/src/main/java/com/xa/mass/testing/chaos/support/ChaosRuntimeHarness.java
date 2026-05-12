@@ -103,6 +103,9 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .enabled(false)
+                                .serverEnabled(false))
                         .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
                         .queueMode())

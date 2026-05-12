@@ -3,6 +3,7 @@ import {
     appendTaskItemsReal,
     createTaskShellReal,
     getTaskDetailReal,
+    getTaskReviewReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
     sealTaskReal,
@@ -94,6 +95,45 @@ describe('tasks.real', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(detail.task.user.name).toBe('-')
         expect(detail.task.createTime).toBe('2026-04-21 09:00:00')
+    })
+
+    it('loads task review preview from the explicit review endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    summary: {
+                        totalItems: 10,
+                        successItems: 6,
+                        failedItems: 1,
+                        expiredItems: 0,
+                        processingItems: 3,
+                        previewCount: 2,
+                        previewLimit: 12,
+                        hasMore: true,
+                    },
+                    seedPreview: [],
+                    resultPreview: [],
+                    exports: {
+                        seedUrl: '/api/v1/tasks/task-001/review/seed-export',
+                        resultUrl: '/api/v1/tasks/task-001/review/result-export',
+                    },
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const review = await getTaskReviewReal('task-001')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks/task-001/review',
+            expect.any(Object),
+        )
+        expect(review.summary.totalItems).toBe(10)
+        expect(review.exports.resultUrl).toBe(
+            '/api/v1/tasks/task-001/review/result-export',
+        )
     })
 
     it('posts task terminate to the backend action endpoint', async () => {

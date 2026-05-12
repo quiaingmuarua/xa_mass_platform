@@ -33,6 +33,8 @@ describe('TaskDetailPage', () => {
 
         expect(wrapper.text()).toContain('Warm worker pool')
         expect(wrapper.text()).toContain('Runtime summary')
-        expect(wrapper.text()).not.toContain('Task messages')
+        expect(wrapper.text()).toContain('Seed preview')
+        expect(wrapper.text()).toContain('Result preview')
+        expect(wrapper.text()).toContain('worker-demo-01')
     })
 })

@@ -107,9 +107,10 @@ Use with:
   around the real scheduling path; it does not replace ordinary feature acceptance
 - current PR chaos smokes in `xa-mass-testing` are runtime/aggregate/trace-first:
   polling all-failed, mixed-result, retry-exhausted, polling lease-expiry
-  redispatch, and websocket stale late-result runners assert `TaskWorkRuntime`
-  counters, active lease drain, final receipts, task terminal reason, and
-  `ExecutionEvent` transitions before any compatibility report payload
+  redispatch, websocket lease-expiry redispatch, and websocket stale late-result
+  runners assert `TaskWorkRuntime` counters, active lease drain, final receipts,
+  task terminal reason, and `ExecutionEvent` transitions before any
+  compatibility report payload
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).

@@ -17,8 +17,11 @@ import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
+import com.xa.mass.storage.api.TaskDetailStore;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,34 +40,48 @@ public class TaskApiController {
     private static final int MAX_INGEST_ITEM_COUNT = Integer.getInteger("xa.mass.api.maxIngestItemCount", 500);
     private static final int MAX_INGEST_ITEM_BYTES = Integer.getInteger("xa.mass.api.maxIngestItemBytes", 64 * 1024);
     private static final int MAX_INGEST_TOTAL_BYTES = Integer.getInteger("xa.mass.api.maxIngestTotalBytes", 1024 * 1024);
+    private static final int TASK_REVIEW_PREVIEW_LIMIT = Integer.getInteger("xa.mass.api.taskReviewPreviewLimit", 12);
+    private static final int TASK_REVIEW_EXPORT_LIMIT = Integer.getInteger("xa.mass.api.taskReviewExportLimit", 20000);
     private static final com.fasterxml.jackson.databind.ObjectMapper SIZE_OBJECT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
+    private final TaskDetailStore taskDetailStore;
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
                 new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog) {
-        this(taskQueries, taskAdmin, catalog, new ApiAuthService(), new ApiAuthorizationService(),
+        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, catalog, new ApiAuthService(),
+        this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
+        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
@@ -72,12 +89,14 @@ public class TaskApiController {
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
         this.taskAdmin = taskAdmin;
         this.catalog = catalog;
+        this.taskDetailStore = taskDetailStore;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
@@ -215,6 +234,52 @@ public class TaskApiController {
         } catch (Exception e) {
             return badRequest("Task block failed: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/{taskId}/review")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskReview(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        try {
+            TaskDetailSnapshot task = requireTaskDetail(taskId);
+            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+            TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(taskId);
+            List<TaskDetailStore.TaskMessageProjection> preview = loadTaskMessageProjections(taskId, TASK_REVIEW_PREVIEW_LIMIT);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("summary", toTaskReviewSummary(stats, preview.size()));
+            response.put("seedPreview", preview.stream().map(this::toTaskSeedPreviewItem).toList());
+            response.put("resultPreview", preview.stream().map(this::toTaskResultPreviewItem).toList());
+            response.put("exports", Map.of(
+                    "seedUrl", "/api/v1/tasks/" + taskId + "/review/seed-export",
+                    "resultUrl", "/api/v1/tasks/" + taskId + "/review/result-export"
+            ));
+            return ok(response);
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (NoSuchElementException e) {
+            return notFound(e.getMessage());
+        } catch (Exception e) {
+            return badRequest("Task review lookup failed: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/{taskId}/review/seed-export")
+    public ResponseEntity<?> exportTaskSeeds(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        return exportTaskReviewPayload(apiKeyHeader, authorizationHeader, taskId, "seed", true);
+    }
+
+    @GetMapping("/{taskId}/review/result-export")
+    public ResponseEntity<?> exportTaskResults(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        return exportTaskReviewPayload(apiKeyHeader, authorizationHeader, taskId, "result", false);
     }
 
     @PostMapping("/{taskId}:approve")
@@ -438,6 +503,44 @@ public class TaskApiController {
         view.put("endTime", task.getEndTime());
         view.put("terminalReason", task.getTerminalReason());
         return view;
+    }
+
+    private ResponseEntity<?> exportTaskReviewPayload(String apiKeyHeader,
+                                                      String authorizationHeader,
+                                                      String taskId,
+                                                      String exportKind,
+                                                      boolean exportSeedRows) {
+        try {
+            TaskDetailSnapshot task = requireTaskDetail(taskId);
+            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+            int exportLimit = resolveReviewExportLimit(task);
+            List<TaskDetailStore.TaskMessageProjection> projections = loadTaskMessageProjections(taskId, exportLimit);
+            List<Map<String, Object>> rows = projections.stream()
+                    .map(exportSeedRows ? this::toTaskSeedPreviewItem : this::toTaskResultPreviewItem)
+                    .toList();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("taskId", taskId);
+            payload.put("taskName", task.getTaskName());
+            payload.put("project", task.getProject());
+            payload.put("exportKind", exportKind);
+            payload.put("exportedAt", formatDateTime(LocalDateTime.now()));
+            payload.put("rowCount", rows.size());
+            payload.put("rows", rows);
+            byte[] body = RESPONSE_OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsBytes(payload);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + buildTaskExportFileName(task, exportKind) + "\"")
+                    .body(body);
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (NoSuchElementException e) {
+            return notFound(e.getMessage());
+        } catch (Exception e) {
+            return badRequest("Task " + exportKind + " export failed: " + e.getMessage());
+        }
     }
 
     private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
@@ -785,6 +888,110 @@ public class TaskApiController {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
+    }
+
+    private TaskDetailSnapshot requireTaskDetail(String taskId) {
+        ensureTaskDetailStoreConfigured();
+        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
+        if (task == null) {
+            throw new NoSuchElementException("Task not found: " + taskId);
+        }
+        return task;
+    }
+
+    private void ensureTaskDetailStoreConfigured() {
+        if (taskDetailStore == null) {
+            throw new IllegalStateException("Task review storage is unavailable");
+        }
+    }
+
+    private List<TaskDetailStore.TaskMessageProjection> loadTaskMessageProjections(String taskId, int limit) {
+        List<TaskDetailStore.TaskMessageProjection> projections = taskDetailStore.getTaskMessageProjections(taskId, Math.max(1, limit));
+        return projections.stream()
+                .sorted(Comparator.comparing(TaskDetailStore.TaskMessageProjection::createTime,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
+    private Map<String, Object> toTaskReviewSummary(TaskDetailStore.TaskMessageStats stats, int previewCount) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalItems", stats != null ? stats.getTotal() : 0L);
+        summary.put("successItems", stats != null ? stats.getSuccess() : 0L);
+        summary.put("failedItems", stats != null ? stats.getFailed() : 0L);
+        summary.put("expiredItems", stats != null ? stats.getExpired() : 0L);
+        summary.put("processingItems", stats != null ? stats.getProcessing() : 0L);
+        summary.put("previewCount", previewCount);
+        summary.put("previewLimit", TASK_REVIEW_PREVIEW_LIMIT);
+        summary.put("hasMore", stats != null && stats.getTotal() > previewCount);
+        return summary;
+    }
+
+    private Map<String, Object> toTaskSeedPreviewItem(TaskDetailStore.TaskMessageProjection projection) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("messageId", projection.messageId());
+        item.put("eventCode", resolveProjectionEventCode(projection));
+        item.put("status", enumName(projection.status()));
+        item.put("payloadRef", projection.payloadRef());
+        item.put("retryCount", projection.retryCount());
+        item.put("maxRetryCount", projection.maxRetryCount());
+        item.put("createTime", formatDateTime(projection.createTime()));
+        item.put("assignedTime", formatDateTime(projection.assignedTime()));
+        item.put("input", projection.input());
+        return item;
+    }
+
+    private Map<String, Object> toTaskResultPreviewItem(TaskDetailStore.TaskMessageProjection projection) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("messageId", projection.messageId());
+        item.put("eventCode", resolveProjectionEventCode(projection));
+        item.put("status", enumName(projection.status()));
+        item.put("finalReason", enumName(projection.finalReason()));
+        item.put("retryCount", projection.retryCount());
+        item.put("maxRetryCount", projection.maxRetryCount());
+        item.put("workerId", projection.latestAttemptWorkerId());
+        item.put("workerContextId", projection.latestAttemptWorkerContextId());
+        item.put("batchId", projection.latestAttemptBatchId());
+        item.put("attemptId", projection.latestAttemptId());
+        item.put("startTime", formatDateTime(projection.startTime()));
+        item.put("completeTime", formatDateTime(projection.completeTime()));
+        item.put("updateTime", formatDateTime(projection.updateTime()));
+        item.put("errorCode", projection.errorCode());
+        item.put("errorMessage", projection.errorMessage());
+        item.put("output", projection.output());
+        return item;
+    }
+
+    private String resolveProjectionEventCode(TaskDetailStore.TaskMessageProjection projection) {
+        if (projection == null || projection.input() == null) {
+            return null;
+        }
+        Object rawValue = projection.input().get("eventCode");
+        return rawValue == null ? null : String.valueOf(rawValue);
+    }
+
+    private int resolveReviewExportLimit(TaskDetailSnapshot task) {
+        int requested = task != null ? Math.max(task.getTaskTargetNumber(), task.getTaskEligibleNumber()) : 0;
+        if (requested <= 0 && taskDetailStore != null) {
+            TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(task.getTaskId());
+            requested = stats != null ? Math.toIntExact(Math.min(Integer.MAX_VALUE, stats.getTotal())) : 0;
+        }
+        if (requested <= 0) {
+            return TASK_REVIEW_PREVIEW_LIMIT;
+        }
+        return Math.min(requested, TASK_REVIEW_EXPORT_LIMIT);
+    }
+
+    private String buildTaskExportFileName(TaskDetailSnapshot task, String exportKind) {
+        String taskName = task != null && task.getTaskName() != null ? task.getTaskName().trim() : "task";
+        String normalizedTaskName = taskName.replaceAll("[^a-zA-Z0-9._-]+", "-");
+        if (normalizedTaskName.isBlank()) {
+            normalizedTaskName = "task";
+        }
+        return normalizedTaskName + "-" + exportKind + "-" + task.getTaskId() + ".json";
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

@@ -1,80 +1,46 @@
 package com.xa.mass.testing.chaos;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.transport.model.TransportOutboundMessage;
-import com.xa.mass.sdk.MassSdk;
-import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
-import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageSnapshot;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
-import com.xa.mass.testing.support.TestingPaths;
-import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
+import com.xa.mass.testing.chaos.support.ChaosReportWriter;
+import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
+import com.xa.mass.testing.chaos.support.ChaosSupport;
+import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
+import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
-import java.net.ServerSocket;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Runnable chaos probe for websocket disconnect -> real short lease expiry ->
- * redispatch to a different worker.
+ * Runnable chaos probe for websocket disconnect, runtime lease expiry, and redispatch to a
+ * different worker.
  *
- * <p>The runtime path stays real for dispatch, disconnect, worker online/offline
- * observation, redispatch, and result ingest. The embedded runtime is configured
- * with a deliberately short task-message lease window so watchdog expiry can be
- * exercised in a routine acceptance loop without mutating persisted attempt data.
- *
- * <p>Useful JVM properties:
- *
- * <pre>{@code
- * -Dmass.sdk.chaos.processingDelayMillis=25
- * -Dmass.sdk.chaos.assignmentRetryDelayMillis=100
- * -Dmass.sdk.chaos.leaseWatchdogIntervalSeconds=1
- * -Dmass.sdk.chaos.taskMessageLeaseSeconds=2
- * -Dmass.sdk.chaos.timeoutSeconds=25
- * }</pre>
+ * <p>The proof surface is runtime/aggregate/trace-first: active leases, final receipts,
+ * task work counters, terminal state, trace events, and real websocket worker observations.
+ * Compatibility projection is only included indirectly in the generated report snapshot.</p>
  */
 public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String ENDPOINT_PATH = "/testing-chaos";
     private static final String PROJECT_CODE = "demoApp";
     private static final String ROUTING_CODE = "us";
-    private static final String TASK_EVENT_CODE = "demo.dispatch";
     private static final String CHAOS_WORKER_ID = "sdk-lease-chaos-worker-0";
     private static final String STEADY_WORKER_ID = "sdk-lease-chaos-worker-1";
 
@@ -87,12 +53,12 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             ChaosConfig config = ChaosConfig.fromSystemProperties();
             ChaosReport report = new ScenarioRunner(config).run();
             System.out.println(report.toConsoleSummary());
-            System.out.println("SDK lease-expiry redispatch chaos report written to: " + report.reportPath());
+            System.out.println("SDK websocket lease-expiry redispatch chaos report written to: " + report.reportPath());
         } catch (Throwable t) {
             exitCode = 1;
             throw t;
         } finally {
-            if (booleanProperty("mass.sdk.chaos.forceExit", true)) {
+            if (ChaosSupport.booleanProperty("mass.sdk.chaos.forceExit", true)) {
                 System.exit(exitCode);
             }
         }
@@ -106,349 +72,185 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
 
         private ChaosReport run() throws Exception {
-            EmbeddedRuntime runtime = buildRuntime(config);
-            MassSdkApplication app = runtime.app();
-            WebSocketWorkerDriver chaosWorker = null;
-            WebSocketWorkerDriver steadyWorker = null;
+            CapturingExecutionEventSink traceSink = new CapturingExecutionEventSink();
+            ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createWebSocket(
+                    new ChaosRuntimeHarness.WebSocketRuntimeConfig(
+                            ENDPOINT_PATH,
+                            "sdk-lease-chaos",
+                            4,
+                            config.assignmentRetryDelayMillis(),
+                            config.leaseWatchdogIntervalSeconds(),
+                            config.taskMessageLeaseSeconds()
+                    ),
+                    traceSink
+            );
+            LeaseExpiryWorkerDriver chaosWorker = null;
+            LeaseExpiryWorkerDriver steadyWorker = null;
             long wallStartNanos = System.nanoTime();
 
             try {
-                app.start();
-                registerWorker(app, CHAOS_WORKER_ID);
-                registerWorker(app, STEADY_WORKER_ID);
+                runtime.start();
+                runtime.registerRealtimeWorker(CHAOS_WORKER_ID, "sdk-lease-chaos", PROJECT_CODE, ROUTING_CODE);
+                runtime.registerRealtimeWorker(STEADY_WORKER_ID, "sdk-lease-chaos", PROJECT_CODE, ROUTING_CODE);
 
-                chaosWorker = new WebSocketWorkerDriver(
+                chaosWorker = new LeaseExpiryWorkerDriver(
                         CHAOS_WORKER_ID,
-                        runtime.serverUri(),
+                        runtime.serverUri(CHAOS_WORKER_ID),
                         config,
                         WorkerMode.DISCONNECT_WITHOUT_RESULT
                 );
-                WebSocketWorkerDriver activeChaosWorker = chaosWorker;
-                steadyWorker = new WebSocketWorkerDriver(
+                LeaseExpiryWorkerDriver activeChaosWorker = chaosWorker;
+                steadyWorker = new LeaseExpiryWorkerDriver(
                         STEADY_WORKER_ID,
-                        runtime.serverUri(),
+                        runtime.serverUri(STEADY_WORKER_ID),
                         config,
                         WorkerMode.NORMAL
                 );
 
                 chaosWorker.start();
-                waitForWorkerOnline(app, CHAOS_WORKER_ID, "chaos worker should be online before scenario starts");
+                runtime.waitForWorkerOnline(
+                        CHAOS_WORKER_ID,
+                        config.timeoutSeconds(),
+                        "chaos worker should be online before scenario starts"
+                );
 
-                TaskShellSnapshot task = createUntargetedTask(app, "sdk-chaos-lease-expiry-redispatch");
-                CompatibilityMessageView message = waitForSingleMessage(runtime.taskDetailStore(), task.getTaskId());
+                TaskShellSnapshot task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.singleMessage(
+                        "sdk-chaos",
+                        PROJECT_CODE,
+                        "sdk-chaos-lease-expiry-redispatch",
+                        ROUTING_CODE,
+                        1,
+                        config.timeoutSeconds(),
+                        Map.of("source", "SdkWebSocketLeaseExpiryRedispatchChaosRunner")
+                ));
 
-                waitForCondition(
+                ChaosSupport.waitForCondition(
+                        () -> activeChaosWorker.capturedMessageId() != null,
+                        config.timeoutSeconds(),
+                        "chaos worker should capture the first dispatch frame"
+                );
+                String messageId = activeChaosWorker.capturedMessageId();
+                runtime.waitForActiveAttemptOnWorker(
+                        task.getTaskId(),
+                        messageId,
+                        CHAOS_WORKER_ID,
+                        config.timeoutSeconds(),
+                        "first active lease should stay bound to the chaos worker before expiry"
+                );
+
+                ChaosSupport.waitForCondition(
                         () -> activeChaosWorker.disconnectCycles() >= 1,
                         config.timeoutSeconds(),
                         "chaos worker should disconnect after receiving the first dispatch"
                 );
-                waitForCondition(
-                        () -> !app.isWorkerOnline(CHAOS_WORKER_ID),
+                runtime.waitForWorkerOffline(
+                        CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
                         "runtime should observe the chaos worker offline after disconnect"
                 );
 
-                CompatibilityAttemptView firstAttempt = waitForActiveAttemptOnWorker(
-                        runtime.taskDetailStore(),
-                        task.getTaskId(),
-                        message.messageId(),
-                        CHAOS_WORKER_ID,
-                        "first active attempt should stay bound to the chaos worker before lease expiry"
-                );
-
                 steadyWorker.start();
-                waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
-
-                waitForCondition(
-                        () -> ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId()).size() >= 2,
+                runtime.waitForWorkerOnline(
+                        STEADY_WORKER_ID,
                         config.timeoutSeconds(),
-                        "second attempt should appear after watchdog expiry and redispatch"
+                        "steady worker should come online before redispatch"
                 );
 
-                TaskOutcome outcome = waitForTerminalTask(
-                        app,
-                        runtime.taskDetailStore(),
+                runtime.waitForAttemptCount(
                         task.getTaskId(),
+                        messageId,
+                        2,
+                        config.timeoutSeconds(),
+                        "runtime should reopen the work after watchdog expiry and redispatch"
+                );
+
+                TaskOutcomeSnapshot terminalOutcome = runtime.waitForTerminalTask(
+                        task.getTaskId(),
+                        1,
+                        config.timeoutSeconds(),
                         "lease-expiry redispatch task must converge"
                 );
-                CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
-                List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
+                TaskWorkStats terminalStats = runtime.waitForRuntimeStats(
+                        task.getTaskId(),
+                        1,
+                        1,
+                        0,
+                        0,
+                        config.timeoutSeconds(),
+                        "runtime should finalize the redispatched work as success"
+                );
+                ChaosSupport.require(terminalStats.readyCount() == 0, "runtime ready queue should be drained");
+                ChaosSupport.require(terminalStats.inflightCount() == 0, "runtime active leases should be drained");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "runtime active leases should be empty after terminal convergence");
 
-                require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
-                CompatibilityAttemptView expiredAttempt = finalAttempts.get(0);
-                CompatibilityAttemptView successAttempt = finalAttempts.get(1);
-
-                require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
-                        "first attempt should belong to the chaos worker");
-                require("EXPIRED".equals(expiredAttempt.status()),
-                        "first attempt should close as EXPIRED");
-                require("LEASE_EXPIRED".equals(expiredAttempt.finalReason()),
-                        "first attempt final reason should be LEASE_EXPIRED");
-
-                require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
-                        "second attempt should belong to the steady worker");
-                require("SUCCEEDED".equals(successAttempt.status()),
-                        "second attempt should close as SUCCEEDED");
-
-                require(finalMessage != null, "final task message should exist");
-                require("SUCCESS".equals(finalMessage.status()),
-                        "logical message should converge to SUCCESS after redispatch");
-                require("BUSINESS_SUCCESS".equals(finalMessage.finalReason()),
-                        "logical message final reason should be BUSINESS_SUCCESS");
-                require(finalMessage.retryCount() == 1,
-                        "logical message retryCount should record one expiry-driven retry");
-                require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
-                        "latest attempt worker should be the steady worker");
-
-                require("TERMINAL".equals(outcome.status()),
+                RecentFinalWorkReceipt finalReceipt = runtime.recentFinalReceipt(task.getTaskId(), messageId).orElse(null);
+                ChaosSupport.require(finalReceipt != null, "runtime recent final receipt should exist");
+                ChaosSupport.require(finalReceipt.retryCount() == 1,
+                        "runtime final receipt should record one expiry-driven retry");
+                TaskStateSnapshot currentTaskState = runtime.app().getTaskState(task.getTaskId());
+                ChaosSupport.require(currentTaskState != null && "TERMINAL".equals(currentTaskState.getStatus()),
                         "task should converge to TERMINAL");
-                require("ALL_MESSAGES_SUCCEEDED".equals(outcome.terminalReason()),
+                ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(terminalOutcome.terminalReason()),
                         "task terminal reason should be ALL_MESSAGES_SUCCEEDED");
-                require(chaosWorker.receivedDispatches() == 1,
+                ChaosSupport.require(chaosWorker.receivedDispatches() == 1,
                         "chaos worker should receive exactly one dispatch");
-                require(chaosWorker.disconnectCycles() == 1,
+                ChaosSupport.require(chaosWorker.disconnectCycles() == 1,
                         "chaos worker should disconnect exactly once");
-                require(chaosWorker.resultSubmissions() == 0,
+                ChaosSupport.require(chaosWorker.resultSubmissions() == 0,
                         "chaos worker should not submit a result");
-                require(steadyWorker.resultSubmissions() >= 1,
+                ChaosSupport.require(steadyWorker.receivedDispatches() >= 1,
+                        "steady worker should receive the redispatched work");
+                ChaosSupport.require(steadyWorker.resultSubmissions() >= 1,
                         "steady worker should submit the final success result");
 
-                Path reportPath = writeReport(
-                        config,
-                        runtime,
-                        outcome,
-                        firstAttempt.leaseExpireTime(),
-                        new MessageProjection(
-                                finalMessage.messageId(),
-                                finalMessage.status(),
-                                finalMessage.finalReason(),
-                                finalMessage.retryCount(),
-                                finalMessage.latestAttemptWorkerId()
+                TraceEventAssertions.of(traceSink)
+                        .forTask(task.getTaskId())
+                        .requireMinTotalEvents(5)
+                        .requireEventType(ExecutionEventType.LEASE_EXPIRED)
+                        .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
+                        .requireCallbackAccepted(messageId)
+                        .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                        .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
+
+                Path reportPath = ChaosReportWriter.write("sdk-websocket-lease-expiry-redispatch-chaos", Map.of(
+                        "config", config.toMap(),
+                        "runtime", Map.of(
+                                "transport", "websocket",
+                                "transportPort", extractPort(runtime.serverUri(CHAOS_WORKER_ID)),
+                                "endpointPath", ENDPOINT_PATH
                         ),
-                        finalAttempts.stream().map(AttemptProjection::fromAttempt).toList(),
-                        chaosWorker.snapshot(),
-                        steadyWorker.snapshot(),
-                        System.nanoTime() - wallStartNanos
-                );
+                        "wallClock", Map.of("totalMillis", ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
+                        "leaseWindow", Map.of(
+                                "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
+                                "finalReceiptRetryCount", finalReceipt.retryCount()
+                        ),
+                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
+                        "terminalOutcome", terminalOutcome.toMap(),
+                        "workers", Map.of(
+                                "chaosWorker", chaosWorker.snapshot().toMap(),
+                                "steadyWorker", steadyWorker.snapshot().toMap()
+                        )
+                ));
 
                 return new ChaosReport(
-                        runtime.transportPort(),
+                        extractPort(runtime.serverUri(CHAOS_WORKER_ID)),
                         task.getTaskId(),
-                        finalMessage.messageId(),
+                        messageId,
                         chaosWorker.disconnectCycles(),
                         chaosWorker.receivedDispatches(),
                         steadyWorker.receivedDispatches(),
-                        finalAttempts.size(),
-                        finalMessage.retryCount(),
-                        outcome.terminalReason(),
-                        nanosToMillis(System.nanoTime() - wallStartNanos),
+                        finalReceipt.retryCount() + 1,
+                        finalReceipt.retryCount(),
+                        terminalOutcome.terminalReason(),
+                        ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath
                 );
             } finally {
                 closeQuietly(chaosWorker);
                 closeQuietly(steadyWorker);
-                app.stop();
+                runtime.close();
             }
-        }
-
-        private EmbeddedRuntime buildRuntime(ChaosConfig config) {
-            int transportPort = findFreePort();
-            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-            MassSdkApplication app = MassSdk.builder()
-                    .transport(transport -> transport
-                            .webSocketAdapter(webSocket -> webSocket
-                                    .server(transportPort, ENDPOINT_PATH)
-                                    .enabled(true)
-                                    .serverEnabled(true))
-                            .inputQueue(new InMemoryMessageQueue<>("sdk-lease-chaos-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("sdk-lease-chaos-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
-                            .queueMode())
-                    .engine(engine -> engine
-                            .enabled(true)
-                            .workerThreads(4)
-                            .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
-                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
-                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
-                            .taskStorage(taskStorage)
-                            .taskDetailStore(taskStorage))
-                    .build();
-            return new EmbeddedRuntime(app, taskStorage, transportPort, ENDPOINT_PATH);
-        }
-
-        private void registerWorker(MassSdkApplication app, String workerId) {
-            app.registerWorker(WorkerRegistration.builder()
-                    .workerId(workerId)
-                    .workerGroupId("sdk-lease-chaos")
-                    .supportedProjects(List.of(PROJECT_CODE))
-                    .eventBindings(List.of(
-                            WorkerEventBinding.builder()
-                                    .eventCode(TASK_EVENT_CODE)
-                                    .projectCodes(List.of(PROJECT_CODE))
-                                    .build()
-                    ))
-                    .transportHint(WorkerTransportHints.REALTIME)
-                    .build());
-            app.registerWorkerContext(WorkerContextRegistration.builder()
-                    .workerContextId(workerId + "-context")
-                    .workerId(workerId)
-                    .project(PROJECT_CODE)
-                    .routingTags(java.util.Set.of(ROUTING_CODE))
-                    .build());
-        }
-
-        private TaskShellSnapshot createUntargetedTask(MassSdkApplication app, String taskName) {
-            TaskShellSnapshot task = createTask(app, MassTaskShellCreateRequest.builder()
-                    .userId("sdk-chaos")
-                    .project(PROJECT_CODE)
-                    .sourceRef(taskName)
-                    .executionSpec(taskExecutionSpec(1, config.timeoutSeconds(), 1))
-                    .sharedConfig(Map.of(
-                            TaskSharedConfig.ROUTING_CODE, ROUTING_CODE,
-                            "source", "SdkWebSocketLeaseExpiryRedispatchChaosRunner"
-                    ))
-                    .build(),
-                    List.of(Map.of(
-                            "seq", 0,
-                            "taskName", taskName,
-                            "target", taskName + "-target-0"
-                    )),
-                    false);
-            require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
-            return task;
-        }
-
-        private TaskShellSnapshot createTask(MassSdkApplication app,
-                                             MassTaskShellCreateRequest request,
-                                             List<Object> items,
-                                             boolean keepIntakeOpen) {
-            TaskShellSnapshot task = app.createTaskShell(request);
-            if (items != null && !items.isEmpty()) {
-                app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
-                        .eventCode(TASK_EVENT_CODE)
-                        .items(items)
-                        .build());
-            }
-            if (!keepIntakeOpen) {
-                require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
-            }
-            return task;
-        }
-
-        private TaskExecutionOptions taskExecutionSpec(int batchSize,
-                                                       int maxRuntimeSeconds,
-                                                       int defaultMaxRetryCount) {
-            TaskExecutionOptions spec = new TaskExecutionOptions();
-            spec.setBatchSize(batchSize);
-            spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
-            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
-            return spec;
-        }
-
-        private void waitForWorkerOnline(MassSdkApplication app, String workerId, String failureMessage) throws Exception {
-            waitForCondition(() -> app.isWorkerOnline(workerId), config.timeoutSeconds(), failureMessage);
-        }
-
-        private CompatibilityMessageView waitForSingleMessage(TaskDetailStore taskDetailStore, String taskId) throws Exception {
-            waitForCondition(
-                    () -> ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().size() == 1,
-                    config.timeoutSeconds(),
-                    "task should materialize exactly one logical message"
-            );
-            return ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().get(0);
-        }
-
-        private CompatibilityAttemptView waitForActiveAttemptOnWorker(TaskDetailStore taskDetailStore,
-                                                                      String taskId,
-                                                                      String messageId,
-                                                                      String workerId,
-                                                                      String failureMessage) throws Exception {
-            waitForCondition(() -> {
-                CompatibilityAttemptView attempt =
-                        ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
-                return attempt != null
-                        && workerId.equals(attempt.workerId())
-                        && !List.of("SUCCEEDED", "FAILED", "EXPIRED", "REVOKED").contains(attempt.status());
-            }, config.timeoutSeconds(), failureMessage);
-            return ProjectionTestViews.latestActiveAttempt(taskDetailStore, taskId, messageId);
-        }
-
-        private TaskOutcome waitForTerminalTask(MassSdkApplication app,
-                                                TaskDetailStore taskDetailStore,
-                                                String taskId,
-                                                String failureMessage) throws Exception {
-            waitForCondition(
-                    () -> {
-                        TaskStateSnapshot current = app.getTaskState(taskId);
-                        return current != null && "TERMINAL".equals(current.getStatus());
-                    },
-                    config.timeoutSeconds(),
-                    failureMessage
-            );
-
-            TaskStateSnapshot task = app.getTaskState(taskId);
-            require(task != null, "task should exist: " + taskId);
-            CompatibilityMessageSnapshot messageSnapshot =
-                    ProjectionTestViews.snapshot(taskDetailStore, taskId, 1);
-            List<CompatibilityMessageView> messages = messageSnapshot.messages();
-            List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
-            for (CompatibilityMessageView message : messages) {
-                List<CompatibilityAttemptView> attempts =
-                        ProjectionTestViews.attempts(taskDetailStore, taskId, message.messageId());
-                messageOutcomes.add(new MessageOutcome(
-                        message.messageId(),
-                        message.status(),
-                        message.finalReason(),
-                        message.retryCount(),
-                        message.latestAttemptWorkerId(),
-                        attempts.stream().map(AttemptProjection::fromAttempt).toList()
-                ));
-            }
-            return new TaskOutcome(
-                    task.getTaskId(),
-                    task.getStatus(),
-                    task.getTerminalReason(),
-                    messageOutcomes
-            );
-        }
-
-        private Path writeReport(ChaosConfig config,
-                                 EmbeddedRuntime runtime,
-                                 TaskOutcome outcome,
-                                 LocalDateTime initialLeaseExpireTime,
-                                 MessageProjection finalMessage,
-                                 List<AttemptProjection> finalAttempts,
-                                 WorkerRuntimeSnapshot chaosWorker,
-                                 WorkerRuntimeSnapshot steadyWorker,
-                                 long wallNanos) throws Exception {
-            Map<String, Object> report = new LinkedHashMap<>();
-            report.put("config", config.toMap());
-            report.put("runtime", Map.of(
-                    "transport", "websocket",
-                    "transportPort", runtime.transportPort(),
-                    "endpointPath", runtime.endpointPath()
-            ));
-            report.put("wallClock", Map.of("totalMillis", nanosToMillis(wallNanos)));
-            report.put("leaseWindow", Map.of(
-                    "strategy", "runtime-configured-short-lease",
-                    "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
-                    "initialLeaseExpireTime", String.valueOf(initialLeaseExpireTime)
-            ));
-            report.put("task", outcome.toMap());
-            report.put("finalMessage", finalMessage.toMap());
-            report.put("finalAttempts", finalAttempts.stream().map(AttemptProjection::toMap).toList());
-            report.put("workers", Map.of(
-                    "chaosWorker", chaosWorker.toMap(),
-                    "steadyWorker", steadyWorker.toMap()
-            ));
-
-            Path reportDir = TestingPaths.reportDir("chaos-reports");
-            Files.createDirectories(reportDir);
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-            Path reportPath = reportDir.resolve("sdk-websocket-lease-expiry-redispatch-chaos-" + timestamp + ".json");
-            Files.writeString(reportPath, GSON.toJson(report), StandardCharsets.UTF_8);
-            return reportPath;
         }
     }
 
@@ -457,12 +259,12 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         DISCONNECT_WITHOUT_RESULT
     }
 
-    private static final class WebSocketWorkerDriver implements AutoCloseable {
+    private static final class LeaseExpiryWorkerDriver implements AutoCloseable {
         private final String workerId;
         private final URI serverUri;
         private final ChaosConfig config;
         private final WorkerMode mode;
-        private final ExecutorService processingExecutor;
+        private final ScheduledExecutorService executor;
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final AtomicBoolean disconnectBudgetConsumed = new AtomicBoolean(false);
         private final AtomicInteger openEvents = new AtomicInteger();
@@ -470,25 +272,23 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         private final AtomicInteger errorEvents = new AtomicInteger();
         private final AtomicInteger disconnectCycles = new AtomicInteger();
         private final AtomicInteger resultSubmissions = new AtomicInteger();
-        private final AtomicLong receivedDispatches = new AtomicLong();
+        private final AtomicInteger receivedDispatches = new AtomicInteger();
+        private final AtomicReference<JsonObject> capturedDispatchFrame = new AtomicReference<>();
         private final Object clientLock = new Object();
 
         private WorkerSocketClient client;
 
-        private WebSocketWorkerDriver(String workerId,
-                                      URI serverUri,
-                                      ChaosConfig config,
-                                      WorkerMode mode) {
+        private LeaseExpiryWorkerDriver(String workerId, URI serverUri, ChaosConfig config, WorkerMode mode) {
             this.workerId = workerId;
             this.serverUri = serverUri;
             this.config = config;
             this.mode = mode;
-            this.processingExecutor = Executors.newSingleThreadExecutor(namedFactory("SdkLeaseChaosWorker-" + workerId));
+            this.executor = Executors.newSingleThreadScheduledExecutor(namedFactory("SdkLeaseChaosWorker-" + workerId));
         }
 
         private void start() throws Exception {
             WorkerSocketClient nextClient = new WorkerSocketClient(serverUri);
-            require(nextClient.connectBlocking(5, TimeUnit.SECONDS),
+            ChaosSupport.require(nextClient.connectBlocking(5, TimeUnit.SECONDS),
                     "websocket worker failed to connect: " + workerId + " uri=" + serverUri);
             synchronized (clientLock) {
                 client = nextClient;
@@ -499,12 +299,16 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             return disconnectCycles.get();
         }
 
-        private long receivedDispatches() {
+        private int resultSubmissions() {
+            return resultSubmissions.get();
+        }
+
+        private int receivedDispatches() {
             return receivedDispatches.get();
         }
 
-        private int resultSubmissions() {
-            return resultSubmissions.get();
+        private String capturedMessageId() {
+            return ChaosSupport.readString(capturedDispatchFrame.get(), "messageId");
         }
 
         private WorkerRuntimeSnapshot snapshot() {
@@ -525,23 +329,24 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             if (!closed.compareAndSet(false, true)) {
                 return;
             }
+            executor.shutdownNow();
             synchronized (clientLock) {
                 if (client != null) {
                     client.closeBlocking();
                     client = null;
                 }
             }
-            processingExecutor.shutdownNow();
-            processingExecutor.awaitTermination(5, TimeUnit.SECONDS);
+            executor.awaitTermination(5, TimeUnit.SECONDS);
         }
 
         private void onDispatch(JsonObject frame) {
             receivedDispatches.incrementAndGet();
-            processingExecutor.submit(() -> handleDispatch(frame));
+            capturedDispatchFrame.compareAndSet(null, frame.deepCopy());
+            executor.execute(() -> handleDispatch(frame));
         }
 
         private void handleDispatch(JsonObject frame) {
-            maybeSleep(config.processingDelayMillis());
+            ChaosSupport.maybeSleep(config.processingDelayMillis());
             if (mode == WorkerMode.DISCONNECT_WITHOUT_RESULT
                     && disconnectBudgetConsumed.compareAndSet(false, true)) {
                 disconnectCycles.incrementAndGet();
@@ -558,29 +363,27 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 }
                 return;
             }
-
             sendTaskResult(frame);
         }
 
         private void sendTaskResult(JsonObject frame) {
-            Map<String, Object> output = new LinkedHashMap<>();
-            output.put("workerId", workerId);
-            output.put("mode", mode.name());
-            output.put("receivedDispatches", receivedDispatches.get());
-
-            String payload = buildTaskResult(frame, true, "ok", output);
             WorkerSocketClient activeClient;
             synchronized (clientLock) {
                 activeClient = client;
             }
-            require(activeClient != null && activeClient.isOpen(), "websocket client must be open for " + workerId);
-            activeClient.send(payload);
+            ChaosSupport.require(activeClient != null && activeClient.isOpen(),
+                    "websocket client must be open for " + workerId);
+            Map<String, Object> output = new LinkedHashMap<>();
+            output.put("workerId", workerId);
+            output.put("mode", mode.name());
+            output.put("receivedDispatches", receivedDispatches.get());
+            activeClient.send(ChaosSupport.buildTaskResult(frame, true, "ok", output));
             resultSubmissions.incrementAndGet();
         }
 
         private final class WorkerSocketClient extends WebSocketClient {
             private WorkerSocketClient(URI serverUri) {
-                super(appendWorkerId(serverUri, workerId));
+                super(ChaosSupport.appendWorkerId(serverUri, workerId));
             }
 
             @Override
@@ -590,8 +393,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
             @Override
             public void onMessage(String message) {
-                JsonObject frame = parseFrame(message);
-                if (isTaskDispatchFrame(frame)) {
+                JsonObject frame = ChaosSupport.parseFrame(message);
+                if (ChaosSupport.isTaskDispatchFrame(frame)) {
                     onDispatch(frame);
                 }
             }
@@ -608,23 +411,13 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
     }
 
-    private record EmbeddedRuntime(MassSdkApplication app,
-                                   TaskDetailStore taskDetailStore,
-                                   int transportPort,
-                                   String endpointPath) {
-        private URI serverUri() {
-            require(transportPort > 0, "websocket server port must be allocated");
-            return URI.create("ws://127.0.0.1:" + transportPort + endpointPath);
-        }
-    }
-
     private record WorkerRuntimeSnapshot(String workerId,
                                          String mode,
                                          int openEvents,
                                          int closeEvents,
                                          int errorEvents,
                                          int disconnectCycles,
-                                         long receivedDispatches,
+                                         int receivedDispatches,
                                          int resultSubmissions) {
         private Map<String, Object> toMap() {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -640,89 +433,6 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
     }
 
-    private record AttemptProjection(int attemptNo,
-                                     String attemptId,
-                                     String workerId,
-                                     String workerContextId,
-                                     String batchId,
-                                     String status,
-                                     String finalReason,
-                                     String leaseExpireTime) {
-        private static AttemptProjection fromAttempt(CompatibilityAttemptView attempt) {
-            return new AttemptProjection(
-                    attempt.attemptNo(),
-                    attempt.attemptId(),
-                    attempt.workerId(),
-                    attempt.workerContextId(),
-                    attempt.batchId(),
-                    attempt.status(),
-                    attempt.finalReason(),
-                    attempt.leaseExpireTime() != null ? String.valueOf(attempt.leaseExpireTime()) : null
-            );
-        }
-
-        private Map<String, Object> toMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("attemptNo", attemptNo);
-            map.put("attemptId", attemptId);
-            map.put("workerId", workerId);
-            map.put("workerContextId", workerContextId);
-            map.put("batchId", batchId);
-            map.put("status", status);
-            map.put("finalReason", finalReason);
-            map.put("leaseExpireTime", leaseExpireTime);
-            return Map.copyOf(map);
-        }
-    }
-
-    private record MessageProjection(String messageId,
-                                     String status,
-                                     String finalReason,
-                                     int retryCount,
-                                     String latestAttemptWorkerId) {
-        private Map<String, Object> toMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("messageId", messageId);
-            map.put("status", status);
-            map.put("finalReason", finalReason);
-            map.put("retryCount", retryCount);
-            map.put("latestAttemptWorkerId", latestAttemptWorkerId);
-            return Map.copyOf(map);
-        }
-    }
-
-    private record MessageOutcome(String messageId,
-                                  String status,
-                                  String finalReason,
-                                  int retryCount,
-                                  String latestAttemptWorkerId,
-                                  List<AttemptProjection> attempts) {
-        private Map<String, Object> toMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("messageId", messageId);
-            map.put("status", status);
-            map.put("finalReason", finalReason);
-            map.put("retryCount", retryCount);
-            map.put("latestAttemptWorkerId", latestAttemptWorkerId);
-            map.put("attempts", attempts.stream().map(AttemptProjection::toMap).toList());
-            return Map.copyOf(map);
-        }
-    }
-
-    private record TaskOutcome(String taskId,
-                               String status,
-                               String terminalReason,
-                               List<MessageOutcome> messages) {
-        private Map<String, Object> toMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("taskId", taskId);
-            map.put("status", status);
-            map.put("terminalReason", terminalReason);
-            map.put("messages", messages.stream().map(MessageOutcome::toMap).toList());
-            return Map.copyOf(map);
-        }
-    }
-
     private record ChaosConfig(int processingDelayMillis,
                                long assignmentRetryDelayMillis,
                                long leaseWatchdogIntervalSeconds,
@@ -730,17 +440,17 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                int timeoutSeconds) {
         private static ChaosConfig fromSystemProperties() {
             ChaosConfig config = new ChaosConfig(
-                    intProperty("mass.sdk.chaos.processingDelayMillis", 25),
-                    longProperty("mass.sdk.chaos.assignmentRetryDelayMillis", 100L),
-                    longProperty("mass.sdk.chaos.leaseWatchdogIntervalSeconds", 1L),
-                    longProperty("mass.sdk.chaos.taskMessageLeaseSeconds", 2L),
-                    intProperty("mass.sdk.chaos.timeoutSeconds", 25)
+                    ChaosSupport.intProperty("mass.sdk.chaos.processingDelayMillis", 25),
+                    ChaosSupport.longProperty("mass.sdk.chaos.assignmentRetryDelayMillis", 100L),
+                    ChaosSupport.longProperty("mass.sdk.chaos.leaseWatchdogIntervalSeconds", 1L),
+                    ChaosSupport.longProperty("mass.sdk.chaos.taskMessageLeaseSeconds", 2L),
+                    ChaosSupport.intProperty("mass.sdk.chaos.timeoutSeconds", 25)
             );
-            require(config.processingDelayMillis >= 0, "processingDelayMillis must not be negative");
-            require(config.assignmentRetryDelayMillis > 0, "assignmentRetryDelayMillis must be positive");
-            require(config.leaseWatchdogIntervalSeconds > 0, "leaseWatchdogIntervalSeconds must be positive");
-            require(config.taskMessageLeaseSeconds > 0, "taskMessageLeaseSeconds must be positive");
-            require(config.timeoutSeconds > 0, "timeoutSeconds must be positive");
+            ChaosSupport.require(config.processingDelayMillis >= 0, "processingDelayMillis must not be negative");
+            ChaosSupport.require(config.assignmentRetryDelayMillis > 0, "assignmentRetryDelayMillis must be positive");
+            ChaosSupport.require(config.leaseWatchdogIntervalSeconds > 0, "leaseWatchdogIntervalSeconds must be positive");
+            ChaosSupport.require(config.taskMessageLeaseSeconds > 0, "taskMessageLeaseSeconds must be positive");
+            ChaosSupport.require(config.timeoutSeconds > 0, "timeoutSeconds must be positive");
             return config;
         }
 
@@ -759,8 +469,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                String taskId,
                                String messageId,
                                int chaosDisconnectCycles,
-                               long chaosDispatches,
-                               long steadyDispatches,
+                               int chaosDispatches,
+                               int steadyDispatches,
                                int finalAttemptCount,
                                int finalRetryCount,
                                String terminalReason,
@@ -793,6 +503,10 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         };
     }
 
+    private static int extractPort(URI uri) {
+        return uri.getPort();
+    }
+
     private static void closeQuietly(AutoCloseable closeable) {
         if (closeable == null) {
             return;
@@ -803,152 +517,4 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             // Best-effort shutdown only.
         }
     }
-
-    private static void waitForCondition(BooleanSupplier condition,
-                                         int timeoutSeconds,
-                                         String failureMessage) throws Exception {
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
-        while (System.nanoTime() < deadlineNanos) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            Thread.sleep(50L);
-        }
-        require(condition.getAsBoolean(), failureMessage);
-    }
-
-    private static void maybeSleep(int processingDelayMillis) {
-        if (processingDelayMillis <= 0) {
-            return;
-        }
-        try {
-            Thread.sleep(processingDelayMillis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static JsonObject parseFrame(String message) {
-        try {
-            return GSON.fromJson(message, JsonObject.class);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static boolean isTaskDispatchFrame(JsonObject frame) {
-        return frame != null
-                && readString(frame, "taskId") != null
-                && readString(frame, "messageId") != null
-                && !hasBoolean(frame, "success")
-                && !isResponseFrame(frame);
-    }
-
-    private static boolean isResponseFrame(JsonObject frame) {
-        return frame != null
-                && frame.has("response")
-                && !frame.get("response").isJsonNull()
-                && frame.get("response").getAsBoolean();
-    }
-
-    private static boolean hasBoolean(JsonObject frame, String field) {
-        if (frame == null || !frame.has(field) || frame.get(field).isJsonNull()) {
-            return false;
-        }
-        try {
-            frame.get(field).getAsBoolean();
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private static String buildTaskResult(JsonObject taskFrame,
-                                          boolean success,
-                                          String detail,
-                                          Map<String, Object> output) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", readString(taskFrame, "messageId"));
-        frame.addProperty("workerId", readString(taskFrame, "workerId"));
-        frame.addProperty("taskId", readString(taskFrame, "taskId"));
-        frame.addProperty("project", readString(taskFrame, "project"));
-        frame.addProperty("success", success);
-        frame.addProperty("detail", detail);
-        frame.add("output", GSON.toJsonTree(output != null ? output : Map.of()));
-        return GSON.toJson(frame);
-    }
-
-    private static String readString(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
-            return null;
-        }
-        try {
-            return object.get(field).getAsString();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static URI appendWorkerId(URI serverUri, String workerId) {
-        String existingQuery = serverUri.getRawQuery();
-        String workerQuery = "workerId=" + workerId.trim();
-        String mergedQuery = (existingQuery == null || existingQuery.isBlank())
-                ? workerQuery
-                : existingQuery + "&" + workerQuery;
-        try {
-            return new URI(
-                    serverUri.getScheme(),
-                    serverUri.getRawAuthority(),
-                    serverUri.getRawPath(),
-                    mergedQuery,
-                    serverUri.getRawFragment()
-            );
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
-        }
-    }
-
-    private static int intProperty(String key, int defaultValue) {
-        String raw = System.getProperty(key);
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        return Integer.parseInt(raw.trim());
-    }
-
-    private static long longProperty(String key, long defaultValue) {
-        String raw = System.getProperty(key);
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        return Long.parseLong(raw.trim());
-    }
-
-    private static boolean booleanProperty(String key, boolean defaultValue) {
-        String raw = System.getProperty(key);
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        return Boolean.parseBoolean(raw.trim());
-    }
-
-    private static double nanosToMillis(long nanos) {
-        return nanos / 1_000_000.0d;
-    }
-
-    private static int findFreePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to allocate a free transport port", e);
-        }
-    }
-
-    private static void require(boolean condition, String message) {
-        if (!condition) {
-            throw new IllegalStateException(message);
-        }
-    }
 }
-
-

@@ -11,6 +11,20 @@
       <div class="actions">
         <el-button @click="goBack">Back</el-button>
         <el-button
+          v-if="review"
+          plain
+          @click="handleSeedExport"
+        >
+          Export seeds
+        </el-button>
+        <el-button
+          v-if="review"
+          plain
+          @click="handleResultExport"
+        >
+          Export results
+        </el-button>
+        <el-button
           v-if="detail && detail.task.status === 'NEW'"
           v-permission="'task:approve'"
           :loading="actionLoading === 'approve'"
@@ -111,6 +125,18 @@
             {{ detail.task.peakAssignedWorkerCount }}
           </div>
         </div>
+        <div class="metric-tile" v-if="review">
+          <div class="metric-label">Processing / failed</div>
+          <div class="metric-value">
+            {{ review.summary.processingItems }} / {{ review.summary.failedItems }}
+          </div>
+        </div>
+        <div class="metric-tile" v-if="review">
+          <div class="metric-label">Preview rows</div>
+          <div class="metric-value">
+            {{ review.summary.previewCount }}
+          </div>
+        </div>
       </section>
 
       <el-row :gutter="20">
@@ -170,6 +196,107 @@
         </template>
         <pre class="json-block">{{ formatJson(detail.task.sharedConfig) }}</pre>
       </el-card>
+
+      <el-card class="page-card">
+        <template #header>
+          <div class="review-header">
+            <strong>Seed preview</strong>
+            <span v-if="review" class="review-caption">
+              {{ review.summary.totalItems }} items in task
+              <template v-if="review.summary.hasMore">
+                , showing first {{ review.summary.previewLimit }}
+              </template>
+            </span>
+          </div>
+        </template>
+        <el-table
+          v-if="review"
+          :data="review.seedPreview"
+          stripe
+          class="review-table"
+        >
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <pre class="json-block review-json">{{ formatJson(row.input) }}</pre>
+            </template>
+          </el-table-column>
+          <el-table-column prop="messageId" label="Message" min-width="220">
+            <template #default="{ row }">
+              <span class="mono">{{ row.messageId }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="eventCode" label="Event" min-width="180" />
+          <el-table-column prop="status" label="Status" width="120" />
+          <el-table-column prop="createTime" label="Created" min-width="180" />
+          <el-table-column label="Seed summary" min-width="280">
+            <template #default="{ row }">
+              <span>{{ summarizeRecord(row.input) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <el-card class="page-card">
+        <template #header>
+          <div class="review-header">
+            <strong>Result preview</strong>
+            <span v-if="review" class="review-caption">
+              worker attribution and result output from the latest visible attempt
+            </span>
+          </div>
+        </template>
+        <el-table
+          v-if="review"
+          :data="review.resultPreview"
+          stripe
+          class="review-table"
+        >
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="result-expand-grid">
+                <div>
+                  <div class="expand-label">Output</div>
+                  <pre class="json-block review-json">{{ formatJson(row.output) }}</pre>
+                </div>
+                <div>
+                  <div class="expand-label">Result residue</div>
+                  <pre class="json-block review-json">{{ formatJson({
+                    workerId: row.workerId,
+                    workerContextId: row.workerContextId,
+                    batchId: row.batchId,
+                    attemptId: row.attemptId,
+                    errorCode: row.errorCode,
+                    errorMessage: row.errorMessage,
+                    finalReason: row.finalReason,
+                  }) }}</pre>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="messageId" label="Message" min-width="220">
+            <template #default="{ row }">
+              <span class="mono">{{ row.messageId }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="Status" width="120" />
+          <el-table-column prop="workerId" label="Worker" min-width="160">
+            <template #default="{ row }">
+              <span class="mono">{{ row.workerId || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="workerContextId" label="Context" min-width="180">
+            <template #default="{ row }">
+              <span class="mono">{{ row.workerContextId || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="updateTime" label="Updated" min-width="180" />
+          <el-table-column label="Result summary" min-width="280">
+            <template #default="{ row }">
+              <span>{{ summarizeRecord(row.output) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
     </template>
   </section>
 </template>
@@ -178,17 +305,28 @@
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
-import {auditTask, blockTask, getTaskDetail, pauseTask, resumeTask, terminateTask,} from '@/api/tasks'
+import {
+  auditTask,
+  blockTask,
+  downloadTaskResultExport,
+  downloadTaskSeedExport,
+  getTaskDetail,
+  getTaskReview,
+  pauseTask,
+  resumeTask,
+  terminateTask,
+} from '@/api/tasks'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {TaskDetailResponse} from '@/types/tasks'
+import type {TaskDetailResponse, TaskReviewResponse} from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const detail = ref<TaskDetailResponse | null>(null)
+const review = ref<TaskReviewResponse | null>(null)
 const errorMessage = ref('')
 const actionLoading = ref('')
 
@@ -205,13 +343,43 @@ async function loadTaskDetail(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    detail.value = await getTaskDetail(String(route.params.taskId))
+    const [taskDetail, taskReview] = await Promise.all([
+      getTaskDetail(String(route.params.taskId)),
+      getTaskReview(String(route.params.taskId)),
+    ])
+    detail.value = taskDetail
+    review.value = taskReview
   } catch (error) {
     detail.value = null
+    review.value = null
     errorMessage.value = toErrorMessage(error, 'Failed to load task detail.')
   } finally {
     loading.value = false
   }
+}
+
+function summarizeRecord(value: Record<string, unknown> | null): string {
+  if (!value || Object.keys(value).length === 0) {
+    return '-'
+  }
+
+  const prioritizedKeys = ['target', 'url', 'text', 'status', 'value', 'detail']
+  for (const key of prioritizedKeys) {
+    const candidate = value[key]
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return compactText(candidate)
+    }
+  }
+
+  return compactText(JSON.stringify(value))
+}
+
+function compactText(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 72) {
+    return normalized
+  }
+  return `${normalized.slice(0, 69)}...`
 }
 
 function canPause(status: TaskDetailResponse['task']['status']): boolean {
@@ -288,6 +456,14 @@ async function handleTerminate(): Promise<void> {
   )
 }
 
+function handleSeedExport(): void {
+  downloadTaskSeedExport(String(route.params.taskId))
+}
+
+function handleResultExport(): void {
+  downloadTaskResultExport(String(route.params.taskId))
+}
+
 async function runTaskAction(
   action: string,
   title: string,
@@ -333,6 +509,42 @@ watch(
 
 .detail-card {
   height: 100%;
+}
+
+.review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.review-caption {
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.review-table {
+  width: 100%;
+}
+
+.review-json {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f7f9fc;
+}
+
+.result-expand-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.expand-label {
+  margin-bottom: 8px;
+  color: #6b7a90;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .json-block,

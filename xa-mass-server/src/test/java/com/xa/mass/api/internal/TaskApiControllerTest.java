@@ -19,6 +19,9 @@ import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +33,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -58,12 +62,15 @@ class TaskApiControllerTest {
     @Mock
     private AuthProvider authProvider;
 
+    @Mock
+    private TaskDetailStore taskDetailStore;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), authProvider)
+                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider)
         ).build();
     }
 
@@ -190,6 +197,78 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.taskName").value("detail-task"))
                 .andExpect(jsonPath("$.data.stateValidation").doesNotExist())
                 .andExpect(jsonPath("$.data.items").doesNotExist());
+    }
+
+    @Test
+    void getTaskReviewReturnsSeedAndResultPreview() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(2, 1, 0, 0, 1));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 12)).thenReturn(List.of(
+                new TaskDetailStore.TaskMessageProjection(
+                        "msg-001",
+                        TASK_ID,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        null,
+                        TaskMessageProjectionStatus.SUCCESS,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        3,
+                        null,
+                        null,
+                        TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
+                        Map.of("html", "<ok>"),
+                        "attempt-001",
+                        "worker-001",
+                        "context-001",
+                        "batch-001"
+                )
+        ));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/review", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.summary.totalItems").value(2))
+                .andExpect(jsonPath("$.data.seedPreview[0].eventCode").value("crawler.fetch-page"))
+                .andExpect(jsonPath("$.data.resultPreview[0].workerId").value("worker-001"))
+                .andExpect(jsonPath("$.data.exports.seedUrl").value("/api/v1/tasks/task-001/review/seed-export"));
+    }
+
+    @Test
+    void exportTaskSeedsReturnsAttachmentPayload() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(1, 0, 0, 0, 1));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 1)).thenReturn(List.of(
+                new TaskDetailStore.TaskMessageProjection(
+                        "msg-001",
+                        TASK_ID,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        null,
+                        TaskMessageProjectionStatus.ASSIGNED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        3,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        "attempt-001",
+                        "worker-001",
+                        "context-001",
+                        "batch-001"
+                )
+        ));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/review/seed-export", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.rows[0].messageId").value("msg-001"));
     }
 
     @Test

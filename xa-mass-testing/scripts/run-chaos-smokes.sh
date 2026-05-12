@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-chaos-smokes.sh — CI chaos smoke gate
+# run-chaos-smokes.sh - CI chaos smoke gate
 #
 # Builds xa-mass-testing and runs the designated fast chaos probes.
 # Exits non-zero if any probe fails.
@@ -8,8 +8,8 @@
 #   xa-mass-testing/scripts/run-chaos-smokes.sh [extra JVM args...]
 #
 # Environment overrides:
-#   CHAOS_TIMEOUT_SECONDS   — probe timeout (default: 30)
-#   CHAOS_PROCESSING_DELAY  — worker processing delay ms (default: 10)
+#   CHAOS_TIMEOUT_SECONDS   - probe timeout (default: 30)
+#   CHAOS_PROCESSING_DELAY  - worker processing delay ms (default: 10)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,6 +70,7 @@ SMOKE_RUNNERS=(
   "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"
   "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"
   "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"
+  "com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner"
   "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
 )
 
@@ -128,11 +129,11 @@ done
 
 echo ""
 if [[ ${#FAILED_RUNNERS[@]} -gt 0 ]]; then
-  echo "== Chaos smoke gate FAILED — ${#FAILED_RUNNERS[@]} probe(s) failed:"
+  echo "== Chaos smoke gate FAILED: ${#FAILED_RUNNERS[@]} probe(s) failed:"
   for r in "${FAILED_RUNNERS[@]}"; do
     echo "  - ${r}"
   done
   exit 1
 else
-  echo "== Chaos smoke gate PASSED — all ${#SMOKE_RUNNERS[@]} probe(s) succeeded"
+  echo "== Chaos smoke gate PASSED: all ${#SMOKE_RUNNERS[@]} probe(s) succeeded"
 fi

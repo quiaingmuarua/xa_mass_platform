@@ -34,6 +34,58 @@ export interface TaskDetailResponse {
     task: TaskDetailRecord
 }
 
+export interface TaskReviewSummary {
+    totalItems: number
+    successItems: number
+    failedItems: number
+    expiredItems: number
+    processingItems: number
+    previewCount: number
+    previewLimit: number
+    hasMore: boolean
+}
+
+export interface TaskSeedPreviewItem {
+    messageId: string
+    eventCode: string | null
+    status: string | null
+    payloadRef: string | null
+    retryCount: number
+    maxRetryCount: number
+    createTime: string
+    assignedTime: string
+    input: Record<string, unknown> | null
+}
+
+export interface TaskResultPreviewItem {
+    messageId: string
+    eventCode: string | null
+    status: string | null
+    finalReason: string | null
+    retryCount: number
+    maxRetryCount: number
+    workerId: string | null
+    workerContextId: string | null
+    batchId: string | null
+    attemptId: string | null
+    startTime: string
+    completeTime: string
+    updateTime: string
+    errorCode: string | null
+    errorMessage: string | null
+    output: Record<string, unknown> | null
+}
+
+export interface TaskReviewResponse {
+    summary: TaskReviewSummary
+    seedPreview: TaskSeedPreviewItem[]
+    resultPreview: TaskResultPreviewItem[]
+    exports: {
+        seedUrl: string
+        resultUrl: string
+    }
+}
+
 export interface TaskListResponse {
     items: TaskListItem[]
     total: number

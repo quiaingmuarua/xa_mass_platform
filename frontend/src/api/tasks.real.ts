@@ -1,4 +1,4 @@
-import {requestApiData} from '@/api/http'
+import {buildApiUrl, requestApiData, triggerDownload} from '@/api/http'
 import type {
     TaskActionResult,
     TaskDebugSyncRequest,
@@ -8,6 +8,7 @@ import type {
     TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
 } from '@/types/tasks'
@@ -107,6 +108,12 @@ export async function getTaskDetailReal(
     }
 }
 
+export async function getTaskReviewReal(
+    taskId: string,
+): Promise<TaskReviewResponse> {
+    return requestApiData<TaskReviewResponse>(`/api/v1/tasks/${taskId}/review`)
+}
+
 export async function auditTaskReal(
     taskId: string,
     approved: boolean,
@@ -147,6 +154,14 @@ export async function terminateTaskReal(
     taskId: string,
 ): Promise<TaskActionResult> {
     return invokeTaskActionReal(taskId, 'terminate')
+}
+
+export function downloadTaskSeedExportReal(taskId: string): void {
+    triggerDownload(buildApiUrl(`/api/v1/tasks/${taskId}/review/seed-export`))
+}
+
+export function downloadTaskResultExportReal(taskId: string): void {
+    triggerDownload(buildApiUrl(`/api/v1/tasks/${taskId}/review/result-export`))
 }
 
 async function invokeTaskActionReal(

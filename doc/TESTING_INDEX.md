@@ -400,10 +400,10 @@ Proves:
 - SDK transport composition behavior
 - degraded/recovery behavior around the scheduling mainline
 - PR-gated chaos smokes now cover polling all-failed, mixed-result,
-  retry-exhausted, polling lease-expiry redispatch, and websocket stale
-  late-result replay; these runners assert task aggregate, `TaskWorkRuntime`
-  counters, active-lease release, final receipts, and `ExecutionEvent` trace
-  transitions first
+  retry-exhausted, polling lease-expiry redispatch, websocket lease-expiry
+  redispatch, and websocket stale late-result replay; these runners assert task
+  aggregate, `TaskWorkRuntime` counters, active-lease release, final receipts,
+  and `ExecutionEvent` trace transitions first
 
 Report-only support:
 
