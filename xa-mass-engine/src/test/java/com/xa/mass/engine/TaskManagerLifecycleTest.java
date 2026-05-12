@@ -2835,8 +2835,14 @@ class TaskManagerLifecycleTest {
             assertNull(retriedMessage.latestAttemptBatchId());
             assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
 
-            List<TaskDetailStore.TaskMessageAttemptProjection> attemptProjections =
-                    taskStorage.getTaskMessageAttemptProjections(task.getTid(), message.messageId());
+            List<TaskDetailStore.TaskMessageAttemptProjection> attemptProjections = awaitAttemptProjectionHistory(
+                    taskStorage,
+                    task.getTid(),
+                    message.messageId(),
+                    attempts -> attempts.stream().anyMatch(attempt ->
+                            attempt.status() == TaskMessageAttemptProjectionStatus.EXPIRED
+                                    && attempt.finalReason() == TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED)
+            );
             assertTrue(
                     attemptProjections.stream().anyMatch(attempt ->
                             attempt.status() == TaskMessageAttemptProjectionStatus.EXPIRED
@@ -3344,6 +3350,28 @@ class TaskManagerLifecycleTest {
         } else {
             System.setProperty(key, previousValue);
         }
+    }
+
+    private static List<TaskDetailStore.TaskMessageAttemptProjection> awaitAttemptProjectionHistory(
+            TaskDetailStore taskDetailStore,
+            String taskId,
+            String messageId,
+            java.util.function.Predicate<List<TaskDetailStore.TaskMessageAttemptProjection>> condition) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        List<TaskDetailStore.TaskMessageAttemptProjection> lastSeen = List.of();
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskDetailStore.getTaskMessageAttemptProjections(taskId, messageId);
+            if (condition.test(lastSeen)) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

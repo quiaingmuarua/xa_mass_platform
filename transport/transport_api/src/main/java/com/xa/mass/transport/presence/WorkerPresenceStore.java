@@ -45,4 +45,8 @@ public interface WorkerPresenceStore {
     List<WorkerPresence> listActivePresences();
 
     int pruneExpired();
+
+    default long getLeaseMillis() {
+        return 30_000L;
+    }
 }

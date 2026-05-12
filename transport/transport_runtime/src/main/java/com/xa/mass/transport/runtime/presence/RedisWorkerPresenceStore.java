@@ -360,6 +360,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         return stale;
     }
 
+    @Override
     public long getLeaseMillis() {
         return leaseMillis;
     }

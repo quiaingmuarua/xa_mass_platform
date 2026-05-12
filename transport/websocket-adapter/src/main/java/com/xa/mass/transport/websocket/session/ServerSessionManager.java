@@ -16,6 +16,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
@@ -25,14 +29,21 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
+    private final ScheduledExecutorService presenceRefreshExecutor;
     private volatile WorkerSystemEventChannel systemEventChannel = new RuntimeEventBusWorkerSystemEventChannel();
     private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
+    private volatile ScheduledFuture<?> presenceRefreshFuture;
 
     public ServerSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+        this.presenceRefreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "ws-presence-refresh-" + this.adapterId);
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     public synchronized void addSession(String routeKey, String workerId, Channel channel, ChannelHandlerContext ctx) {
@@ -64,6 +75,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         if (hasActiveChannel(routeKey)) {
             workerPresenceStore.markOnline(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
         }
+        ensurePresenceRefreshLoop();
         if (!wasRouteOnline && hasActiveChannel(routeKey)) {
             systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
         }
@@ -88,6 +100,9 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                         "websocket disconnected"
                 );
                 systemEventChannel.publishWorkerOffline(binding.workerId(), "websocket disconnected", null);
+            }
+            if (activeConnectionCount.get() == 0) {
+                cancelPresenceRefreshLoop();
             }
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
@@ -152,6 +167,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     @Override
     public synchronized void shutdown() {
         logger.info("Shutting down session manager, closing {} route connections...", routeIndex.routeCount());
+        cancelPresenceRefreshLoop();
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
                 workerPresenceStore.markOffline(
@@ -169,6 +185,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
         routeIndex.clear();
         activeConnectionCount.set(0);
+        presenceRefreshExecutor.shutdownNow();
         logger.info("Session manager shutdown complete.");
     }
 
@@ -186,6 +203,11 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         this.workerPresenceStore = workerPresenceStore != null
                 ? workerPresenceStore
                 : new InMemoryWorkerPresenceStore();
+        synchronized (this) {
+            if (activeConnectionCount.get() > 0) {
+                reschedulePresenceRefreshLoop();
+            }
+        }
     }
 
     public String getAdapterId() {
@@ -199,6 +221,59 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     private boolean matchesAdapter(String adapterId) {
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
+    }
+
+    private synchronized void ensurePresenceRefreshLoop() {
+        if (activeConnectionCount.get() <= 0) {
+            cancelPresenceRefreshLoop();
+            return;
+        }
+        if (presenceRefreshFuture != null && !presenceRefreshFuture.isCancelled()) {
+            return;
+        }
+        long refreshIntervalMillis = resolvePresenceRefreshIntervalMillis();
+        presenceRefreshFuture = presenceRefreshExecutor.scheduleAtFixedRate(
+                this::refreshActiveSessionPresence,
+                refreshIntervalMillis,
+                refreshIntervalMillis,
+                TimeUnit.MILLISECONDS
+        );
+    }
+
+    private synchronized void reschedulePresenceRefreshLoop() {
+        cancelPresenceRefreshLoop();
+        ensurePresenceRefreshLoop();
+    }
+
+    private synchronized void cancelPresenceRefreshLoop() {
+        if (presenceRefreshFuture != null) {
+            presenceRefreshFuture.cancel(false);
+            presenceRefreshFuture = null;
+        }
+    }
+
+    private long resolvePresenceRefreshIntervalMillis() {
+        long leaseMillis = workerPresenceStore.getLeaseMillis();
+        long refreshIntervalMillis = leaseMillis / 3L;
+        return Math.max(1_000L, refreshIntervalMillis);
+    }
+
+    private void refreshActiveSessionPresence() {
+        synchronized (this) {
+            for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
+                WebSocketRouteEndpoint endpoint = entry.endpoint();
+                if (endpoint == null || !endpoint.isActive()) {
+                    continue;
+                }
+                workerPresenceStore.refreshHeartbeat(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        entry.handle().id().asShortText(),
+                        "websocket session keepalive"
+                );
+            }
+        }
     }
 
     @Override

@@ -10,9 +10,12 @@ import io.netty.channel.ChannelId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
@@ -189,6 +192,21 @@ class ServerSessionManagerShutdownTest {
 
         assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
         assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+    }
+
+    @Test
+    void activeWebSocketSessionRefreshesPresenceLease() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(1_200L);
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+            Thread.sleep(2_200L);
+            assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        });
     }
 
     private Channel mockActiveChannel(String idText) {

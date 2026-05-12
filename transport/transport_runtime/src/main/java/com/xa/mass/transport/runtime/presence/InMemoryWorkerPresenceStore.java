@@ -188,6 +188,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         return pruned;
     }
 
+    @Override
     public long getLeaseMillis() {
         return leaseMillis;
     }
