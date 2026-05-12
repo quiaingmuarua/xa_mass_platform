@@ -370,6 +370,11 @@ Cross-language sample black-box regression:
 ./scripts/run-external-worker-samples.sh
 ```
 
+The script runs `ExternalWorkerParitySuite`, which covers Java and Node workers
+across polling, WebSocket, and socket adapters. The suite asserts task
+aggregate state, runtime stats, active-lease release, and terminal reason first;
+worker output/read-model assertions only support payload parity checks.
+
 Covered areas:
 
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
@@ -412,6 +417,7 @@ High-signal classes:
   - `TaskApiMixedResultsIntegrationTest`
   - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
+  - `ExternalWorkerParitySuite`
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`

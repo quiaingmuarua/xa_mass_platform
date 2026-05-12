@@ -1,13 +1,11 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
-import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -50,8 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Coverage this closes:
  * <ul>
  *   <li>Per-message retry-exhaustion end-to-end path (SDK embedded runtime).</li>
- *   <li>{@code TaskMsg.finalReason=RETRY_EXHAUSTED} convergence via the
- *       attempt-count policy in {@code AllWorkFinalTaskTerminalPolicy}.</li>
+ *   <li>Runtime retry-budget convergence through repeated failed worker results.</li>
  *   <li>Trace: {@code TASK_WORK_RETRY_RESET} events are emitted for each retry.</li>
  * </ul>
  */
@@ -149,46 +146,20 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         config.timeoutSeconds(),
                         "retry-exhausted task must converge to TERMINAL"
                 );
-
-                List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.taskDetailStore(), task.getTaskId(), MESSAGE_COUNT).messages();
-
-                ChaosSupport.require(messages.size() == MESSAGE_COUNT,
-                        "task should have exactly " + MESSAGE_COUNT + " message projections");
-
-                for (CompatibilityMessageView msg : messages) {
-                    ChaosSupport.require("FAILED".equals(msg.status()),
-                            "message " + msg.messageId() + " should be FAILED, got " + msg.status());
-                    ChaosSupport.require("RETRY_EXHAUSTED".equals(msg.finalReason()),
-                            "message " + msg.messageId()
-                                    + " finalReason should be RETRY_EXHAUSTED, got " + msg.finalReason());
-                    ChaosSupport.require(msg.retryCount() == MAX_RETRY_PER_MESSAGE,
-                            "message " + msg.messageId() + " retryCount should be " + MAX_RETRY_PER_MESSAGE
-                                    + ", got " + msg.retryCount());
-
-                    List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), msg.messageId());
-                    ChaosSupport.require(attempts.size() == EXPECTED_ATTEMPTS_PER_MESSAGE,
-                            "message " + msg.messageId() + " should have exactly "
-                                    + EXPECTED_ATTEMPTS_PER_MESSAGE + " attempts, got " + attempts.size());
-
-                    for (CompatibilityAttemptView attempt : attempts) {
-                        boolean finalAttempt = attempt.attemptNo() == EXPECTED_ATTEMPTS_PER_MESSAGE;
-                        if (finalAttempt) {
-                            ChaosSupport.require("FAILED".equals(attempt.status()),
-                                    "final attempt " + attempt.attemptId() + " should be FAILED, got " + attempt.status());
-                            ChaosSupport.require("BUSINESS_FAILURE".equals(attempt.finalReason()),
-                                    "final attempt " + attempt.attemptId()
-                                            + " finalReason should be BUSINESS_FAILURE, got " + attempt.finalReason());
-                        } else {
-                            ChaosSupport.require("REVOKED".equals(attempt.status()),
-                                    "retryable attempt " + attempt.attemptId() + " should be REVOKED, got " + attempt.status());
-                            ChaosSupport.require("REVOKED_FOR_RETRY".equals(attempt.finalReason()),
-                                    "retryable attempt " + attempt.attemptId()
-                                            + " finalReason should be REVOKED_FOR_RETRY, got " + attempt.finalReason());
-                        }
-                    }
-                }
+                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
+                        task.getTaskId(),
+                        MESSAGE_COUNT,
+                        0,
+                        MESSAGE_COUNT,
+                        0,
+                        config.timeoutSeconds(),
+                        "runtime should finalize retry-exhausted work items as failed"
+                );
+                ChaosSupport.require(finalStats.readyCount() == 0, "runtime ready queue should be drained");
+                ChaosSupport.require(finalStats.inflightCount() == 0, "runtime leases should be drained");
+                ChaosSupport.require(finalStats.delayedCount() == 0, "runtime delayed queue should be drained");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "runtime active leases should be empty after retry exhaustion");
 
                 ChaosSupport.require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");

@@ -1,13 +1,11 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
-import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -36,9 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Start one polling worker that reads the {@code "shouldFail"} flag from the item
  *       input and submits success or failure accordingly.</li>
  *   <li>Wait for the task to reach {@code TERMINAL}.</li>
- *   <li>Assert: {@code SUCCESS_COUNT} messages are {@code SUCCESS} with
- *       {@code finalReason=BUSINESS_SUCCESS}, {@code FAIL_COUNT} messages are {@code FAILED}
- *       with {@code finalReason=RETRY_EXHAUSTED}, and the task
+ *   <li>Assert runtime counters and trace show {@code SUCCESS_COUNT} succeeded
+ *       work items and {@code FAIL_COUNT} failed work items, and the task
  *       {@code terminalReason=MIXED_MESSAGE_RESULTS}.</li>
  * </ol>
  *
@@ -141,41 +138,20 @@ public final class SdkPollingMixedResultsChaosRunner {
                         config.timeoutSeconds(),
                         "mixed-results task must converge to TERMINAL"
                 );
-
-                List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.taskDetailStore(), task.getTaskId(), MESSAGE_COUNT).messages();
-
-                ChaosSupport.require(messages.size() == MESSAGE_COUNT,
-                        "task should have exactly " + MESSAGE_COUNT + " message projections");
-
-                int observedSuccess = 0;
-                int observedFailed = 0;
-                for (CompatibilityMessageView msg : messages) {
-                    if ("SUCCESS".equals(msg.status())) {
-                        ChaosSupport.require("BUSINESS_SUCCESS".equals(msg.finalReason()),
-                                "message " + msg.messageId() + " finalReason should be BUSINESS_SUCCESS, got " + msg.finalReason());
-                        observedSuccess++;
-                    } else if ("FAILED".equals(msg.status())) {
-                        ChaosSupport.require("RETRY_EXHAUSTED".equals(msg.finalReason()),
-                                "message " + msg.messageId() + " finalReason should be RETRY_EXHAUSTED, got " + msg.finalReason());
-                        observedFailed++;
-                    } else {
-                        ChaosSupport.require(false,
-                                "message " + msg.messageId() + " should converge to SUCCESS or FAILED, got " + msg.status());
-                    }
-                    ChaosSupport.require(msg.retryCount() == 0,
-                            "message " + msg.messageId() + " retryCount should be 0 (no retries configured)");
-
-                    List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), msg.messageId());
-                    ChaosSupport.require(attempts.size() == 1,
-                            "message " + msg.messageId() + " should have exactly 1 attempt");
-                }
-
-                ChaosSupport.require(observedSuccess == SUCCESS_COUNT,
-                        "expected " + SUCCESS_COUNT + " successful messages, observed " + observedSuccess);
-                ChaosSupport.require(observedFailed == FAIL_COUNT,
-                        "expected " + FAIL_COUNT + " failed messages, observed " + observedFailed);
+                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
+                        task.getTaskId(),
+                        MESSAGE_COUNT,
+                        SUCCESS_COUNT,
+                        FAIL_COUNT,
+                        0,
+                        config.timeoutSeconds(),
+                        "runtime should finalize the configured mixed success/failure workset"
+                );
+                ChaosSupport.require(finalStats.readyCount() == 0, "runtime ready queue should be drained");
+                ChaosSupport.require(finalStats.inflightCount() == 0, "runtime leases should be drained");
+                ChaosSupport.require(finalStats.delayedCount() == 0, "runtime delayed queue should be drained");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "runtime active leases should be empty after mixed terminal convergence");
 
                 ChaosSupport.require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");
@@ -200,8 +176,8 @@ public final class SdkPollingMixedResultsChaosRunner {
                         "wallClock", Map.of("totalMillis",
                                 ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
                         "results", Map.of(
-                                "successCount", observedSuccess,
-                                "failCount", observedFailed,
+                                "successCount", finalStats.successCount(),
+                                "failCount", finalStats.failedCount(),
                                 "messageCount", MESSAGE_COUNT
                         ),
                         "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
@@ -212,8 +188,8 @@ public final class SdkPollingMixedResultsChaosRunner {
                 return new ChaosReport(
                         task.getTaskId(),
                         MESSAGE_COUNT,
-                        observedSuccess,
-                        observedFailed,
+                        (int) finalStats.successCount(),
+                        (int) finalStats.failedCount(),
                         outcome.terminalReason(),
                         ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath

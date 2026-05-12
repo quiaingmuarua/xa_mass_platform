@@ -94,10 +94,11 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
 
-        TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
+        RuntimeTaskSnapshot readyWhileOffline = waitForRuntimeTaskSnapshot(taskId, "READY", 10, 200L);
         assertEquals("READY", readyWhileOffline.task().get("status"));
-        assertEquals(1, readyWhileOffline.messages().size());
-        assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
+        assertEquals(1, readyWhileOffline.stats().readyCount());
+        assertEquals(0, readyWhileOffline.stats().inflightCount());
+        assertTrue(readyWhileOffline.activeLeases().isEmpty());
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         try (ExternalJavaWorkerProcess worker = ExternalJavaWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
@@ -108,12 +109,16 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                     () -> worker.assertAlive("External Java worker exited before reaching status ONLINE"),
                     worker::capturedOutput
             );
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(WORKER_ID, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
 
-            Object outputObject = terminal.messages().get(0).get("output");
+            TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
+            assertEquals(WORKER_ID, terminalView.messages().get(0).get("latestAttemptWorkerId"));
+            Object outputObject = terminalView.messages().get(0).get("output");
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;

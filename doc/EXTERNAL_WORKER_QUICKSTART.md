@@ -122,12 +122,13 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
 
 Current executable external-process coverage:
 
-- `NodePollingWorkerBlackBoxIntegrationTest`
-- `JavaPollingWorkerBlackBoxIntegrationTest`
-- `NodeWebSocketWorkerBlackBoxIntegrationTest`
-- `JavaWebSocketWorkerBlackBoxIntegrationTest`
-- `NodeSocketWorkerBlackBoxIntegrationTest`
-- `JavaSocketWorkerBlackBoxIntegrationTest`
+- `ExternalWorkerParitySuite`
+  - `NodePollingWorkerBlackBoxIntegrationTest`
+  - `JavaPollingWorkerBlackBoxIntegrationTest`
+  - `NodeWebSocketWorkerBlackBoxIntegrationTest`
+  - `JavaWebSocketWorkerBlackBoxIntegrationTest`
+  - `NodeSocketWorkerBlackBoxIntegrationTest`
+  - `JavaSocketWorkerBlackBoxIntegrationTest`
 
 These prove:
 

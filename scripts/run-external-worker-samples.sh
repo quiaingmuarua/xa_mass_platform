@@ -5,16 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TESTS=(
-  "NodePollingWorkerBlackBoxIntegrationTest"
-  "NodeWebSocketWorkerBlackBoxIntegrationTest"
-  "NodeSocketWorkerBlackBoxIntegrationTest"
-  "JavaPollingWorkerBlackBoxIntegrationTest"
-  "JavaWebSocketWorkerBlackBoxIntegrationTest"
-  "JavaSocketWorkerBlackBoxIntegrationTest"
-)
-
-TEST_ARG="$(IFS=,; echo "${TESTS[*]}")"
+TEST_ARG="ExternalWorkerParitySuite"
 
 echo "[external-worker-samples] repo root: ${REPO_ROOT}"
 echo "[external-worker-samples] tests: ${TEST_ARG}"

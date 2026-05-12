@@ -92,12 +92,16 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(WORKER_ID, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
 
-            Object outputObject = terminal.messages().get(0).get("output");
+            TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
+            assertEquals(WORKER_ID, terminalView.messages().get(0).get("latestAttemptWorkerId"));
+            Object outputObject = terminalView.messages().get(0).get("output");
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;

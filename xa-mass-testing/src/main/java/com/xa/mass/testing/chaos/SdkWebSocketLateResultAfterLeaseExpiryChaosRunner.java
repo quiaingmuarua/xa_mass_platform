@@ -3,21 +3,21 @@ package com.xa.mass.testing.chaos;
 import com.google.gson.JsonObject;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
-import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
+import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -64,6 +64,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
         }
 
         private ChaosReport run() throws Exception {
+            CapturingExecutionEventSink traceSink = new CapturingExecutionEventSink();
             ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createWebSocket(
                     new ChaosRuntimeHarness.WebSocketRuntimeConfig(
                             ENDPOINT_PATH,
@@ -72,7 +73,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                             config.assignmentRetryDelayMillis(),
                             config.leaseWatchdogIntervalSeconds(),
                             config.taskMessageLeaseSeconds()
-                    )
+                    ),
+                    traceSink
             );
             LateResultWorkerDriver chaosWorker = null;
             LateResultWorkerDriver steadyWorker = null;
@@ -114,10 +116,15 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         Map.of("source", "SdkWebSocketLateResultAfterLeaseExpiryChaosRunner")
                 ));
 
-                CompatibilityMessageView message = runtime.waitForSingleMessage(task.getTaskId(), config.timeoutSeconds());
+                ChaosSupport.waitForCondition(
+                        () -> activeChaosWorker.capturedMessageId() != null,
+                        config.timeoutSeconds(),
+                        "chaos worker should capture the first dispatch frame"
+                );
+                String messageId = activeChaosWorker.capturedMessageId();
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTaskId(),
-                        message.messageId(),
+                        messageId,
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
                         "first active attempt should stay bound to the chaos worker before lease expiry"
@@ -143,7 +150,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
                 runtime.waitForAttemptCount(
                         task.getTaskId(),
-                        message.messageId(),
+                        messageId,
                         2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
@@ -155,33 +162,24 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         config.timeoutSeconds(),
                         "late-result chaos task must converge"
                 );
-
-                CompatibilityMessageView terminalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
-                List<CompatibilityAttemptView> terminalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
-                ChaosSupport.require(terminalAttempts.size() == 2, "task should finish with exactly two attempts before late replay");
-
-                CompatibilityAttemptView expiredAttempt = terminalAttempts.get(0);
-                CompatibilityAttemptView successAttempt = terminalAttempts.get(1);
-                LocalDateTime initialLeaseExpireTime = expiredAttempt.leaseExpireTime();
-
-                ChaosSupport.require(CHAOS_WORKER_ID.equals(expiredAttempt.workerId()),
-                        "first attempt should belong to the chaos worker");
-                ChaosSupport.require("EXPIRED".equals(expiredAttempt.status()),
-                        "first attempt should close as EXPIRED");
-                ChaosSupport.require("LEASE_EXPIRED".equals(expiredAttempt.finalReason()),
-                        "first attempt final reason should be LEASE_EXPIRED");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(successAttempt.workerId()),
-                        "second attempt should belong to the steady worker");
-                ChaosSupport.require("SUCCEEDED".equals(successAttempt.status()),
-                        "second attempt should close as SUCCEEDED");
-                ChaosSupport.require("SUCCESS".equals(terminalMessage.status()),
-                        "logical message should converge to SUCCESS before late replay");
-                ChaosSupport.require("BUSINESS_SUCCESS".equals(terminalMessage.finalReason()),
-                        "logical message final reason should be BUSINESS_SUCCESS before late replay");
-                ChaosSupport.require(terminalMessage.retryCount() == 1,
-                        "logical message retryCount should record one expiry-driven retry before late replay");
+                TaskWorkStats terminalStats = runtime.waitForRuntimeStats(
+                        task.getTaskId(),
+                        1,
+                        1,
+                        0,
+                        0,
+                        config.timeoutSeconds(),
+                        "runtime should finalize the takeover attempt as success before late replay"
+                );
+                ChaosSupport.require(terminalStats.readyCount() == 0, "runtime ready queue should be drained before late replay");
+                ChaosSupport.require(terminalStats.inflightCount() == 0, "runtime leases should be drained before late replay");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "runtime active leases should be empty before late replay");
+                RecentFinalWorkReceipt terminalReceipt = runtime.recentFinalReceipt(task.getTaskId(), messageId).orElse(null);
+                ChaosSupport.require(terminalReceipt != null,
+                        "runtime recent final receipt should exist before late replay");
+                ChaosSupport.require(terminalReceipt.retryCount() == 1,
+                        "runtime final receipt should record one expiry-driven retry before late replay");
 
                 activeChaosWorker.reconnectAndSubmitLateResult();
                 ChaosSupport.waitForCondition(
@@ -192,26 +190,38 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 ChaosSupport.maybeSleep(config.postReplayObserveDelayMillis());
 
                 TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(task.getTaskId(), 1);
-                CompatibilityMessageView finalMessage =
-                        ProjectionTestViews.message(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
-                List<CompatibilityAttemptView> finalAttempts =
-                        ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), message.messageId());
-
-                ChaosSupport.require(finalAttempts.size() == 2, "late stale result must not create a third attempt");
-                ChaosSupport.require(finalMessage != null, "final task message should exist");
-                ChaosSupport.require("SUCCESS".equals(finalMessage.status()),
-                        "late stale result must not change logical message success");
-                ChaosSupport.require("BUSINESS_SUCCESS".equals(finalMessage.finalReason()),
-                        "late stale result must not change logical final reason");
-                ChaosSupport.require(finalMessage.retryCount() == 1,
-                        "late stale result must not change retryCount");
-                ChaosSupport.require(STEADY_WORKER_ID.equals(finalMessage.latestAttemptWorkerId()),
-                        "late stale result must not steal latest attempt ownership");
+                TaskWorkStats afterReplayStats = runtime.runtimeStats(task.getTaskId());
+                ChaosSupport.require(afterReplayStats.totalCount() == terminalStats.totalCount(),
+                        "late stale result must not change runtime total count");
+                ChaosSupport.require(afterReplayStats.successCount() == terminalStats.successCount(),
+                        "late stale result must not change runtime success count");
+                ChaosSupport.require(afterReplayStats.failedCount() == terminalStats.failedCount(),
+                        "late stale result must not change runtime failed count");
+                ChaosSupport.require(afterReplayStats.expiredCount() == terminalStats.expiredCount(),
+                        "late stale result must not change runtime expired count");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "late stale result must not create a new active lease");
+                RecentFinalWorkReceipt finalReceipt = runtime.recentFinalReceipt(task.getTaskId(), messageId).orElse(null);
+                ChaosSupport.require(finalReceipt != null, "runtime final receipt should still exist after late replay");
+                ChaosSupport.require(finalReceipt.retryCount() == terminalReceipt.retryCount(),
+                        "late stale result must not change runtime final retry count");
                 TaskStateSnapshot currentTaskState = runtime.app().getTaskState(task.getTaskId());
                 ChaosSupport.require(currentTaskState != null && "TERMINAL".equals(currentTaskState.getStatus()),
                         "late stale result must not reopen the task");
                 ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(afterReplayOutcome.terminalReason()),
                         "late stale result must not change task terminal reason");
+                TraceEventAssertions.of(traceSink)
+                        .forTask(task.getTaskId())
+                        .requireMinTotalEvents(5)
+                        .requireEventType(ExecutionEventType.LEASE_EXPIRED)
+                        .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
+                        .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                        .requireAnyEventType(
+                                ExecutionEventType.CALLBACK_IGNORED_LATE,
+                                ExecutionEventType.CALLBACK_IGNORED_DUPLICATE
+                        )
+                        .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                        .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
 
                 Path reportPath = ChaosReportWriter.write("sdk-websocket-late-result-after-lease-expiry-chaos", Map.of(
                         "config", config.toMap(),
@@ -223,8 +233,9 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "wallClock", Map.of("totalMillis", ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
                         "leaseWindow", Map.of(
                                 "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
-                                "initialLeaseExpireTime", String.valueOf(initialLeaseExpireTime)
+                                "finalReceiptRetryCount", finalReceipt.retryCount()
                         ),
+                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
                         "beforeReplay", terminalOutcome.toMap(),
                         "afterReplay", afterReplayOutcome.toMap(),
                         "workers", Map.of(
@@ -236,12 +247,12 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 return new ChaosReport(
                         extractPort(runtime.serverUri(CHAOS_WORKER_ID)),
                         task.getTaskId(),
-                        message.messageId(),
+                        messageId,
                         chaosWorker.disconnectCycles(),
                         chaosWorker.reconnectCycles(),
                         chaosWorker.lateResultSubmissions(),
-                        finalAttempts.size(),
-                        finalMessage.retryCount(),
+                        finalReceipt.retryCount() + 1,
+                        finalReceipt.retryCount(),
                         afterReplayOutcome.terminalReason(),
                         ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos),
                         reportPath
@@ -302,6 +313,10 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
 
         private int lateResultSubmissions() {
             return lateResultSubmissions.get();
+        }
+
+        private String capturedMessageId() {
+            return ChaosSupport.readString(capturedDispatchFrame.get(), "messageId");
         }
 
         private void reconnectAndSubmitLateResult() throws Exception {

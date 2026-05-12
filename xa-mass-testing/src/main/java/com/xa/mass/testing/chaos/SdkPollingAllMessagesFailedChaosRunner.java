@@ -1,13 +1,11 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
-import com.xa.mass.testing.chaos.support.CompatibilityAttemptView;
-import com.xa.mass.testing.chaos.support.CompatibilityMessageView;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
-import com.xa.mass.testing.chaos.support.ProjectionTestViews;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -33,9 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Create a sealed task with {@code MESSAGE_COUNT} messages, {@code maxRetryCount=0}.</li>
  *   <li>Start one polling worker that always submits failure.</li>
  *   <li>Wait for the task to reach {@code TERMINAL}.</li>
- *   <li>Assert: every message is {@code FAILED} with {@code finalReason=RETRY_EXHAUSTED},
- *       every attempt is {@code FAILED} with {@code finalReason=BUSINESS_FAILURE},
- *       and the task {@code terminalReason=ALL_MESSAGES_FAILED}.</li>
+ *   <li>Assert runtime counters and trace prove every work item failed, and the
+ *       task {@code terminalReason=ALL_MESSAGES_FAILED}.</li>
  * </ol>
  */
 public final class SdkPollingAllMessagesFailedChaosRunner {
@@ -124,29 +121,20 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         config.timeoutSeconds(),
                         "all-messages-failed task must converge to TERMINAL"
                 );
-
-                List<CompatibilityMessageView> messages = ProjectionTestViews.snapshot(
-                        runtime.taskDetailStore(), task.getTaskId(), MESSAGE_COUNT).messages();
-
-                ChaosSupport.require(messages.size() == MESSAGE_COUNT,
-                        "task should have exactly " + MESSAGE_COUNT + " message projections");
-                for (CompatibilityMessageView msg : messages) {
-                    ChaosSupport.require("FAILED".equals(msg.status()),
-                            "message " + msg.messageId() + " should be FAILED, got " + msg.status());
-                    ChaosSupport.require("RETRY_EXHAUSTED".equals(msg.finalReason()),
-                            "message " + msg.messageId() + " finalReason should be RETRY_EXHAUSTED, got " + msg.finalReason());
-                    ChaosSupport.require(msg.retryCount() == 0,
-                            "message " + msg.messageId() + " retryCount should be 0 (no retries configured)");
-
-                    List<CompatibilityAttemptView> attempts =
-                            ProjectionTestViews.attempts(runtime.taskDetailStore(), task.getTaskId(), msg.messageId());
-                    ChaosSupport.require(attempts.size() == 1,
-                            "message " + msg.messageId() + " should have exactly 1 attempt");
-                    ChaosSupport.require("FAILED".equals(attempts.get(0).status()),
-                            "attempt for message " + msg.messageId() + " should be FAILED");
-                    ChaosSupport.require("BUSINESS_FAILURE".equals(attempts.get(0).finalReason()),
-                            "attempt finalReason should be BUSINESS_FAILURE");
-                }
+                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
+                        task.getTaskId(),
+                        MESSAGE_COUNT,
+                        0,
+                        MESSAGE_COUNT,
+                        0,
+                        config.timeoutSeconds(),
+                        "runtime should finalize all work items as failed"
+                );
+                ChaosSupport.require(finalStats.readyCount() == 0, "runtime ready queue should be drained");
+                ChaosSupport.require(finalStats.inflightCount() == 0, "runtime leases should be drained");
+                ChaosSupport.require(finalStats.delayedCount() == 0, "runtime delayed queue should be drained");
+                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
+                        "runtime active leases should be empty after terminal failure");
 
                 ChaosSupport.require("TERMINAL".equals(outcome.status()),
                         "task should converge to TERMINAL");

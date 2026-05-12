@@ -52,6 +52,27 @@ public final class TraceEventAssertions {
         return this;
     }
 
+    /** Assert that at least one of the given event types was captured. */
+    public TraceEventAssertions requireAnyEventType(ExecutionEventType... types) {
+        ChaosSupport.require(types != null && types.length > 0,
+                "at least one event type must be supplied");
+        for (ExecutionEventType type : types) {
+            List<ExecutionEvent> matching = taskId != null
+                    ? sink.eventsOfTypeForTask(type, taskId)
+                    : sink.eventsOfType(type);
+            if (!matching.isEmpty()) {
+                return this;
+            }
+        }
+        String expectedTypes = java.util.Arrays.stream(types)
+                .map(ExecutionEventType::name)
+                .collect(Collectors.joining(", "));
+        ChaosSupport.require(false,
+                "expected at least one of [" + expectedTypes + "]" + taskScope()
+                        + " but none found; all captured types: " + summarizeTypes());
+        return this;
+    }
+
     /** Assert the exact count of events of the given type (scoped by taskId if set). */
     public TraceEventAssertions requireEventTypeCount(ExecutionEventType type, int expectedCount) {
         List<ExecutionEvent> matching = taskId != null

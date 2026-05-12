@@ -27,7 +27,8 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 Current mainline note:
 
 - today the Boot-shell E2E path validates the stable polling external-worker path plus the current websocket/socket realtime adapter paths
-- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, `NodePollingWorkerBlackBoxIntegrationTest`, and `TransportChannelWiringIntegrationTest`
+- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, and `TransportChannelWiringIntegrationTest`
+- cross-language / cross-adapter worker parity is represented by `ExternalWorkerParitySuite`, covering Java and Node workers across polling, WebSocket, and socket adapters
 
 Fixture note:
 

@@ -69,6 +69,8 @@ SMOKE_RUNNERS=(
   "com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner"
   "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"
   "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"
+  "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"
+  "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
 )
 
 FAILED_RUNNERS=()

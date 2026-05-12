@@ -25,6 +25,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -90,9 +91,11 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
 
         assertApiOk(approveTask(taskId));
 
-        TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
+        RuntimeTaskSnapshot readyWhileOffline = waitForRuntimeTaskSnapshot(taskId, "READY", 10, 200L);
         assertEquals("READY", readyWhileOffline.task().get("status"));
-        assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
+        assertEquals(1, readyWhileOffline.stats().readyCount());
+        assertEquals(0, readyWhileOffline.stats().inflightCount());
+        assertTrue(readyWhileOffline.activeLeases().isEmpty());
 
         try (ExternalJavaWorkerProcess worker = ExternalJavaWorkerProcess.startSocketSample(
                 SOCKET_WORKER_ID,
@@ -110,12 +113,16 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                     () -> worker.assertAlive("External Java worker exited before reaching status ONLINE"),
                     worker::capturedOutput
             );
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(SOCKET_WORKER_ID, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
 
-            Object outputObject = terminal.messages().get(0).get("output");
+            TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
+            assertEquals(SOCKET_WORKER_ID, terminalView.messages().get(0).get("latestAttemptWorkerId"));
+            Object outputObject = terminalView.messages().get(0).get("output");
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;
@@ -188,8 +195,17 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             String websocketTaskId = createAndApproveTask("demoApp", "demo.dispatch", Map.of("target", "socket-coexist-java-ws"));
             String socketTaskId = createAndApproveTask("crawlerApp", "crawler.fetch-page", Map.of("url", "https://example.test/socket-coexist-java"));
 
-            TaskSnapshot websocketTerminal = waitForTerminalTask(websocketTaskId);
-            TaskSnapshot socketTerminal = waitForTerminalTask(socketTaskId);
+            RuntimeTaskSnapshot websocketRuntimeTerminal = waitForTerminalRuntimeTask(websocketTaskId);
+            RuntimeTaskSnapshot socketRuntimeTerminal = waitForTerminalRuntimeTask(socketTaskId);
+            assertEquals("ALL_MESSAGES_SUCCEEDED", websocketRuntimeTerminal.task().get("terminalReason"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", socketRuntimeTerminal.task().get("terminalReason"));
+            assertEquals(1, websocketRuntimeTerminal.stats().successCount());
+            assertEquals(1, socketRuntimeTerminal.stats().successCount());
+            assertTrue(websocketRuntimeTerminal.activeLeases().isEmpty());
+            assertTrue(socketRuntimeTerminal.activeLeases().isEmpty());
+
+            TaskSnapshot websocketTerminal = fetchTaskSnapshot(websocketTaskId);
+            TaskSnapshot socketTerminal = fetchTaskSnapshot(socketTaskId);
 
             assertEquals(WEBSOCKET_WORKER_ID, websocketTerminal.messages().get(0).get("latestAttemptWorkerId"));
             assertEquals(SOCKET_WORKER_ID, socketTerminal.messages().get(0).get("latestAttemptWorkerId"));

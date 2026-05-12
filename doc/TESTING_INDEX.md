@@ -363,6 +363,7 @@ Use first when:
 
 Primary groups:
 
+- `ExternalWorkerParitySuite`
 - Java / Node polling
 - Java / Node websocket
 - Java / Node socket
@@ -372,6 +373,9 @@ Proves:
 - external worker compatibility
 - adapter-specific delivery still lands on the same kernel semantics
 - scheduling semantics stay aligned across Java / Node and multiple adapters
+- parity tests assert task aggregate, runtime stats, active-lease release, and
+  terminal reason first; worker output/read-model checks are only payload parity
+  support
 
 Does not prove:
 
@@ -395,6 +399,17 @@ Proves:
 - hot-path regression signal
 - SDK transport composition behavior
 - degraded/recovery behavior around the scheduling mainline
+- PR-gated chaos smokes now cover polling all-failed, mixed-result,
+  retry-exhausted, polling lease-expiry redispatch, and websocket stale
+  late-result replay; these runners assert task aggregate, `TaskWorkRuntime`
+  counters, active-lease release, final receipts, and `ExecutionEvent` trace
+  transitions first
+
+Report-only support:
+
+- chaos reports may include bounded compatibility projection under
+  `task.compatibilityProjection` for diagnosis, but those rows are not the
+  correctness owner for chaos smoke success/failure
 
 Does not prove:
 

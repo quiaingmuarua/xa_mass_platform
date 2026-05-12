@@ -99,10 +99,17 @@ Use with:
   mainline correctly; it does not replace the scheduling matrix
 - `cross-language black-box` proves external worker compatibility and scheduling
   parity across process and language boundaries
+- cross-language parity is suite-owned by `ExternalWorkerParitySuite`; the
+  runner script invokes the suite instead of maintaining a parallel class list
 - `transport boundary` verifies routing, result ingress, and decoupling so
   transport does not redefine kernel semantics
 - `perf / chaos / distributed-readiness` proves degraded-condition resilience
   around the real scheduling path; it does not replace ordinary feature acceptance
+- current PR chaos smokes in `xa-mass-testing` are runtime/aggregate/trace-first:
+  polling all-failed, mixed-result, retry-exhausted, polling lease-expiry
+  redispatch, and websocket stale late-result runners assert `TaskWorkRuntime`
+  counters, active lease drain, final receipts, task terminal reason, and
+  `ExecutionEvent` transitions before any compatibility report payload
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).
@@ -133,6 +140,8 @@ minimum verification set.
 - `ServerMainlineE2eArchitectureGuardTest` keeps projection-first helpers and
   implicit `var` declarations out of the mainline server E2E suites
 - when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
+- chaos/perf reports may read bounded compatibility residue for diagnostics,
+  but the runner's pass/fail proof must stay runtime/aggregate/trace-first
 
 ## 7. Documentation Rule
 

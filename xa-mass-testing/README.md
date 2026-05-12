@@ -38,7 +38,8 @@ Testing-policy note:
 - use this module to prove disconnect, replay, lease-expiry, takeover, and other distributed edge behavior on the real runtime path
 - do not use this module as the first home for ordinary worker/task matching correctness; that belongs in engine acceptance first
 - do not add local projection-first tests in engine/transport when the real risk belongs here
-- compatibility projection may still appear in reports or bounded assertions, but it is not the primary correctness surface for runtime convergence
+- compatibility projection may still appear in reports or explicit audit/residue checks, but it is not the primary correctness surface for runtime convergence
+- chaos smoke correctness assertions must be runtime/aggregate/trace first: `TaskWorkRuntime` stats, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about projection residue
 
 ## Runner Map
 
@@ -55,8 +56,8 @@ Testing-policy note:
 | `chaos: polling lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner` | polling worker claims work, stalls without a result, goes offline, watchdog expiry resets the logical message, and another polling worker takes over to finish successfully | `target/chaos-reports/` |
 | `chaos: polling all messages failed` | `com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner` | polling worker always submits failure with no retries; all messages converge to FAILED and the task closes with ALL_MESSAGES_FAILED | `target/chaos-reports/` |
 | `chaos: polling mixed results` | `com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner` | multi-message task where some messages succeed and some fail (driven by per-message `shouldFail` input flag); task closes with MIXED_MESSAGE_RESULTS | `target/chaos-reports/` |
-| `chaos: polling message retry exhausted` ★ | `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_WORK_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
-| `chaos smoke bundle (CI gate)` ★ | `scripts/run-chaos-smokes.sh` | fast CI gate running the three ★-marked probes; exits non-zero if any probe fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
+| `chaos: polling message retry exhausted` 鈽?| `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_WORK_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
+| `chaos smoke bundle (CI gate)` 鈽?| `scripts/run-chaos-smokes.sh` | fast CI gate running the three 鈽?marked probes; exits non-zero if any probe fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
 
 ## Commands
 
@@ -174,7 +175,8 @@ Look at these first:
 
 - perf: `wallClock.totalMillis`, release cost, storage probe counts
 - SDK transport harness: `runtime.transport`, `tasks.terminalReasons`, `workerMetrics`
-- chaos: worker online/offline transitions, attempt/lease outcome, final terminal reason
+- chaos: `task.runtime` counters, active lease count, task terminal reason, trace `byType`, then worker online/offline transitions
+- chaos report field `task.compatibilityProjection` is residue/report context; do not treat it as the runner's primary correctness proof
 
 Use repo-level docs only for system-level policy:
 
@@ -191,10 +193,10 @@ Current chaos probes cover seven distinct scenario branches:
 - disconnect without a result, let lease expiry trigger redispatch, and finish on a different worker
 - disconnect without a result, let lease expiry trigger redispatch and terminal success, then reconnect the original worker and replay a stale late result that must not mutate the already-final logical message
 - polling worker claims work, stalls without a result, goes offline, and a second polling worker takes over after lease expiry
-- all messages fail with no retries; task closes with `ALL_MESSAGES_FAILED`
-- multi-message task with partial success and partial failure; task closes with `MIXED_MESSAGE_RESULTS`
-- per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); messages finalize with `RETRY_EXHAUSTED`; task closes with `ALL_MESSAGES_FAILED`; `TASK_WORK_RETRY_RESET` events verified in trace
+- all messages fail with no retries; runtime counters finalize all work as failed and task closes with `ALL_MESSAGES_FAILED`
+- multi-message task with partial success and partial failure; runtime counters prove the split and task closes with `MIXED_MESSAGE_RESULTS`
+- per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); runtime counters finalize all work as failed, task closes with `ALL_MESSAGES_FAILED`, and `TASK_WORK_RETRY_RESET` events are verified in trace
 
-The three polling probes (all-messages-failed, mixed-results, retry-exhausted) are wired to the `chaos-smokes` CI job and gate every PR. All seven probes capture `ExecutionEvent` objects via `CapturingExecutionEventSink` and write a `trace.byType` summary in the report JSON.
+The five PR-gated probes (all-messages-failed, mixed-results, retry-exhausted, polling lease-expiry redispatch, websocket late-result replay) are wired to the `chaos-smokes` CI job and gate every PR. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. All seven probes capture `ExecutionEvent` objects via `CapturingExecutionEventSink` when the scenario needs trace proof and write report JSON under `target/chaos-reports/`.
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.
