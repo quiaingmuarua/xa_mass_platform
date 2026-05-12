@@ -25,10 +25,14 @@ Use with:
 - test decisions are organized around the current mainline:
   `project -> submitter / worker capability -> task shell -> item append -> engine runtime -> transport delivery -> result ingest -> convergence`
 - core proof is mainline-first: `Boot-shell E2E + engine concurrency/acceptance + cross-language black-box`
+- core proof is split intentionally:
+  - local engine/transport tests protect deterministic kernel and boundary invariants
+  - E2E / black-box / chaos protect real wiring and distributed edge behavior
 - `project` is a mainline business boundary, not only a metadata/resource surface
 - `transport` is an explicit validation boundary, not an engine implementation detail
 - perf and chaos are part of the project-level test estate, but current CI gate
   truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
+- projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
 
 ## 2. Lane Map
 
@@ -79,7 +83,14 @@ Identify the dominant boundary first:
 Read the owner README after [TESTING_INDEX.md](./TESTING_INDEX.md) confirms the
 minimum verification set.
 
-## 6. Documentation Rule
+## 6. Projection-First Tests
+
+- keep local kernel tests strong; do not weaken lifecycle or convergence coverage
+- rewrite tests that prove runtime/result correctness by immediately reading compatibility projection
+- keep compatibility projection assertions only when proving bounded residue, overlay, or explicit no-op behavior
+- when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
+
+## 7. Documentation Rule
 
 - this file answers cross-module testing questions only
 - detailed perf, concurrency, chaos, and suite maps belong in owner READMEs

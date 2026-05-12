@@ -23,12 +23,19 @@ What this module proves:
 - SDK transport composition and transport-adapter runtime behavior
 - degraded-condition and recovery behavior such as disconnect, lease expiry,
   late replay, and retry reset
+- distributed edge behavior that is too wiring-heavy or timing-heavy to treat as authoritative proof through projection-first local tests
 
 What this module does not replace:
 
 - Boot-shell E2E for host HTTP/mainline behavior
 - engine deterministic concurrency tests for kernel-local invariants
 - the repo-level testing map or CI truth
+
+Testing-policy note:
+
+- use this module to prove disconnect, replay, lease-expiry, takeover, and other distributed edge behavior on the real runtime path
+- do not add local projection-first tests in engine/transport when the real risk belongs here
+- compatibility projection may still appear in reports or bounded assertions, but it is not the primary correctness surface for runtime convergence
 
 ## Runner Map
 

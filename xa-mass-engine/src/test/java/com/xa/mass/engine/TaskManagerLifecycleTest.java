@@ -31,6 +31,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageAttemptProjection;
+import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageProjection;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TaskManagerLifecycleTest {
@@ -3342,50 +3344,6 @@ class TaskManagerLifecycleTest {
         } else {
             System.setProperty(key, previousValue);
         }
-    }
-
-    private static TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjection(
-            ProjectionAwareTaskManager manager,
-            String taskId,
-            String messageId,
-            TaskMessageProjectionStatus expectedStatus) {
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        TaskDetailStore.TaskMessageProjection lastSeen = null;
-        while (System.nanoTime() < deadlineNanos) {
-            lastSeen = manager.getVisibleTaskMessageProjection(taskId, messageId);
-            if (lastSeen != null && lastSeen.status() == expectedStatus) {
-                return lastSeen;
-            }
-            try {
-                Thread.sleep(10L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        return lastSeen;
-    }
-
-    private static TaskDetailStore.TaskMessageAttemptProjection awaitVisibleTaskMessageAttemptProjection(
-            ProjectionAwareTaskManager manager,
-            String taskId,
-            String messageId,
-            TaskMessageAttemptProjectionStatus expectedStatus) {
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        TaskDetailStore.TaskMessageAttemptProjection lastSeen = null;
-        while (System.nanoTime() < deadlineNanos) {
-            lastSeen = manager.getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
-            if (lastSeen != null && lastSeen.status() == expectedStatus) {
-                return lastSeen;
-            }
-            try {
-                Thread.sleep(10L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        return lastSeen;
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

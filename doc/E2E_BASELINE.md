@@ -30,6 +30,11 @@ Fixture note:
 - prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `sealTask(...)` for batch/file ingest setup code
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
 
+Proof-surface note:
+
+- E2E is the preferred proof surface when the real risk is integrated lifecycle wiring, host/runtime interaction, transport interplay, or distributed edge behavior
+- compatibility projection may still be asserted as bounded residue, but it is not the primary proof surface for lifecycle correctness
+
 ## 2. Mandatory Release-Gate Scenarios
 
 Core lifecycle:
@@ -102,3 +107,9 @@ then acceptance requires both:
 2. trace coverage for the critical transition
 
 For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).
+
+## 4. Relation To Local Kernel Tests
+
+- E2E does not replace deterministic engine/transport invariant tests
+- local kernel tests should continue to prove retry, expiry, release, finality, and convergence ordering directly
+- what should move upward into E2E/chaos/black-box is projection-first proof style for integrated or distributed behavior

@@ -36,6 +36,7 @@ Current testing assumptions:
 - `transport` is an explicit subsystem and validation surface, not an engine implementation detail
 - the primary proof surface is integration/E2E/edge-case coverage
 - local unit tests are still useful, but new tests should prefer the mainline unless the logic is kernel-critical and easier to prove locally
+- local kernel tests remain first-class PR protection for lifecycle/result invariants; what is being downgraded is projection-first proof style, not local kernel testing itself
 
 ## 2. Test Layers
 
@@ -207,6 +208,13 @@ Does not prove:
 Use first when:
 
 - changing lifecycle, retry, expiry, release, or convergence rules
+- proving deterministic kernel invariants that would be noisy or slow to localize through E2E/chaos only
+
+Testing rule:
+
+- prefer runtime truth, lease truth, task aggregate truth, and final convergence state as the primary assertion surface
+- do not add new lifecycle/result tests that treat compatibility projection as immediate execution truth
+- keep compatibility projection assertions only when the residue/read-model contract itself is the subject
 
 ### Server Mainline E2E
 
@@ -238,6 +246,21 @@ Proves:
 Does not prove:
 
 - long-run throughput
+- distributed recovery on its own; use chaos or black-box when disconnect, replay, late result, or takeover behavior is the real risk
+
+### Projection-First Proof Is Downgraded
+
+The following test shape is now downgraded:
+
+- mutate runtime state or ingest a result
+- immediately read `TaskMessageProjection` or attempt projection
+- treat that compatibility projection as authoritative proof of lifecycle correctness
+
+Rewrite that shape as one of:
+
+- local kernel invariant proof using runtime/lease/finality truth
+- bounded residue proof that explicitly awaits async compatibility residue convergence
+- integrated proof in Boot-shell E2E, cross-language black-box, or chaos when the real risk is wiring or distributed edge behavior
 - disconnect/recovery robustness by itself
 
 Use first when:
