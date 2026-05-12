@@ -8,6 +8,22 @@ For current test-layer truth, minimum verification, and CI gate truth, start
 with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README is
 module-local only.
 
+## Fast Intent
+
+Use this module when the real risk lives in runtime edges or runtime pressure:
+
+- disconnect / reconnect
+- lease expiry / takeover / replay
+- delayed retry visibility
+- transport composition across polling / websocket / socket
+- perf pressure on the scheduling mainline
+
+Do not use this module as the first home for:
+
+- ordinary worker/task matching correctness
+- the full scheduling competition matrix
+- projection-first lifecycle proof
+
 Use this module when the question is:
 
 - did a hot path get slower
@@ -32,6 +48,12 @@ What this module does not replace:
 - Boot-shell E2E for host HTTP/mainline behavior
 - engine deterministic concurrency tests for kernel-local invariants
 - the repo-level testing map or CI truth
+
+Agent shortcut:
+
+- if the main question is "which worker/context should win", start in `xa-mass-engine`
+- if the main question is "does this survive real host wiring", start in `xa-mass-server`
+- if the main question is "does this survive disconnect, replay, or pressure", start here
 
 Testing-policy note:
 

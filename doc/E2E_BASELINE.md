@@ -8,6 +8,20 @@ This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
 
+## 0. Fast Intent
+
+Use Boot-shell E2E when the real risk is:
+
+- real host/runtime wiring
+- representative assignment and result-convergence behavior through the server shell
+- external worker parity across process, language, or adapter boundaries
+
+Do not use Boot-shell E2E as the first home for:
+
+- the full worker-selection competition matrix
+- every scheduling/contention permutation
+- projection-first lifecycle proof
+
 E2E is the platform-viability proof surface, not the only or highest-value
 proof of scheduling correctness. The full competition matrix belongs primarily
 to engine acceptance/concurrency tests, while E2E keeps representative real-host

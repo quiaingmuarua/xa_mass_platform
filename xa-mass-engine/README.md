@@ -20,6 +20,25 @@ covers engine-owned assets and when to use them.
 - engine-local policy ownership across matching, assignment, attempt, release,
   refill, intake, and terminal decisions
 
+## Scheduling Core Test Intent
+
+Read this before interpreting engine tests.
+
+- `engine` is the primary proof surface for scheduling correctness
+- `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
+  a second implementation world
+- keep these tests local when the real question is:
+  - which worker/context is eligible
+  - whether contention produces a conflict, retry, or redispatch
+  - whether a task re-enters competition correctly after delay, retry, or lease expiry
+  - whether contract-aware scheduling/finality rules stay correct
+- move proof upward when the real question is:
+  - host HTTP wiring
+  - adapter/language parity
+  - disconnect/reconnect/replay under real runtime edges
+- do not add new engine tests that use compatibility projection as immediate
+  runtime truth
+
 ## Start Here
 
 Start with these classes before changing behavior:

@@ -6,6 +6,32 @@ Status: current project-level testing index.
 
 This is the default testing entry for both humans and agents.
 
+## 0. Fast Intent
+
+Read this section first if you only need the testing-system intent.
+
+- highest-value proof surface: `engine scheduling correctness`
+- representative real wiring proof: `server E2E / external worker parity`
+- distributed edge proof: `chaos / perf / black-box`
+- keep local kernel tests strong:
+  - lifecycle
+  - retry
+  - expiry
+  - release
+  - convergence
+- downgrade only this test shape:
+  - mutate runtime state
+  - immediately read compatibility projection
+  - treat projection as execution truth
+- compatibility projection is bounded residue and report context, not the primary proof surface for runtime correctness
+
+Do not misread the current system:
+
+- this repo did **not** move to `E2E-only`
+- `engine` local tests are still first-class PR protection
+- `Boot-shell E2E` is representative integrated proof, not the full competition matrix
+- `chaos/perf` own distributed edge and runtime pressure, not ordinary lifecycle correctness
+
 Use this file to answer four questions quickly:
 
 1. what the current test layers are
@@ -37,6 +63,15 @@ Current testing assumptions:
 - the highest-value proof surface is scheduling correctness; host E2E stays the representative integrated wiring proof
 - local unit tests are still useful, but new tests should prefer the mainline unless the logic is kernel-critical and easier to prove locally
 - local kernel tests remain first-class PR protection for lifecycle/result invariants; what is being downgraded is projection-first proof style, not local kernel testing itself
+
+Fast routing:
+
+- worker/task competition, eligibility, gating, redispatch:
+  start with `xa-mass-engine`
+- real host/runtime wiring:
+  start with `xa-mass-server` E2E
+- disconnect, replay, lease expiry, late result, runtime pressure:
+  start with `xa-mass-testing`
 
 ## 2. Test Layers
 
