@@ -77,6 +77,9 @@ Start here based on the change:
   [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md)
 - transport runtime or adapter work:
   [transport/AGENTS.md](transport/AGENTS.md)
+- understanding the current testing system or deciding where a new test belongs:
+  read [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) first, especially
+  `0. Fast Intent`, then jump to the owning lane README or suite
 - lifecycle/trace/E2E contracts:
   [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),
