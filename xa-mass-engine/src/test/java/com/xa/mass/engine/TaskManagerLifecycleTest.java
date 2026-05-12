@@ -830,8 +830,12 @@ class TaskManagerLifecycleTest {
         assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
         assertEquals(0, manager.getTaskWorkRuntime().stats(task.getTid()).processingCount());
 
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                manager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt = awaitVisibleTaskMessageAttemptProjection(
+                manager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
         assertNotNull(latestAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, latestAttempt.status());
     }
@@ -900,8 +904,13 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "boom"));
 
-        TaskDetailStore.TaskMessageProjection updatedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection updatedMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.FAILED
+        );
+        assertNotNull(updatedMessage);
         assertEquals(TaskMessageProjectionStatus.FAILED, updatedMessage.status());
         assertEquals("boom", updatedMessage.errorMessage());
         assertEquals(0, taskManager.getTask(task.getTid()).getTaskSuccessNumber());
@@ -941,8 +950,13 @@ class TaskManagerLifecycleTest {
         assignMessage(task, retriedMessage, "worker-2", "worker-context-2", "batch-1");
         assertTrue(taskManager.ingestTaskResult(task.getTid(), messageId, true, "done-after-retry"));
 
-        TaskDetailStore.TaskMessageProjection finalMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), messageId);
+        TaskDetailStore.TaskMessageProjection finalMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                messageId,
+                TaskMessageProjectionStatus.SUCCESS
+        );
+        assertNotNull(finalMessage);
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskMessageProjectionStatus.SUCCESS, finalMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, finalMessage.finalReason());
@@ -1636,11 +1650,20 @@ class TaskManagerLifecycleTest {
                 java.util.Map.of("fresh", true)
         ));
 
-        TaskDetailStore.TaskMessageProjection updatedMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-        TaskDetailStore.TaskMessageAttemptProjection latestAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection updatedMessage = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
+        TaskDetailStore.TaskMessageAttemptProjection latestAttempt = awaitVisibleTaskMessageAttemptProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
 
+        assertNotNull(updatedMessage);
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updatedMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, updatedMessage.finalReason());
         assertNull(updatedMessage.errorCode());

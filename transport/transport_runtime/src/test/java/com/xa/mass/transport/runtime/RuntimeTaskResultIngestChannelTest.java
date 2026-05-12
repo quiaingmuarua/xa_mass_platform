@@ -28,6 +28,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
+import java.util.concurrent.TimeUnit;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,11 +72,17 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("SUCCESS", updated.output().get("status"));
         assertEquals("ok", updated.output().get("mockData"));
-        TaskDetailStore.TaskMessageAttemptProjection attempt = latestAttemptAuditView(fixture);
+        TaskDetailStore.TaskMessageAttemptProjection attempt = awaitLatestAttemptAuditView(
+                fixture,
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
         assertNotNull(attempt);
         assertEquals("SUCCESS", attempt.output().get("status"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -88,12 +96,18 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.INIT
+        );
         assertEquals(TaskMessageProjectionStatus.INIT, updated.status());
         assertEquals(1, updated.retryCount());
         assertNull(updated.errorMessage());
         assertNull(updated.errorCode());
-        TaskDetailStore.TaskMessageAttemptProjection attempt = latestAttemptAuditView(fixture);
+        TaskDetailStore.TaskMessageAttemptProjection attempt = awaitLatestAttemptAuditView(
+                fixture,
+                TaskMessageAttemptProjectionStatus.REVOKED
+        );
         assertNotNull(attempt);
         assertEquals(TaskMessageAttemptProjectionStatus.REVOKED, attempt.status());
         assertEquals(TaskMessageAttemptProjectionFinalReason.REVOKED_FOR_RETRY, attempt.finalReason());
@@ -112,7 +126,10 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertNull(updated.errorMessage());
     }
@@ -154,7 +171,10 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("SUCCESS", updated.output().get("status"));
         assertEquals("ok-from-report", updated.output().get("mockData"));
@@ -174,7 +194,10 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("ok-envelope", updated.output().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -252,10 +275,16 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("ok-no-attempt-row", updated.output().get("mockData"));
-        TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt = latestAttemptAuditView(fixture);
+        TaskDetailStore.TaskMessageAttemptProjection recoveredAttempt = awaitLatestAttemptAuditView(
+                fixture,
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, recoveredAttempt.status());
     }
@@ -333,7 +362,10 @@ class RuntimeTaskResultIngestChannelTest {
         assertTrue(handled);
         assertTrue(hiddenReadStorage.compatibilityAddCount <= 1,
                 "result convergence should keep TaskMsg compatibility reinsert bounded when compatibility read is hidden");
-        TaskDetailStore.TaskMessageProjection updated = storedCompatibilityMessage(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitStoredCompatibilityMessage(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("ok-hidden-read", updated.output().get("mockData"));
     }
@@ -356,7 +388,10 @@ class RuntimeTaskResultIngestChannelTest {
         assertTrue(channel.ingest(report(fixture, "SUCCESS", "ok-terminal-first", null)));
         assertTrue(channel.ingest(report(fixture, "FAILED", "late-terminal-second", null)));
 
-        TaskDetailStore.TaskMessageProjection stored = storedCompatibilityMessage(fixture);
+        TaskDetailStore.TaskMessageProjection stored = awaitStoredCompatibilityMessage(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, stored.status());
         assertEquals("ok-terminal-first", stored.output().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -379,7 +414,10 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(fixture, "SUCCESS", "ok-update-fails", null));
 
         assertTrue(handled);
-        TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
+        TaskDetailStore.TaskMessageProjection updated = awaitCompatibilityMessageSnapshotView(
+                fixture,
+                TaskMessageProjectionStatus.SUCCESS
+        );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updated.status());
         assertEquals("ok-update-fails", updated.output().get("mockData"));
         assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.taskId()).getStatus());
@@ -522,8 +560,48 @@ class RuntimeTaskResultIngestChannelTest {
         return compatibilityMessageSnapshotViewById(fixture.taskId(), fixture.messageId());
     }
 
+    private TaskDetailStore.TaskMessageProjection awaitCompatibilityMessageSnapshotView(
+            RunningTaskFixture fixture,
+            TaskMessageProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = compatibilityMessageSnapshotView(fixture);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
+    }
+
     private TaskDetailStore.TaskMessageAttemptProjection latestAttemptAuditView(RunningTaskFixture fixture) {
         return taskStorage.getLatestTaskMessageAttemptProjection(fixture.taskId(), fixture.messageId()).orElse(null);
+    }
+
+    private TaskDetailStore.TaskMessageAttemptProjection awaitLatestAttemptAuditView(
+            RunningTaskFixture fixture,
+            TaskMessageAttemptProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageAttemptProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = latestAttemptAuditView(fixture);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
     }
 
     private void updateMaxRetryCount(RunningTaskFixture fixture, int maxRetryCount) {
@@ -563,6 +641,26 @@ class RuntimeTaskResultIngestChannelTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "Task message projection not found: taskId="
                                 + fixture.taskId() + ", messageId=" + fixture.messageId()));
+    }
+
+    private TaskDetailStore.TaskMessageProjection awaitStoredCompatibilityMessage(
+            RunningTaskFixture fixture,
+            TaskMessageProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = storedCompatibilityMessage(fixture);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
     }
 
     private TaskDetailStore.TaskMessageProjection firstMessage(String taskId) {
@@ -709,6 +807,3 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 }
-
-
-

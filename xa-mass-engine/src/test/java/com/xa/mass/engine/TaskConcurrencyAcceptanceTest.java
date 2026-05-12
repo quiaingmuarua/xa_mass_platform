@@ -81,10 +81,16 @@ class TaskConcurrencyAcceptanceTest {
         );
 
         Task finalTask = taskManager.getTask(task.getTid());
-        TaskDetailStore.TaskMessageProjection finalMessage =
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId());
-        TaskDetailStore.TaskMessageAttemptProjection finalAttempt =
-                taskManager.getLatestTaskMessageAttemptAuditProjection(task.getTid(), message.messageId());
+        TaskDetailStore.TaskMessageProjection finalMessage = awaitVisibleTaskMessageProjection(
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.SUCCESS
+        );
+        TaskDetailStore.TaskMessageAttemptProjection finalAttempt = awaitVisibleTaskMessageAttemptProjection(
+                task.getTid(),
+                message.messageId(),
+                TaskMessageAttemptProjectionStatus.SUCCEEDED
+        );
 
         assertEquals(TaskStatus.TERMINAL, finalTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, finalTask.getTerminalReason());
@@ -646,6 +652,48 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 
+    private TaskDetailStore.TaskMessageProjection awaitVisibleTaskMessageProjection(
+            String taskId,
+            String messageId,
+            TaskMessageProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskManager.getVisibleTaskMessageProjection(taskId, messageId);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
+    }
+
+    private TaskDetailStore.TaskMessageAttemptProjection awaitVisibleTaskMessageAttemptProjection(
+            String taskId,
+            String messageId,
+            TaskMessageAttemptProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageAttemptProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskManager.getLatestTaskMessageAttemptAuditProjection(taskId, messageId);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return lastSeen;
+    }
+
     private static final class RecordingTaskScheduler implements TaskScheduler {
         @Override
         public TaskScheduler.SchedulingResult scheduleTask(Task task) {
@@ -873,5 +921,3 @@ class TaskConcurrencyAcceptanceTest {
         }
     }
 }
-
-
