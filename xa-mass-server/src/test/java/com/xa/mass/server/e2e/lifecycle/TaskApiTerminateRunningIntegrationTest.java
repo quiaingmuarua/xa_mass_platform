@@ -72,11 +72,10 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             );
             assertApiOk(approveResponse);
 
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(0, ((Number) runningSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(2, runningSnapshot.messages().size());
-            assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
             assertNotNull(firstClient.awaitTask(3, TimeUnit.SECONDS), "First worker did not receive a task dispatch");
             assertNotNull(secondClient.awaitTask(3, TimeUnit.SECONDS), "Second worker did not receive a task dispatch");
@@ -88,14 +87,12 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             );
             assertApiOk(terminateResponse);
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(2, terminalSnapshot.messages().size());
-            assertTrue(terminalSnapshot.messages().stream().allMatch(message ->
-                    List.of("EXPIRED", "FAILED").contains(String.valueOf(message.get("status")))));
-            assertTrue(terminalSnapshot.messages().stream().allMatch(message ->
-                    "MANUAL_CANCELLED".equals(String.valueOf(message.get("finalReason")))));
+            assertEquals(0, terminalSnapshot.stats().successCount());
+            assertEquals(0, terminalSnapshot.stats().processingCount());
+            assertTrue(terminalSnapshot.activeLeases().isEmpty(), "terminate must release in-flight runtime leases");
 
             Map<String, Object> deleteResponse = exchange(
                     "/api/v1/tasks/" + taskId,

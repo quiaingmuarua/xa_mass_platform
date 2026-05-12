@@ -237,13 +237,24 @@ What engine tests do not replace:
 
 Useful starting tests:
 
-- `TaskConcurrencyAcceptanceTest`
-- `TaskManagerLifecycleTest`
+- `TaskKernelLifecycleTest`
+- `TaskContractTerminalBehaviorTest`
+- `TaskRuntimeRecoveryPortTest`
+- `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`
 - `TaskAssignWorkerTest`
 - `TaskWorkerAssignListenerTest`
 - `RuleBasedTaskWorkerMatchingStrategyTest`
 - `WorkerMatchContextTest`
+
+Explicit secondary residue/audit tests:
+
+- `EngineProjectionResidueSuite`
+  - `TaskManagerLifecycleTest`
+  - `TaskConcurrencyAcceptanceTest`
+  - `SimpleTaskDispatchBinderTest`
+- `EngineProjectionAuditSuite`
+  - `TaskStateValidatorBoundaryTest`
 
 ## Read Map
 

@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -62,21 +61,16 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         );
         assertApiOk(auditResponse);
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, snapshot.messages().size());
-
-        for (Map<String, Object> message : snapshot.messages()) {
-            assertEquals("SUCCESS", message.get("status"));
-            assertEquals("BUSINESS_SUCCESS", message.get("finalReason"));
-            assertNotNull(message.get("latestAttemptWorkerId"));
-            assertNotNull(message.get("latestAttemptWorkerContextId"));
-            assertNotNull(message.get("latestAttemptBatchId"));
-        }
+        assertEquals(2, snapshot.stats().totalCount());
+        assertEquals(2, snapshot.stats().successCount());
+        assertEquals(0, snapshot.stats().failedCount());
+        assertEquals(0, snapshot.stats().expiredCount());
     }
 
     @Test
@@ -91,9 +85,10 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         );
         assertApiOk(audit(taskId, "interactive-workload"));
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
         assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals("INTERACTIVE", snapshot.task().get("workloadClass"));
+        assertEquals(1, snapshot.stats().successCount());
 
         Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detail);
@@ -112,10 +107,11 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         );
         assertApiOk(audit(taskId, "bulk-workload"));
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
         assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals("BULK", snapshot.task().get("workloadClass"));
-        assertEquals(3, snapshot.messages().size());
+        assertEquals(3, snapshot.stats().totalCount());
+        assertEquals(3, snapshot.stats().successCount());
 
         Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detail);

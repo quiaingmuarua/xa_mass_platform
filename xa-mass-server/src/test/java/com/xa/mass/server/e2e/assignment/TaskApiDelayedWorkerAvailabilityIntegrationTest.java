@@ -17,7 +17,6 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -53,10 +52,10 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
         );
         assertApiOk(auditResponse);
 
-        TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
+        RuntimeTaskSnapshot readySnapshot = waitForRuntimeTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(1, readySnapshot.messages().size());
-        assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
+        assertEquals(1, readySnapshot.stats().readyCount());
+        assertEquals(0, readySnapshot.activeLeases().size());
 
         String workerId = "late-worker-0";
         addMatchingWorker(workerId);
@@ -68,18 +67,13 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
             assertClientConnects(client, "late worker client failed to connect");
             waitUntil(() -> app.isWorkerOnline(workerId), "late worker connect must surface transport presence online");
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(1, terminalSnapshot.messages().size());
-
-            Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("SUCCESS", message.get("status"));
-            assertEquals(workerId, message.get("latestAttemptWorkerId"));
-            assertNotNull(message.get("latestAttemptWorkerContextId"));
-            assertNotNull(message.get("latestAttemptBatchId"));
+            assertEquals(1, terminalSnapshot.stats().successCount());
+            assertEquals(0, terminalSnapshot.activeLeases().size());
         } finally {
             client.disconnect();
         }

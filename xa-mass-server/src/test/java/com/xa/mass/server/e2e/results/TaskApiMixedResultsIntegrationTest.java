@@ -23,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that a task with one SUCCESS and one FAILED message closes to TERMINAL
@@ -85,42 +84,28 @@ public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals(2, runningSnapshot.messages().size());
-            assertTrue(runningSnapshot.messages().stream().allMatch(m -> "ASSIGNED".equals(m.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
             JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
             JsonObject secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(firstDispatch);
             assertNotNull(secondDispatch);
 
-            Map<String, Object> firstMsg = runningSnapshot.messages().get(0);
-            Map<String, Object> secondMsg = runningSnapshot.messages().get(1);
-
             firstClient.sendResult(firstDispatch, "SUCCESS", "mixed-ok");
 
             secondClient.sendResult(secondDispatch, "FAILED", "mixed-fail");
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("MIXED_MESSAGE_RESULTS", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(2, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-
-            assertEquals(2, terminalSnapshot.messages().size());
-            long successCount = terminalSnapshot.messages().stream()
-                    .filter(m -> "SUCCESS".equals(m.get("status"))).count();
-            long failedCount = terminalSnapshot.messages().stream()
-                    .filter(m -> "FAILED".equals(m.get("status"))).count();
-            assertEquals(1, successCount);
-            assertEquals(1, failedCount);
-
-            for (Map<String, Object> msg : terminalSnapshot.messages()) {
-                assertNotNull(msg.get("latestAttemptWorkerId"));
-                assertNotNull(msg.get("latestAttemptWorkerContextId"));
-                assertNotNull(msg.get("latestAttemptBatchId"));
-            }
+            assertEquals(2, terminalSnapshot.stats().totalCount());
+            assertEquals(1, terminalSnapshot.stats().successCount());
+            assertEquals(1, terminalSnapshot.stats().failedCount());
+            assertEquals(2, terminalSnapshot.stats().finalCount());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();

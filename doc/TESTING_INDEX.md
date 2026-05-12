@@ -220,8 +220,10 @@ Current implications:
 
 Primary classes:
 
-- `TaskConcurrencyAcceptanceTest`
-- `TaskManagerLifecycleTest`
+- `TaskKernelLifecycleTest`
+- `TaskContractTerminalBehaviorTest`
+- `TaskRuntimeRecoveryPortTest`
+- `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`
 - `TaskAssignWorkerTest`
 - `TaskWorkerAssignListenerTest`
@@ -233,6 +235,7 @@ Proves:
 - scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
 - lifecycle and result correctness under race-sensitive conditions
 - retry/reset/release/finality invariants
+- contract/intake/runtime owner boundaries without reading compatibility projection as hot-path truth
 
 Does not prove:
 
@@ -251,6 +254,18 @@ Testing rule:
 - keep compatibility projection assertions only when the residue/read-model contract itself is the subject
 - when a scenario fails because the wrong worker was chosen, excluded, or re-chosen, prove it here before duplicating it through more host-shell tests
 
+Secondary explicit residue/audit lanes:
+
+- `EngineProjectionResidueSuite`
+  - `TaskManagerLifecycleTest`
+  - `TaskConcurrencyAcceptanceTest`
+  - `SimpleTaskDispatchBinderTest`
+- `EngineProjectionAuditSuite`
+  - `TaskStateValidatorBoundaryTest`
+
+These suites remain useful, but they are not the mainline scheduling gate and
+must not re-take ownership of runtime correctness.
+
 ### Server Mainline E2E
 
 Primary groups:
@@ -265,9 +280,7 @@ High-signal classes include:
 - `TaskApiMultiTaskAssignmentIntegrationTest`
 - `TaskApiMinimumWorkerGateIntegrationTest`
 - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
-- `TaskApiMultiRoundDispatchIntegrationTest`
 - `TaskApiSingleWorkerReuseIntegrationTest`
-- `TaskApiTerminateReuseIntegrationTest`
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
 - `TaskApiWorkerWithoutContextIntegrationTest`
 - `PollingWorkerTaskFlowIntegrationTest`
@@ -279,12 +292,28 @@ Proves:
 - the host shell exposes the scheduling mainline correctly
 - project/submitter/worker/task flows survive real wiring
 - representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
+- lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
+  truth first; it does not use compatibility message projection as its main
+  proof surface
 
 Does not prove:
 
 - the full competition matrix by itself; keep that in engine acceptance first
 - long-run throughput
 - distributed recovery on its own; use chaos or black-box when disconnect, replay, late result, or takeover behavior is the real risk
+
+Secondary explicit server residue/audit lanes:
+
+- `ServerProjectionResidueSuite`
+  - `TaskApiMultiRoundDispatchIntegrationTest`
+  - `TaskApiTerminateReuseIntegrationTest`
+  - `TaskApiCallbackReplayIntegrationTest`
+- `ServerProjectionAuditSuite`
+  - `TaskApiStateValidationIntegrationTest`
+
+These suites protect bounded compatibility/read-model and diagnostic behavior.
+They are useful supporting lanes, but they are not the representative
+server-scheduling E2E gate and must not re-own lifecycle or scheduling truth.
 
 ### Projection-First Proof Is Downgraded
 

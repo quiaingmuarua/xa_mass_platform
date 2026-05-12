@@ -188,16 +188,10 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(resultResponse);
         assertEquals(Boolean.TRUE, responseData(resultResponse).get("submitted"));
 
-        TaskSnapshot terminal = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-        assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
-        assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
-        assertFalse(terminal.messages().get(0).containsKey("latestAttemptId"),
-                "latestAttemptId must remain internal and out of status API response");
-        assertTrue(terminal.messages().get(0).get("output") instanceof Map);
-        Map<?, ?> output = (Map<?, ?>) terminal.messages().get(0).get("output");
-        assertEquals("Example Page", output.get("title"));
+        assertEquals(1, terminal.stats().successCount());
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "external-worker-api-offline"

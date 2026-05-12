@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -56,21 +55,15 @@ public class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
         );
         assertApiOk(auditResponse);
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
         assertEquals("ALL_MESSAGES_FAILED", snapshot.task().get("terminalReason"));
         assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(0, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, snapshot.messages().size());
-
-        for (Map<String, Object> message : snapshot.messages()) {
-            assertEquals("FAILED", message.get("status"));
-            assertEquals("RETRY_EXHAUSTED", message.get("finalReason"));
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
-        assertEquals("Executed by sample client " + message.get("latestAttemptWorkerId"), message.get("errorMessage"));
-        }
+        assertEquals(2, snapshot.stats().totalCount());
+        assertEquals(0, snapshot.stats().successCount());
+        assertEquals(2, snapshot.stats().failedCount());
+        assertEquals(2, snapshot.stats().finalCount());
     }
 }

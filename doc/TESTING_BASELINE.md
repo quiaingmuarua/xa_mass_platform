@@ -38,6 +38,8 @@ Use with:
 - perf and chaos are part of the project-level test estate, but current CI gate
   truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
+- engine PR mainline suites are now runtime-first:
+  `EngineSchedulingCoreSuite` no longer carries projection-heavy residue classes directly; compatibility residue and audit live in explicit secondary suites
 
 ## 2. Lane Map
 
@@ -97,6 +99,12 @@ minimum verification set.
 - keep local kernel tests strong; do not weaken lifecycle or convergence coverage
 - rewrite tests that prove runtime/result correctness by immediately reading compatibility projection
 - keep compatibility projection assertions only when proving bounded residue, overlay, or explicit no-op behavior
+- keep compatibility residue ownership explicit:
+  `EngineProjectionResidueSuite` and `EngineProjectionAuditSuite` are valid supporting lanes, but they do not define the scheduling-core gate
+- keep server compatibility residue ownership explicit:
+  `ServerProjectionResidueSuite` and `ServerProjectionAuditSuite` are valid
+  supporting lanes; `ServerSchedulingE2eSuite` and
+  `ServerLifecycleResultConvergenceSuite` stay runtime/aggregate-first
 - when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
 
 ## 7. Documentation Rule

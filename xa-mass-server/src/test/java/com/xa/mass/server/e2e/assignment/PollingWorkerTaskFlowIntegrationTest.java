@@ -91,12 +91,10 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
                     Map.of("pollResult", "ok"));
             assertTrue(submitted, "Result submission must succeed");
 
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(1, terminal.messages().size());
-            assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
-            assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
         } finally {
             session.disconnect();
         }
@@ -130,7 +128,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
 
             // Submit result to let task complete cleanly.
             session.submitResult(items.get(0), true, "drain-ok", Map.of());
-            waitForTerminalTask(taskId);
+            waitForTerminalRuntimeTask(taskId);
         } finally {
             session.disconnect();
         }

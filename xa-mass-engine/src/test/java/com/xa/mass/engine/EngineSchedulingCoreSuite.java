@@ -10,8 +10,10 @@ import org.junit.platform.suite.api.Suite;
 
 @Suite
 @SelectClasses({
-        TaskConcurrencyAcceptanceTest.class,
-        TaskManagerLifecycleTest.class,
+        TaskKernelLifecycleTest.class,
+        TaskContractTerminalBehaviorTest.class,
+        TaskRuntimeRecoveryPortTest.class,
+        WorkerManagerTest.class,
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
         TaskWorkerAssignListenerTest.class,

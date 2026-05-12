@@ -1,10 +1,12 @@
 package com.xa.mass.server.e2e.assignment;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -16,9 +18,13 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -55,8 +61,8 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
         addCandidate("other-worker", "pool-west", "us", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient matchedClient = new SampleWorkerWebSocketClient(uri, "matched-worker");
-        SampleWorkerWebSocketClient otherClient = new SampleWorkerWebSocketClient(uri, "other-worker");
+        ManualAckWebSocketClient matchedClient = new ManualAckWebSocketClient(uri, "matched-worker");
+        ManualAckWebSocketClient otherClient = new ManualAckWebSocketClient(uri, "other-worker");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
@@ -69,16 +75,16 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
             );
             assertApiOk(auditResponse);
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            JsonObject matchedDispatch = matchedClient.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject rejectedDispatch = otherClient.awaitTask(300, TimeUnit.MILLISECONDS);
+            assertNotNull(matchedDispatch, "matched worker should receive the routed task");
+            assertNull(rejectedDispatch, "worker with mismatched context attributes must not receive the task");
+            matchedClient.sendSuccess(matchedDispatch, "attribute-routing-ok");
+
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals(1, terminalSnapshot.messages().size());
-
-            Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("matched-worker", message.get("latestAttemptWorkerId"));
-            assertEquals("worker-context-matched-worker", message.get("latestAttemptWorkerContextId"));
-            assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("latestAttemptBatchId"));
+            assertEquals(1, terminalSnapshot.stats().successCount());
         } finally {
             otherClient.disconnect();
             matchedClient.disconnect();
@@ -101,6 +107,43 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
                 "demoApp",
                 Map.of("country", countryAttribute)
         );
+    }
+
+    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
+
+        private ManualAckWebSocketClient(URI serverUri, String workerId) {
+            super(serverUri, workerId);
+        }
+
+        @Override
+        public void onMessage(String message) {
+            try {
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
+                    return;
+                }
+            } catch (Exception ignored) {
+                // Fall through to the base client for non-task frames or malformed payloads.
+            }
+            super.onMessage(message);
+        }
+
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+            return taskQueue.poll(timeout, unit);
+        }
+
+        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+            sendMessage(WsFrameTestSupport.buildTaskResult(
+                    WsFrameTestSupport.messageId(taskMessage),
+                    WsFrameTestSupport.project(taskMessage),
+                    getWorkerId(),
+                    WsFrameTestSupport.taskId(taskMessage),
+                    "SUCCESS",
+                    detail
+            ));
+        }
     }
 }
 

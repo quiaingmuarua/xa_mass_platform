@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-class SimpleTaskDispatchBinderTest {
+public class SimpleTaskDispatchBinderTest {
 
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;

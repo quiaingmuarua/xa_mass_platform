@@ -98,7 +98,7 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(3, channelCallOrder.size(), "All three transport channels must be invoked");
 
         // Task must reach terminal state.
-        TaskSnapshot terminal = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
     }

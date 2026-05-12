@@ -14,7 +14,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -71,21 +70,31 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(firstDispatch, "First worker should receive one task while it remains in-flight");
             assertNotNull(secondDispatch, "Second worker should receive the other task while the first worker is locked");
 
-            TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING");
-            TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING");
+            RuntimeTaskSnapshot firstRunning = waitForRuntimeTaskSnapshot(
+                    firstTaskId,
+                    snapshot -> "RUNNING".equals(snapshot.task().get("status")) && snapshot.activeLeases().size() == 1,
+                    "RUNNING with one runtime lease",
+                    20,
+                    250L);
+            RuntimeTaskSnapshot secondRunning = waitForRuntimeTaskSnapshot(
+                    secondTaskId,
+                    snapshot -> "RUNNING".equals(snapshot.task().get("status")) && snapshot.activeLeases().size() == 1,
+                    "RUNNING with one runtime lease",
+                    20,
+                    250L);
 
             assertRunningSingleDeviceTask(firstRunning);
             assertRunningSingleDeviceTask(secondRunning);
 
-            String firstWorkerId = String.valueOf(firstRunning.messages().get(0).get("latestAttemptWorkerId"));
-            String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("latestAttemptWorkerId"));
+            String firstWorkerId = firstRunning.activeLeases().getFirst().workerId();
+            String secondWorkerId = secondRunning.activeLeases().getFirst().workerId();
             assertEquals(Set.of("it-worker-0", "it-worker-1"), Set.of(firstWorkerId, secondWorkerId));
 
             firstClient.sendSuccess(firstDispatch, "multi-task-a-ok");
             secondClient.sendSuccess(secondDispatch, "multi-task-b-ok");
 
-            TaskSnapshot firstTerminal = waitForTerminalTask(firstTaskId);
-            TaskSnapshot secondTerminal = waitForTerminalTask(secondTaskId);
+            RuntimeTaskSnapshot firstTerminal = waitForTerminalRuntimeTask(firstTaskId);
+            RuntimeTaskSnapshot secondTerminal = waitForTerminalRuntimeTask(secondTaskId);
 
             assertTerminalSingleDeviceTask(firstTerminal);
             assertTerminalSingleDeviceTask(secondTerminal);
@@ -95,27 +104,22 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 
-    private void assertRunningSingleDeviceTask(TaskSnapshot snapshot) {
+    private void assertRunningSingleDeviceTask(RuntimeTaskSnapshot snapshot) {
         assertEquals("RUNNING", snapshot.task().get("status"));
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(1, snapshot.messages().size());
-        Map<String, Object> message = snapshot.messages().get(0);
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
+        assertEquals(1, snapshot.activeLeases().size());
+        assertNotNull(snapshot.activeLeases().getFirst().workerId());
+        assertNotNull(snapshot.activeLeases().getFirst().workerContextId());
+        assertNotNull(snapshot.activeLeases().getFirst().batchId());
     }
 
-    private void assertTerminalSingleDeviceTask(TaskSnapshot snapshot) {
+    private void assertTerminalSingleDeviceTask(RuntimeTaskSnapshot snapshot) {
         assertEquals("TERMINAL", snapshot.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(1, snapshot.messages().size());
-        Map<String, Object> message = snapshot.messages().get(0);
-        assertEquals("SUCCESS", message.get("status"));
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
+        assertEquals(1, snapshot.stats().successCount());
+        assertEquals(0, snapshot.activeLeases().size());
     }
 
     private void registerWorker(String workerId) {

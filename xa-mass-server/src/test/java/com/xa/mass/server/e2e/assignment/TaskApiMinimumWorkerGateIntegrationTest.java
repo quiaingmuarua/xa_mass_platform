@@ -55,9 +55,10 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> auditResponse = audit(taskId, "min-worker-gate");
         assertApiOk(auditResponse);
 
-        TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
+        RuntimeTaskSnapshot readySnapshot = waitForRuntimeTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
+        assertEquals(1, readySnapshot.stats().readyCount());
+        assertEquals(0, readySnapshot.activeLeases().size());
         assertEquals("IDLE", app.getWorkerContexts(firstWorkerId).get(0).getStatus());
 
         String secondWorkerId = "min-gate-worker-1";
@@ -71,18 +72,19 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
             assertClientConnects(firstClient, "first sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must surface transport presence online");
 
-            TaskSnapshot stillReadyWithSingleOnlineWorker = waitForTaskSnapshot(taskId, "READY", 8, 250L);
+            RuntimeTaskSnapshot stillReadyWithSingleOnlineWorker = waitForRuntimeTaskSnapshot(taskId, "READY", 8, 250L);
             assertEquals(0, ((Number) stillReadyWithSingleOnlineWorker.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals("INIT", stillReadyWithSingleOnlineWorker.messages().get(0).get("status"));
-            assertEquals(null, stillReadyWithSingleOnlineWorker.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, stillReadyWithSingleOnlineWorker.stats().readyCount());
+            assertEquals(0, stillReadyWithSingleOnlineWorker.activeLeases().size());
 
             assertClientConnects(secondClient, "second sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(secondWorkerId), "second worker connect must surface transport presence online");
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
+            assertEquals(1, terminalSnapshot.stats().successCount());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();

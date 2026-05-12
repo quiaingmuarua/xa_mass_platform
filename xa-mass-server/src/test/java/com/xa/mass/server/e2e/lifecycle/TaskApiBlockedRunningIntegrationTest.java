@@ -14,31 +14,13 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Verifies the RUNNING → BLOCKED → re-approve → RUNNING → TERMINAL path with
- * real worker WebSocket connections.
- *
- * <p>Closing the "BLOCKED state with real in-flight workers completing" coverage gap
- * noted in {@code doc/CURRENT_GAPS.md}.  Prior lifecycle tests covered BLOCKED only
- * from READY (no active workers) via {@link TaskApiLifecycleGuardsIntegrationTest}.
- *
- * <p>Key behaviors verified:
- * <ul>
- *   <li>RUNNING → BLOCKED: in-flight assignments are preserved (messages stay ASSIGNED)</li>
- *   <li>BLOCKED → READY: re-approve restores the dispatch path</li>
- *   <li>Workers complete their original dispatches after unblock → task reaches TERMINAL</li>
- *   <li>Terminal state is ALL_MESSAGES_SUCCEEDED with correct success count</li>
- * </ul>
- */
 @SpringBootTest(
         classes = XaMassServerApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -79,59 +61,40 @@ class TaskApiBlockedRunningIntegrationTest extends AbstractSampleE2eTest {
 
             assertApiOk(approveTask(taskId));
 
-            // Task reaches RUNNING; both messages ASSIGNED to workers.
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
-            assertEquals(2, runningSnapshot.messages().size());
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertTrue(runningSnapshot.messages().stream()
-                    .allMatch(m -> "ASSIGNED".equals(m.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
-            // Capture both dispatches — workers hold them while we run the block/unblock cycle.
             JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
             JsonObject secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(firstDispatch, "First worker did not receive a dispatch");
             assertNotNull(secondDispatch, "Second worker did not receive a dispatch");
 
-            // Block the RUNNING task — messages must remain ASSIGNED (not revoked).
             assertApiOk(blockTask(taskId));
-            TaskSnapshot blockedSnapshot = waitForTaskSnapshot(taskId, "BLOCKED");
+            RuntimeTaskSnapshot blockedSnapshot = waitForRuntimeTaskSnapshot(taskId, "BLOCKED", 20, 250L);
             assertEquals("BLOCKED", blockedSnapshot.task().get("status"));
-            assertEquals(2, blockedSnapshot.messages().size());
-            assertTrue(blockedSnapshot.messages().stream()
-                    .allMatch(m -> "ASSIGNED".equals(m.get("status"))),
-                    "Blocking a running task must preserve ASSIGNED message state");
+            assertEquals(2, blockedSnapshot.stats().inflightCount(),
+                    "Blocking a running task must preserve in-flight runtime leases");
 
-            // Re-approve: BLOCKED → READY.
             assertApiOk(approveTask(taskId));
-            TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY");
+            RuntimeTaskSnapshot readySnapshot = waitForRuntimeTaskSnapshot(taskId, "READY", 20, 250L);
             assertEquals("READY", readySnapshot.task().get("status"));
 
-            // Workers submit SUCCESS from their original (still-valid) dispatches.
             firstClient.sendResult(firstDispatch, "SUCCESS", "blocked-running-complete");
             secondClient.sendResult(secondDispatch, "SUCCESS", "blocked-running-complete");
 
-            // Task must close to TERMINAL with all messages succeeded.
-            TaskSnapshot terminalSnapshot = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminalSnapshot = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"),
-                    "task with all successful results must close with ALL_MESSAGES_SUCCEEDED");
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(2, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-
-            assertEquals(2, terminalSnapshot.messages().size());
-            for (Map<String, Object> msg : terminalSnapshot.messages()) {
-                assertEquals("SUCCESS", msg.get("status"));
-                assertNotNull(msg.get("latestAttemptWorkerId"));
-                assertNotNull(msg.get("latestAttemptWorkerContextId"));
-                assertNotNull(msg.get("latestAttemptBatchId"));
-            }
+            assertEquals(2, terminalSnapshot.stats().totalCount());
+            assertEquals(2, terminalSnapshot.stats().successCount());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();
         }
     }
-
-    // ── inner WebSocket client ────────────────────────────────────────────────
 
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();

@@ -323,6 +323,11 @@ Mainline stance:
   wiring, and result convergence
 - the full scheduling-correctness matrix belongs engine-first; server E2E keeps
   representative assignment, polling, routing, and reuse scenarios
+- `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
+  scenarios live in `ServerProjectionResidueSuite`
+- `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
+  `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
+  `ServerProjectionAuditSuite`
 - server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
   API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
@@ -391,18 +396,16 @@ High-signal classes:
   - `TaskApiMultiTaskAssignmentIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
-  - `TaskApiMultiRoundDispatchIntegrationTest`
   - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
-  - `TaskApiTerminateReuseIntegrationTest`
   - `TransportChannelWiringIntegrationTest`
   - `PollingWorkerTaskFlowIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
   - `TaskApiFailureResultIntegrationTest`
   - `TaskApiMixedResultsIntegrationTest`
-  - `TaskApiCallbackReplayIntegrationTest`
+  - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
@@ -412,6 +415,10 @@ High-signal classes:
   - `JavaSocketWorkerBlackBoxIntegrationTest`
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
+- explicit projection residue/audit:
+  - `TaskApiMultiRoundDispatchIntegrationTest`
+  - `TaskApiTerminateReuseIntegrationTest`
+  - `TaskApiCallbackReplayIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
 - targeted worker debug:
   - `TaskApiTargetedWorkerDebugIntegrationTest`

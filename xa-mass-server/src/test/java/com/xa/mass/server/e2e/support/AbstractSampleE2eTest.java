@@ -3,6 +3,7 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -347,6 +348,48 @@ public abstract class AbstractSampleE2eTest {
                 detailResponse -> expectedStatus.equals(task(detailResponse).get("status")),
                 detailResponse -> "status=" + task(detailResponse).get("status")
         );
+    }
+
+    protected RuntimeTaskSnapshot waitForRuntimeTaskSnapshot(String taskId,
+                                                             String expectedStatus,
+                                                             int maxAttempts,
+                                                             long sleepMillis) throws InterruptedException {
+        return waitForRuntimeTaskSnapshot(
+                taskId,
+                snapshot -> expectedStatus.equals(snapshot.task().get("status")),
+                expectedStatus,
+                maxAttempts,
+                sleepMillis);
+    }
+
+    protected RuntimeTaskSnapshot waitForRuntimeTaskSnapshot(String taskId,
+                                                             Predicate<RuntimeTaskSnapshot> condition,
+                                                             String expectation,
+                                                             int maxAttempts,
+                                                             long sleepMillis) throws InterruptedException {
+        return awaitValue(
+                "Task " + taskId + " did not reach expected runtime state: " + expectation,
+                maxAttempts,
+                sleepMillis,
+                () -> fetchRuntimeTaskSnapshot(taskId),
+                condition,
+                latestSnapshot -> "status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
+                        + ", ready=" + (latestSnapshot == null ? 0 : latestSnapshot.stats().readyCount())
+                        + ", inflight=" + (latestSnapshot == null ? 0 : latestSnapshot.stats().inflightCount())
+        );
+    }
+
+    protected RuntimeTaskSnapshot waitForTerminalRuntimeTask(String taskId) throws InterruptedException {
+        return waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
+    }
+
+    protected RuntimeTaskSnapshot fetchRuntimeTaskSnapshot(String taskId) {
+        Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> task = task(detailResponse);
+        return new RuntimeTaskSnapshot(
+                task,
+                List.copyOf(resolveTaskWorkRuntime().activeLeases(taskId)),
+                resolveTaskWorkRuntime().stats(taskId));
     }
 
     protected TaskSnapshot fetchTaskSnapshot(String taskId) {
@@ -806,5 +849,9 @@ public abstract class AbstractSampleE2eTest {
 
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
-}
 
+    protected record RuntimeTaskSnapshot(Map<String, Object> task,
+                                         List<ActiveLeaseRecord> activeLeases,
+                                         TaskWorkStats stats) {
+    }
+}

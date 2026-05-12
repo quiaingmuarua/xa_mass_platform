@@ -2,9 +2,9 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -14,7 +14,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -23,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -59,7 +57,12 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
                 "Second sample worker failed to connect"
         );
         try {
-            String taskId = createTaskId("pause-completion", "pause completion integration", List.of("target-a", "target-b"), 1);
+            String taskId = createTaskId(
+                    "pause-completion",
+                    "pause completion integration",
+                    List.of("target-a", "target-b"),
+                    1
+            );
 
             Map<String, Object> approveResponse = exchange(
                     "/api/v1/tasks/" + taskId + ":approve",
@@ -68,10 +71,9 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
             );
             assertApiOk(approveResponse);
 
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals(2, runningSnapshot.messages().size());
-            assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
             JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
             JsonObject secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
@@ -85,46 +87,23 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
             );
             assertApiOk(pauseResponse);
 
-            TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED");
+            RuntimeTaskSnapshot pausedSnapshot = waitForRuntimeTaskSnapshot(taskId, "PAUSED", 20, 250L);
             assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-            assertEquals(2, pausedSnapshot.messages().size());
-            assertTrue(pausedSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+            assertEquals(2, pausedSnapshot.stats().inflightCount());
 
-            Map<String, ManualAckWebSocketClient> clientByWorkerId = Map.of(
-                    firstClient.getWorkerId(), firstClient,
-                    secondClient.getWorkerId(), secondClient
-            );
-            Map<String, JsonObject> dispatchByMsgId = new HashMap<>();
-            dispatchByMsgId.put(WsFrameTestSupport.messageId(firstDispatch), firstDispatch);
-            dispatchByMsgId.put(WsFrameTestSupport.messageId(secondDispatch), secondDispatch);
+            firstClient.sendResult(firstDispatch, "SUCCESS", "paused-complete-" + firstClient.getWorkerId());
+            secondClient.sendResult(secondDispatch, "SUCCESS", "paused-complete-" + secondClient.getWorkerId());
 
-            for (Map<String, Object> message : pausedSnapshot.messages()) {
-                String messageId = String.valueOf(message.get("messageId"));
-                String workerId = String.valueOf(message.get("latestAttemptWorkerId"));
-                ManualAckWebSocketClient client = clientByWorkerId.get(workerId);
-                JsonObject dispatch = dispatchByMsgId.get(messageId);
-                assertNotNull(client, "No connected worker client for " + workerId);
-                assertNotNull(dispatch, "No captured dispatch frame for message " + messageId);
-
-                client.sendResult(dispatch, "SUCCESS", "paused-complete-" + workerId);
-            }
-
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(2, terminalSnapshot.messages().size());
-            for (Map<String, Object> message : terminalSnapshot.messages()) {
-                assertEquals("SUCCESS", message.get("status"));
-                assertNotNull(message.get("latestAttemptWorkerId"));
-                assertNotNull(message.get("latestAttemptWorkerContextId"));
-                assertNotNull(message.get("latestAttemptBatchId"));
-            }
+            assertEquals(2, terminalSnapshot.stats().totalCount());
+            assertEquals(2, terminalSnapshot.stats().successCount());
 
-            // Resume on an already-TERMINAL task must return 409 — not a server error.
             Map<String, Object> staleResumeResponse = resumeTask(taskId);
             assertApiError(staleResumeResponse, 409);
-            assertEquals("TERMINAL", waitForTaskSnapshot(taskId, "TERMINAL").task().get("status"),
+            assertEquals("TERMINAL", waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L).task().get("status"),
                     "Stale resume must not mutate terminal state");
         } finally {
             firstClient.disconnect();
@@ -169,4 +148,3 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
-

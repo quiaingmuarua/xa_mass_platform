@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the ALL_MESSAGES_FAILED terminal path via the HTTP/WebSocket shell.
@@ -92,12 +91,10 @@ public class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTe
             assertApiOk(sealTask(taskId));
             assertApiOk(approveTask(taskId));
 
-            // Task should reach RUNNING with both messages ASSIGNED.
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            // Task should reach RUNNING with both work items leased to workers.
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals(2, runningSnapshot.messages().size());
-            assertTrue(runningSnapshot.messages().stream()
-                    .allMatch(m -> "ASSIGNED".equals(m.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
             // Both workers receive their dispatches.
             JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
@@ -109,24 +106,17 @@ public class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTe
             firstClient.sendResult(firstDispatch, "FAILED", "all-failed-test");
             secondClient.sendResult(secondDispatch, "FAILED", "all-failed-test");
 
-            TaskSnapshot terminalSnapshot = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminalSnapshot = waitForTerminalRuntimeTask(taskId);
 
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_FAILED", terminalSnapshot.task().get("terminalReason"),
                     "task with all explicitly-failed messages should close with ALL_MESSAGES_FAILED");
             assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(2, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-
-            assertEquals(2, terminalSnapshot.messages().size());
-            for (Map<String, Object> msg : terminalSnapshot.messages()) {
-                assertEquals("FAILED", msg.get("status"),
-                        "each message should be FAILED");
-                assertEquals("RETRY_EXHAUSTED", msg.get("finalReason"),
-                        "with maxRetryCount=0, the first FAILED result exhausts the retry budget immediately");
-                assertNotNull(msg.get("latestAttemptWorkerId"));
-                assertNotNull(msg.get("latestAttemptWorkerContextId"));
-                assertNotNull(msg.get("latestAttemptBatchId"));
-            }
+            assertEquals(2, terminalSnapshot.stats().totalCount());
+            assertEquals(0, terminalSnapshot.stats().successCount());
+            assertEquals(2, terminalSnapshot.stats().failedCount());
+            assertEquals(2, terminalSnapshot.stats().finalCount());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();
