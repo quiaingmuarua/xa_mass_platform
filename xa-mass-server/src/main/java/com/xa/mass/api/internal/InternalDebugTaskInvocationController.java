@@ -32,7 +32,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +80,7 @@ public class InternalDebugTaskInvocationController {
         if (syncBridge == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, "Sync task API is not available in this runtime profile"));
         }
-        try {
+        return executeApi("Sync task invocation failed", () -> {
             validateKnownFields(requestBody, "sync task invocation");
             validateSyncRequest(requestBody);
             validateIngestGuardrails(requestBody.getItems());
@@ -92,19 +91,18 @@ public class InternalDebugTaskInvocationController {
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            TaskShellSnapshot task = submitterTaskCreate != null
-                    ? taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                    toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
-                            submitterTaskCreate.userId(), correlationId),
-                    submitterTaskCreate.principal()
-            ))
-                    : null;
+            TaskShellSnapshot task;
             if (submitterTaskCreate != null) {
+                task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                        toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
+                                submitterTaskCreate.userId(), correlationId),
+                        submitterTaskCreate.principal()
+                ));
             } else {
                 PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
-                    operator
+                        operator
                 ));
             }
 
@@ -137,12 +135,19 @@ public class InternalDebugTaskInvocationController {
                 data.put("timeoutMs", resolvedTimeoutMs);
             }
             return ResponseEntity.ok(ApiResponse.success(data));
+        });
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> executeApi(String failurePrefix,
+                                                                        ApiResponseSupplier action) {
+        try {
+            return action.execute();
         } catch (SdkUnauthenticatedException e) {
             return ResponseEntity.status(401).body(ApiResponse.error(401, e.getMessage()));
         } catch (SecurityException e) {
             return ResponseEntity.status(403).body(ApiResponse.error(403, e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(400, "Sync task invocation failed: " + e.getMessage()));
+            return ResponseEntity.badRequest().body(ApiResponse.error(400, failurePrefix + ": " + e.getMessage()));
         }
     }
 
@@ -297,5 +302,10 @@ public class InternalDebugTaskInvocationController {
         private SdkUnauthenticatedException(String message) {
             super(message);
         }
+    }
+
+    @FunctionalInterface
+    private interface ApiResponseSupplier {
+        ResponseEntity<ApiResponse<Map<String, Object>>> execute() throws Exception;
     }
 }

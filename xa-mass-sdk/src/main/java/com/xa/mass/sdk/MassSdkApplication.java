@@ -119,7 +119,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
      * Advanced embedded-runtime seam for operator shells and server wiring that
      * intentionally live below the stable SDK mainline surface.
      */
-    public MassApplication runtimeApplication() {
+    MassApplication runtimeApplication() {
         return delegate;
     }
 

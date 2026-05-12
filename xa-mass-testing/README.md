@@ -50,7 +50,7 @@ Testing-policy note:
 | `perf smoke bundle` | `scripts/run-perf-smokes.sh` | current workspace perf smoke fast path for workload mix plus delayed interactive retry wakeup | `target/perf-reports/` |
 | `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; the runner reserves an interactive lane worker so the smoke measures lane isolation instead of bulk worker starvation | `target/perf-reports/` |
 | `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; the runner starts the runtime ready pump so delayed retry truth is consumed from `TaskWorkRuntime` rather than inferred from projection | `target/perf-reports/` |
-| `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket, with runtime-counter finality rather than projection-row finality | `target/concurrency-reports/` |
+| `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket, with runtime-counter finality and source guardrails against projection-first pass/fail | `target/concurrency-reports/` |
 | `chaos: websocket disconnect/reconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | worker disconnects inside an active lease, reconnects, submits the delayed result, and later receives follow-up work | `target/chaos-reports/` |
 | `chaos: websocket lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another websocket worker | `target/chaos-reports/` |
 | `chaos: websocket late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite runtime finality | `target/chaos-reports/` |
@@ -86,7 +86,7 @@ Override them with environment variables:
 - `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
 - `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
 
-`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` may still include storage/message stats for diagnosis, but those metrics do not define the perf smoke lane.
+`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters for pass/fail; storage/projection metrics are not part of the perf smoke lane.
 
 Current perf smoke modeling:
 
@@ -121,6 +121,8 @@ xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=poll
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=websocket -Dmass.sdk.load.workloadClass=INTERACTIVE
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket -Dmass.sdk.load.workloadClass=BULK
 ```
+
+`scripts/run-sdk-transport-load.sh` enforces the same source-level rule as the PR smoke scripts: the transport load runner must not import compatibility projection helpers, message/attempt projection models, projection-derived stats, or direct task-detail-store access. Its report uses `runtimeWork`, delivery diagnostics, and worker metrics as the correctness surface.
 
 WebSocket disconnect chaos:
 
@@ -182,7 +184,7 @@ Start from the runner class, then read the matching report artifact.
 
 Look at these first:
 
-- perf: `wallClock.totalMillis`, release cost, storage probe counts
+- perf: `wallClock.totalMillis`, release cost, runtime work counters
 - SDK transport harness: `runtime.transport`, `tasks.terminalReasons`, `workerMetrics`
 - chaos: `task.runtime` counters, active lease count, task terminal reason, trace `byType`, then worker online/offline transitions
 - chaos report field `task.compatibilityProjection` is residue/report context; do not treat it as the runner's primary correctness proof

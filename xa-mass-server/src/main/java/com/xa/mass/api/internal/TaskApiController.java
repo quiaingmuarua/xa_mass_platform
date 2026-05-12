@@ -111,7 +111,7 @@ public class TaskApiController {
                                                                       @RequestParam(required = false) String status,
                                                                       @RequestParam(defaultValue = "0") int offset,
                                                                       @RequestParam(defaultValue = "500") int limit) {
-        try {
+        return executeApi("Task list failed", () -> {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
             String normalizedProject = project == null ? "" : project.trim();
@@ -144,13 +144,7 @@ public class TaskApiController {
                     })
                     .toList();
             return ok(Map.of("items", items, "total", items.size()));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task list failed: " + e.getMessage());
-        }
+        });
     }
 
     @PostMapping("")
@@ -159,7 +153,7 @@ public class TaskApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             HttpServletRequest httpRequest,
             @RequestBody TaskShellCreateApiRequest requestBody) {
-        try {
+        return executeApi("Task shell create failed", () -> {
             validateKnownFields(requestBody, "task shell create");
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
@@ -184,13 +178,7 @@ public class TaskApiController {
                     operator
             ));
             return ok(Map.of("taskId", task.getTaskId(), "message", "Task shell created"));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task shell create failed: " + e.getMessage());
-        }
+        });
     }
 
     @GetMapping("/{taskId}")
@@ -198,42 +186,27 @@ public class TaskApiController {
                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                     @PathVariable String taskId) {
-        try {
-            TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return executeApi("Task lookup failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", toTaskDetailView(task));
             response.put("security", taskSecurityViewSupport.toSecurityView(task.getSharedConfig()));
             return ok(response);
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task lookup failed: " + e.getMessage());
-        }
+        });
     }
 
     @PostMapping("/{taskId}:block")
     public ResponseEntity<ApiResponse<Map<String, Object>>> blockTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task block failed", () -> {
             if (taskAdmin.blockTask(taskId)) {
                 return ok(Map.of("message", "Task blocked"));
             }
-            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
-            if (state == null && !taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
+            TaskStateSnapshot state = getExistingTaskState(taskId);
             if (state != null && "NEW".equals(state.getStatus()) && taskAdmin.rejectTask(taskId)) {
                 return ok(Map.of("message", "Task blocked"));
             }
-            return conflict("Task cannot be blocked from the current state");
-        } catch (Exception e) {
-            return badRequest("Task block failed: " + e.getMessage());
-        }
+            throw conflictError("Task cannot be blocked from the current state");
+        });
     }
 
     @GetMapping("/{taskId}/review")
@@ -241,9 +214,8 @@ public class TaskApiController {
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId) {
-        try {
-            TaskDetailSnapshot task = requireTaskDetail(taskId);
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return executeApi("Task review lookup failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedReviewTaskDetail(apiKeyHeader, authorizationHeader, taskId);
             TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(taskId);
             List<TaskDetailStore.TaskMessageProjection> preview = loadTaskMessageProjections(taskId, TASK_REVIEW_PREVIEW_LIMIT);
             Map<String, Object> response = new LinkedHashMap<>();
@@ -255,15 +227,7 @@ public class TaskApiController {
                     "resultUrl", "/api/v1/tasks/" + taskId + "/review/result-export"
             ));
             return ok(response);
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (NoSuchElementException e) {
-            return notFound(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task review lookup failed: " + e.getMessage());
-        }
+        });
     }
 
     @GetMapping("/{taskId}/review/seed-export")
@@ -284,7 +248,7 @@ public class TaskApiController {
 
     @PostMapping("/{taskId}:approve")
     public ResponseEntity<ApiResponse<Map<String, Object>>> approveTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task approve failed", () -> {
             boolean success = taskAdmin.approveTask(taskId);
             if (success) {
                 TaskStateSnapshot updatedState = taskQueries.getTaskState(taskId);
@@ -293,18 +257,14 @@ public class TaskApiController {
                         "newStatus", updatedState != null ? defaultString(updatedState.getStatus()) : ""
                 ));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return badRequest("Task cannot be approved from the current state");
-        } catch (Exception e) {
-            return badRequest("Task approve failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw badRequestError("Task cannot be approved from the current state");
+        });
     }
 
     @PostMapping("/{taskId}:reject")
     public ResponseEntity<ApiResponse<Map<String, Object>>> rejectTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task reject failed", () -> {
             boolean success = taskAdmin.rejectTask(taskId);
             if (success) {
                 TaskStateSnapshot updatedState = taskQueries.getTaskState(taskId);
@@ -313,33 +273,25 @@ public class TaskApiController {
                         "newStatus", updatedState != null ? defaultString(updatedState.getStatus()) : ""
                 ));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return badRequest("Task cannot be rejected from the current state");
-        } catch (Exception e) {
-            return badRequest("Task reject failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw badRequestError("Task cannot be rejected from the current state");
+        });
     }
 
     @PostMapping("/{taskId}:pause")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pauseTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task pause failed", () -> {
             if (taskAdmin.pauseTask(taskId)) {
                 return ok(Map.of("message", "Task paused"));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return conflict("Task cannot be paused from the current state");
-        } catch (Exception e) {
-            return badRequest("Task pause failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw conflictError("Task cannot be paused from the current state");
+        });
     }
 
     @PostMapping("/{taskId}:resume")
     public ResponseEntity<ApiResponse<Map<String, Object>>> resumeTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task resume failed", () -> {
             SdkTaskResumeResult result = taskAdmin.resumeTaskDetailed(taskId);
             if (result.success()) {
                 String message = result.completedToTerminal()
@@ -351,90 +303,69 @@ public class TaskApiController {
                         "terminalReason", result.terminalReason() != null ? result.terminalReason() : ""
                 ));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return conflict("Task cannot be resumed from the current state");
-        } catch (Exception e) {
-            return badRequest("Task resume failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw conflictError("Task cannot be resumed from the current state");
+        });
     }
 
     @PostMapping("/{taskId}:terminate")
     public ResponseEntity<ApiResponse<Map<String, Object>>> terminateTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task terminate failed", () -> {
             if (taskAdmin.terminateTask(taskId, "MANUAL_CANCELLED")) {
                 return ok(Map.of("message", "Task terminated"));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return conflict("Task cannot be terminated from the current state");
-        } catch (Exception e) {
-            return badRequest("Task terminate failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw conflictError("Task cannot be terminated from the current state");
+        });
     }
 
     @DeleteMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> deleteTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Task delete failed", () -> {
             boolean deleted = taskAdmin.deleteTask(taskId);
             if (deleted) {
                 return ok(Map.of("message", "Task deleted"));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
-            return badRequest("Task delete failed: current status "
+            TaskStateSnapshot state = getExistingTaskState(taskId);
+            throw badRequestError("Task delete failed: current status "
                     + (state != null ? defaultString(state.getStatus()) : "UNKNOWN") + " cannot be deleted");
-        } catch (Exception e) {
-            return badRequest("Task delete failed: " + e.getMessage());
-        }
+        });
     }
 
     @PatchMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
                                                                        @RequestBody TaskUpdateApiRequest requestBody) {
-        try {
-            TaskStateSnapshot state = taskQueries.getTaskState(taskId);
-            if (state == null && !taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
+        return executeApi("Task update failed", () -> {
+            TaskStateSnapshot state = getExistingTaskState(taskId);
             String status = state == null ? null : state.getStatus();
             if (!EDITABLE_TASK_STATUSES.contains(status)) {
-                return badRequest("Task update failed: Only NEW or BLOCKED tasks can be updated");
+                throw badRequestError("Task update failed: Only NEW or BLOCKED tasks can be updated");
             }
 
             validateKnownFields(requestBody, "task update");
             MassTaskUpdateRequest request = toTaskUpdateRequest(requestBody);
             taskAdmin.updateTaskDefinition(taskId, request);
             return ok(Map.of("message", "Task updated"));
-        } catch (Exception e) {
-            return badRequest("Task update failed: " + e.getMessage());
-        }
+        });
     }
 
     @PostMapping("/{taskId}/items")
     public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(
-                                                                            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
-                                                                            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-                                                                            @PathVariable String taskId,
-                                                                            @RequestBody TaskItemBatchIngestApiRequest requestBody) {
-        try {
+                                                                             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                             @PathVariable String taskId,
+                                                                             @RequestBody TaskItemBatchIngestApiRequest requestBody) {
+        return executeApi("Append items failed", () -> {
             validateKnownFields(requestBody, "task append items");
-            TaskAccessSnapshot task = taskQueries.getTaskAccess(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
+            TaskAccessSnapshot task = requireTaskAccess(taskId);
             List<Object> items = requestBody.getItems();
             if (items == null || items.isEmpty()) {
-                return badRequest("items must be a non-empty list");
+                throw badRequestError("items must be a non-empty list");
             }
             validateIngestGuardrails(items);
             List<String> eventCodes = resolveAppendEventCodes(requestBody, items);
             if (eventCodes.isEmpty()) {
-                return badRequest("append requires batch eventCode or per-item eventCode");
+                throw badRequestError("append requires batch eventCode or per-item eventCode");
             }
             for (String eventCode : eventCodes) {
                 validateProjectAndEvent(task.getProject(), eventCode);
@@ -446,34 +377,20 @@ public class TaskApiController {
                     .items(items)
                     .build());
             return ok(Map.of("message", "Items appended", "added", added));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (IllegalArgumentException e) {
-            return badRequest(e.getMessage());
-        } catch (IllegalStateException e) {
-            return conflict(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Append items failed: " + e.getMessage());
-        }
+        });
     }
 
     @PostMapping("/{taskId}:seal")
     public ResponseEntity<ApiResponse<Map<String, Object>>> sealTask(@PathVariable String taskId) {
-        try {
+        return executeApi("Seal task failed", () -> {
             boolean sealed = taskAdmin.sealTask(taskId);
             if (sealed) {
                 TaskStateSnapshot state = taskQueries.getTaskState(taskId);
                 return ok(Map.of("message", "Task sealed", "status", state != null ? defaultString(state.getStatus()) : ""));
             }
-            if (!taskQueries.taskExists(taskId)) {
-                return notFound("Task not found: " + taskId);
-            }
-            return conflict("Task intake is already sealed");
-        } catch (Exception e) {
-            return badRequest("Seal task failed: " + e.getMessage());
-        }
+            requireTaskExists(taskId);
+            throw conflictError("Task intake is already sealed");
+        });
     }
 
     private Map<String, Object> toTaskDetailView(TaskDetailSnapshot task) {
@@ -510,9 +427,8 @@ public class TaskApiController {
                                                       String taskId,
                                                       String exportKind,
                                                       boolean exportSeedRows) {
-        try {
-            TaskDetailSnapshot task = requireTaskDetail(taskId);
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return executeRawApi("Task " + exportKind + " export failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedReviewTaskDetail(apiKeyHeader, authorizationHeader, taskId);
             int exportLimit = resolveReviewExportLimit(task);
             List<TaskDetailStore.TaskMessageProjection> projections = loadTaskMessageProjections(taskId, exportLimit);
             List<Map<String, Object>> rows = projections.stream()
@@ -532,15 +448,7 @@ public class TaskApiController {
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=\"" + buildTaskExportFileName(task, exportKind) + "\"")
                     .body(body);
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (NoSuchElementException e) {
-            return notFound(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task " + exportKind + " export failed: " + e.getMessage());
-        }
+        });
     }
 
     private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
@@ -565,6 +473,36 @@ public class TaskApiController {
 
     private ResponseEntity<ApiResponse<Map<String, Object>>> notFound(String message) {
         return ResponseEntity.status(404).body(ApiResponse.error(404, message));
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> executeApi(String failurePrefix,
+                                                                        ApiResponseSupplier action) {
+        try {
+            return action.execute();
+        } catch (TaskApiException e) {
+            return e.toResponse();
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest(failurePrefix + ": " + e.getMessage());
+        }
+    }
+
+    private ResponseEntity<?> executeRawApi(String failurePrefix,
+                                            RawResponseSupplier action) {
+        try {
+            return action.execute();
+        } catch (TaskApiException e) {
+            return e.toResponse();
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest(failurePrefix + ": " + e.getMessage());
+        }
     }
 
     private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskShellCreateApiRequest requestBody) {
@@ -890,13 +828,49 @@ public class TaskApiController {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
     }
 
-    private TaskDetailSnapshot requireTaskDetail(String taskId) {
+    private TaskDetailSnapshot requireAuthorizedTaskDetail(String apiKeyHeader,
+                                                           String authorizationHeader,
+                                                           String taskId) {
+        TaskDetailSnapshot task = requireTaskDetail(taskId);
+        resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return task;
+    }
+
+    private TaskDetailSnapshot requireAuthorizedReviewTaskDetail(String apiKeyHeader,
+                                                                 String authorizationHeader,
+                                                                 String taskId) {
         ensureTaskDetailStoreConfigured();
+        return requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+    }
+
+    private TaskDetailSnapshot requireTaskDetail(String taskId) {
         TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
         if (task == null) {
-            throw new NoSuchElementException("Task not found: " + taskId);
+            throw notFoundError("Task not found: " + taskId);
         }
         return task;
+    }
+
+    private TaskAccessSnapshot requireTaskAccess(String taskId) {
+        TaskAccessSnapshot task = taskQueries.getTaskAccess(taskId);
+        if (task == null) {
+            throw notFoundError("Task not found: " + taskId);
+        }
+        return task;
+    }
+
+    private TaskStateSnapshot getExistingTaskState(String taskId) {
+        TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+        if (state == null && !taskQueries.taskExists(taskId)) {
+            throw notFoundError("Task not found: " + taskId);
+        }
+        return state;
+    }
+
+    private void requireTaskExists(String taskId) {
+        if (!taskQueries.taskExists(taskId)) {
+            throw notFoundError("Task not found: " + taskId);
+        }
     }
 
     private void ensureTaskDetailStoreConfigured() {
@@ -994,9 +968,49 @@ public class TaskApiController {
         return value == null ? null : value.name();
     }
 
+    private TaskApiException badRequestError(String message) {
+        return new TaskApiException(400, message);
+    }
+
+    private TaskApiException conflictError(String message) {
+        return new TaskApiException(409, message);
+    }
+
+    private TaskApiException notFoundError(String message) {
+        return new TaskApiException(404, message);
+    }
+
     private static final class SdkUnauthenticatedException extends RuntimeException {
         private SdkUnauthenticatedException(String message) {
             super(message);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ApiResponseSupplier {
+        ResponseEntity<ApiResponse<Map<String, Object>>> execute() throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface RawResponseSupplier {
+        ResponseEntity<?> execute() throws Exception;
+    }
+
+    private final class TaskApiException extends RuntimeException {
+        private final int statusCode;
+
+        private TaskApiException(int statusCode, String message) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        private ResponseEntity<ApiResponse<Map<String, Object>>> toResponse() {
+            return switch (statusCode) {
+                case 400 -> badRequest(getMessage());
+                case 404 -> notFound(getMessage());
+                case 409 -> conflict(getMessage());
+                default -> ResponseEntity.status(statusCode).body(ApiResponse.error(statusCode, getMessage()));
+            };
         }
     }
 }
