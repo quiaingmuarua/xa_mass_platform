@@ -239,6 +239,9 @@ Useful starting tests:
 
 - `TaskKernelLifecycleTest`
 - `TaskContractTerminalBehaviorTest`
+- `TaskSchedulingContentionTest`
+- `TaskWorkerEligibilityTest`
+- `TaskRedispatchCompetitionTest`
 - `TaskRuntimeRecoveryPortTest`
 - `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`

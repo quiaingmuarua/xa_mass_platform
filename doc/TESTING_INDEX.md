@@ -222,6 +222,9 @@ Primary classes:
 
 - `TaskKernelLifecycleTest`
 - `TaskContractTerminalBehaviorTest`
+- `TaskSchedulingContentionTest`
+- `TaskWorkerEligibilityTest`
+- `TaskRedispatchCompetitionTest`
 - `TaskRuntimeRecoveryPortTest`
 - `WorkerManagerTest`
 - `TaskResourceReleaseListenerTest`
@@ -233,6 +236,9 @@ Primary classes:
 Proves:
 
 - scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
+- worker/context eligibility filtering and rejection reasons without relying on compatibility projection rows
+- single-context multi-task contention without double assignment
+- batch lease expiry returning work to the competition pool and redispatching the same work once
 - lifecycle and result correctness under race-sensitive conditions
 - retry/reset/release/finality invariants
 - contract/intake/runtime owner boundaries without reading compatibility projection as hot-path truth

@@ -68,6 +68,9 @@ Use with:
 - `Scheduling Correctness` proves the platform's core business value:
   the right workers are selected, excluded, re-selected, and converged under
   contention, gating, retry, and contract differences
+- current engine-first scheduling matrix includes explicit tests for:
+  `TaskSchedulingContentionTest`, `TaskWorkerEligibilityTest`, and
+  `TaskRedispatchCompetitionTest`
 - `Kernel Convergence` verifies lifecycle and convergence invariants that are
   easier to prove deterministically under concurrency than through the host shell
 - `Platform Viability / Boot-shell E2E` proves the host shell exposes the

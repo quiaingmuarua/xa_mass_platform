@@ -12,6 +12,9 @@ import org.junit.platform.suite.api.Suite;
 @SelectClasses({
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
+        TaskSchedulingContentionTest.class,
+        TaskWorkerEligibilityTest.class,
+        TaskRedispatchCompetitionTest.class,
         TaskRuntimeRecoveryPortTest.class,
         WorkerManagerTest.class,
         TaskResourceReleaseListenerTest.class,
