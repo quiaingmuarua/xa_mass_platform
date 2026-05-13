@@ -97,7 +97,12 @@ class TaskApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value(TASK_ID));
+                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.project").value("demoApp"))
+                .andExpect(jsonPath("$.data.task.execution.workloadClass").value("INTERACTIVE"))
+                .andExpect(jsonPath("$.data.task.execution.batchSize").value(2))
+                .andExpect(jsonPath("$.data.task.counters.successCount").value(0));
 
         ArgumentCaptor<MassTaskShellCreateRequest> captor = ArgumentCaptor.forClass(MassTaskShellCreateRequest.class);
         verify(taskAdmin).createTaskShell(captor.capture());
@@ -220,8 +225,12 @@ class TaskApiControllerTest {
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.taskId").value(TASK_ID))
                 .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
                 .andExpect(jsonPath("$.data.task.taskName").value("detail-task"))
+                .andExpect(jsonPath("$.data.task.execution.batchSize").value(1))
+                .andExpect(jsonPath("$.data.task.counters.targetCount").value(0))
+                .andExpect(jsonPath("$.data.task.timestamps.updatedAt").value(""))
                 .andExpect(jsonPath("$.data.task.sharedConfig").doesNotExist())
                 .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("agent"))
                 .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))

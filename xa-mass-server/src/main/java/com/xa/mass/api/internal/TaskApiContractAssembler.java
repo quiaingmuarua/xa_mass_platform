@@ -1,18 +1,18 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.api.model.task.ApiTask;
-import com.xa.mass.api.model.task.ApiTaskAppendOutcome;
-import com.xa.mass.api.model.task.ApiTaskCommandOutcome;
-import com.xa.mass.api.model.task.ApiTaskCounters;
-import com.xa.mass.api.model.task.ApiTaskCreateOutcome;
-import com.xa.mass.api.model.task.ApiTaskExecution;
-import com.xa.mass.api.model.task.ApiTaskGetResult;
-import com.xa.mass.api.model.task.ApiTaskListResult;
-import com.xa.mass.api.model.task.ApiTaskResultArchive;
-import com.xa.mass.api.model.task.ApiTaskResultItem;
-import com.xa.mass.api.model.task.ApiTaskResultWindow;
-import com.xa.mass.api.model.task.ApiTaskTimestamps;
-import com.xa.mass.api.model.task.ApiTaskUpdateOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTask;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskAppendOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCommandOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCounters;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCreateOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskExecution;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskGetResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskTimestamps;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -39,8 +39,11 @@ final class TaskApiContractAssembler {
         return new ApiTaskListResult(safeItems, safeItems.size());
     }
 
-    ApiTaskCreateOutcome toCreateOutcome(TaskShellSnapshot task, String principalId, String message) {
-        ApiTask apiTask = toApiTask(task);
+    ApiTaskCreateOutcome toCreateOutcome(TaskShellSnapshot task,
+                                         TaskExecutionOptions executionOptions,
+                                         String principalId,
+                                         String message) {
+        ApiTask apiTask = toApiTask(task, executionOptions);
         return new ApiTaskCreateOutcome(
                 apiTask,
                 task != null ? task.getTaskId() : null,
@@ -236,10 +239,14 @@ final class TaskApiContractAssembler {
     }
 
     ApiTask toApiTask(TaskShellSnapshot task) {
+        return toApiTask(task, null);
+    }
+
+    ApiTask toApiTask(TaskShellSnapshot task, TaskExecutionOptions executionOptions) {
         if (task == null) {
             return null;
         }
-        ApiTaskExecution execution = toExecution(null);
+        ApiTaskExecution execution = toExecution(executionOptions);
         ApiTaskCounters counters = new ApiTaskCounters(0, 0, 0, 0, 0, 0);
         ApiTaskTimestamps timestamps = new ApiTaskTimestamps(null, null, null, null);
         return new ApiTask(

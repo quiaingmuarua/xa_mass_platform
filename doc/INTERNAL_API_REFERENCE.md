@@ -1,4 +1,4 @@
-# XA Mass Platform Internal API Reference
+﻿# XA Mass Platform Internal API Reference
 
 Last updated: 2026-05-12
 
@@ -220,9 +220,23 @@ Task API is now explicitly split into:
 - shell lifecycle
 - item ingest
 - command routes
+- result reads
 
 Public create no longer accepts `inputs` and no longer mixes create with
 dispatch.
+
+Public task responses use the shared `ApiResponse<T>` envelope and server-owned
+canonical task objects rather than anonymous controller maps. The canonical
+objects intentionally keep a few redundant aliases for caller ergonomics:
+
+- `ApiTask`: task shell, state, intake, execution, counters, and timestamps
+- `ApiTaskExecution`: `profile`, `workloadClass`, `batchSize`,
+  `maxRuntimeSeconds`, `defaultMaxRetryCount`
+- `ApiTaskCounters`: target, eligible, success, non-success, and worker counters
+- `ApiTaskTimestamps`: created, updated, started, and ended timestamps
+- `ApiTaskCommandOutcome`: unified command result
+- `ApiTaskResultWindow`: live ordered result read window
+- `ApiTaskResultArchive`: terminal archive manifest
 
 ### 4.1 List Tasks
 
@@ -245,6 +259,8 @@ Notes:
 - current SDK list behavior is ownership-scoped
 - project filtering is shell-level ownership filtering, not item-level
   `eventCode` filtering
+- response `data` is `ApiTaskListResult` with `items` and `total`
+- each item is an `ApiTask`
 
 ### 4.2 Create Task Shell
 
@@ -256,7 +272,8 @@ Supported request fields:
 
 - `userId`
 - `project`
-- `contract` (`SESSION` or `BATCH`) — top-level field; controls lifecycle/dispatch/terminal contract
+- `contract` (`SESSION` or `BATCH`) top-level field; controls lifecycle,
+  dispatch, and terminal contract
 - `sharedConfig`
 - `executionSpec`
 - `sourceRef`
@@ -306,6 +323,30 @@ Example response:
   "msg": "ok",
   "data": {
     "taskId": "task-uuid",
+    "task": {
+      "taskId": "task-uuid",
+      "id": "task-uuid",
+      "tid": "task-uuid",
+      "taskName": "demoApp-BATCH-task-uuid",
+      "project": "demoApp",
+      "userId": "agent",
+      "contract": "BATCH",
+      "execution": {
+        "profile": "STANDARD",
+        "workloadClass": "BULK",
+        "batchSize": 1,
+        "maxRuntimeSeconds": 60,
+        "defaultMaxRetryCount": 0
+      },
+      "counters": {
+        "targetCount": 0,
+        "eligibleCount": 0,
+        "successCount": 0,
+        "nonSuccessCount": 0,
+        "minRequiredWorkerCount": 0,
+        "peakAssignedWorkerCount": 0
+      }
+    },
     "message": "Task shell created"
   }
 }
@@ -324,6 +365,9 @@ Response notes:
 - does not return item payload snapshots by default
 - submitter credential callers may use this route under the same ownership-based
   task-view gate
+- response `data` is `ApiTaskGetResult`
+- `data.task` is `ApiTask`
+- `data.security` is the server-owned security/config view
 
 ### 4.4 Update Task Shell
 
@@ -349,11 +393,14 @@ Contract rules:
 
 - Method: `DELETE`
 - Path: `/api/v1/tasks/{taskId}`
-- Status: `Implemented`
+- Status: `Removed from public task API`
 
 Contract rules:
 
-- only `NEW` and `TERMINAL` tasks can be deleted
+- physical task delete is not a public mainline capability
+- public callers should use `POST /api/v1/tasks/{taskId}/commands` with
+  `TERMINATE` when they need to close task lifecycle
+- operator cleanup, if needed, belongs under an internal/operator-only surface
 
 ### 4.6 Append Task Items
 
@@ -426,6 +473,7 @@ Response notes:
   `terminalReason`, and `holdReason`
 - invalid command name returns `400`
 - command rejected by current task state returns `409`
+- response `data` is `ApiTaskCommandOutcome`
 
 ### 4.8 Task Detail Boundaries
 
@@ -451,6 +499,7 @@ Response notes:
   `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
 - callers own checkpointing through `afterSeq`
 - this route does not expose paging or ack semantics
+- response `data` is `ApiTaskResultWindow`
 
 ### 4.10 Task Result Archive Manifest
 
@@ -463,6 +512,7 @@ Behavior:
 - returns terminal-result archive manifest
 - archive contract is fixed to `ndjson`
 - content encoding is surfaced explicitly, currently `gzip`
+- response `data` is `ApiTaskResultArchive`
 
 ### 4.11 Task Result Archive Content
 
@@ -478,7 +528,7 @@ Behavior:
 
 ### 4.12 Internal Review Preview
 
-- Method: `POST`
+- Method: `GET`
 - Path: `/internal/v1/review/tasks/{taskId}`
 - Status: `Implemented`
 

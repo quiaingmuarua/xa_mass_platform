@@ -6,7 +6,20 @@ import com.xa.mass.api.auth.ApiSecurityScenario;
 import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.api.model.task.*;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTask;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskAppendOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCommandOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCreateOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskGetResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
+import com.xa.mass.api.model.task.TaskCommandApiRequest;
+import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
+import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
+import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -155,6 +168,7 @@ public class TaskApiController {
                 ));
                 return ok(taskApiContractAssembler.toCreateOutcome(
                         task,
+                        requestBody.getExecutionSpec(),
                         submitterTaskCreate.principal().getPrincipalId(),
                         "Task shell created"
                 ));
@@ -165,7 +179,12 @@ public class TaskApiController {
                     toMassTaskShellCreateRequest(requestBody),
                     operator
             ));
-            return ok(taskApiContractAssembler.toCreateOutcome(task, operator.getPrincipalId(), "Task shell created"));
+            return ok(taskApiContractAssembler.toCreateOutcome(
+                    task,
+                    requestBody.getExecutionSpec(),
+                    operator.getPrincipalId(),
+                    "Task shell created"
+            ));
         });
     }
 
@@ -346,92 +365,32 @@ public class TaskApiController {
         });
     }
 
-    private Map<String, Object> toTaskDetailView(TaskDetailSnapshot task) {
-        Map<String, Object> view = new LinkedHashMap<>();
-        view.put("tid", task.getTaskId());
-        view.put("tenantId", task.getTenantId());
-        view.put("taskName", task.getTaskName());
-        view.put("contract", task.getContract());
-        view.put("project", task.getProject());
-        view.put("status", task.getStatus());
-        view.put("taskTargetNumber", task.getTaskTargetNumber());
-        view.put("taskEligibleNumber", task.getTaskEligibleNumber());
-        view.put("taskSuccessNumber", task.getTaskSuccessNumber());
-        view.put("taskNonSuccessNumber", task.getTaskNonSuccessNumber());
-        view.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
-        view.put("peakAssignedWorkerCount", task.getPeakAssignedWorkerCount());
-        view.put("holdReason", task.getHoldReason());
-        view.put("executionSpec", task.getExecutionSpec());
-        populateExecutionSpecFields(view, task.getExecutionSpec());
-        view.put("sourceRef", task.getSourceRef());
-        view.put("intakeStatus", task.getIntakeStatus());
-        view.put("userId", task.getUserId());
-        view.put("createTime", task.getCreateTime());
-        view.put("updateTime", task.getUpdateTime());
-        view.put("startTime", task.getStartTime());
-        view.put("endTime", task.getEndTime());
-        view.put("terminalReason", task.getTerminalReason());
-        return view;
+    private <T> ResponseEntity<ApiResponse<T>> ok(T data) {
+        return ResponseEntity.ok(ApiResponse.success(data));
     }
 
-    private Map<String, Object> toTaskSummaryView(TaskSummarySnapshot task) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", task.getTaskId());
-        item.put("taskName", task.getTaskName());
-        item.put("tenantId", task.getTenantId());
-        item.put("project", task.getProject());
-        item.put("userId", task.getUserId());
-        item.put("contract", task.getContract());
-        item.put("status", task.getStatus());
-        item.put("executionSpec", task.getExecutionSpec());
-        populateExecutionSpecFields(item, task.getExecutionSpec());
-        item.put("terminalReason", task.getTerminalReason());
-        item.put("successCount", task.getTaskSuccessNumber());
-        item.put("eligibleCount", task.getTaskEligibleNumber());
-        item.put("updatedAt", formatDateTime(task.getUpdateTime()));
-        return item;
-    }
-
-    private Map<String, Object> toTaskCommandResponse(TaskCommandResult result) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("taskId", result.getTaskId());
-        response.put("command", result.getCommand());
-        response.put("accepted", result.isAccepted());
-        response.put("status", result.getStatus());
-        response.put("intakeStatus", result.getIntakeStatus());
-        response.put("terminalReason", result.getTerminalReason());
-        response.put("holdReason", result.getHoldReason());
-        response.put("failureReason", result.getFailureReason());
-        response.put("reasonCode", result.getReasonCode());
-        return response;
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
-        return ResponseEntity.ok(ApiResponse.success(new LinkedHashMap<>(data)));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> badRequest(String message) {
+    private <T> ResponseEntity<ApiResponse<T>> badRequest(String message) {
         return ResponseEntity.badRequest().body(ApiResponse.error(400, message));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, Object>>> conflict(String message) {
+    private <T> ResponseEntity<ApiResponse<T>> conflict(String message) {
         return ResponseEntity.status(409).body(ApiResponse.error(409, message));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, Object>>> unauthorized(String message) {
+    private <T> ResponseEntity<ApiResponse<T>> unauthorized(String message) {
         return ResponseEntity.status(401).body(ApiResponse.error(401, message));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, Object>>> forbidden(String message) {
+    private <T> ResponseEntity<ApiResponse<T>> forbidden(String message) {
         return ResponseEntity.status(403).body(ApiResponse.error(403, message));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, Object>>> notFound(String message) {
+    private <T> ResponseEntity<ApiResponse<T>> notFound(String message) {
         return ResponseEntity.status(404).body(ApiResponse.error(404, message));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, Object>>> executeApi(String failurePrefix,
-                                                                        ApiResponseSupplier action) {
+    private <T> ResponseEntity<ApiResponse<T>> executeApi(String failurePrefix,
+                                                          ApiResponseSupplier<T> action) {
         try {
             return action.execute();
         } catch (TaskApiException e) {
@@ -602,44 +561,23 @@ public class TaskApiController {
         return taskDetailStore.getTaskMessageProjections(taskId, boundedTotal);
     }
 
-    private List<Map<String, Object>> sliceTaskResultItems(List<TaskDetailStore.TaskMessageProjection> projections,
-                                                           long afterSeq,
-                                                           int limit) {
+    private List<ApiTaskResultItem> sliceTaskResultItems(List<TaskDetailStore.TaskMessageProjection> projections,
+                                                         long afterSeq,
+                                                         int limit) {
         if (projections == null || projections.isEmpty() || limit <= 0) {
             return List.of();
         }
         int startIndex = (int) Math.min(Math.max(afterSeq, 0L), projections.size());
         int endIndex = Math.min(startIndex + limit, projections.size());
-        List<Map<String, Object>> items = new ArrayList<>(Math.max(0, endIndex - startIndex));
+        List<ApiTaskResultItem> items = new ArrayList<>(Math.max(0, endIndex - startIndex));
         for (int index = startIndex; index < endIndex; index++) {
             items.add(toTaskResultItem(projections.get(index), index + 1L));
         }
         return List.copyOf(items);
     }
 
-    private Map<String, Object> toTaskResultItem(TaskDetailStore.TaskMessageProjection projection, long seq) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("seq", seq);
-        item.put("messageId", projection.messageId());
-        item.put("eventCode", resolveProjectionEventCode(projection));
-        item.put("status", enumName(projection.status()));
-        item.put("finalReason", enumName(projection.finalReason()));
-        item.put("retryCount", projection.retryCount());
-        item.put("maxRetryCount", projection.maxRetryCount());
-        item.put("workerId", projection.latestAttemptWorkerId());
-        item.put("workerContextId", projection.latestAttemptWorkerContextId());
-        item.put("batchId", projection.latestAttemptBatchId());
-        item.put("attemptId", projection.latestAttemptId());
-        item.put("payloadRef", projection.payloadRef());
-        item.put("createTime", formatDateTime(projection.createTime()));
-        item.put("assignedTime", formatDateTime(projection.assignedTime()));
-        item.put("startTime", formatDateTime(projection.startTime()));
-        item.put("completeTime", formatDateTime(projection.completeTime()));
-        item.put("updateTime", formatDateTime(projection.updateTime()));
-        item.put("errorCode", projection.errorCode());
-        item.put("errorMessage", projection.errorMessage());
-        item.put("output", projection.output());
-        return item;
+    private ApiTaskResultItem toTaskResultItem(TaskDetailStore.TaskMessageProjection projection, long seq) {
+        return taskApiContractAssembler.toResultItem(projection, seq);
     }
 
     private boolean isTerminalTask(TaskDetailSnapshot task) {
@@ -655,7 +593,7 @@ public class TaskApiController {
             ByteArrayOutputStream raw = new ByteArrayOutputStream();
             try (GZIPOutputStream gzip = new GZIPOutputStream(raw)) {
                 for (int index = 0; index < projections.size(); index++) {
-                    Map<String, Object> row = toTaskResultItem(projections.get(index), index + 1L);
+                    ApiTaskResultItem row = toTaskResultItem(projections.get(index), index + 1L);
                     gzip.write(RESPONSE_OBJECT_MAPPER.writeValueAsBytes(row));
                     gzip.write('\n');
                 }
@@ -687,17 +625,6 @@ public class TaskApiController {
         } catch (Exception e) {
             throw new IllegalStateException("Unable to compute archive checksum", e);
         }
-    }
-
-    private void populateExecutionSpecFields(Map<String, Object> target, com.xa.mass.sdk.model.TaskExecutionOptions executionSpec) {
-        if (target == null || executionSpec == null) {
-            return;
-        }
-        target.put("workloadClass", executionSpec.getWorkloadClass());
-        target.put("batchSize", executionSpec.getBatchSize());
-        target.put("maxRuntimeSeconds", executionSpec.getMaxRuntimeSeconds());
-        target.put("defaultMaxRetryCount", executionSpec.getDefaultMaxRetryCount());
-        target.put("executionProfile", executionSpec.getProfile());
     }
 
     private void requireBusinessBindings(String project, String userId) {
@@ -940,10 +867,6 @@ public class TaskApiController {
         }
     }
 
-    private String formatDateTime(LocalDateTime value) {
-        return value == null ? "" : value.format(DATE_TIME_FORMATTER);
-    }
-
     private TaskDetailSnapshot requireAuthorizedTaskDetail(String apiKeyHeader,
                                                            String authorizationHeader,
                                                            String taskId) {
@@ -988,18 +911,6 @@ public class TaskApiController {
         }
     }
 
-    private String resolveProjectionEventCode(TaskDetailStore.TaskMessageProjection projection) {
-        if (projection == null || projection.input() == null) {
-            return null;
-        }
-        Object rawValue = projection.input().get("eventCode");
-        return rawValue == null ? null : String.valueOf(rawValue);
-    }
-
-    private String enumName(Enum<?> value) {
-        return value == null ? null : value.name();
-    }
-
     private TaskApiException badRequestError(String message) {
         return new TaskApiException(400, message);
     }
@@ -1019,8 +930,8 @@ public class TaskApiController {
     }
 
     @FunctionalInterface
-    private interface ApiResponseSupplier {
-        ResponseEntity<ApiResponse<Map<String, Object>>> execute() throws Exception;
+    private interface ApiResponseSupplier<T> {
+        ResponseEntity<ApiResponse<T>> execute() throws Exception;
     }
 
     @FunctionalInterface
@@ -1039,7 +950,7 @@ public class TaskApiController {
             this.statusCode = statusCode;
         }
 
-        private ResponseEntity<ApiResponse<Map<String, Object>>> toResponse() {
+        private <T> ResponseEntity<ApiResponse<T>> toResponse() {
             return switch (statusCode) {
                 case 400 -> badRequest(getMessage());
                 case 404 -> notFound(getMessage());
