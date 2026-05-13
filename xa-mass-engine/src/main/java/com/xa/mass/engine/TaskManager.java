@@ -432,7 +432,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      */
     @Override
     public boolean expireLeasedWork(String taskId, String messageId) {
-        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.expireLeasedWork(taskId, messageId));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -545,7 +545,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
-        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -554,7 +554,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     }
 
     boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -569,7 +569,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                                     String detail,
                                     String errorCode,
                                     Map<String, Object> output) {
-        TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
             updateTaskProgress(taskId);
@@ -755,7 +755,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 continue;
             }
             String messageId = dispatchBinding.messageId();
-            TaskResultService.WorkMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
+            TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
                     () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
             if (!outcome.accepted()) {
                 return false;

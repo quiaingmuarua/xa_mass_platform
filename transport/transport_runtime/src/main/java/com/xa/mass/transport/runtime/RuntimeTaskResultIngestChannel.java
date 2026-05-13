@@ -14,6 +14,11 @@ import java.util.Objects;
 /**
  * Canonical runtime task-result ingest channel shared by WebSocket-adapter and pull
  * worker transport paths.
+ *
+ * <p>Envelope identity failures are handled as accepted no-ops: the ingress
+ * layer consumed the transport callback and intentionally did not call engine
+ * result apply. The public boolean return therefore means "handled by this
+ * ingress channel", not necessarily "applied to engine runtime state".</p>
  */
 public final class RuntimeTaskResultIngestChannel implements TaskResultIngestChannel {
 

@@ -10,6 +10,7 @@ Read with:
 
 - [../AGENTS.md](../AGENTS.md)
 - [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
+- [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../platform_infra/README.md](../platform_infra/README.md)
 
@@ -42,6 +43,7 @@ more implemented than another.
 | per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
 | engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/message projection truth or a duplicate ready queue |
 | transport -> engine result / dispatch-failure inboxes | runtime state | hot-path cross-JVM ingress back into engine-owned result/compensation ports | bounded Redis inboxes drained by engine process | server/API owner semantics or transport-owned lifecycle state |
+| runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | message/attempt projection or transport envelope metadata |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
@@ -56,6 +58,10 @@ state as well; they are not an excuse to promote message projection back into
 mainline callback acceptance. If runtime no longer has an active lease and no
 recent final receipt exists, callback acceptance must not fall back to message
 projection residue to recover a second acceptance truth.
+Current projection-backed public result reads are a compatibility limitation,
+not million-scale result truth. A durable result ledger or archive materialized
+view requires a separate design and must not be implied by result ingress or
+projection residue.
 
 ## 3. Current Repo Reality
 

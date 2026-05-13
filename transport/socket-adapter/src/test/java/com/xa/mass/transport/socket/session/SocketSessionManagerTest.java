@@ -21,13 +21,14 @@ class SocketSessionManagerTest {
     @Test
     void connectHeartbeatDisconnectProjectPresenceIntoTransportStore() {
         WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-1");
         SocketSessionManager manager = new SocketSessionManager("socket", systemEventChannel);
         manager.setWorkerPresenceStore(presenceStore);
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
 
         assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("socket-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
         assertTrue(presenceStore.isRouteOnline("socket", "route-1"));
         verify(systemEventChannel).publishWorkerOnline("worker-1", "socket connected", null);
 

@@ -51,7 +51,7 @@ class TaskResultService {
         this.traceEventLogger = traceEventLogger;
     }
 
-    WorkMutationOutcome expireLeasedWork(String taskId, String messageId) {
+    ResultMutationOutcome expireLeasedWork(String taskId, String messageId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("EXPIRE_LEASED_WORK", "TaskManager",
                 "taskId", taskId, "messageId", messageId);
@@ -62,7 +62,7 @@ class TaskResultService {
         TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
@@ -74,20 +74,20 @@ class TaskResultService {
         );
         if (activeProjection == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "compatibility projection could not be recovered", 0);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         RuntimeWorkSummary workSummary = activeProjection.workSummary();
         if (workSummary.isCompleted()) {
             logger.info("Work item {} of task {} is already in final status {}, skip expiry",
                     messageId, taskId, workSummary.status());
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
         MessageStatus fromStatus = workSummary.status();
         if (!isExpiryAcceptableMessageState(workSummary.status())) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
                     "work item status " + workSummary.status() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         boolean retryRequestedByPolicy = shouldRetryExpiredLease(task, fromStatus);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryRequestedByPolicy);
@@ -96,12 +96,12 @@ class TaskResultService {
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
                 || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime lease rejected expiry result: " + workOutcome.status(), 0);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         if (!activeAttempt.projectExpired(AttemptFinalReason.LEASE_EXPIRED, "leased work expired")) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                     + activeAttempt.status(), 0);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
         taskManager.submitProjectionWrite(() ->
@@ -175,18 +175,18 @@ class TaskResultService {
                 requestRetryDispatch(updatedTask, workRetryDelayMillis);
             }
         }
-        return WorkMutationOutcome.acceptedDirty();
+        return ResultMutationOutcome.acceptedDirty();
     }
 
-    WorkMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
+    ResultMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
         return ingestTaskResult(taskId, messageId, success, detail, null, null);
     }
 
-    WorkMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+    ResultMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
         return ingestTaskResult(taskId, messageId, success, detail, errorCode, null);
     }
 
-    WorkMutationOutcome ingestTaskResult(String taskId,
+    ResultMutationOutcome ingestTaskResult(String taskId,
                                                 String messageId,
                                                 boolean success,
                                                 String detail,
@@ -196,39 +196,67 @@ class TaskResultService {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             logger.warn("Cannot ingest task result because task {} was not found", taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
-        if (task.getStatus().isFinal()) {
-            ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
-            RuntimeWorkSummary recentFinalMessage = recentFinalMessage(task, taskId, messageId);
-            if (isManualOrPolicyTerminalStop(task)) {
-                TaskWorkTraceView lateView = recentFinalMessage != null
-                        ? recentFinalMessage.toTraceView()
-                        : resolveTraceWorkView(taskId, messageId, activeLease);
-                traceEventLogger.callbackIgnoredLate(lateView,
-                        "task already terminal in status " + task.getStatus());
-                logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                        taskId, messageId, lateView.status());
-                return WorkMutationOutcome.acceptedNoop();
-            }
-            TaskWorkTraceView duplicateView = recentFinalMessage != null
+        ResultMutationOutcome terminalCallback = handleTerminalCallback(task, taskId, messageId);
+        if (terminalCallback != null) {
+            return terminalCallback;
+        }
+
+        RuntimeResultApplyContext ctx = applyRuntimeResult(task, taskId, messageId, success, detail, errorCode, output);
+        ResultMutationOutcome rejectedRuntimeOutcome = handleRejectedRuntimeOutcome(task, taskId, messageId, ctx);
+        if (rejectedRuntimeOutcome != null) {
+            return rejectedRuntimeOutcome;
+        }
+        return handleAcceptedRuntimeOutcome(task, taskId, messageId, success, detail, errorCode, output, ctx);
+    }
+
+    private ResultMutationOutcome handleTerminalCallback(Task task, String taskId, String messageId) {
+        if (!task.getStatus().isFinal()) {
+            return null;
+        }
+        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        RuntimeWorkSummary recentFinalMessage = recentFinalMessage(task, taskId, messageId);
+        if (isManualOrPolicyTerminalStop(task)) {
+            TaskWorkTraceView lateView = recentFinalMessage != null
                     ? recentFinalMessage.toTraceView()
                     : resolveTraceWorkView(taskId, messageId, activeLease);
-            traceEventLogger.callbackIgnoredDuplicate(duplicateView,
-                    "task already terminal after result convergence in status " + task.getStatus());
-            logger.info("Ignoring duplicate result for terminal task {}, msg {} still in status {}",
-                    taskId, messageId, duplicateView.status());
-            return WorkMutationOutcome.acceptedNoop();
+            traceEventLogger.callbackIgnoredLate(lateView,
+                    "task already terminal in status " + task.getStatus());
+            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                    taskId, messageId, lateView.status());
+            return ResultMutationOutcome.acceptedNoop();
         }
+        TaskWorkTraceView duplicateView = recentFinalMessage != null
+                ? recentFinalMessage.toTraceView()
+                : resolveTraceWorkView(taskId, messageId, activeLease);
+        traceEventLogger.callbackIgnoredDuplicate(duplicateView,
+                "task already terminal after result convergence in status " + task.getStatus());
+        logger.info("Ignoring duplicate result for terminal task {}, msg {} still in status {}",
+                taskId, messageId, duplicateView.status());
+        return ResultMutationOutcome.acceptedNoop();
+    }
 
+    private RuntimeResultApplyContext applyRuntimeResult(Task task,
+                                                         String taskId,
+                                                         String messageId,
+                                                         boolean success,
+                                                         String detail,
+                                                         String errorCode,
+                                                         Map<String, Object> output) {
         // Hot path: single atomic runtime call replaces three separate round-trips
         // (getActiveLease + getWork + applyResult), each of which previously required
         // its own synchronised runtime acquisition or Redis round-trip.
         TaskWorkResult workResult = buildWorkResultForCallback(
                 task, taskId, messageId, success, detail, errorCode, output, !success, false);
-        RuntimeResultApplyContext ctx = taskManager.applyTaskWorkResultWithContext(workResult);
+        return taskManager.applyTaskWorkResultWithContext(workResult);
+    }
 
+    private ResultMutationOutcome handleRejectedRuntimeOutcome(Task task,
+                                                               String taskId,
+                                                               String messageId,
+                                                               RuntimeResultApplyContext ctx) {
         if (!ctx.hasLeaseSnapshot()) {
             // No active lease at apply time - duplicate or late callback.
             RuntimeWorkSummary recentFinal = recentFinalMessage(task, taskId, messageId);
@@ -237,14 +265,14 @@ class TaskResultService {
                         "work item already final in recent runtime receipt with status " + recentFinal.status());
                 logger.info("Work item {} of task {} is already in final status {}, skipping duplicate result",
                         messageId, taskId, recentFinal.status());
-                return WorkMutationOutcome.acceptedNoop();
+                return ResultMutationOutcome.acceptedNoop();
             }
             TaskWorkTraceView noLeaseView = resolveTraceWorkView(taskId, messageId, null);
             traceEventLogger.callbackRejectedNoActiveLease(
                     noLeaseView, "callback arrived without any active runtime lease");
             logger.error("Cannot ingest task result because msg {} in task {} has no active runtime lease",
                     messageId, taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         ResultApplyStatus applyStatus = ctx.outcome().status();
@@ -252,20 +280,36 @@ class TaskResultService {
                 || applyStatus == ResultApplyStatus.NO_ACTIVE_LEASE) {
             logger.warn("Rejecting result for work item {} because runtime lease rejected the result with {}",
                     messageId, applyStatus);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
+        return null;
+    }
 
+    private ActiveRuntimeProjection rebuildActiveProjection(String taskId,
+                                                            String messageId,
+                                                            RuntimeResultApplyContext ctx) {
         // Reconstruct lease/work snapshots from the context - no extra runtime reads needed.
         // The context carries all fields the projection pipeline requires.
         ActiveLeaseRecord syntheticLease = syntheticLeaseFromContext(ctx, taskId, messageId);
         TaskWorkEnvelope syntheticWork = syntheticWorkFromContext(ctx, taskId, messageId);
-        ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
+        return buildActiveRuntimeProjection(
                 taskId, messageId, syntheticLease, syntheticWork,
                 "HANDLE_TASK_RESULT", "runtime active lease defines callback admissibility");
+    }
+
+    private ResultMutationOutcome handleAcceptedRuntimeOutcome(Task task,
+                                                               String taskId,
+                                                               String messageId,
+                                                               boolean success,
+                                                               String detail,
+                                                               String errorCode,
+                                                               Map<String, Object> output,
+                                                               RuntimeResultApplyContext ctx) {
+        ActiveRuntimeProjection activeProjection = rebuildActiveProjection(taskId, messageId, ctx);
         if (activeProjection == null) {
             logger.warn("Cannot ingest task result because msg {} was not found in task {} "
                     + "and no runtime projection could be recovered", messageId, taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         RuntimeWorkSummary workSummary = activeProjection.workSummary();
         AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
@@ -274,17 +318,18 @@ class TaskResultService {
                 workSummary.toTraceView(),
                 success ? "success callback received" : "failure callback received");
 
+        ResultApplyStatus applyStatus = ctx.outcome().status();
         if (success) {
             return handleSuccess(task, taskId, workSummary, activeAttempt, detail, output);
         }
         return handleRuntimeAcceptedFailure(task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
     }
 
-    WorkMutationOutcome compensateDispatchSubmitFailure(Task task,
+    ResultMutationOutcome compensateDispatchSubmitFailure(Task task,
                                                               TaskDispatchBinding dispatchBinding,
                                                               String detail) {
         if (task == null || dispatchBinding == null) {
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         String taskId = task.getTid();
@@ -294,7 +339,7 @@ class TaskResultService {
         if (activeLease == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no active runtime lease",
                     messageId, taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
                 taskId,
@@ -307,7 +352,7 @@ class TaskResultService {
         if (activeProjection == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} was not found in task {}",
                     messageId, taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         RuntimeWorkSummary workSummary = activeProjection.workSummary();
 
@@ -315,7 +360,7 @@ class TaskResultService {
         if (activeAttempt == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt projection",
                     messageId, taskId);
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         String normalizedDetail = normalizeDispatchSubmitFailureDetail(detail);
@@ -324,7 +369,7 @@ class TaskResultService {
         if (workOutcome.status() != ResultApplyStatus.RETRY_SCHEDULED) {
             logger.warn("Dispatch submit compensation for msg {} in task {} was rejected by runtime with {}",
                     messageId, taskId, workOutcome.status());
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         RuntimeWorkSummary retrySummary = resetForRetryWithoutPublishingAttemptClosure(
@@ -338,14 +383,14 @@ class TaskResultService {
                 "dispatch submit failed before transport delivery"
         );
         if (retrySummary == null) {
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         if (task != null && !task.getStatus().isFinal()) {
             requestRetryDispatch(task, workRetryDelayMillis);
         }
-        return WorkMutationOutcome.acceptedDirty();
+        return ResultMutationOutcome.acceptedDirty();
     }
 
     private TaskWorkTraceView resolveTraceWorkView(String taskId,
@@ -452,7 +497,7 @@ class TaskResultService {
         return recoverActiveAttemptProjection(workSummary, activeLease, dispatchBinding.attemptId(), dispatchBinding.attemptNo());
     }
 
-    private WorkMutationOutcome handleSuccess(Task task,
+    private ResultMutationOutcome handleSuccess(Task task,
                                               String taskId,
                                               RuntimeWorkSummary workSummary,
                                               AttemptProjectionView activeAttempt,
@@ -481,7 +526,7 @@ class TaskResultService {
         MessageStatus beforeFinalStatus = successBase.status();
         if (!activeAttempt.projectSucceeded(output)) {
             logger.warn("Failed to mark attempt {} as SUCCEEDED", activeAttempt.attemptId());
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         traceEventLogger.taskWorkStatusTransition(
                 successSummary.toTraceView(),
@@ -512,10 +557,10 @@ class TaskResultService {
             publishWorkLogicallyFinal(task, successSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work item reached stable success");
         }
-        return WorkMutationOutcome.acceptedDirty();
+        return ResultMutationOutcome.acceptedDirty();
     }
 
-    private WorkMutationOutcome handleRetryableFailure(Task task,
+    private ResultMutationOutcome handleRetryableFailure(Task task,
                                                        String taskId,
                                                        RuntimeWorkSummary workSummary,
                                                        AttemptProjectionView activeAttempt,
@@ -533,7 +578,7 @@ class TaskResultService {
                 "retry budget allows re-dispatch"
         );
         if (retrySummary == null) {
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         // Event publishing kept synchronous; use the already-loaded task (no extra storage read).
@@ -544,7 +589,7 @@ class TaskResultService {
                 requestRetryDispatch(task, workRetryDelayMillis);
             }
         }
-        return WorkMutationOutcome.acceptedDirty();
+        return ResultMutationOutcome.acceptedDirty();
     }
 
     private RuntimeWorkSummary resetForRetryWithoutPublishingAttemptClosure(Task task,
@@ -637,7 +682,7 @@ class TaskResultService {
         return workSummary.withAssignedAttempt(activeAttempt);
     }
 
-    private WorkMutationOutcome handleRetryExhaustedFailure(Task task,
+    private ResultMutationOutcome handleRetryExhaustedFailure(Task task,
                                                             String taskId,
                                                             RuntimeWorkSummary workSummary,
                                                             AttemptProjectionView activeAttempt,
@@ -651,7 +696,7 @@ class TaskResultService {
                 errorCode,
                 output)) {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.attemptId());
-            return WorkMutationOutcome.rejected();
+            return ResultMutationOutcome.rejected();
         }
 
         MessageStatus beforeFinalStatus = workSummary.status();
@@ -685,7 +730,7 @@ class TaskResultService {
             publishWorkLogicallyFinal(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
         }
-        return WorkMutationOutcome.acceptedDirty();
+        return ResultMutationOutcome.acceptedDirty();
     }
 
     private RuntimeWorkSummary summarizeRunning(RuntimeWorkSummary base) {
@@ -1042,7 +1087,7 @@ class TaskResultService {
         );
     }
 
-    private WorkMutationOutcome handleRuntimeAcceptedFailure(Task task,
+    private ResultMutationOutcome handleRuntimeAcceptedFailure(Task task,
                                                              String taskId,
                                                              RuntimeWorkSummary workSummary,
                                                              AttemptProjectionView activeAttempt,
@@ -1058,7 +1103,7 @@ class TaskResultService {
         };
     }
 
-    private WorkMutationOutcome handleBatchRuntimeAcceptedFailure(Task task,
+    private ResultMutationOutcome handleBatchRuntimeAcceptedFailure(Task task,
                                                                   String taskId,
                                                                   RuntimeWorkSummary workSummary,
                                                                   AttemptProjectionView activeAttempt,
@@ -1072,7 +1117,7 @@ class TaskResultService {
         return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
     }
 
-    private WorkMutationOutcome handleSessionRuntimeAcceptedFailure(Task task,
+    private ResultMutationOutcome handleSessionRuntimeAcceptedFailure(Task task,
                                                                     String taskId,
                                                                     RuntimeWorkSummary workSummary,
                                                                     AttemptProjectionView activeAttempt,
@@ -1099,33 +1144,41 @@ class TaskResultService {
         BATCH
     }
 
-    static final class WorkMutationOutcome {
-        private final boolean accepted;
-        private final boolean progressDirty;
-
-        private WorkMutationOutcome(boolean accepted, boolean progressDirty) {
-            this.accepted = accepted;
-            this.progressDirty = progressDirty;
+    static final class ResultMutationOutcome {
+        enum Status {
+            ACCEPTED_DIRTY,
+            ACCEPTED_NOOP,
+            REJECTED
         }
 
-        static WorkMutationOutcome rejected() {
-            return new WorkMutationOutcome(false, false);
+        private final Status status;
+
+        private ResultMutationOutcome(Status status) {
+            this.status = java.util.Objects.requireNonNull(status, "status");
         }
 
-        static WorkMutationOutcome acceptedNoop() {
-            return new WorkMutationOutcome(true, false);
+        static ResultMutationOutcome rejected() {
+            return new ResultMutationOutcome(Status.REJECTED);
         }
 
-        static WorkMutationOutcome acceptedDirty() {
-            return new WorkMutationOutcome(true, true);
+        static ResultMutationOutcome acceptedNoop() {
+            return new ResultMutationOutcome(Status.ACCEPTED_NOOP);
+        }
+
+        static ResultMutationOutcome acceptedDirty() {
+            return new ResultMutationOutcome(Status.ACCEPTED_DIRTY);
+        }
+
+        Status status() {
+            return status;
         }
 
         boolean accepted() {
-            return accepted;
+            return status != Status.REJECTED;
         }
 
         boolean progressDirty() {
-            return progressDirty;
+            return status == Status.ACCEPTED_DIRTY;
         }
     }
 

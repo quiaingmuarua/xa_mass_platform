@@ -97,7 +97,7 @@ class ServerSessionManagerShutdownTest {
 
     @Test
     void sessionsProjectPresenceIntoTransportOwnedStore() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "ws-node-1");
         manager.setWorkerPresenceStore(presenceStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -106,6 +106,7 @@ class ServerSessionManagerShutdownTest {
 
         assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
         assertEquals("route-1", presenceStore.getPresence("worker-1").getRouteKey());
+        assertEquals("ws-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
         assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(channel);

@@ -12,6 +12,7 @@ Use with:
 - [../AGENTS.md](../AGENTS.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
+- [./RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
 
 ## 1. Global Rules
@@ -31,6 +32,7 @@ Use with:
 9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskMessageProjection` remains the bounded compatibility read projection for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains the auditable execution-history residue for concrete dispatch attempts.
 10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
+12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; projection writes are submitted best-effort after runtime acceptance and are not the result commit point.
 
 ## 2. TaskStatus
 
@@ -130,6 +132,7 @@ Must hold:
 - worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but the latest attempt/message projection is missing, engine repairs that compatibility state from runtime before continuing
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - during the current WorkRuntime slice, result handling applies against the runtime active lease and runtime retry budget before mutating the compatibility projection
+- result-side projection residue is submitted best-effort after runtime acceptance; synchronous result-side events and task progress evaluation must not depend on projection write completion
 - task cancellation and policy-driven task stop must not synchronously rewrite every queued message projection row; bounded compatibility reads may project the final message view from task shell truth instead
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into the message-projection status model without a baseline redesign

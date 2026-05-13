@@ -136,7 +136,8 @@ The split runtime uses three transport/runtime channels:
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
   values and retryable dispatch-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
-  assignment compensation ports
+  assignment compensation ports. Result lifecycle ownership is defined in
+  [../doc/RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md).
 
 These queues are runtime-state queues. They must be bounded and must preserve
 backpressure instead of growing without limit. They also must not be treated as
@@ -253,6 +254,11 @@ address truth; enveloped result ingress must therefore carry non-blank
 `adapterId + routeKey`. Adapter-local worker/session/connection identities are
 local diagnostics only and do not belong on the shared result-envelope
 mainline.
+
+When envelope identity validation rejects stale attempt or lease evidence,
+transport result ingress returns accepted-noop semantics: the envelope was
+handled and intentionally not applied. Transport still does not decide retry,
+finality, task terminal convergence, or public result read truth.
 
 `leaseToken` is reserved. Do not enforce it until there is an approved design
 for token generation, storage, expiry, retry interaction, old-worker behavior,

@@ -81,12 +81,13 @@ class PollingWorkerAdapterTest {
 
     @Test
     void workerPresenceAnnouncementsUpdateTransportOwnedPresence() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "poll-node-1");
         PollingWorkerAdapter adapter = adapter(presenceStore);
 
         adapter.announceWorkerOnline("worker-1", "poll connected");
 
         assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("poll-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
         assertTrue(presenceStore.isRouteOnline(PollingWorkerAdapter.PROTOCOL, "worker-1"));
 
         adapter.publishWorkerHeartbeat("worker-1", "poll heartbeat");

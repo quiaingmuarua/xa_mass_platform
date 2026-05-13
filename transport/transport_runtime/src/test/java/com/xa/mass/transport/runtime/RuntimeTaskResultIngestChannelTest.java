@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -34,6 +36,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -259,6 +262,118 @@ class RuntimeTaskResultIngestChannelTest {
         TaskDetailStore.TaskMessageProjection updated = compatibilityMessageSnapshotView(fixture);
         assertEquals(TaskMessageProjectionStatus.ASSIGNED, updated.status());
         assertNull(updated.output());
+    }
+
+    @Test
+    void mismatchedEnvelopeAttemptIdentityAcceptedNoopDoesNotCallEngineApply() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+                "task-1",
+                "msg-1",
+                true,
+                "expected-attempt",
+                "lease-1",
+                "worker-1",
+                "worker-context-1",
+                "batch-1"
+        ));
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "wrong-attempt",
+                null,
+                null,
+                new TaskResultReport("task-1", "msg-1", true, "ok", null, Map.of())
+        ));
+
+        assertTrue(handled);
+        assertEquals(0, facade.ingestCalls.get());
+        assertEquals(1, facade.correlationCalls.get());
+    }
+
+    @Test
+    void mismatchedEnvelopeLeaseIdentityAcceptedNoopDoesNotCallEngineApply() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+                "task-1",
+                "msg-1",
+                true,
+                "attempt-1",
+                "expected-lease",
+                "worker-1",
+                "worker-context-1",
+                "batch-1"
+        ));
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "attempt-1",
+                "wrong-lease",
+                null,
+                new TaskResultReport("task-1", "msg-1", true, "ok", null, Map.of())
+        ));
+
+        assertTrue(handled);
+        assertEquals(0, facade.ingestCalls.get());
+        assertEquals(1, facade.correlationCalls.get());
+    }
+
+    @Test
+    void envelopeWithoutActiveCorrelationAcceptedNoopDoesNotCallEngineApply() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+                "task-1",
+                "msg-1",
+                false,
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "attempt-1",
+                null,
+                null,
+                new TaskResultReport("task-1", "msg-1", true, "ok", null, Map.of())
+        ));
+
+        assertTrue(handled);
+        assertEquals(0, facade.ingestCalls.get());
+        assertEquals(1, facade.correlationCalls.get());
+    }
+
+    @Test
+    void validEnvelopeIdentityCallsEngineApply() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+                "task-1",
+                "msg-1",
+                true,
+                "attempt-1",
+                "lease-1",
+                "worker-1",
+                "worker-context-1",
+                "batch-1"
+        ));
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        boolean handled = channel.ingest(new TransportResultEnvelope(
+                "polling",
+                "worker-1",
+                "attempt-1",
+                "lease-1",
+                null,
+                new TaskResultReport("task-1", "msg-1", true, "ok", null, Map.of("status", "SUCCESS"))
+        ));
+
+        assertTrue(handled);
+        assertEquals(1, facade.ingestCalls.get());
+        assertEquals(1, facade.correlationCalls.get());
     }
 
     @Test
@@ -729,6 +844,33 @@ class RuntimeTaskResultIngestChannelTest {
         @Override
         public void emit(ExecutionEvent event) {
             events.add(event);
+        }
+    }
+
+    private static final class RecordingResultIngestFacade implements TaskResultIngestFacade {
+        private final TaskResultCorrelation correlation;
+        private final AtomicInteger ingestCalls = new AtomicInteger();
+        private final AtomicInteger correlationCalls = new AtomicInteger();
+
+        private RecordingResultIngestFacade(TaskResultCorrelation correlation) {
+            this.correlation = correlation;
+        }
+
+        @Override
+        public boolean ingestTaskResult(String taskId,
+                                        String messageId,
+                                        boolean success,
+                                        String detail,
+                                        String errorCode,
+                                        Map<String, Object> output) {
+            ingestCalls.incrementAndGet();
+            return true;
+        }
+
+        @Override
+        public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+            correlationCalls.incrementAndGet();
+            return correlation;
         }
     }
 

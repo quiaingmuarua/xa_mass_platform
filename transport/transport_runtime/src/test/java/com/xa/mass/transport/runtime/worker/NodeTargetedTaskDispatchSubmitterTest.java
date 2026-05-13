@@ -62,6 +62,39 @@ class NodeTargetedTaskDispatchSubmitterTest {
         assertEquals(List.of("msg-3"), compensated.stream().map(TaskDispatchBinding::messageId).toList());
     }
 
+    @Test
+    void compensatesWhenRouteOwnerNodeIsOffline() {
+        InMemoryWorkerPresenceStore presence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
+        presence.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
+        InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
+        nodes.register("node-1", List.of("websocket"), 1L);
+        nodes.markOffline("node-1");
+        WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
+                presence,
+                nodes,
+                Map.of("websocket", WorkerTransportHints.REALTIME)
+        );
+        CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
+        List<TaskDispatchBinding> compensated = new ArrayList<>();
+        List<String> details = new ArrayList<>();
+        NodeTargetedTaskDispatchSubmitter submitter = new NodeTargetedTaskDispatchSubmitter(
+                handoff,
+                workerId -> "worker-1".equals(workerId) ? worker("worker-1") : null,
+                selector,
+                (task, dispatchBindings, detail) -> {
+                    compensated.addAll(dispatchBindings);
+                    details.add(detail);
+                    return true;
+                }
+        );
+
+        submitter.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
+
+        assertEquals(List.of(), new ArrayList<>(handoff.submittedByNode.keySet()));
+        assertEquals(List.of("msg-1"), compensated.stream().map(TaskDispatchBinding::messageId).toList());
+        assertEquals(List.of("transport route owner is unavailable after assignment"), details);
+    }
+
     private static TaskDispatchContext context() {
         return new TaskDispatchContext("task-1", "task", "demo", "user", "demo.event", Map.of());
     }

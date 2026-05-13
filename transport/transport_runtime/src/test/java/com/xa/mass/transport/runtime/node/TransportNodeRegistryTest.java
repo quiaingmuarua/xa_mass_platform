@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -72,5 +73,33 @@ class TransportNodeRegistryTest {
         TransportNodePresence stale = registry.getNode("node-2");
         assertEquals(TransportNodeState.STALE, stale.state());
         assertFalse(registry.isNodeOnline("node-2"));
+    }
+
+    @Test
+    void heartbeatLifecycleRegistersRefreshesAndMarksNodeOffline() throws Exception {
+        InMemoryTransportNodeRegistry registry = new InMemoryTransportNodeRegistry(1_000L);
+        AtomicLong connectionCount = new AtomicLong(3L);
+        TransportNodeRegistryHeartbeat heartbeat = new TransportNodeRegistryHeartbeat(
+                registry,
+                "node-heartbeat",
+                List.of("websocket"),
+                connectionCount::get,
+                10L
+        );
+
+        heartbeat.start();
+
+        assertTrue(registry.isNodeOnline("node-heartbeat"));
+        assertEquals(3L, registry.getNode("node-heartbeat").connectionCount());
+
+        connectionCount.set(7L);
+        Thread.sleep(80L);
+
+        assertEquals(7L, registry.getNode("node-heartbeat").connectionCount());
+
+        heartbeat.stop();
+
+        assertFalse(registry.isNodeOnline("node-heartbeat"));
+        assertEquals(TransportNodeState.OFFLINE, registry.getNode("node-heartbeat").state());
     }
 }
