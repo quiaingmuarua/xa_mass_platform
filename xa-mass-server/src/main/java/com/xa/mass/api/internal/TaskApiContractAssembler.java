@@ -113,7 +113,7 @@ final class TaskApiContractAssembler {
                                          boolean ready,
                                          String contentType,
                                          long itemCount,
-                                         long byteSize,
+                                         Long byteSize,
                                          String checksum,
                                          String downloadUrl) {
         return new ApiTaskResultArchive(
@@ -124,7 +124,7 @@ final class TaskApiContractAssembler {
                 "gzip",
                 itemCount,
                 byteSize,
-                checksum == null ? "" : checksum,
+                checksum,
                 downloadUrl == null ? "" : downloadUrl
         );
     }

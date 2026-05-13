@@ -16,6 +16,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.util.TraceEventLogger.TaskWorkTraceView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.CommitResultStatus;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
@@ -26,6 +27,7 @@ import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
+import com.xa.mass.runtime.api.TaskResultRepairKind;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
@@ -228,7 +230,7 @@ class TaskResultService {
             }
             return ResultMutationOutcome.acceptedDirty();
         }
-        cleanupStageIfConverged(stagedDraft, visibleFinalCommit.row());
+        cleanupStageIfConverged(taskId, messageId, visibleFinalCommit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, visibleFinalCommit.row().seq());
     }
 
@@ -630,7 +632,7 @@ class TaskResultService {
             publishWorkLogicallyFinalOnce(task, successSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable success");
         }
-        cleanupStageIfConverged(stagedDraft, commit.row());
+        cleanupStageIfConverged(taskId, messageId, commit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
@@ -813,7 +815,7 @@ class TaskResultService {
             publishWorkLogicallyFinalOnce(task, failureSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
         }
-        cleanupStageIfConverged(stagedDraft, commit.row());
+        cleanupStageIfConverged(taskId, workSummary.messageId(), commit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
@@ -1197,16 +1199,21 @@ class TaskResultService {
             return;
         }
         publishWorkLogicallyFinal(task, workSummary, attempt, trigger, reason);
-        taskResultRuntime.markLogicalFinalPublished(row.taskId(), row.messageId(), row.seq());
+        BarrierMarkResult markResult = taskResultRuntime.markLogicalFinalPublished(
+                row.taskId(), row.messageId(), row.seq(), claim.claimToken());
+        if (!markResult.completed()) {
+            logger.warn("Logical-final barrier mark did not complete for taskId={}, messageId={}, seq={}, status={}, reason={}",
+                    row.taskId(), row.messageId(), row.seq(), markResult.status(), markResult.reason());
+        }
     }
 
-    private void cleanupStageIfConverged(TaskResultCallbackDraft stagedDraft, TaskResultRuntimeRow row) {
-        if (stagedDraft == null || row == null) {
+    private void cleanupStageIfConverged(String taskId, String messageId, TaskResultRuntimeRow row) {
+        if (row == null || taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
             return;
         }
         TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(row);
         if (current.logicalFinalPublished() && current.progressApplied()) {
-            discardStage(stagedDraft);
+            taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId);
         }
     }
 
@@ -1266,10 +1273,21 @@ class TaskResultService {
     }
 
     private boolean repairResultRuntimeCandidate(TaskResultRepairCandidate candidate) {
-        if (candidate == null || candidate.draft() == null) {
+        if (candidate == null || candidate.kind() == null) {
             return false;
         }
+        return switch (candidate.kind()) {
+            case MISSING_VISIBLE_FINAL -> repairMissingVisibleFinal(candidate);
+            case MISSING_LOGICAL_FINAL_PUBLISH -> repairMissingLogicalFinalPublish(candidate);
+            case MISSING_PROGRESS_APPLY -> repairMissingProgressApply(candidate);
+        };
+    }
+
+    private boolean repairMissingVisibleFinal(TaskResultRepairCandidate candidate) {
         TaskResultCallbackDraft draft = candidate.draft();
+        if (draft == null) {
+            return false;
+        }
         Task task = taskManager.getTask(draft.taskId());
         RecentFinalWorkReceipt receipt = taskManager.getRecentFinalReceipt(draft.taskId(), draft.messageId()).orElse(null);
         if (receipt == null || taskResultRuntime.getVisibleByMessageId(draft.taskId(), draft.messageId()).isPresent()) {
@@ -1285,13 +1303,58 @@ class TaskResultService {
                     "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
             taskManager.applyTaskResultProgressOnce(commit.row().taskId(), commit.row().messageId(), commit.row().seq());
         }
-        cleanupStageIfConverged(draft, commit.row());
+        cleanupStageIfConverged(draft.taskId(), draft.messageId(), commit.row());
         return true;
+    }
+
+    private boolean repairMissingLogicalFinalPublish(TaskResultRepairCandidate candidate) {
+        TaskResultRuntimeRow row = candidate.row();
+        if (row == null) {
+            return false;
+        }
+        Task task = taskManager.getTask(row.taskId());
+        if (task == null) {
+            return false;
+        }
+        TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(null);
+        if (current == null || current.logicalFinalPublished()) {
+            return false;
+        }
+        RuntimeWorkSummary summary = rebuildFinalSummaryForRepair(
+                task,
+                current,
+                taskManager.getRecentFinalReceipt(row.taskId(), row.messageId()).orElse(null)
+        );
+        if (summary == null) {
+            return false;
+        }
+        publishWorkLogicallyFinalOnce(task, summary, null, current,
+                "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
+        cleanupStageIfConverged(current.taskId(), current.messageId(), current);
+        return true;
+    }
+
+    private boolean repairMissingProgressApply(TaskResultRepairCandidate candidate) {
+        TaskResultRuntimeRow row = candidate.row();
+        if (row == null) {
+            return false;
+        }
+        TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(null);
+        if (current == null || current.progressApplied()) {
+            return false;
+        }
+        taskManager.applyTaskResultProgressOnce(current.taskId(), current.messageId(), current.seq());
+        TaskResultRuntimeRow updated = taskResultRuntime.getVisibleByMessageId(current.taskId(), current.messageId()).orElse(null);
+        cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
+        return updated != null && updated.progressApplied();
     }
 
     private RuntimeWorkSummary rebuildFinalSummaryForRepair(Task task,
                                                             TaskResultCallbackDraft draft,
                                                             RecentFinalWorkReceipt receipt) {
+        if (draft == null || receipt == null) {
+            return null;
+        }
         RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt);
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime createTime = draft.createTime() == null
@@ -1323,6 +1386,49 @@ class TaskResultService {
                 receiptSummary.finalReason(),
                 draft.payloadRef(),
                 draft.output()
+        );
+    }
+
+    private RuntimeWorkSummary rebuildFinalSummaryForRepair(Task task,
+                                                            TaskResultRuntimeRow row,
+                                                            RecentFinalWorkReceipt receipt) {
+        if (row == null || receipt == null) {
+            return null;
+        }
+        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createTime = row.createTime() == null
+                ? now
+                : LocalDateTime.ofInstant(row.createTime(), ZoneId.systemDefault());
+        LocalDateTime assignedTime = row.assignedTime() == null
+                ? null
+                : LocalDateTime.ofInstant(row.assignedTime(), ZoneId.systemDefault());
+        LocalDateTime startTime = row.startTime() == null
+                ? assignedTime
+                : LocalDateTime.ofInstant(row.startTime(), ZoneId.systemDefault());
+        LocalDateTime completedAt = receipt.completedAt() == null
+                ? now
+                : LocalDateTime.ofInstant(receipt.completedAt(), ZoneId.systemDefault());
+        return new RuntimeWorkSummary(
+                row.messageId(),
+                row.taskId(),
+                row.attemptId(),
+                row.workerId(),
+                row.workerContextId(),
+                row.batchId(),
+                receiptSummary.status(),
+                assignedTime,
+                createTime,
+                completedAt,
+                startTime,
+                completedAt,
+                Math.max(0, receipt.retryCount()),
+                Math.max(0, row.maxRetryCount()),
+                row.errorMessage(),
+                receipt.errorCode() != null ? receipt.errorCode() : row.errorCode(),
+                receiptSummary.finalReason(),
+                row.payloadRef(),
+                row.output()
         );
     }
 

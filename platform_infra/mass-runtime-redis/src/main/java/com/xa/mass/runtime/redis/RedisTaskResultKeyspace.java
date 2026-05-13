@@ -32,6 +32,10 @@ public final class RedisTaskResultKeyspace {
         return taskPrefix(taskId) + ":stages";
     }
 
+    public String taskMessageStagesSet(String taskId, String messageId) {
+        return taskPrefix(taskId) + ":message:" + requireToken(messageId, "messageId") + ":stages";
+    }
+
     public String taskSeqCounter(String taskId) {
         return taskPrefix(taskId) + ":seq";
     }
@@ -42,6 +46,14 @@ public final class RedisTaskResultKeyspace {
 
     public String taskVisibleRow(String taskId, String messageId) {
         return taskPrefix(taskId) + ":visible:" + requireToken(messageId, "messageId");
+    }
+
+    public String logicalFinalPendingZset() {
+        return namespaced("pending:logical-final");
+    }
+
+    public String progressPendingZset() {
+        return namespaced("pending:progress");
     }
 
     public String logicalFinalBarrier(String taskId, String messageId, long seq) {

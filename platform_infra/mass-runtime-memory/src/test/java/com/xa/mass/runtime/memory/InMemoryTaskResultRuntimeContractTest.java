@@ -7,6 +7,6 @@ class InMemoryTaskResultRuntimeContractTest extends TaskResultRuntimeContractTes
 
     @Override
     protected TaskResultRuntime createRuntime() {
-        return new InMemoryTaskResultRuntime();
+        return new InMemoryTaskResultRuntime(25L);
     }
 }

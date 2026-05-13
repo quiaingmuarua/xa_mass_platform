@@ -12,7 +12,13 @@ class RedisTaskResultRuntimeContractTest extends TaskResultRuntimeContractTest {
     protected TaskResultRuntime createRuntime() {
         String redisUri = System.getProperty("mass.redis.test.uri", "redis://127.0.0.1:6379/0");
         try {
-            return new RedisTaskResultRuntime(redisUri, "xa:mass:test:result:" + UUID.randomUUID());
+            return new RedisTaskResultRuntime(
+                    io.lettuce.core.RedisClient.create(redisUri),
+                    "xa:mass:test:result:" + UUID.randomUUID(),
+                    java.time.Instant::now,
+                    true,
+                    25L
+            );
         } catch (RuntimeException ex) {
             Assumptions.assumeTrue(false, "Redis is not available for contract test: " + ex.getMessage());
             throw ex;

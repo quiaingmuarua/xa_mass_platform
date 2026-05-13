@@ -7,7 +7,7 @@ public final class TaskResultArchiveSnapshot {
     private final String contentType;
     private final String contentEncoding;
     private final long itemCount;
-    private final long byteSize;
+    private final Long byteSize;
     private final String checksum;
 
     public TaskResultArchiveSnapshot(String taskId,
@@ -16,7 +16,7 @@ public final class TaskResultArchiveSnapshot {
                                      String contentType,
                                      String contentEncoding,
                                      long itemCount,
-                                     long byteSize,
+                                     Long byteSize,
                                      String checksum) {
         this.taskId = taskId;
         this.ready = ready;
@@ -34,6 +34,6 @@ public final class TaskResultArchiveSnapshot {
     public String getContentType() { return contentType; }
     public String getContentEncoding() { return contentEncoding; }
     public long getItemCount() { return itemCount; }
-    public long getByteSize() { return byteSize; }
+    public Long getByteSize() { return byteSize; }
     public String getChecksum() { return checksum; }
 }

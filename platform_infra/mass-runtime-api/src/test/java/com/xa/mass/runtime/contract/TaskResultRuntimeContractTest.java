@@ -1,9 +1,12 @@
 package com.xa.mass.runtime.contract;
 
 import com.xa.mass.runtime.api.BarrierClaimStatus;
+import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkStatus;
 import com.xa.mass.runtime.api.CommitResultStatus;
 import com.xa.mass.runtime.api.StageResultStatus;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
+import com.xa.mass.runtime.api.TaskResultRepairKind;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultWindow;
@@ -48,7 +51,9 @@ public abstract class TaskResultRuntimeContractTest {
         assertThat(runtime.stageCallback(duplicate).status()).isEqualTo(StageResultStatus.DUPLICATE);
         assertThat(runtime.stageCallback(secondIdentity).status()).isEqualTo(StageResultStatus.STAGED);
 
-        assertThat(runtime.scanRepairCandidates(10)).extracting(candidate -> candidate.draft().identityDigest())
+        assertThat(runtime.scanRepairCandidates(10))
+                .filteredOn(candidate -> candidate.kind() == TaskResultRepairKind.MISSING_VISIBLE_FINAL)
+                .extracting(candidate -> candidate.draft().identityDigest())
                 .containsExactly("digest-1", "digest-2");
     }
 
@@ -86,26 +91,37 @@ public abstract class TaskResultRuntimeContractTest {
         TaskResultCallbackDraft draft = draft("task-1", "msg-1", "digest-1");
         runtime.stageCallback(draft);
 
-        assertThat(runtime.scanRepairCandidates(10)).hasSize(1);
+        assertThat(runtime.scanRepairCandidates(10))
+                .extracting(candidate -> candidate.kind())
+                .containsExactly(TaskResultRepairKind.MISSING_VISIBLE_FINAL);
         runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS"));
-        assertThat(runtime.scanRepairCandidates(10)).isEmpty();
+        assertThat(runtime.scanRepairCandidates(10))
+                .extracting(candidate -> candidate.kind())
+                .containsExactlyInAnyOrder(
+                        TaskResultRepairKind.MISSING_LOGICAL_FINAL_PUBLISH,
+                        TaskResultRepairKind.MISSING_PROGRESS_APPLY
+                );
     }
 
     @Test
     void barriers_areIndependentAndIdempotent() {
         long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
+        BarrierClaim logicalClaim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
 
-        assertThat(runtime.claimLogicalFinalPublish("task-1", "msg-1", seq).status())
+        assertThat(logicalClaim.status())
                 .isEqualTo(BarrierClaimStatus.CLAIMED);
         assertThat(runtime.claimLogicalFinalPublish("task-1", "msg-1", seq).status())
                 .isEqualTo(BarrierClaimStatus.BUSY);
-        runtime.markLogicalFinalPublished("task-1", "msg-1", seq);
+        assertThat(runtime.markLogicalFinalPublished("task-1", "msg-1", seq, logicalClaim.claimToken()).status())
+                .isEqualTo(BarrierMarkStatus.MARKED);
         assertThat(runtime.claimLogicalFinalPublish("task-1", "msg-1", seq).status())
                 .isEqualTo(BarrierClaimStatus.ALREADY_DONE);
 
-        assertThat(runtime.claimProgressApply("task-1", "msg-1", seq).status())
+        BarrierClaim progressClaim = runtime.claimProgressApply("task-1", "msg-1", seq);
+        assertThat(progressClaim.status())
                 .isEqualTo(BarrierClaimStatus.CLAIMED);
-        runtime.markProgressApplied("task-1", "msg-1", seq);
+        assertThat(runtime.markProgressApplied("task-1", "msg-1", seq, progressClaim.claimToken()).status())
+                .isEqualTo(BarrierMarkStatus.MARKED);
         assertThat(runtime.getVisibleByMessageId("task-1", "msg-1")).get()
                 .satisfies(row -> {
                     assertThat(row.logicalFinalPublished()).isTrue();
@@ -114,17 +130,54 @@ public abstract class TaskResultRuntimeContractTest {
     }
 
     @Test
+    void staleClaimCanBeStolenAndOldTokenCannotMark() {
+        long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
+        BarrierClaim claim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        assertThat(claim.status()).isEqualTo(BarrierClaimStatus.CLAIMED);
+        sleep(35L);
+        BarrierClaim replacement = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        assertThat(replacement.status()).isEqualTo(BarrierClaimStatus.CLAIMED);
+        assertThat(replacement.claimToken()).isNotEqualTo(claim.claimToken());
+        assertThat(runtime.markLogicalFinalPublished("task-1", "msg-1", seq, claim.claimToken()).status())
+                .isEqualTo(BarrierMarkStatus.TOKEN_MISMATCH);
+    }
+
+    @Test
+    void discardStagedCallbacksForMessageRemovesAllVariants() {
+        runtime.stageCallback(draft("task-1", "msg-1", "digest-1"));
+        runtime.stageCallback(draft("task-1", "msg-1", "digest-2"));
+        runtime.stageCallback(draft("task-1", "msg-2", "digest-3"));
+
+        assertThat(runtime.discardStagedCallbacksForMessage("task-1", "msg-1")).isEqualTo(2);
+        assertThat(runtime.scanRepairCandidates(10))
+                .filteredOn(candidate -> candidate.kind() == TaskResultRepairKind.MISSING_VISIBLE_FINAL)
+                .extracting(candidate -> candidate.messageId())
+                .containsExactly("msg-2");
+    }
+
+    @Test
     void discardTask_removesStagedVisibleAndBarriersForOneTask() {
         TaskResultCallbackDraft draft = draft("task-1", "msg-1", "digest-1");
         runtime.stageCallback(draft);
         long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
-        runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        BarrierClaim claim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        runtime.markLogicalFinalPublished("task-1", "msg-1", seq, claim.claimToken());
         runtime.commitVisibleFinal(finalDraft("task-2", "msg-1", "SUCCESS"));
 
         assertThat(runtime.discardTask("task-1")).isGreaterThan(0L);
         assertThat(runtime.readWindow("task-1", 0, 10).items()).isEmpty();
-        assertThat(runtime.scanRepairCandidates(10)).isEmpty();
+        assertThat(runtime.scanRepairCandidates(10))
+                .allMatch(candidate -> !"task-1".equals(candidate.taskId()));
         assertThat(runtime.readWindow("task-2", 0, 10).items()).hasSize(1);
+    }
+
+    protected void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("sleep interrupted", e);
+        }
     }
 
     private TaskResultCallbackDraft draft(String taskId, String messageId, String digest) {

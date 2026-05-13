@@ -41,8 +41,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -424,15 +424,13 @@ public class TaskApiController {
             if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
                 throw conflictError("Task result archive is not ready");
             }
-            ByteArrayOutputStream archive = new ByteArrayOutputStream();
-            resultQueries.writeTaskResultArchiveContent(taskId, archive);
-            byte[] archiveBytes = archive.toByteArray();
+            StreamingResponseBody archive = outputStream -> resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
             return ResponseEntity.ok()
                     .contentType(NDJSON_MEDIA_TYPE)
                     .header(HttpHeaders.CONTENT_ENCODING, "gzip")
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=\"" + buildTaskResultArchiveFileName(task) + "\"")
-                    .body(archiveBytes);
+                    .body(archive);
         });
     }
 

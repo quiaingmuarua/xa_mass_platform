@@ -514,6 +514,8 @@ Behavior:
 - archive contract is fixed to `ndjson`
 - content encoding is surfaced explicitly, currently `gzip`
 - archive rows are streamed from `TaskResultRuntime` committed visible rows
+- `byteSize` and `checksum` may be `null` when the runtime does not materialize
+  archive metadata ahead of download
 - response `data` is `ApiTaskResultArchive`
 
 ### 4.11 Task Result Archive Content
@@ -527,6 +529,8 @@ Behavior:
 - downloads the archive payload for terminal task results
 - `Content-Type: application/x-ndjson`
 - `Content-Encoding: gzip` when declared by the manifest
+- response is streamed directly from the SDK/runtime writer; the controller does
+  not buffer the full archive in memory before sending it
 - controller must not fall back to projection rows when runtime result rows are
   missing
 

@@ -1,21 +1,30 @@
 package com.xa.mass.runtime.api;
 
-public record BarrierClaim(BarrierClaimStatus status) {
+import java.time.Instant;
 
-    public static BarrierClaim claimed() {
-        return new BarrierClaim(BarrierClaimStatus.CLAIMED);
+public record BarrierClaim(BarrierClaimStatus status,
+                           String claimToken,
+                           Instant claimedAt,
+                           Instant expiresAt) {
+
+    public static BarrierClaim claimed(String claimToken, Instant claimedAt, Instant expiresAt) {
+        return new BarrierClaim(BarrierClaimStatus.CLAIMED, claimToken, claimedAt, expiresAt);
     }
 
     public static BarrierClaim alreadyDone() {
-        return new BarrierClaim(BarrierClaimStatus.ALREADY_DONE);
+        return new BarrierClaim(BarrierClaimStatus.ALREADY_DONE, null, null, null);
     }
 
-    public static BarrierClaim busy() {
-        return new BarrierClaim(BarrierClaimStatus.BUSY);
+    public static BarrierClaim busy(String claimToken, Instant claimedAt, Instant expiresAt) {
+        return new BarrierClaim(BarrierClaimStatus.BUSY, claimToken, claimedAt, expiresAt);
     }
 
     public static BarrierClaim rejected() {
-        return new BarrierClaim(BarrierClaimStatus.REJECTED);
+        return new BarrierClaim(BarrierClaimStatus.REJECTED, null, null, null);
+    }
+
+    public static BarrierClaim unavailable() {
+        return new BarrierClaim(BarrierClaimStatus.UNAVAILABLE, null, null, null);
     }
 
     public boolean claimedByCaller() {

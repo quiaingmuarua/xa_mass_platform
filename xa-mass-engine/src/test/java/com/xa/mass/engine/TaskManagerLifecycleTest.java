@@ -20,6 +20,7 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
@@ -3556,6 +3557,11 @@ class TaskManagerLifecycleTest {
         }
 
         @Override
+        public int discardStagedCallbacksForMessage(String taskId, String messageId) {
+            return delegate.discardStagedCallbacksForMessage(taskId, messageId);
+        }
+
+        @Override
         public CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
             if (failNextVisibleCommit) {
                 failNextVisibleCommit = false;
@@ -3578,8 +3584,8 @@ class TaskManagerLifecycleTest {
         }
 
         @Override
-        public void markLogicalFinalPublished(String taskId, String messageId, long finalSeq) {
-            delegate.markLogicalFinalPublished(taskId, messageId, finalSeq);
+        public BarrierMarkResult markLogicalFinalPublished(String taskId, String messageId, long finalSeq, String claimToken) {
+            return delegate.markLogicalFinalPublished(taskId, messageId, finalSeq, claimToken);
         }
 
         @Override
@@ -3588,8 +3594,8 @@ class TaskManagerLifecycleTest {
         }
 
         @Override
-        public void markProgressApplied(String taskId, String messageId, long finalSeq) {
-            delegate.markProgressApplied(taskId, messageId, finalSeq);
+        public BarrierMarkResult markProgressApplied(String taskId, String messageId, long finalSeq, String claimToken) {
+            return delegate.markProgressApplied(taskId, messageId, finalSeq, claimToken);
         }
 
         @Override

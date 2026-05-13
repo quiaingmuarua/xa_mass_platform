@@ -26,6 +26,7 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
@@ -773,7 +774,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             return;
         }
         updateTaskProgress(taskId);
-        taskResultRuntime.markProgressApplied(taskId, messageId, finalSeq);
+        BarrierMarkResult markResult = taskResultRuntime.markProgressApplied(
+                taskId, messageId, finalSeq, claim.claimToken());
+        if (!markResult.completed()) {
+            logger.warn("Task result progress barrier mark did not complete for taskId={}, messageId={}, seq={}, status={}, reason={}",
+                    taskId, messageId, finalSeq, markResult.status(), markResult.reason());
+        }
     }
 
     /**

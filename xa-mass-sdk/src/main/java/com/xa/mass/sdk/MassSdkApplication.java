@@ -41,8 +41,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.*;
 import java.util.zip.GZIPOutputStream;
 
@@ -210,10 +208,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         TaskDetailSnapshot task = getTaskDetail(normalizedTaskId);
         boolean ready = task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
         long itemCount = requireStartedTaskResultRuntime().countVisibleResults(normalizedTaskId);
-        ArchiveDigestOutputStream digestSink = new ArchiveDigestOutputStream();
-        if (ready) {
-            writeTaskResultArchiveContent(normalizedTaskId, digestSink);
-        }
         return new TaskResultArchiveSnapshot(
                 normalizedTaskId,
                 ready,
@@ -221,8 +215,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 RESULT_ARCHIVE_CONTENT_TYPE,
                 RESULT_ARCHIVE_CONTENT_ENCODING,
                 ready ? itemCount : 0L,
-                ready ? digestSink.byteCount() : 0L,
-                ready ? digestSink.checksum() : ""
+                null,
+                null
         );
     }
 
@@ -230,7 +224,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void writeTaskResultArchiveContent(String taskId, OutputStream sink) {
         Objects.requireNonNull(sink, "sink");
         String normalizedTaskId = requireTaskId(taskId);
-        try (GZIPOutputStream gzip = new GZIPOutputStream(sink)) {
+        try {
+            GZIPOutputStream gzip = new GZIPOutputStream(sink);
             long afterSeq = 0L;
             while (true) {
                 TaskResultWindow window = requireStartedTaskResultRuntime()
@@ -240,6 +235,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                     gzip.write('\n');
                 }
                 if (!window.hasMore()) {
+                    gzip.finish();
+                    gzip.flush();
                     return;
                 }
                 afterSeq = window.nextAfterSeq();
@@ -1659,39 +1656,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             return ProjectRegistry.require(supportedProjects.get(0)).getCode();
         }
         return Project.DEMO_APP.getCode();
-    }
-
-    private static final class ArchiveDigestOutputStream extends OutputStream {
-        private final MessageDigest digest;
-        private long byteCount;
-
-        private ArchiveDigestOutputStream() {
-            try {
-                this.digest = MessageDigest.getInstance("SHA-256");
-            } catch (Exception e) {
-                throw new IllegalStateException("Unable to create archive digest", e);
-            }
-        }
-
-        @Override
-        public void write(int b) {
-            digest.update((byte) b);
-            byteCount++;
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) {
-            digest.update(b, off, len);
-            byteCount += len;
-        }
-
-        private long byteCount() {
-            return byteCount;
-        }
-
-        private String checksum() {
-            return HexFormat.of().formatHex(digest.digest());
-        }
     }
 
     private MassEngine requireStartedEngine() {

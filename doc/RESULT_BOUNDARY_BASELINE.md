@@ -75,6 +75,14 @@ Active stable-final result commit must not reject solely because a task has
 many visible rows. Explicit task discard is the only result-runtime cleanup
 surface in the current kernel.
 
+Visible final commit is atomic at the runtime boundary:
+
+- duplicate visible commit resolves by `taskId + messageId`
+- visible `seq` is allocated only when the first committed final row becomes
+  readable
+- Redis runtime commit is a single-script transition; there is no `PENDING`
+  sentinel row that callers must interpret
+
 ## 4. Transport Ingress
 
 `TaskResultReport` is the worker protocol payload. `TransportResultEnvelope`
@@ -129,9 +137,32 @@ The explicit repair state is not a separate durable row written after failure.
 If visible commit fails after runtime apply, the staged draft remains the repair
 anchor. Callback and repair paths both use runtime barriers keyed by
 `taskId + messageId + finalSeq` before logical-final event publish and progress
-application. This does not promise crash-gap exactly-once delivery, but it
-prevents normal callback/repair races from double-publishing or double-applying
-progress.
+application.
+
+Barrier protocol in the current kernel is:
+
+- claim returns a token plus `claimedAt` / `expiresAt`
+- stale claims may be stolen after TTL
+- row barrier bits remain final truth:
+  - `logicalFinalPublished`
+  - `progressApplied`
+- callback path and repair path both mark those bits through runtime-owned
+  barrier mutation, not by inferring completion from side effects
+
+Repair scan is bounded by runtime-owned indexes:
+
+- staged callbacks missing visible final rows
+- committed visible rows missing logical-final publish mark
+- committed visible rows missing progress-apply mark
+
+This does not promise crash-gap exactly-once delivery. The current guarantee is
+recoverable at-least-once side effects with normal callback/repair race
+suppression. Logical-final listeners and progress-side consumers must stay
+idempotent on `taskId + messageId + seq`.
+
+Redis `TaskResultRuntime` v1 is designed for standalone or single-shard Redis.
+Redis Cluster key-slot design for multi-key barrier and commit scripts is out of
+scope for this baseline.
 
 ## 7. Non-Goals
 

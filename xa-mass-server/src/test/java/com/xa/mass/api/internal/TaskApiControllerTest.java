@@ -332,7 +332,7 @@ class TaskApiControllerTest {
                 3
         ));
         when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
-                TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, 0, ""));
+                TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, null, null));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
                         .param("afterSeq", "1")
@@ -352,7 +352,7 @@ class TaskApiControllerTest {
     void getTaskResultArchiveManifestReturnsArchiveMetadataForTerminalTask() throws Exception {
         when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
         when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
-                TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 1, 64, "checksum"));
+                TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 1, 64L, "checksum"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results/archive", TASK_ID))
                 .andExpect(status().isOk())

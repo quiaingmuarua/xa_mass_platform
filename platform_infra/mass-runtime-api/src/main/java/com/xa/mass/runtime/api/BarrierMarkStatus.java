@@ -1,9 +1,9 @@
 package com.xa.mass.runtime.api;
 
-public enum BarrierClaimStatus {
-    CLAIMED,
+public enum BarrierMarkStatus {
+    MARKED,
     ALREADY_DONE,
-    BUSY,
+    TOKEN_MISMATCH,
     REJECTED,
     UNAVAILABLE
 }

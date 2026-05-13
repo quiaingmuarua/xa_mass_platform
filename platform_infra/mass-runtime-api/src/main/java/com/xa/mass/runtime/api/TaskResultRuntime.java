@@ -9,17 +9,19 @@ public interface TaskResultRuntime {
 
     boolean discardStagedCallback(String stageId);
 
+    int discardStagedCallbacksForMessage(String taskId, String messageId);
+
     CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft);
 
     List<TaskResultRepairCandidate> scanRepairCandidates(int limit);
 
     BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq);
 
-    void markLogicalFinalPublished(String taskId, String messageId, long finalSeq);
+    BarrierMarkResult markLogicalFinalPublished(String taskId, String messageId, long finalSeq, String claimToken);
 
     BarrierClaim claimProgressApply(String taskId, String messageId, long finalSeq);
 
-    void markProgressApplied(String taskId, String messageId, long finalSeq);
+    BarrierMarkResult markProgressApplied(String taskId, String messageId, long finalSeq, String claimToken);
 
     TaskResultWindow readWindow(String taskId, long afterSeq, int limit);
 

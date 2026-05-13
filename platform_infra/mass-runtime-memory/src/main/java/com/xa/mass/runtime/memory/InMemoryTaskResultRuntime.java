@@ -1,6 +1,7 @@
 package com.xa.mass.runtime.memory;
 
 import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
@@ -10,27 +11,45 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
 
+    private static final long DEFAULT_BARRIER_TTL_MILLIS = Long.getLong(
+            "xa.mass.runtime.resultBarrierClaimTtlMillis", 30_000L);
+
     private final Map<String, TaskResultCallbackDraft> stagedById = new LinkedHashMap<>();
     private final Map<String, Set<String>> stageIdsByTask = new HashMap<>();
+    private final Map<MessageKey, Set<String>> stageIdsByMessage = new HashMap<>();
     private final Map<ResultKey, TaskResultRuntimeRow> visibleByMessage = new HashMap<>();
     private final Map<String, TreeMap<Long, TaskResultRuntimeRow>> visibleByTaskSeq = new HashMap<>();
     private final Map<String, Long> nextSeqByTask = new HashMap<>();
-    private final Map<BarrierKey, BarrierState> logicalFinalBarriers = new HashMap<>();
-    private final Map<BarrierKey, BarrierState> progressBarriers = new HashMap<>();
+    private final Map<BarrierKey, BarrierLeaseState> logicalFinalBarriers = new HashMap<>();
+    private final Map<BarrierKey, BarrierLeaseState> progressBarriers = new HashMap<>();
+    private final TreeMap<PendingKey, Instant> logicalFinalPending = new TreeMap<>();
+    private final TreeMap<PendingKey, Instant> progressPending = new TreeMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final long barrierClaimTtlMillis;
+
+    public InMemoryTaskResultRuntime() {
+        this(DEFAULT_BARRIER_TTL_MILLIS);
+    }
+
+    InMemoryTaskResultRuntime(long barrierClaimTtlMillis) {
+        this.barrierClaimTtlMillis = Math.max(1L, barrierClaimTtlMillis);
+    }
 
     @Override
     public synchronized StageResult stageCallback(TaskResultCallbackDraft draft) {
@@ -45,7 +64,8 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
             return StageResult.duplicate(existing);
         }
         stagedById.put(draft.stageId(), draft);
-        stageIdsByTask.computeIfAbsent(draft.taskId(), ignored -> new java.util.LinkedHashSet<>())
+        stageIdsByTask.computeIfAbsent(draft.taskId(), ignored -> new LinkedHashSet<>()).add(draft.stageId());
+        stageIdsByMessage.computeIfAbsent(new MessageKey(draft.taskId(), draft.messageId()), ignored -> new LinkedHashSet<>())
                 .add(draft.stageId());
         return StageResult.staged(draft);
     }
@@ -59,14 +79,29 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (removed == null) {
             return false;
         }
-        Set<String> stageIds = stageIdsByTask.get(removed.taskId());
-        if (stageIds != null) {
-            stageIds.remove(stageId);
-            if (stageIds.isEmpty()) {
-                stageIdsByTask.remove(removed.taskId());
+        removeStageIndexes(removed);
+        return true;
+    }
+
+    @Override
+    public synchronized int discardStagedCallbacksForMessage(String taskId, String messageId) {
+        if (isBlank(taskId) || isBlank(messageId)) {
+            return 0;
+        }
+        MessageKey messageKey = new MessageKey(taskId, messageId);
+        Set<String> stageIds = stageIdsByMessage.remove(messageKey);
+        if (stageIds == null || stageIds.isEmpty()) {
+            return 0;
+        }
+        int removed = 0;
+        for (String stageId : new ArrayList<>(stageIds)) {
+            TaskResultCallbackDraft draft = stagedById.remove(stageId);
+            if (draft != null) {
+                removeStageIndexes(draft);
+                removed++;
             }
         }
-        return true;
+        return removed;
     }
 
     @Override
@@ -86,6 +121,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         TaskResultRuntimeRow row = rowFromDraft(finalDraft, seq, false, false);
         visibleByMessage.put(key, row);
         visibleByTaskSeq.computeIfAbsent(finalDraft.taskId(), ignored -> new TreeMap<>()).put(seq, row);
+        addPending(row);
         return CommitResult.committed(row);
     }
 
@@ -94,16 +130,18 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (!running.get() || limit <= 0) {
             return List.of();
         }
-        List<TaskResultRepairCandidate> candidates = new ArrayList<>(Math.min(limit, stagedById.size()));
+        List<TaskResultRepairCandidate> candidates = new ArrayList<>(limit);
         for (TaskResultCallbackDraft draft : stagedById.values()) {
             if (visibleByMessage.containsKey(new ResultKey(draft.taskId(), draft.messageId()))) {
                 continue;
             }
-            candidates.add(new TaskResultRepairCandidate(draft));
+            candidates.add(TaskResultRepairCandidate.missingVisibleFinal(draft));
             if (candidates.size() >= limit) {
-                break;
+                return List.copyOf(candidates);
             }
         }
+        collectPendingCandidates(candidates, logicalFinalPending, true, limit);
+        collectPendingCandidates(candidates, progressPending, false, limit);
         return List.copyOf(candidates);
     }
 
@@ -113,8 +151,11 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     }
 
     @Override
-    public synchronized void markLogicalFinalPublished(String taskId, String messageId, long finalSeq) {
-        markBarrier(logicalFinalBarriers, taskId, messageId, finalSeq, true);
+    public synchronized BarrierMarkResult markLogicalFinalPublished(String taskId,
+                                                                    String messageId,
+                                                                    long finalSeq,
+                                                                    String claimToken) {
+        return markBarrier(logicalFinalBarriers, logicalFinalPending, taskId, messageId, finalSeq, claimToken, true);
     }
 
     @Override
@@ -123,8 +164,11 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     }
 
     @Override
-    public synchronized void markProgressApplied(String taskId, String messageId, long finalSeq) {
-        markBarrier(progressBarriers, taskId, messageId, finalSeq, false);
+    public synchronized BarrierMarkResult markProgressApplied(String taskId,
+                                                              String messageId,
+                                                              long finalSeq,
+                                                              String claimToken) {
+        return markBarrier(progressBarriers, progressPending, taskId, messageId, finalSeq, claimToken, false);
     }
 
     @Override
@@ -173,15 +217,20 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         Set<String> stageIds = stageIdsByTask.remove(taskId);
         if (stageIds != null) {
             for (String stageId : stageIds) {
-                if (stagedById.remove(stageId) != null) {
+                TaskResultCallbackDraft removedDraft = stagedById.remove(stageId);
+                if (removedDraft != null) {
+                    removeStageIndexes(removedDraft);
                     removed++;
                 }
             }
         }
+        stageIdsByMessage.keySet().removeIf(key -> taskId.equals(key.taskId));
         TreeMap<Long, TaskResultRuntimeRow> rows = visibleByTaskSeq.remove(taskId);
         if (rows != null) {
             for (TaskResultRuntimeRow row : rows.values()) {
                 visibleByMessage.remove(new ResultKey(row.taskId(), row.messageId()));
+                logicalFinalPending.remove(new PendingKey(row.taskId(), row.messageId(), row.seq()));
+                progressPending.remove(new PendingKey(row.taskId(), row.messageId(), row.seq()));
                 removed++;
             }
         }
@@ -198,19 +247,63 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         }
         stagedById.clear();
         stageIdsByTask.clear();
+        stageIdsByMessage.clear();
         visibleByMessage.clear();
         visibleByTaskSeq.clear();
         nextSeqByTask.clear();
         logicalFinalBarriers.clear();
         progressBarriers.clear();
+        logicalFinalPending.clear();
+        progressPending.clear();
     }
 
-    private BarrierClaim claimBarrier(Map<BarrierKey, BarrierState> barriers,
+    synchronized int countMessageStageIds(String taskId, String messageId) {
+        Set<String> stageIds = stageIdsByMessage.get(new MessageKey(taskId, messageId));
+        return stageIds == null ? 0 : stageIds.size();
+    }
+
+    private void collectPendingCandidates(List<TaskResultRepairCandidate> candidates,
+                                          TreeMap<PendingKey, Instant> pendingIndex,
+                                          boolean logicalFinal,
+                                          int limit) {
+        if (candidates.size() >= limit) {
+            return;
+        }
+        List<PendingKey> staleKeys = new ArrayList<>();
+        for (Map.Entry<PendingKey, Instant> entry : pendingIndex.entrySet()) {
+            PendingKey key = entry.getKey();
+            TaskResultRuntimeRow row = visibleByMessage.get(new ResultKey(key.taskId, key.messageId));
+            if (row == null || row.seq() != key.seq) {
+                staleKeys.add(key);
+                continue;
+            }
+            if (logicalFinal && row.logicalFinalPublished()) {
+                staleKeys.add(key);
+                continue;
+            }
+            if (!logicalFinal && row.progressApplied()) {
+                staleKeys.add(key);
+                continue;
+            }
+            candidates.add(logicalFinal
+                    ? TaskResultRepairCandidate.missingLogicalFinalPublish(row)
+                    : TaskResultRepairCandidate.missingProgressApply(row));
+            if (candidates.size() >= limit) {
+                break;
+            }
+        }
+        staleKeys.forEach(pendingIndex::remove);
+    }
+
+    private BarrierClaim claimBarrier(Map<BarrierKey, BarrierLeaseState> barriers,
                                       String taskId,
                                       String messageId,
                                       long finalSeq,
                                       boolean logicalFinal) {
-        if (!running.get() || isBlank(taskId) || isBlank(messageId) || finalSeq <= 0) {
+        if (!running.get()) {
+            return BarrierClaim.unavailable();
+        }
+        if (isBlank(taskId) || isBlank(messageId) || finalSeq <= 0) {
             return BarrierClaim.rejected();
         }
         TaskResultRuntimeRow row = visibleByMessage.get(new ResultKey(taskId, messageId));
@@ -221,31 +314,51 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
             return BarrierClaim.alreadyDone();
         }
         BarrierKey key = new BarrierKey(taskId, messageId, finalSeq);
-        BarrierState state = barriers.get(key);
-        if (state == BarrierState.DONE) {
+        Instant now = Instant.now();
+        BarrierLeaseState existing = barriers.get(key);
+        if (existing != null && existing.done) {
             return BarrierClaim.alreadyDone();
         }
-        if (state == BarrierState.CLAIMED) {
-            return BarrierClaim.busy();
+        if (existing != null && existing.expiresAt != null && existing.expiresAt.isAfter(now)) {
+            return BarrierClaim.busy(existing.claimToken, existing.claimedAt, existing.expiresAt);
         }
-        barriers.put(key, BarrierState.CLAIMED);
-        return BarrierClaim.claimed();
+        String claimToken = UUID.randomUUID().toString();
+        Instant expiresAt = now.plusMillis(barrierClaimTtlMillis);
+        barriers.put(key, new BarrierLeaseState(claimToken, now, expiresAt, false));
+        return BarrierClaim.claimed(claimToken, now, expiresAt);
     }
 
-    private void markBarrier(Map<BarrierKey, BarrierState> barriers,
-                             String taskId,
-                             String messageId,
-                             long finalSeq,
-                             boolean logicalFinal) {
-        if (isBlank(taskId) || isBlank(messageId) || finalSeq <= 0) {
-            return;
+    private BarrierMarkResult markBarrier(Map<BarrierKey, BarrierLeaseState> barriers,
+                                          TreeMap<PendingKey, Instant> pendingIndex,
+                                          String taskId,
+                                          String messageId,
+                                          long finalSeq,
+                                          String claimToken,
+                                          boolean logicalFinal) {
+        if (!running.get()) {
+            return BarrierMarkResult.unavailable("result runtime is stopped");
         }
-        BarrierKey barrierKey = new BarrierKey(taskId, messageId, finalSeq);
-        barriers.put(barrierKey, BarrierState.DONE);
+        if (isBlank(taskId) || isBlank(messageId) || finalSeq <= 0) {
+            return BarrierMarkResult.rejected("taskId, messageId, and finalSeq are required");
+        }
         ResultKey resultKey = new ResultKey(taskId, messageId);
         TaskResultRuntimeRow row = visibleByMessage.get(resultKey);
         if (row == null || row.seq() != finalSeq) {
-            return;
+            return BarrierMarkResult.rejected("visible row not found");
+        }
+        if ((logicalFinal && row.logicalFinalPublished()) || (!logicalFinal && row.progressApplied())) {
+            return BarrierMarkResult.alreadyDone();
+        }
+        BarrierKey barrierKey = new BarrierKey(taskId, messageId, finalSeq);
+        BarrierLeaseState state = barriers.get(barrierKey);
+        if (state == null) {
+            return BarrierMarkResult.tokenMismatch("no active barrier claim");
+        }
+        if (state.done) {
+            return BarrierMarkResult.alreadyDone();
+        }
+        if (isBlank(claimToken) || !claimToken.equals(state.claimToken)) {
+            return BarrierMarkResult.tokenMismatch("claim token mismatch");
         }
         TaskResultRuntimeRow updated = logicalFinal
                 ? row.withLogicalFinalPublished()
@@ -255,6 +368,16 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (rows != null) {
             rows.put(finalSeq, updated);
         }
+        barriers.put(barrierKey, state.asDone());
+        pendingIndex.remove(new PendingKey(taskId, messageId, finalSeq));
+        return BarrierMarkResult.marked();
+    }
+
+    private void addPending(TaskResultRuntimeRow row) {
+        PendingKey pendingKey = new PendingKey(row.taskId(), row.messageId(), row.seq());
+        Instant observedAt = row.updateTime() == null ? Instant.now() : row.updateTime();
+        logicalFinalPending.put(pendingKey, observedAt);
+        progressPending.put(pendingKey, observedAt);
     }
 
     private TaskResultRuntimeRow rowFromDraft(TaskResultFinalDraft draft,
@@ -288,6 +411,24 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         );
     }
 
+    private void removeStageIndexes(TaskResultCallbackDraft draft) {
+        Set<String> taskStages = stageIdsByTask.get(draft.taskId());
+        if (taskStages != null) {
+            taskStages.remove(draft.stageId());
+            if (taskStages.isEmpty()) {
+                stageIdsByTask.remove(draft.taskId());
+            }
+        }
+        MessageKey messageKey = new MessageKey(draft.taskId(), draft.messageId());
+        Set<String> messageStages = stageIdsByMessage.get(messageKey);
+        if (messageStages != null) {
+            messageStages.remove(draft.stageId());
+            if (messageStages.isEmpty()) {
+                stageIdsByMessage.remove(messageKey);
+            }
+        }
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -299,11 +440,35 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         }
     }
 
+    private record MessageKey(String taskId, String messageId) implements Comparable<MessageKey> {
+        @Override
+        public int compareTo(MessageKey other) {
+            int taskCompare = taskId.compareTo(other.taskId);
+            return taskCompare != 0 ? taskCompare : messageId.compareTo(other.messageId);
+        }
+    }
+
+    private record PendingKey(String taskId, String messageId, long seq) implements Comparable<PendingKey> {
+        @Override
+        public int compareTo(PendingKey other) {
+            int taskCompare = taskId.compareTo(other.taskId);
+            if (taskCompare != 0) {
+                return taskCompare;
+            }
+            int messageCompare = messageId.compareTo(other.messageId);
+            if (messageCompare != 0) {
+                return messageCompare;
+            }
+            return Long.compare(seq, other.seq);
+        }
+    }
+
     private record BarrierKey(String taskId, String messageId, long seq) {
     }
 
-    private enum BarrierState {
-        CLAIMED,
-        DONE
+    private record BarrierLeaseState(String claimToken, Instant claimedAt, Instant expiresAt, boolean done) {
+        private BarrierLeaseState asDone() {
+            return new BarrierLeaseState(claimToken, claimedAt, expiresAt, true);
+        }
     }
 }

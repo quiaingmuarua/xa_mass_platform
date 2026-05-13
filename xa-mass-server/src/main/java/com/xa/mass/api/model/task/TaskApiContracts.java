@@ -234,9 +234,9 @@ public final class TaskApiContracts {
             String contentEncoding,
             @Schema(description = "Archived result item count", example = "1000")
             long itemCount,
-            @Schema(description = "Archive byte size", example = "1048576")
-            long byteSize,
-            @Schema(description = "Archive checksum")
+            @Schema(description = "Archive byte size when known", example = "1048576", nullable = true)
+            Long byteSize,
+            @Schema(description = "Archive checksum when known", nullable = true)
             String checksum,
             @Schema(description = "Archive content download URL", example = "/api/v1/tasks/task-uuid/results/archive/content")
             String downloadUrl
