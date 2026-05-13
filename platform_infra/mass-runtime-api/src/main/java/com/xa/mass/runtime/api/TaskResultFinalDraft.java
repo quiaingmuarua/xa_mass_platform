@@ -1,6 +1,7 @@
 package com.xa.mass.runtime.api;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -50,7 +51,7 @@ public record TaskResultFinalDraft(
         for (Map.Entry<String, Object> entry : source.entrySet()) {
             copy.put(Objects.requireNonNull(entry.getKey(), "output key"), entry.getValue());
         }
-        return Map.copyOf(copy);
+        return Collections.unmodifiableMap(copy);
     }
 
     private static void requireNonBlank(String value, String fieldName) {

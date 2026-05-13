@@ -936,6 +936,9 @@ class TaskManagerLifecycleTest {
             assignMessage(manager, task, message);
 
             AtomicInteger logicalFinalEvents = new AtomicInteger();
+            AtomicInteger attemptClosedEvents = new AtomicInteger();
+            manager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
+                    attemptClosedEvents.incrementAndGet());
             manager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
                     logicalFinalEvents.incrementAndGet());
 
@@ -959,8 +962,64 @@ class TaskManagerLifecycleTest {
             assertEquals("SUCCESS", row.status());
             assertTrue(row.logicalFinalPublished());
             assertTrue(row.progressApplied());
+            assertEquals(1, attemptClosedEvents.get());
             assertEquals(1, logicalFinalEvents.get());
             assertTrue(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+        } finally {
+            if (manager != null) {
+                manager.shutdown();
+            }
+            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
+        }
+    }
+
+    @Test
+    void duplicateCallbackAfterVisibleCommitFailureKeepsRepairCandidateUntilVisibleFinalConverges() {
+        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
+        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
+        ProjectionAwareTaskManager manager = null;
+        try {
+            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
+            resultRuntime.blockRepairPumpScans();
+            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
+            manager = new ProjectionAwareTaskManager(
+                    new RecordingTaskScheduler(),
+                    repairStorage,
+                    repairStorage,
+                    new InMemoryTaskWorkRuntime(),
+                    resultRuntime
+            );
+
+            Task task = createTask(manager, buildRequest("task-result-runtime-repair-duplicate", List.of("alpha"), 0));
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(manager, task, message);
+
+            resultRuntime.failNextVisibleCommit();
+            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-first"));
+
+            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
+            assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
+            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+
+            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-duplicate"));
+            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
+            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+                    "duplicate callback should not discard the only staged repair breadcrumb before visible final exists");
+
+            resultRuntime.allowRepairPumpScans();
+            ProjectionAwareTaskManager capturedManager = manager;
+            awaitCondition(
+                    () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
+                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
+                    "repair pump should still converge after duplicate callback follows a failed visible commit");
+
+            awaitCondition(
+                    () -> capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+                    "repair candidate should drain once visible final, logical-final publish, and progress apply all converge");
         } finally {
             if (manager != null) {
                 manager.shutdown();

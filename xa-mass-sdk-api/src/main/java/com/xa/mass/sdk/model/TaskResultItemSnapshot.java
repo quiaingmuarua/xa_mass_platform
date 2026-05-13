@@ -1,6 +1,8 @@
 package com.xa.mass.sdk.model;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class TaskResultItemSnapshot {
@@ -49,7 +51,7 @@ public final class TaskResultItemSnapshot {
         this.updateTime = updateTime;
         this.errorCode = errorCode;
         this.errorMessage = errorMessage;
-        this.output = output == null ? null : Map.copyOf(output);
+        this.output = output == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(output));
     }
 
     public long getSeq() { return seq; }

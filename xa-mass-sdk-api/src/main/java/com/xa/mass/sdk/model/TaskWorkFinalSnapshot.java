@@ -1,5 +1,6 @@
 package com.xa.mass.sdk.model;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -19,6 +20,6 @@ public record TaskWorkFinalSnapshot(
 ) {
 
     public TaskWorkFinalSnapshot {
-        output = output == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(output));
+        output = output == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(output));
     }
 }

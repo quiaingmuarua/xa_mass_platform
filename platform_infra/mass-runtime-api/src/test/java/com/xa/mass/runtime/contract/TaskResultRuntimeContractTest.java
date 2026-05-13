@@ -101,8 +101,72 @@ public abstract class TaskResultRuntimeContractTest {
                 .extracting(candidate -> candidate.kind())
                 .containsExactlyInAnyOrder(
                         TaskResultRepairKind.MISSING_LOGICAL_FINAL_PUBLISH,
-                        TaskResultRepairKind.MISSING_PROGRESS_APPLY
+                    TaskResultRepairKind.MISSING_PROGRESS_APPLY
                 );
+    }
+
+    @Test
+    void callbackAndVisibleFinalPreserveOutputEntriesWithNullValues() {
+        Map<String, Object> output = new java.util.LinkedHashMap<>();
+        output.put("workerId", "worker-1");
+        output.put("title", null);
+
+        TaskResultCallbackDraft callbackDraft = new TaskResultCallbackDraft(
+                TaskResultCallbackDraft.stageId("task-1", "msg-1", "digest-null-output"),
+                "task-1",
+                "msg-1",
+                true,
+                "done",
+                null,
+                output,
+                Instant.parse("2026-05-13T00:00:00Z"),
+                "attempt-1",
+                "lease-1",
+                null,
+                "polling",
+                "worker-1",
+                "digest-null-output",
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                "payload-ref",
+                "demo.event",
+                0,
+                3,
+                Instant.parse("2026-05-13T00:00:01Z"),
+                Instant.parse("2026-05-13T00:00:00Z")
+        );
+
+        assertThat(runtime.stageCallback(callbackDraft).status()).isEqualTo(StageResultStatus.STAGED);
+
+        TaskResultFinalDraft finalDraft = new TaskResultFinalDraft(
+                "task-1",
+                "msg-1",
+                "demo.event",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                0,
+                3,
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                "attempt-1",
+                "payload-ref",
+                Instant.parse("2026-05-13T00:00:00Z"),
+                Instant.parse("2026-05-13T00:00:01Z"),
+                Instant.parse("2026-05-13T00:00:02Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                null,
+                null,
+                output,
+                "stage-msg-1"
+        );
+
+        assertThat(runtime.commitVisibleFinal(finalDraft).status()).isEqualTo(CommitResultStatus.COMMITTED);
+        assertThat(runtime.getVisibleByMessageId("task-1", "msg-1")).get()
+                .extracting(row -> row.output())
+                .isEqualTo(output);
     }
 
     @Test

@@ -323,16 +323,17 @@ class TaskResultService {
                                                                RuntimeResultApplyContext ctx,
                                                                TaskResultCallbackDraft stagedDraft) {
         if (!ctx.hasLeaseSnapshot()) {
-            discardStage(stagedDraft);
             // No active lease at apply time - duplicate or late callback.
             RuntimeWorkSummary recentFinal = recentFinalMessage(task, taskId, messageId);
             if (recentFinal != null) {
+                discardStageIfVisibleFinalExists(taskId, messageId, stagedDraft);
                 traceEventLogger.callbackIgnoredDuplicate(recentFinal.toTraceView(),
                         "work item already final in recent runtime receipt with status " + recentFinal.status());
                 logger.info("Work item {} of task {} is already in final status {}, skipping duplicate result",
                         messageId, taskId, recentFinal.status());
                 return ResultMutationOutcome.acceptedNoop();
             }
+            discardStage(stagedDraft);
             TaskWorkTraceView noLeaseView = resolveTraceWorkView(taskId, messageId, null);
             traceEventLogger.callbackRejectedNoActiveLease(
                     noLeaseView, "callback arrived without any active runtime lease");
@@ -1223,6 +1224,15 @@ class TaskResultService {
         }
     }
 
+    private void discardStageIfVisibleFinalExists(String taskId, String messageId, TaskResultCallbackDraft stagedDraft) {
+        if (stagedDraft == null) {
+            return;
+        }
+        if (taskResultRuntime.getVisibleByMessageId(taskId, messageId).isPresent()) {
+            discardStage(stagedDraft);
+        }
+    }
+
     private Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.atZone(ZoneId.systemDefault()).toInstant();
     }
@@ -1299,6 +1309,8 @@ class TaskResultService {
             return false;
         }
         if (task != null) {
+            publishWorkAttemptClosedRepair(task, summary, commit.row(),
+                    "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing attempt-closed event");
             publishWorkLogicallyFinalOnce(task, summary, null, commit.row(),
                     "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
             taskManager.applyTaskResultProgressOnce(commit.row().taskId(), commit.row().messageId(), commit.row().seq());
@@ -1430,6 +1442,57 @@ class TaskResultService {
                 row.payloadRef(),
                 row.output()
         );
+    }
+
+    private void publishWorkAttemptClosedRepair(Task task,
+                                                RuntimeWorkSummary workSummary,
+                                                TaskResultRuntimeRow row,
+                                                String trigger,
+                                                String reason) {
+        if (task == null || workSummary == null || row == null || row.attemptId() == null || row.attemptId().isBlank()) {
+            return;
+        }
+        AttemptProjectionView repairAttempt = new AttemptProjectionView(
+                row.attemptId(),
+                row.taskId(),
+                row.messageId(),
+                0,
+                row.workerId(),
+                row.workerContextId(),
+                row.batchId()
+        );
+        repairAttempt.status = attemptStatusForRepair(workSummary.status());
+        repairAttempt.finalReason = attemptFinalReasonForRepair(workSummary.finalReason());
+        repairAttempt.errorMessage = workSummary.errorMessage();
+        repairAttempt.errorCode = workSummary.errorCode();
+        repairAttempt.output = workSummary.output();
+        publishWorkAttemptClosed(task, workSummary, repairAttempt, trigger, reason);
+    }
+
+    private AttemptStatus attemptStatusForRepair(MessageStatus status) {
+        if (status == null) {
+            return AttemptStatus.FAILED;
+        }
+        return switch (status) {
+            case SUCCESS -> AttemptStatus.SUCCEEDED;
+            case FAILED -> AttemptStatus.FAILED;
+            case EXPIRED -> AttemptStatus.EXPIRED;
+            default -> AttemptStatus.FAILED;
+        };
+    }
+
+    private AttemptFinalReason attemptFinalReasonForRepair(MessageFinalReason finalReason) {
+        if (finalReason == null) {
+            return AttemptFinalReason.BUSINESS_FAILURE;
+        }
+        return switch (finalReason) {
+            case BUSINESS_SUCCESS -> AttemptFinalReason.SUCCESS;
+            case TIMEOUT -> AttemptFinalReason.TIMEOUT;
+            case WORKER_LOST -> AttemptFinalReason.WORKER_LOST;
+            case MANUAL_CANCELLED -> AttemptFinalReason.MANUAL_CANCELLED;
+            case LEASE_EXPIRED -> AttemptFinalReason.LEASE_EXPIRED;
+            case BUSINESS_FAILED, RETRY_EXHAUSTED -> AttemptFinalReason.BUSINESS_FAILURE;
+        };
     }
 
     private void requestRetryDispatch(Task task, long workRetryDelayMillis) {
