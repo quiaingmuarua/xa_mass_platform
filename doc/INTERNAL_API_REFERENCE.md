@@ -793,6 +793,16 @@ Behavior:
 
 - `GET /actuator/health` - `Implemented`
 - `GET /doc.html` - `Demo`
+- `GET /v3/api-docs` - `Implemented`
+
+Doc handoff:
+
+- `/doc.html` is the Knife4j browser UI for exploring the active API.
+- `/v3/api-docs` exports the OpenAPI JSON document for generated handoff docs
+  and client review.
+- Task API request and response objects carry OpenAPI schema annotations in
+  the server code; Markdown remains the narrative contract, while Knife4j is
+  the exportable field-level contract.
 
 ## 10. Response Shape Notes
 

@@ -102,6 +102,7 @@ After startup:
 - HTTP projects view: `http://localhost:8088/resources/projects`
 - HTTP workers view: `http://localhost:8088/resources/workers`
 - HTTP API docs: `http://localhost:8088/doc.html`
+- OpenAPI JSON export: `http://localhost:8088/v3/api-docs`
 - WebSocket: `ws://localhost:18088/ws`
 - Socket when enabled: `tcp://localhost:18089`
 

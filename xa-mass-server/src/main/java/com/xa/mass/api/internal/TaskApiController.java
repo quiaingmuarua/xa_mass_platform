@@ -31,6 +31,9 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
 import com.xa.mass.storage.api.TaskDetailStore;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -48,6 +51,7 @@ import java.util.zip.GZIPOutputStream;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
+@Tag(name = "Task API", description = "Public task shell, item ingest, command, and result APIs")
 public class TaskApiController {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
@@ -122,13 +126,22 @@ public class TaskApiController {
     }
 
     @GetMapping("")
+    @Operation(
+            summary = "List tasks",
+            description = "Returns a bounded list of task shell summaries. Project filtering is task-level; item eventCode is not task truth."
+    )
     public ResponseEntity<ApiResponse<ApiTaskListResult>> listTasks(
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                      @Parameter(description = "Optional keyword matched against task id, task name, or project")
                                                                       @RequestParam(required = false) String keyword,
+                                                                      @Parameter(description = "Optional exact project code filter")
                                                                       @RequestParam(required = false) String project,
+                                                                      @Parameter(description = "Optional task status filter")
                                                                       @RequestParam(required = false) String status,
+                                                                      @Parameter(description = "Storage scan offset when status is not supplied")
                                                                       @RequestParam(defaultValue = "0") int offset,
+                                                                      @Parameter(description = "Bounded list window size")
                                                                       @RequestParam(defaultValue = "500") int limit) {
         return executeApi("Task list failed", () -> {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
@@ -151,6 +164,10 @@ public class TaskApiController {
     }
 
     @PostMapping("")
+    @Operation(
+            summary = "Create task shell",
+            description = "Creates only the task shell. Work items must be ingested separately through /items."
+    )
     public ResponseEntity<ApiResponse<ApiTaskCreateOutcome>> createTask(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -189,6 +206,10 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}")
+    @Operation(
+            summary = "Get task detail",
+            description = "Returns task shell, aggregate state, execution, counters, timestamps, and security view. Item payload snapshots are not returned by default."
+    )
     public ResponseEntity<ApiResponse<ApiTaskGetResult>> getTask(
                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -203,7 +224,12 @@ public class TaskApiController {
     }
 
     @PatchMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<ApiTaskUpdateOutcome>> updateTask(@PathVariable String taskId,
+    @Operation(
+            summary = "Update task shell",
+            description = "Updates shell-level editable fields for NEW or BLOCKED tasks. taskName is server-derived and cannot be patched."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskUpdateOutcome>> updateTask(@Parameter(description = "Task id")
+                                                                        @PathVariable String taskId,
                                                                         @RequestBody TaskUpdateApiRequest requestBody) {
         return executeApi("Task update failed", () -> {
             TaskStateSnapshot state = getExistingTaskState(taskId);
@@ -220,6 +246,10 @@ public class TaskApiController {
     }
 
     @PostMapping("/{taskId}/items")
+    @Operation(
+            summary = "Append task items",
+            description = "Explicitly ingests a batch of opaque work item payloads while task intake is open."
+    )
     public ResponseEntity<ApiResponse<ApiTaskAppendOutcome>> appendTaskItems(
                                                                              @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                              @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -257,7 +287,12 @@ public class TaskApiController {
     }
 
     @PostMapping("/{taskId}/commands")
+    @Operation(
+            summary = "Execute task command",
+            description = "Runs a lifecycle, governance, or intake command such as APPROVE, REJECT, PAUSE, RESUME, TERMINATE, BLOCK, or SEAL."
+    )
     public ResponseEntity<ApiResponse<ApiTaskCommandOutcome>> executeTaskCommand(HttpServletRequest httpRequest,
+                                                                                 @Parameter(description = "Task id")
                                                                                  @PathVariable String taskId,
                                                                                  @RequestBody TaskCommandApiRequest requestBody) {
         return executeApi("Task command failed", () -> {
@@ -279,11 +314,18 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/results")
+    @Operation(
+            summary = "Read live task results",
+            description = "Reads an ordered result window using afterSeq. This is checkpoint-style sequential reading, not pagination and not ack-based consumption."
+    )
     public ResponseEntity<ApiResponse<ApiTaskResultWindow>> getTaskResults(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @Parameter(description = "Task id")
             @PathVariable String taskId,
+            @Parameter(description = "Return items after this task-local sequence number")
             @RequestParam(defaultValue = "0") long afterSeq,
+            @Parameter(description = "Maximum number of items in this read window")
             @RequestParam(required = false) Integer limit) {
         return executeApi("Task results lookup failed", () -> {
             if (afterSeq < 0) {
@@ -311,6 +353,10 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/results/archive")
+    @Operation(
+            summary = "Get task result archive manifest",
+            description = "Returns terminal archive readiness and download metadata. Archive content is fixed to gzip-compressed ndjson."
+    )
     public ResponseEntity<ApiResponse<ApiTaskResultArchive>> getTaskResultsArchiveManifest(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -345,6 +391,10 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/results/archive/content")
+    @Operation(
+            summary = "Download task result archive",
+            description = "Downloads the gzip-compressed ndjson result archive. This endpoint returns raw content rather than ApiResponse."
+    )
     public ResponseEntity<?> downloadTaskResultsArchive(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
