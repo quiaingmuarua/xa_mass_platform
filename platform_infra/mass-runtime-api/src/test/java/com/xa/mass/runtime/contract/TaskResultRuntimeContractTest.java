@@ -15,7 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -169,6 +171,65 @@ public abstract class TaskResultRuntimeContractTest {
         assertThat(runtime.scanRepairCandidates(10))
                 .allMatch(candidate -> !"task-1".equals(candidate.taskId()));
         assertThat(runtime.readWindow("task-2", 0, 10).items()).hasSize(1);
+    }
+
+    @Test
+    void sequentialReadHighVolumeSmoke_preservesMonotonicCheckpointAndNoDuplicates() {
+        String taskId = "task-high-volume";
+        int total = 5_000;
+        int windowSize = 137;
+        for (int i = 1; i <= total; i++) {
+            String messageId = "msg-" + i;
+            assertThat(runtime.commitVisibleFinal(finalDraft(taskId, messageId, "SUCCESS")).status())
+                    .isEqualTo(CommitResultStatus.COMMITTED);
+        }
+
+        assertThat(runtime.countVisibleResults(taskId)).isEqualTo(total);
+
+        long afterSeq = 0L;
+        int readCount = 0;
+        long previousSeq = 0L;
+        Set<Long> seenSeqs = new HashSet<>();
+        Set<String> seenMessageIds = new HashSet<>();
+
+        while (true) {
+            TaskResultWindow window = runtime.readWindow(taskId, afterSeq, windowSize);
+            assertThat(window.taskId()).isEqualTo(taskId);
+            assertThat(window.totalVisible()).isEqualTo(total);
+
+            if (window.items().isEmpty()) {
+                assertThat(window.hasMore()).isFalse();
+                break;
+            }
+
+            for (int i = 0; i < window.items().size(); i++) {
+                long currentSeq = window.items().get(i).seq();
+                String currentMessageId = window.items().get(i).messageId();
+                assertThat(currentSeq).isGreaterThan(previousSeq);
+                assertThat(seenSeqs.add(currentSeq)).isTrue();
+                assertThat(seenMessageIds.add(currentMessageId)).isTrue();
+                previousSeq = currentSeq;
+                readCount++;
+            }
+
+            long expectedNextAfterSeq = window.items().get(window.items().size() - 1).seq();
+            assertThat(window.nextAfterSeq()).isEqualTo(expectedNextAfterSeq);
+            afterSeq = window.nextAfterSeq();
+
+            if (!window.hasMore()) {
+                break;
+            }
+        }
+
+        assertThat(readCount).isEqualTo(total);
+        assertThat(seenSeqs).hasSize(total);
+        assertThat(seenMessageIds).hasSize(total);
+        assertThat(previousSeq).isEqualTo(total);
+
+        TaskResultWindow tail = runtime.readWindow(taskId, afterSeq, windowSize);
+        assertThat(tail.items()).isEmpty();
+        assertThat(tail.hasMore()).isFalse();
+        assertThat(tail.totalVisible()).isEqualTo(total);
     }
 
     protected void sleep(long millis) {
