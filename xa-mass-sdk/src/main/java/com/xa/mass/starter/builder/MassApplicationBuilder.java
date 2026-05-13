@@ -3,6 +3,7 @@ package com.xa.mass.starter.builder;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
@@ -589,6 +590,11 @@ public class MassApplicationBuilder {
 
         public EngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
             config.setTaskWorkRuntime(taskWorkRuntime);
+            return this;
+        }
+
+        public EngineBuilder taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+            config.setTaskResultRuntime(taskResultRuntime);
             return this;
         }
 

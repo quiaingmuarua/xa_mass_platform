@@ -160,7 +160,7 @@ Current fixture behavior:
 - worker JSON entries are mapped to `WorkerRegistration`
 - worker-context JSON entries are mapped to `WorkerContextRegistration`
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
-- task JSON fixture bootstrap currently still carries aggregate test input and is pending migration to shell-create plus item-batch fixture shape
+- task JSON fixture bootstrap remains a test-only aggregate fixture input
 - rule JSON continues to replace default rules when non-empty
 - default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
 
@@ -343,6 +343,9 @@ What this module proves:
 - mainline boundary behavior for `project / submitter / worker / workerContext`
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
+- public result reads and archive endpoints use SDK `TaskResultQueryOperations`
+  backed by `TaskResultRuntime` stable-final rows; controllers must not fall
+  back to `TaskDetailStore.TaskMessageProjection` for result rows
 - representative scheduling scenarios on the real host path, not the full
   competition matrix
 
@@ -445,17 +448,6 @@ Fixture rules:
   injection
 - new mainline tests should prefer SDK or HTTP surfaces over direct
   `com.xa.mass.base.model.*` manipulation
-
-Current gaps:
-
-Project-level gap index: [`../doc/CURRENT_GAPS.md`](../doc/CURRENT_GAPS.md).
-
-- cancel from `RUNNING` via HTTP API
-- cancel from `READY` via HTTP API
-- worker disconnect during in-flight execution
-- stronger real-runtime `EXPIRED` message coverage
-- broader `batchSize > 1` multi-worker coverage
-- resume short-circuit where a paused task is already complete underneath
 
 Scheduling-proof note:
 

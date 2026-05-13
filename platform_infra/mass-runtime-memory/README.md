@@ -9,12 +9,12 @@ Status: current in-memory runtime implementation module.
 
 ## Current Truth
 
-- `InMemoryTaskWorkRuntime` is the only shipped runtime implementation in this phase
+- `InMemoryTaskWorkRuntime` is the current default verified embedded runtime implementation
 - sdk `EngineConfig`, server bootstrap, and explicit tests currently construct this implementation as the default embedded runtime
 - this module is an implementation module; engine policy and task lifecycle ownership remain outside this module
 
-## Near-Term Boundary
+## Boundary
 
 - keep memory-runtime behavior aligned with the shared contract in `mass-runtime-api`
 - do not grow business policy or transport protocol logic here
-- future `mass-runtime-redis` should be a sibling implementation module, not a forked engine-local path
+- `mass-runtime-redis` is the sibling opt-in implementation module; keep both aligned to the shared runtime contract

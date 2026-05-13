@@ -494,7 +494,8 @@ Query parameters:
 
 Response notes:
 
-- returns append-only ordered result rows
+- returns committed stable-final rows from `TaskResultRuntime`, not
+  `TaskDetailStore` projection
 - response fields include `mode`, `taskTerminal`, `archiveReady`, `items`,
   `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
 - callers own checkpointing through `afterSeq`
@@ -512,6 +513,7 @@ Behavior:
 - returns terminal-result archive manifest
 - archive contract is fixed to `ndjson`
 - content encoding is surfaced explicitly, currently `gzip`
+- archive rows are streamed from `TaskResultRuntime` committed visible rows
 - response `data` is `ApiTaskResultArchive`
 
 ### 4.11 Task Result Archive Content
@@ -525,6 +527,8 @@ Behavior:
 - downloads the archive payload for terminal task results
 - `Content-Type: application/x-ndjson`
 - `Content-Encoding: gzip` when declared by the manifest
+- controller must not fall back to projection rows when runtime result rows are
+  missing
 
 ### 4.12 Internal Review Preview
 

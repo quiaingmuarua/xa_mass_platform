@@ -25,10 +25,13 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.RuntimeResultApplyContext;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -75,6 +78,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
     private final TaskWorkRuntime taskWorkRuntime;
+    private final TaskResultRuntime taskResultRuntime;
     private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
@@ -93,7 +97,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime, null);
+        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -101,7 +106,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime, null);
+        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -109,7 +115,18 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime, executionEventSink);
+        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskWorkRuntime taskWorkRuntime,
+                       TaskResultRuntime taskResultRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                taskResultRuntime, executionEventSink);
     }
 
     public TaskManager(TaskScheduler taskScheduler,
@@ -118,11 +135,23 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,
                        ExecutionEventSink executionEventSink) {
+        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime,
+                       TaskResultRuntime taskResultRuntime,
+                       ExecutionEventSink executionEventSink) {
         this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
+        TaskResultRuntime requiredTaskResultRuntime = Objects.requireNonNull(taskResultRuntime, "taskResultRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
         this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
         this.eventPublisher = new TaskEventPublisher();
@@ -139,6 +168,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 compatibilityProjectionStore
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;
+        this.taskResultRuntime = requiredTaskResultRuntime;
         this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
         this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
@@ -162,6 +192,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         this.resultService = new TaskResultService(
                 this,
                 compatibilityProjectionStore,
+                requiredTaskResultRuntime,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
         );
@@ -435,7 +466,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.expireLeasedWork(taskId, messageId));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
@@ -541,6 +572,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
         projectionWriteExecutor.shutdown();
+        taskResultRuntime.shutdown();
         taskWorkRuntime.shutdown();
     }
 
@@ -548,7 +580,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
@@ -557,7 +589,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
@@ -572,7 +604,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
                 () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
@@ -692,6 +724,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return taskWorkRuntime.getRecentFinalReceipt(taskId, messageId);
     }
 
+    public TaskResultWindow readTaskResultWindow(String taskId, long afterSeq, int limit) {
+        return taskResultRuntime.readWindow(taskId, afterSeq, limit);
+    }
+
+    public long countTaskResults(String taskId) {
+        return taskResultRuntime.countVisibleResults(taskId);
+    }
+
     @Override
     public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
         return taskWorkRuntime.activeLeases(taskId);
@@ -704,6 +744,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     void discardTaskRuntime(String taskId) {
         taskWorkRuntime.discardTask(taskId);
+        taskResultRuntime.discardTask(taskId);
     }
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
@@ -720,6 +761,19 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      */
     RuntimeResultApplyContext applyTaskWorkResultWithContext(TaskWorkResult result) {
         return taskWorkRuntime.applyResultWithContext(result);
+    }
+
+    TaskResultRuntime getTaskResultRuntime() {
+        return taskResultRuntime;
+    }
+
+    void applyTaskResultProgressOnce(String taskId, String messageId, long finalSeq) {
+        BarrierClaim claim = taskResultRuntime.claimProgressApply(taskId, messageId, finalSeq);
+        if (!claim.claimedByCaller()) {
+            return;
+        }
+        updateTaskProgress(taskId);
+        taskResultRuntime.markProgressApplied(taskId, messageId, finalSeq);
     }
 
     /**
@@ -766,6 +820,14 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
             updateTaskProgress(task.getTid());
         }
         return true;
+    }
+
+    private void applyResultProgress(TaskResultService.ResultMutationOutcome outcome, String taskId) {
+        if (outcome.hasProgressBarrier()) {
+            applyTaskResultProgressOnce(outcome.progressTaskId(), outcome.progressMessageId(), outcome.progressSeq());
+            return;
+        }
+        updateTaskProgress(taskId);
     }
 
     void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {

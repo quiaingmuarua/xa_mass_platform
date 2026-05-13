@@ -19,6 +19,8 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
@@ -61,6 +63,7 @@ public class EngineConfig {
     private TaskStorage taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
+    private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
@@ -96,6 +99,7 @@ public class EngineConfig {
         this.taskStorage = source.taskStorage;
         this.taskDetailStore = source.taskDetailStore;
         this.taskWorkRuntime = source.taskWorkRuntime;
+        this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerStorage = source.workerStorage;
         this.recordService = source.recordService;
@@ -216,6 +220,20 @@ public class EngineConfig {
             throw new IllegalStateException("Cannot replace taskWorkRuntime after engine assembly has been materialized");
         }
         this.taskWorkRuntime = taskWorkRuntime;
+    }
+
+    public TaskResultRuntime getTaskResultRuntime() {
+        return taskResultRuntime;
+    }
+
+    public void setTaskResultRuntime(TaskResultRuntime taskResultRuntime) {
+        if (taskResultRuntime == null) {
+            throw new IllegalArgumentException("taskResultRuntime must not be null");
+        }
+        if (this.taskManager != null) {
+            throw new IllegalStateException("Cannot replace taskResultRuntime after engine assembly has been materialized");
+        }
+        this.taskResultRuntime = taskResultRuntime;
     }
 
     public TaskStorage getTaskStorage() {
@@ -385,6 +403,7 @@ public class EngineConfig {
                     getTaskStorage(),
                     getTaskDetailStore(),
                     getTaskWorkRuntime(),
+                    getTaskResultRuntime(),
                     getExecutionEventSink()
             );
         }

@@ -3,6 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.TaskResultQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalType;
@@ -21,6 +22,9 @@ import com.xa.mass.sdk.model.TaskAccessSnapshot;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultArchiveSnapshot;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -38,6 +42,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -62,6 +67,9 @@ class TaskApiControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
+    private TaskResultQueryOperations taskResultQueries;
+
+    @Mock
     private TaskAdminOperations taskAdmin;
 
     @Mock
@@ -75,7 +83,7 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider),
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider),
                 new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
@@ -313,18 +321,18 @@ class TaskApiControllerTest {
     @Test
     void getTaskResultsReturnsLiveOrderedWindow() throws Exception {
         when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
-        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(3, 1, 0, 0, 2));
-        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 3)).thenReturn(List.of(
-                projection("msg-001", TaskMessageProjectionStatus.SUCCESS, TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
-                        Map.of("html", "<ok-a>"), "worker-001"),
-                projection("msg-002", TaskMessageProjectionStatus.RUNNING, null,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/b"),
-                        Map.of(), "worker-002"),
-                projection("msg-003", TaskMessageProjectionStatus.ASSIGNED, null,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/c"),
-                        Map.of(), "worker-003")
+        when(taskResultQueries.readTaskResults(TASK_ID, 1, 2)).thenReturn(new TaskResultWindowSnapshot(
+                TASK_ID,
+                List.of(
+                        resultRow(2, "msg-002", "SUCCESS", "worker-002"),
+                        resultRow(3, "msg-003", "FAILED", "worker-003")
+                ),
+                3,
+                false,
+                3
         ));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, 0, ""));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
                         .param("afterSeq", "1")
@@ -343,12 +351,8 @@ class TaskApiControllerTest {
     @Test
     void getTaskResultArchiveManifestReturnsArchiveMetadataForTerminalTask() throws Exception {
         when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
-        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(1, 1, 0, 0, 0));
-        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 1)).thenReturn(List.of(
-                projection("msg-001", TaskMessageProjectionStatus.SUCCESS, TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
-                        Map.of("html", "<ok-a>"), "worker-001")
-        ));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 1, 64, "checksum"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results/archive", TASK_ID))
                 .andExpect(status().isOk())
@@ -511,6 +515,31 @@ class TaskApiControllerTest {
                 workerId,
                 "context-" + workerId,
                 "batch-" + messageId
+        );
+    }
+
+    private TaskResultItemSnapshot resultRow(long seq, String messageId, String status, String workerId) {
+        return new TaskResultItemSnapshot(
+                seq,
+                messageId,
+                "crawler.fetch-page",
+                status,
+                "SUCCESS".equals(status) ? "BUSINESS_SUCCESS" : "RETRY_EXHAUSTED",
+                0,
+                3,
+                workerId,
+                "context-001",
+                "batch-001",
+                "attempt-001",
+                "payload-ref",
+                Instant.parse("2026-05-13T00:00:00Z"),
+                Instant.parse("2026-05-13T00:00:01Z"),
+                Instant.parse("2026-05-13T00:00:02Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                "FAILED".equals(status) ? "ERR" : null,
+                "FAILED".equals(status) ? "failed" : null,
+                Map.of("messageId", messageId)
         );
     }
 

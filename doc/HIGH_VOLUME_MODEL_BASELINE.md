@@ -1,10 +1,10 @@
-# High-Volume Model Baseline
+# High-Volume Runtime Facts
 
-Last updated: 2026-05-08
+Last updated: 2026-05-13
 
-Status: current convergence baseline for high-volume runtime direction.
+Status: current high-volume runtime facts.
 
-Trust: code and verified behavior override this baseline.
+Trust: code and verified behavior override this summary.
 
 - [../AGENTS.md](../AGENTS.md)
 - [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
@@ -40,53 +40,33 @@ Already true in current code:
 - compatibility attempt writes are no longer allowed to gate dispatch
   or callback convergence; at very high message volume they are trace residue,
   not queue truth
-- result-side compatibility rewrites no longer need to preserve full
-  message input payload; bounded residue should converge toward `payloadRef` plus
-  logical status/output/error summary instead of replaying large inline payloads
+- result-side compatibility rewrites avoid preserving full message input
+  payload on the hot path; bounded residue is treated as `payloadRef` plus
+  logical status/output/error summary when payload reference is available
 - duplicate, late, and no-active-lease callback trace paths must not re-read
   attempt projections just to decorate events; bounded message projection plus
   runtime lease identity is the hot-path ceiling
 
-Still too heavy on the hot path:
-
-- `Task` still owns too much message-facing responsibility
-- dispatch and result flow still write thick compatibility projections
-- read models still assume one task can cheaply expose all messages
-- full attempt history is still too expensive as default hot-path truth
-- some persistence surfaces still expose full-message reads that are acceptable for audit only, not runtime readiness truth
-- compatibility message residue is still too available in some query-time
-  flows even though task-stop mainline no longer restamps every queued message
-  row
-- task orchestration is not fully separated from downstream detail-analysis needs yet
-
-## 2. Frozen Design
+## 2. Current Guardrails
 
 Keep these decisions stable:
 
-- `Task` shrinks toward a control-plane shell: lifecycle, ownership, shared config, intake state, aggregate counters, terminal reason
-- high-volume work should default to `BATCH + BULK`: finite workset, runtime-driven redispatch, and no stable per-item timeout meaning while retry budget remains
-- low-latency conversational work should default to `SESSION + INTERACTIVE`: persistent channel semantics, signal-driven wakeup, and bounded per-item feedback
-- runtime queue/lease/counter ownership should stay behind shared runtime modules instead of being re-embedded back into engine-local packages
-- runtime workload selection should resolve once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
+- high-volume work defaults to `BATCH + BULK`: finite workset, runtime-driven redispatch, and no stable per-item timeout meaning while retry budget remains
+- low-latency conversational work defaults to `SESSION + INTERACTIVE`: persistent channel semantics, signal-driven wakeup, and bounded per-item feedback
+- runtime queue/lease/counter ownership stays behind shared runtime modules instead of being re-embedded back into engine-local packages
+- runtime workload selection resolves once per task into an engine-owned profile; do not let hot-path scheduling repeatedly interpret arbitrary task attributes
 - task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-message rule matching as a scaling fallback
-- the default runnable unit is a queue-native envelope, not a thick compatibility object graph
+- the runnable unit is a queue-native envelope, not a thick compatibility object graph
 - convergence is counter-driven, not full-message-scan-driven
-- attempt truth splits into active hot-path lease truth and optional off-path audit history
+- attempt truth splits into active hot-path lease truth and off-path bounded audit residue
 - ingress sources may differ at the API edge, but converge after ingest into one runnable-unit shape
 - observability stays in logs, traces, counters, indexed reads, and explicit export sinks
 - idempotent result, retry, and timeout handling matter more than rich mid-flight projections
 - engine-owned task-detail reads stay bounded; large-scale detail analysis belongs in structured trace, audit sinks, or downstream storage engines
 
-Minimal target shape:
-
-- task shell: `taskId`, `status`, `project`, `user`, `sharedConfig`, `contract`, `intakeStatus`, aggregate counters, `terminalReason`, timestamps
-- runnable envelope: `taskId`, `messageId`, `eventCode`, `payload` or `payloadRef`, `retryCount`, `leaseToken`, worker or routing hints, visibility/scheduling timestamp
-- active lease truth: `taskId`, `messageId`, `leaseToken`, `workerId`, `workerContextId`, `payloadRef`, `leaseExpireAt`, `retryCount`
-- trace or audit export event: task lifecycle, dispatch binding, attempt state transition, result acceptance or rejection, retry reset, lease-loss/expiry, terminal closure
-
 ## 3. Contracts To Preserve
 
-Compression work must preserve these unless explicitly approved otherwise:
+High-volume changes must preserve these unless explicitly approved otherwise:
 
 - `POST /api/v1/tasks` followed by `POST /api/v1/tasks/{taskId}/items`
 - append + seal semantics for open intake
@@ -94,19 +74,7 @@ Compression work must preserve these unless explicitly approved otherwise:
 - result submission contract around `TaskResultReport`
 - task terminal immutability to late results
 
-## 4. Acceptable Slices
-
-Allowed migration slices:
-
-1. shrink `Task` toward a control-plane shell
-2. add or tighten explicit ingest for different API-edge source forms
-3. move dispatch toward queue-native runtime state
-4. move result convergence toward counters and output processing
-5. downgrade full attempt history from default hot-path truth
-
-Do not combine these into one broad rewrite.
-
-## 5. Required Proof
+## 4. Required Proof
 
 Every high-volume slice must prove:
 

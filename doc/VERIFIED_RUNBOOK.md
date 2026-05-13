@@ -31,20 +31,10 @@ Current runtime entry:
 - Embedded runtime composition: `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
 - Java baseline: JDK 21 / `maven.compiler.release=21`
 
-Current module set from the root reactor:
-
-- `xa-mass-base`
-- `xa-mass-transport-api`
-- `xa-mass-transport-polling`
-- `xa-mass-transport-runtime`
-- `xa-mass-transport-socket`
-- `xa-mass-engine`
-- `xa-mass-transport-websocket`
-- `xa-mass-sdk-api`
-- `xa-mass-sdk`
-- `xa-mass-testing`
-- `xa-mass-worker-pack`
-- `xa-mass-server`
+Current runnable path includes the reactor modules declared in the root
+`pom.xml`, including the `platform_infra/*`, `transport/*`, SDK, testing,
+worker-pack, and server modules. Treat the root reactor as the module source of
+truth when you need the full list.
 
 Adapter artifacts map to source modules by reactor path: `xa-mass-transport-polling` lives under `transport/polling-adapter`, `xa-mass-transport-websocket` under `transport/websocket-adapter`, and `xa-mass-transport-socket` under `transport/socket-adapter`.
 
@@ -182,7 +172,9 @@ Result write-back and closure:
 
 Worker and worker-context truth:
 
-- `Worker.status` is the runtime online truth.
+- `Worker.status` is the worker model status on the control-plane side. Dispatch
+  online/reachability truth comes from transport presence consumed through
+  `WorkerReachabilityView`.
 - worker lock truth lives in `WorkerStorage` and is read through `WorkerManager.isLocked(...)`; the
   server JDBC adapter intentionally keeps lock churn process-local instead of
   persisting it in the control-plane DB.
@@ -304,15 +296,3 @@ mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTe
 ```
 
 Coverage: worker/context routing, stateless workers, delayed availability, targeted worker debug, control-console routing, and matching-rule support checks around the representative scheduling path.
-
-## 7. Known Mainline Gaps
-
-Project-level gap index: [CURRENT_GAPS.md](./CURRENT_GAPS.md).
-
-- `SimpleTaskScheduler.scheduleTasks()` is still a stub.
-- Redis storage remains a fail-fast placeholder.
-- Engine `DATABASE` factory methods remain fail-fast, but `xa-mass-server` has
-  a focused JDBC control-plane storage path behind `mass.storage.mode=jdbc-h2`
-  or `mass.storage.mode=jdbc-postgres`.
-- Redis-backed EventBus behavior is not part of the verified runtime path.
-- API integration coverage is improved but still not exhaustive for every cancel/terminate variant.

@@ -1,7 +1,10 @@
 package com.xa.mass.server;
 
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -196,6 +199,17 @@ public class XaMassServerApplication {
         };
     }
 
+    @Bean(destroyMethod = "shutdown")
+    @Profile("dev")
+    public TaskResultRuntime taskResultRuntime() {
+        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedMode) {
+            case "", "memory" -> new InMemoryTaskResultRuntime();
+            case "redis" -> new RedisTaskResultRuntime(redisUri(), runtimeRedisNamespace + ":result");
+            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
+        };
+    }
+
     @Bean(destroyMethod = "stop")
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
@@ -203,6 +217,7 @@ public class XaMassServerApplication {
                                                           TaskStorage taskStorage,
                                                           TaskDetailStore taskDetailStore,
                                                           ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
+                                                          ObjectProvider<TaskResultRuntime> taskResultRuntimeProvider,
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
@@ -246,6 +261,8 @@ public class XaMassServerApplication {
                             .taskDetailStore(taskDetailStore);
                     TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);
+                    TaskResultRuntime taskResultRuntime = taskResultRuntimeProvider.getIfAvailable(InMemoryTaskResultRuntime::new);
+                    engine.taskResultRuntime(taskResultRuntime);
                     ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
                     if (executionEventSink != null) {
                         engine.executionEventSink(executionEventSink);

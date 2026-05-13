@@ -115,14 +115,9 @@ run in CI are documentation, not protection.
 
 | Item | Status | What was done / next step |
 | --- | --- | --- |
-| Add `xa-mass-testing` compilation visibility | delivered | keep this module visible to CI so runner breakage is caught before manual use |
-| Add chaos smoke gate | delivered | keep a fast PR-facing chaos smoke lane for high-signal recovery scenarios |
-| Expand focused lifecycle gate | delivered | keep high-value mixed-result, callback-replay, and multi-round paths in the fast gate |
-| Trace infrastructure | delivered | keep canonical `ExecutionEvent` assertions in the chaos layer |
 | Perf regression threshold | pending | add threshold checks so perf smoke becomes machine-actionable instead of artifact-only |
 
-Exit criterion: `xa-mass-testing` remains visible to CI, chaos smoke stays
-PR-gated, and perf smoke gains threshold-based failure rules.
+Exit criterion: perf smoke gains threshold-based failure rules.
 
 ---
 
@@ -131,18 +126,13 @@ PR-gated, and perf smoke gains threshold-based failure rules.
 Goal: every important `TaskTerminalReason` has deterministic end-to-end proof
 beyond engine-only local tests.
 
-| Item | Status | Lane | Gap being closed |
+| Item | Status | Lane | Reason |
 | --- | --- | --- | --- |
-| Per-message retry exhaustion chaos probe | delivered | chaos (`xa-mass-testing`) | preserves retry-reset and terminal-reason proof under polling failure churn |
 | `RETRY_BUDGET_EXHAUSTED` policy implementation | blocked | engine | requires a real terminal policy before an end-to-end test is meaningful |
-| `ALL_MESSAGES_FAILED` Boot-shell E2E | pending | Boot-shell E2E (`xa-mass-server`) | server-side host path for all-fail convergence |
-| Resume short-circuit Boot-shell E2E | pending | Boot-shell E2E (`xa-mass-server`) | verify resume on an already-finished paused task returns terminal directly |
 
-Exit criterion: `ALL_MESSAGES_FAILED`, `MIXED_MESSAGE_RESULTS`,
-`ALL_MESSAGES_SUCCEEDED`, `MANUAL_CANCELLED`, and `MAX_RUNTIME_REACHED` each
-have at least one deterministic full-lifecycle test in the appropriate owning
-lane. `RETRY_BUDGET_EXHAUSTED` remains explicitly deferred until the policy
-exists.
+Exit criterion: remaining terminal-policy work has a real policy owner before
+new E2E is added. `RETRY_BUDGET_EXHAUSTED` remains explicitly deferred until
+the policy exists.
 
 ---
 
@@ -225,8 +215,7 @@ Phase 1 stays highest priority because unrun probes do not protect mainline.
 
 ## Non-Goals
 
-- Redis runtime testing before `mass-runtime-redis` implements the required
-  queue and lease operations
+- treating Redis runtime as the default verified runtime path
 - frontend or GUI testing beyond existing lint, type, unit, and build lanes
 - bigger-scale load expansion before the current perf smoke baselines become
   insufficient

@@ -18,12 +18,15 @@ The current result mainline is:
 callback / result inbox
   -> transport ingress normalization
   -> optional envelope identity gate
-  -> engine result ingest port
-  -> TaskResultService
+      -> engine result ingest port
+      -> TaskResultService
       -> terminal / duplicate / late callback classification
+      -> TaskResultRuntime.stageCallback(...)
       -> TaskWorkRuntime.applyResultWithContext(...)
       -> runtime outcome interpretation
       -> trace
+      -> TaskResultRuntime.commitVisibleFinal(...) for stable-final rows
+      -> runtime logical-final/progress idempotency barriers
       -> projection residue write submitted best-effort
       -> synchronous result-side event publish
       -> task progress / terminal convergence trigger
@@ -42,8 +45,9 @@ then lets engine lifecycle policy converge the task aggregate.
 | ingress channel / inbox | `TaskResultIngestChannel`, `RedisTaskResultIngestChannel` | bounded process/JVM ingress into engine result apply | durable result log, ack ledger, task state |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow callable surface from transport into engine result handling | server API ownership, public result read API |
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, recent receipts | trace policy, projection storage, public result reads |
+| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, logical-final/progress barriers | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
 | engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, projection submission, result-side events, convergence trigger | durable ledger storage, transport I/O |
-| compatibility residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and compatibility read view | callback acceptance truth, retry/finality truth, million-scale public result truth |
+| compatibility residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and compatibility read view | callback acceptance truth, retry/finality truth, public result read truth |
 
 ## 3. Runtime Apply Truth
 
@@ -58,6 +62,18 @@ Callbacks without active runtime lease are not accepted by the engine apply
 path. Duplicate and late callbacks may be accepted as no-ops only when runtime
 recent-final receipt or task terminal state proves that the logical result has
 already converged.
+
+Stable-final public result rows are committed into `TaskResultRuntime`, not
+`TaskDetailStore`. The runtime separates callback-attempt staging from visible
+message-final rows:
+
+- stage identity: `taskId + messageId + normalized identity digest`
+- visible identity: `taskId + messageId`
+- visible sequence: task-local monotonic `seq` allocated at first final commit
+
+Active stable-final result commit must not reject solely because a task has
+many visible rows. Retention and compaction are terminal-task policy, not the
+active final callback path.
 
 ## 4. Transport Ingress
 
@@ -89,21 +105,42 @@ Projection residue must not decide:
 - retry scheduling
 - finality
 - task terminal convergence
+- `/api/v1/tasks/{taskId}/results`
+- SDK `TaskResultQueryOperations`
 
-Current public result reads that depend on message/attempt projection are a
-current limitation. They are not million-scale result truth and should not be
-treated as a durable result ledger.
+Public result reads and archive generation now read committed stable-final rows
+from `TaskResultRuntime`. Controllers must not fall back to projection to "fill"
+missing result rows. Memory result runtime is volatile local/dev truth; Redis
+result runtime is the cross-process runtime truth. Durability follows the
+selected runtime implementation.
 
-## 6. Non-Goals
+## 6. Repair And Barriers
+
+Repair truth is:
+
+```text
+staged callback exists
++ TaskWorkRuntime recent final receipt / stable-final truth exists
++ visible final row missing
+= repair candidate
+```
+
+The explicit repair state is not a separate durable row written after failure.
+If visible commit fails after runtime apply, the staged draft remains the repair
+anchor. Callback and repair paths both use runtime barriers keyed by
+`taskId + messageId + finalSeq` before logical-final event publish and progress
+application. This does not promise crash-gap exactly-once delivery, but it
+prevents normal callback/repair races from double-publishing or double-applying
+progress.
+
+## 7. Non-Goals
 
 This baseline does not implement:
 
-- public `/results` large-task reads
 - durable result ledger
-- result archive materialization
-- result sequence truth
 - `outputRef` or blob-backed result storage
 - server-owned transport result endpoints
+- million-scale archive materialization beyond the current streaming contract
 
-Those belong in a separate result ledger/public-results design after this owner
-baseline is stable.
+Those belong in a separate result ledger/public-results evolution after this
+runtime-owned result truth is stable.

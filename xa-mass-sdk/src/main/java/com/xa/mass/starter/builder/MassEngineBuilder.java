@@ -4,6 +4,7 @@ import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -25,6 +26,7 @@ public class MassEngineBuilder {
     private TaskStorage taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime;
+    private TaskResultRuntime taskResultRuntime;
     private WorkerStorage workerStorage;
     private RuleStorage ruleStorage;
 
@@ -60,6 +62,11 @@ public class MassEngineBuilder {
 
     public MassEngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
         this.taskWorkRuntime = taskWorkRuntime;
+        return this;
+    }
+
+    public MassEngineBuilder taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+        this.taskResultRuntime = taskResultRuntime;
         return this;
     }
 
@@ -111,6 +118,7 @@ public class MassEngineBuilder {
         if (taskStorage != null) config.setTaskStorage(taskStorage);
         if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
+        if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
         if (workerStorage != null) config.setWorkerStorage(workerStorage);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);

@@ -253,49 +253,15 @@ Current implications:
 
 ### Engine Mainline Acceptance
 
-Primary classes:
-
-- `TaskKernelLifecycleTest`
-- `EngineSchedulingCoreArchitectureGuardTest`
-- `TaskContractTerminalBehaviorTest`
-- `TaskContractSchedulingBehaviorTest`
-- `TaskSchedulingContentionTest`
-- `TaskWorkerEligibilityTest`
-- `TaskWorkerContextContentionTest`
-- `TaskRedispatchCompetitionTest`
-- `TaskSchedulingGateAndTargetingTest`
-- `TaskDelayedAvailabilitySchedulingTest`
-- `TaskRuntimeRecoveryPortTest`
-- `WorkerManagerTest`
-- `TaskResourceReleaseListenerTest`
-- `TaskAssignWorkerTest`
-- `TaskWorkerAssignListenerTest`
-- `RuleBasedTaskWorkerMatchingStrategyTest`
-- `WorkerMatchContextTest`
+Detailed engine test inventory lives in
+[../xa-mass-engine/README.md](../xa-mass-engine/README.md) and the owning suite
+classes. This index only records lane placement.
 
 Proves:
 
 - scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
-- contract scheduling behavior for `BATCH` drain-to-terminal and `SESSION` open-channel drain without auto-terminal
-- worker/context eligibility filtering and rejection reasons without relying on compatibility projection rows
-- single-context multi-task contention without double assignment
-- multi-worker pool contention without duplicate lease, lost READY work, or resource-release drift
-- single worker / multiple context route selection without context drift or double assignment
-- minimum-worker gate and target worker attributes under contention
-- batch lease expiry returning work to the competition pool and redispatching the same work once
-- degraded transport reachability during active contention excludes the unreachable worker and dispatches to a backup
-- degraded transport reachability keeps minimum-worker gates closed without half-dispatching work
-- target worker id under contention does not drift to an idle backup worker and dispatches to the target after release
-- retry-exhausted batch finality releases worker/context resources for a waiting READY task
-- delayed worker registration and blocked-context recovery dispatch previously waiting READY work
-- paused waiting tasks remain outside the schedulable set after resource release until resumed
-- lifecycle and result correctness under race-sensitive conditions
-- retry/reset/release/finality invariants
-- contract/intake/runtime owner boundaries without reading compatibility projection as hot-path truth
-- source-level guardrail that derives its scan list from
-  `EngineSchedulingCoreSuite` `@SelectClasses` and keeps compatibility
-  projection helpers and implicit `var` declarations out of the
-  scheduling-core mainline suite
+- lifecycle/result invariants around retry, expiry, release, and finality
+- contract/intake/runtime owner boundaries without treating compatibility projection as hot-path truth
 
 Does not prove:
 
@@ -314,14 +280,8 @@ Testing rule:
 - keep compatibility projection assertions only when the residue/read-model contract itself is the subject
 - when a scenario fails because the wrong worker was chosen, excluded, or re-chosen, prove it here before duplicating it through more host-shell tests
 
-Secondary explicit residue/audit lanes:
-
-- `EngineProjectionResidueSuite`
-  - `TaskManagerLifecycleTest`
-  - `TaskConcurrencyAcceptanceTest`
-  - `SimpleTaskDispatchBinderTest`
-- `EngineProjectionAuditSuite`
-  - `TaskStateValidatorBoundaryTest`
+Secondary explicit residue/audit lanes live under the engine owner README and
+suite classes.
 
 These suites remain useful, but they are not the mainline scheduling gate and
 must not re-take ownership of runtime correctness.
@@ -335,19 +295,9 @@ Primary groups:
 - polling/external-worker wiring
 - representative lifecycle/result shell flows
 
-High-signal classes include:
-
-- `ServerMainSourceArchitectureGuardTest`
-- `ServerMainlineE2eArchitectureGuardTest`
-- `TaskApiMultiTaskAssignmentIntegrationTest`
-- `TaskApiMinimumWorkerGateIntegrationTest`
-- `TaskApiDelayedWorkerAvailabilityIntegrationTest`
-- `TaskApiSingleWorkerReuseIntegrationTest`
-- `TaskApiWorkerContextAttributeRoutingIntegrationTest`
-- `TaskApiWorkerWithoutContextIntegrationTest`
-- `PollingWorkerTaskFlowIntegrationTest`
-- `ExternalWorkerPollingApiIntegrationTest`
-- `TransportChannelWiringIntegrationTest`
+Detailed server E2E inventory lives in
+[../xa-mass-server/README.md](../xa-mass-server/README.md) and the owning suite
+classes. This index only records lane placement.
 
 Proves:
 
@@ -357,13 +307,6 @@ Proves:
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
   truth first; it does not use compatibility message projection as its main
   proof surface
-- source-level guardrail derives its scan list from `ServerSchedulingE2eSuite`
-  and `ServerLifecycleResultConvergenceSuite` `@SelectClasses`, keeping
-  projection-first helpers and implicit `var` declarations out of mainline
-  server scheduling/lifecycle E2E suites
-- projection-backed server E2E helpers are available only through
-  `ProjectionSampleE2eTest`; `AbstractSampleE2eTest` remains the default
-  runtime-first fixture for scheduling/lifecycle mainline tests
 
 Does not prove:
 
@@ -371,14 +314,8 @@ Does not prove:
 - long-run throughput
 - distributed recovery on its own; use chaos or black-box when disconnect, replay, late result, or takeover behavior is the real risk
 
-Secondary explicit server residue/audit lanes:
-
-- `ServerProjectionResidueSuite`
-  - `TaskApiMultiRoundDispatchIntegrationTest`
-  - `TaskApiTerminateReuseIntegrationTest`
-  - `TaskApiCallbackReplayIntegrationTest`
-- `ServerProjectionAuditSuite`
-  - `TaskApiStateValidationIntegrationTest`
+Secondary explicit server residue/audit lanes live under the server owner
+README and suite classes.
 
 These suites protect bounded compatibility/read-model and diagnostic behavior.
 They are useful supporting lanes, but they are not the representative

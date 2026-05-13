@@ -22,6 +22,7 @@ import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.TaskResultQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
@@ -43,11 +44,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.zip.GZIPOutputStream;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
@@ -69,6 +68,7 @@ public class TaskApiController {
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
+    private final TaskResultQueryOperations taskResultQueries;
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
     private final TaskDetailStore taskDetailStore;
@@ -88,6 +88,16 @@ public class TaskApiController {
                              ControlPlaneCatalog catalog) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport());
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -115,7 +125,28 @@ public class TaskApiController {
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport) {
+        this(taskQueries,
+                taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
+                taskAdmin,
+                catalog,
+                taskDetailStore,
+                apiAuthService,
+                apiAuthorizationService,
+                taskSecurityViewSupport);
+    }
+
+    private TaskApiController(TaskQueryOperations taskQueries,
+                              TaskResultQueryOperations taskResultQueries,
+                              TaskAdminOperations taskAdmin,
+                              ControlPlaneCatalog catalog,
+                              TaskDetailStore taskDetailStore,
+                              ApiAuthService apiAuthService,
+                              ApiAuthorizationService apiAuthorizationService,
+                              TaskSecurityViewSupport taskSecurityViewSupport) {
         this.taskQueries = taskQueries;
+        this.taskResultQueries = taskResultQueries != null
+                ? taskResultQueries
+                : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
         this.taskAdmin = taskAdmin;
         this.catalog = catalog;
         this.taskDetailStore = taskDetailStore;
@@ -332,13 +363,15 @@ public class TaskApiController {
                 throw badRequestError("afterSeq must be greater than or equal to 0");
             }
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
-            ensureTaskDetailStoreConfigured();
-            List<TaskDetailStore.TaskMessageProjection> projections = loadAllTaskMessageProjections(taskId);
+            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
             int resolvedLimit = resolveResultWindow(limit);
-            List<ApiTaskResultItem> items = sliceTaskResultItems(projections, afterSeq, resolvedLimit);
-            long nextAfterSeq = items.isEmpty() ? afterSeq : items.get(items.size() - 1).seq();
+            TaskResultWindowSnapshot window = resultQueries.readTaskResults(taskId, afterSeq, resolvedLimit);
+            List<ApiTaskResultItem> items = window.getItems().stream()
+                    .map(taskApiContractAssembler::toResultItem)
+                    .toList();
+            long nextAfterSeq = window.getNextAfterSeq();
             boolean taskTerminal = isTerminalTask(task);
-            boolean archiveReady = isArchiveReady(task);
+            boolean archiveReady = resultQueries.getTaskResultArchiveManifest(taskId).isReady();
 
             return ok(taskApiContractAssembler.toResultWindow(
                     taskId,
@@ -346,7 +379,7 @@ public class TaskApiController {
                     archiveReady,
                     items,
                     nextAfterSeq,
-                    nextAfterSeq < projections.size(),
+                    window.isHasMore(),
                     archiveReady ? "/api/v1/tasks/" + taskId + "/results/archive" : null
             ));
         });
@@ -363,29 +396,15 @@ public class TaskApiController {
             @PathVariable String taskId) {
         return executeApi("Task result archive lookup failed", () -> {
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
-            ensureTaskDetailStoreConfigured();
-            boolean ready = isArchiveReady(task);
-            if (ready) {
-                List<TaskDetailStore.TaskMessageProjection> projections = loadAllTaskMessageProjections(taskId);
-                byte[] archiveBytes = buildTaskResultArchive(projections);
-                return ok(taskApiContractAssembler.toResultArchive(
-                        taskId,
-                        true,
-                        NDJSON_MEDIA_TYPE.toString(),
-                        projections.size(),
-                        archiveBytes.length,
-                        sha256Hex(archiveBytes),
-                        "/api/v1/tasks/" + taskId + "/results/archive/content"
-                ));
-            }
+            TaskResultArchiveSnapshot manifest = requireTaskResultQueries().getTaskResultArchiveManifest(taskId);
             return ok(taskApiContractAssembler.toResultArchive(
                     taskId,
-                    false,
-                    NDJSON_MEDIA_TYPE.toString(),
-                    0,
-                    0,
-                    "",
-                    ""
+                    manifest.isReady() && isTerminalTask(task),
+                    manifest.getContentType(),
+                    manifest.getItemCount(),
+                    manifest.getByteSize(),
+                    manifest.getChecksum(),
+                    manifest.isReady() ? "/api/v1/tasks/" + taskId + "/results/archive/content" : ""
             ));
         });
     }
@@ -401,11 +420,13 @@ public class TaskApiController {
             @PathVariable String taskId) {
         return executeRawApi("Task result archive download failed", () -> {
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
-            ensureTaskDetailStoreConfigured();
-            if (!isArchiveReady(task)) {
+            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
+            if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
                 throw conflictError("Task result archive is not ready");
             }
-            byte[] archiveBytes = buildTaskResultArchive(loadAllTaskMessageProjections(taskId));
+            ByteArrayOutputStream archive = new ByteArrayOutputStream();
+            resultQueries.writeTaskResultArchiveContent(taskId, archive);
+            byte[] archiveBytes = archive.toByteArray();
             return ResponseEntity.ok()
                     .contentType(NDJSON_MEDIA_TYPE)
                     .header(HttpHeaders.CONTENT_ENCODING, "gzip")
@@ -600,58 +621,8 @@ public class TaskApiController {
         return Math.min(requestedLimit, MAX_RESULT_WINDOW);
     }
 
-    private List<TaskDetailStore.TaskMessageProjection> loadAllTaskMessageProjections(String taskId) {
-        ensureTaskDetailStoreConfigured();
-        TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(taskId);
-        long total = stats != null ? stats.getTotal() : 0L;
-        if (total <= 0L) {
-            return List.of();
-        }
-        int boundedTotal = (int) Math.min(Integer.MAX_VALUE, total);
-        return taskDetailStore.getTaskMessageProjections(taskId, boundedTotal);
-    }
-
-    private List<ApiTaskResultItem> sliceTaskResultItems(List<TaskDetailStore.TaskMessageProjection> projections,
-                                                         long afterSeq,
-                                                         int limit) {
-        if (projections == null || projections.isEmpty() || limit <= 0) {
-            return List.of();
-        }
-        int startIndex = (int) Math.min(Math.max(afterSeq, 0L), projections.size());
-        int endIndex = Math.min(startIndex + limit, projections.size());
-        List<ApiTaskResultItem> items = new ArrayList<>(Math.max(0, endIndex - startIndex));
-        for (int index = startIndex; index < endIndex; index++) {
-            items.add(toTaskResultItem(projections.get(index), index + 1L));
-        }
-        return List.copyOf(items);
-    }
-
-    private ApiTaskResultItem toTaskResultItem(TaskDetailStore.TaskMessageProjection projection, long seq) {
-        return taskApiContractAssembler.toResultItem(projection, seq);
-    }
-
     private boolean isTerminalTask(TaskDetailSnapshot task) {
         return task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
-    }
-
-    private boolean isArchiveReady(TaskDetailSnapshot task) {
-        return isTerminalTask(task) && taskDetailStore != null;
-    }
-
-    private byte[] buildTaskResultArchive(List<TaskDetailStore.TaskMessageProjection> projections) {
-        try {
-            ByteArrayOutputStream raw = new ByteArrayOutputStream();
-            try (GZIPOutputStream gzip = new GZIPOutputStream(raw)) {
-                for (int index = 0; index < projections.size(); index++) {
-                    ApiTaskResultItem row = toTaskResultItem(projections.get(index), index + 1L);
-                    gzip.write(RESPONSE_OBJECT_MAPPER.writeValueAsBytes(row));
-                    gzip.write('\n');
-                }
-            }
-            return raw.toByteArray();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to build task result archive: " + e.getMessage(), e);
-        }
     }
 
     private String buildTaskResultArchiveFileName(TaskDetailSnapshot task) {
@@ -661,20 +632,6 @@ public class TaskApiController {
             normalizedTaskName = "task";
         }
         return normalizedTaskName + "-results-" + task.getTaskId() + ".ndjson.gz";
-    }
-
-    private String sha256Hex(byte[] payload) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(payload);
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte value : hash) {
-                hex.append(String.format(Locale.ROOT, "%02x", value));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            throw new IllegalStateException("Unable to compute archive checksum", e);
-        }
     }
 
     private void requireBusinessBindings(String project, String userId) {
@@ -955,10 +912,11 @@ public class TaskApiController {
         }
     }
 
-    private void ensureTaskDetailStoreConfigured() {
-        if (taskDetailStore == null) {
-            throw new IllegalStateException("Task result storage is unavailable");
+    private TaskResultQueryOperations requireTaskResultQueries() {
+        if (taskResultQueries == null) {
+            throw new IllegalStateException("Task result runtime query surface is unavailable");
         }
+        return taskResultQueries;
     }
 
     private TaskApiException badRequestError(String message) {

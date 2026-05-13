@@ -47,7 +47,6 @@
             <groupId>com.xa.mass</groupId>
             <artifactId>mass-runtime-memory</artifactId>
             <version>${project.version}</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

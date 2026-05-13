@@ -36,6 +36,17 @@ class ServerMainSourceArchitectureGuardTest {
                 "server main source must stay on sdk-owned surfaces only:\n" + String.join("\n", violations));
     }
 
+    @Test
+    void taskResultEndpointsDoNotUseProjectionRowsAsResultSource() throws IOException {
+        Path controller = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal/TaskApiController.java");
+        String source = Files.readString(controller, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("TaskMessageProjection"),
+                "TaskApiController result endpoints must use TaskResultQueryOperations, not TaskMessageProjection");
+        assertTrue(!source.contains("getTaskMessageProjections"),
+                "TaskApiController must not fall back to TaskDetailStore projection rows for public results");
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {

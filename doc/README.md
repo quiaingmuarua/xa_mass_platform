@@ -39,7 +39,7 @@ Most tasks only need one contract lane plus one owner README:
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
-| [CURRENT_GAPS.md](./CURRENT_GAPS.md) | runtime and coverage gap index |
+| [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) | high-volume runtime facts and guardrails |
 
 ## 3. Owner Docs
 
@@ -58,7 +58,6 @@ Use owner docs for module-local truth:
 
 These are useful only when the task explicitly touches those future directions:
 
-- [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
 - [../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 

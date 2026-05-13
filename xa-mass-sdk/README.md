@@ -119,6 +119,13 @@ transport runtime rather than engine-local worker status. A worker may have
 multiple route owners; dispatch routing reads the route-owner view and then
 writes the assigned batch to the selected `transportNodeId` inbox.
 
+Task result reads are exposed through `TaskResultQueryOperations`, separate
+from task aggregate query. `readTaskResults(...)` and archive streaming read
+committed stable-final rows from `TaskResultRuntime`; they do not read
+`TaskDetailStore` projection residue. Memory result runtime is volatile
+local/dev truth, while Redis result runtime is the cross-process result read
+truth.
+
 Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and

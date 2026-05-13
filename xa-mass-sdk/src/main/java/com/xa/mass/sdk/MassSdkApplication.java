@@ -14,6 +14,9 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -36,7 +39,12 @@ import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.*;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * Consumer-facing runtime handle returned by the SDK facade.
@@ -45,11 +53,17 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
         WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
+
+    private static final int ARCHIVE_STREAM_WINDOW = Integer.getInteger("xa.mass.sdk.resultArchiveStreamWindow", 1000);
+    private static final String RESULT_ARCHIVE_FORMAT = "ndjson";
+    private static final String RESULT_ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
+    private static final String RESULT_ARCHIVE_CONTENT_ENCODING = "gzip";
+    private static final com.google.gson.Gson RESULT_JSON = new com.google.gson.Gson();
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
@@ -181,6 +195,58 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             return null;
         }
         return toTaskAccessSnapshot(task);
+    }
+
+    @Override
+    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
+        TaskResultWindow window = requireStartedTaskResultRuntime()
+                .readWindow(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
+        return toTaskResultWindowSnapshot(window);
+    }
+
+    @Override
+    public TaskResultArchiveSnapshot getTaskResultArchiveManifest(String taskId) {
+        String normalizedTaskId = requireTaskId(taskId);
+        TaskDetailSnapshot task = getTaskDetail(normalizedTaskId);
+        boolean ready = task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
+        long itemCount = requireStartedTaskResultRuntime().countVisibleResults(normalizedTaskId);
+        ArchiveDigestOutputStream digestSink = new ArchiveDigestOutputStream();
+        if (ready) {
+            writeTaskResultArchiveContent(normalizedTaskId, digestSink);
+        }
+        return new TaskResultArchiveSnapshot(
+                normalizedTaskId,
+                ready,
+                RESULT_ARCHIVE_FORMAT,
+                RESULT_ARCHIVE_CONTENT_TYPE,
+                RESULT_ARCHIVE_CONTENT_ENCODING,
+                ready ? itemCount : 0L,
+                ready ? digestSink.byteCount() : 0L,
+                ready ? digestSink.checksum() : ""
+        );
+    }
+
+    @Override
+    public void writeTaskResultArchiveContent(String taskId, OutputStream sink) {
+        Objects.requireNonNull(sink, "sink");
+        String normalizedTaskId = requireTaskId(taskId);
+        try (GZIPOutputStream gzip = new GZIPOutputStream(sink)) {
+            long afterSeq = 0L;
+            while (true) {
+                TaskResultWindow window = requireStartedTaskResultRuntime()
+                        .readWindow(normalizedTaskId, afterSeq, ARCHIVE_STREAM_WINDOW);
+                for (TaskResultRuntimeRow row : window.items()) {
+                    gzip.write(RESULT_JSON.toJson(toTaskResultItemSnapshot(row)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    gzip.write('\n');
+                }
+                if (!window.hasMore()) {
+                    return;
+                }
+                afterSeq = window.nextAfterSeq();
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to stream task result archive: " + e.getMessage(), e);
+        }
     }
 
     public boolean approveTask(String taskId) {
@@ -1291,6 +1357,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskQueries;
     }
 
+    private TaskResultRuntime requireStartedTaskResultRuntime() {
+        TaskResultRuntime runtime = requireStartedEngine().getConfig().getTaskResultRuntime();
+        if (runtime == null) {
+            throw new IllegalStateException("Task result runtime is unavailable for this SDK application");
+        }
+        return runtime;
+    }
+
     private TaskEventService requireStartedTaskEvents() {
         TaskEventService taskEvents = requireStartedEngine().getConfig().getTaskEventService();
         if (taskEvents == null) {
@@ -1500,6 +1574,41 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
+    private TaskResultWindowSnapshot toTaskResultWindowSnapshot(TaskResultWindow window) {
+        return new TaskResultWindowSnapshot(
+                window.taskId(),
+                window.items().stream().map(this::toTaskResultItemSnapshot).toList(),
+                window.nextAfterSeq(),
+                window.hasMore(),
+                window.totalVisible()
+        );
+    }
+
+    private TaskResultItemSnapshot toTaskResultItemSnapshot(TaskResultRuntimeRow row) {
+        return new TaskResultItemSnapshot(
+                row.seq(),
+                row.messageId(),
+                row.eventCode(),
+                row.status(),
+                row.finalReason(),
+                row.retryCount(),
+                row.maxRetryCount(),
+                row.workerId(),
+                row.workerContextId(),
+                row.batchId(),
+                row.attemptId(),
+                row.payloadRef(),
+                row.createTime(),
+                row.assignedTime(),
+                row.startTime(),
+                row.completeTime(),
+                row.updateTime(),
+                row.errorCode(),
+                row.errorMessage(),
+                row.output()
+        );
+    }
+
     private TaskExecutionOptions toTaskExecutionOptions(com.xa.mass.base.model.TaskExecutionSpec spec) {
         TaskExecutionOptions view = new TaskExecutionOptions();
         if (spec == null) {
@@ -1550,6 +1659,39 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             return ProjectRegistry.require(supportedProjects.get(0)).getCode();
         }
         return Project.DEMO_APP.getCode();
+    }
+
+    private static final class ArchiveDigestOutputStream extends OutputStream {
+        private final MessageDigest digest;
+        private long byteCount;
+
+        private ArchiveDigestOutputStream() {
+            try {
+                this.digest = MessageDigest.getInstance("SHA-256");
+            } catch (Exception e) {
+                throw new IllegalStateException("Unable to create archive digest", e);
+            }
+        }
+
+        @Override
+        public void write(int b) {
+            digest.update((byte) b);
+            byteCount++;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            digest.update(b, off, len);
+            byteCount += len;
+        }
+
+        private long byteCount() {
+            return byteCount;
+        }
+
+        private String checksum() {
+            return HexFormat.of().formatHex(digest.digest());
+        }
     }
 
     private MassEngine requireStartedEngine() {

@@ -3,6 +3,7 @@ package com.xa.mass.sdk;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -416,6 +417,11 @@ public final class MassSdk {
 
         public EngineOptions taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
             delegate.taskWorkRuntime(taskWorkRuntime);
+            return this;
+        }
+
+        public EngineOptions taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+            delegate.taskResultRuntime(taskResultRuntime);
             return this;
         }
 

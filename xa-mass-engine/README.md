@@ -117,6 +117,9 @@ Keep these facts fixed unless the owning global baselines change:
   instead of silently dropping `READY` / redispatch signals
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
+- `TaskResultRuntime` owns stable-final public result rows, task-local result
+  sequence, staged callback repair anchors, and result-side event/progress
+  barriers
 - batch/bulk redispatch is runtime-driven from `TaskWorkRuntime.readyTaskIds`
   through starter-owned recovery/pump wiring; task-signal queues are not the
   only batch redispatch owner anymore
@@ -136,6 +139,8 @@ Keep these facts fixed unless the owning global baselines change:
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the
   engine boundary instead of returning them as engine-facing API results
+- public result reads must use `TaskResultRuntime`; projection residue is not a
+  fallback for `/results`, SDK result query, or archive generation
 - runtime ingest must stay correct when compatibility message-projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes
   are best-effort residue

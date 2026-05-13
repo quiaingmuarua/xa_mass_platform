@@ -16,12 +16,15 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
 import com.xa.mass.storage.api.TaskDetailStore;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -313,6 +316,31 @@ final class TaskApiContractAssembler {
         );
     }
 
+    ApiTaskResultItem toResultItem(TaskResultItemSnapshot row) {
+        return new ApiTaskResultItem(
+                row.getSeq(),
+                row.getMessageId(),
+                row.getEventCode(),
+                row.getStatus(),
+                row.getFinalReason(),
+                row.getRetryCount(),
+                row.getMaxRetryCount(),
+                row.getWorkerId(),
+                row.getWorkerContextId(),
+                row.getBatchId(),
+                row.getAttemptId(),
+                row.getPayloadRef(),
+                formatInstant(row.getCreateTime()),
+                formatInstant(row.getAssignedTime()),
+                formatInstant(row.getStartTime()),
+                formatInstant(row.getCompleteTime()),
+                formatInstant(row.getUpdateTime()),
+                row.getErrorCode(),
+                row.getErrorMessage(),
+                row.getOutput()
+        );
+    }
+
     private ApiTaskExecution toExecution(TaskExecutionOptions options) {
         TaskExecutionOptions normalized = TaskExecutionOptions.normalized(options);
         return new ApiTaskExecution(
@@ -338,5 +366,9 @@ final class TaskApiContractAssembler {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(dateTimeFormatter);
+    }
+
+    private String formatInstant(Instant value) {
+        return value == null ? "" : LocalDateTime.ofInstant(value, ZoneId.systemDefault()).format(dateTimeFormatter);
     }
 }

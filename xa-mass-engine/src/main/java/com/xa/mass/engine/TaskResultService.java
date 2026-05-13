@@ -15,17 +15,36 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.util.TraceEventLogger.TaskWorkTraceView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.CommitResult;
+import com.xa.mass.runtime.api.CommitResultStatus;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.RuntimeResultApplyContext;
+import com.xa.mass.runtime.api.StageResult;
+import com.xa.mass.runtime.api.TaskResultCallbackDraft;
+import com.xa.mass.runtime.api.TaskResultFinalDraft;
+import com.xa.mass.runtime.api.TaskResultRepairCandidate;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Owns runtime work-result handling, retry sequencing, and result-side event ordering.
@@ -38,17 +57,27 @@ class TaskResultService {
 
     private final TaskManager taskManager;
     private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
+    private final TaskResultRuntime taskResultRuntime;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
+    private final ScheduledExecutorService repairExecutor;
 
     TaskResultService(TaskManager taskManager,
                       TaskCompatibilityProjectionStore compatibilityProjectionStore,
+                      TaskResultRuntime taskResultRuntime,
                       TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
                       TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
         this.compatibilityProjectionStore = compatibilityProjectionStore;
+        this.taskResultRuntime = taskResultRuntime;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
+        this.repairExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "engine-result-repair-");
+            thread.setDaemon(true);
+            return thread;
+        });
+        startRepairPump();
     }
 
     ResultMutationOutcome expireLeasedWork(String taskId, String messageId) {
@@ -204,12 +233,20 @@ class TaskResultService {
             return terminalCallback;
         }
 
+        TaskResultCallbackDraft stagedDraft = buildCallbackDraft(task, taskId, messageId, success, detail, errorCode, output);
+        StageResult stageResult = taskResultRuntime.stageCallback(stagedDraft);
+        if (!stageResult.accepted()) {
+            logger.warn("Cannot ingest task result because result runtime stage failed for taskId={}, messageId={}, reason={}",
+                    taskId, messageId, stageResult.reason());
+            return ResultMutationOutcome.rejected();
+        }
+
         RuntimeResultApplyContext ctx = applyRuntimeResult(task, taskId, messageId, success, detail, errorCode, output);
-        ResultMutationOutcome rejectedRuntimeOutcome = handleRejectedRuntimeOutcome(task, taskId, messageId, ctx);
+        ResultMutationOutcome rejectedRuntimeOutcome = handleRejectedRuntimeOutcome(task, taskId, messageId, ctx, stagedDraft);
         if (rejectedRuntimeOutcome != null) {
             return rejectedRuntimeOutcome;
         }
-        return handleAcceptedRuntimeOutcome(task, taskId, messageId, success, detail, errorCode, output, ctx);
+        return handleAcceptedRuntimeOutcome(task, taskId, messageId, success, detail, errorCode, output, ctx, stagedDraft);
     }
 
     private ResultMutationOutcome handleTerminalCallback(Task task, String taskId, String messageId) {
@@ -256,8 +293,10 @@ class TaskResultService {
     private ResultMutationOutcome handleRejectedRuntimeOutcome(Task task,
                                                                String taskId,
                                                                String messageId,
-                                                               RuntimeResultApplyContext ctx) {
+                                                               RuntimeResultApplyContext ctx,
+                                                               TaskResultCallbackDraft stagedDraft) {
         if (!ctx.hasLeaseSnapshot()) {
+            discardStage(stagedDraft);
             // No active lease at apply time - duplicate or late callback.
             RuntimeWorkSummary recentFinal = recentFinalMessage(task, taskId, messageId);
             if (recentFinal != null) {
@@ -278,6 +317,7 @@ class TaskResultService {
         ResultApplyStatus applyStatus = ctx.outcome().status();
         if (applyStatus == ResultApplyStatus.STALE_LEASE
                 || applyStatus == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            discardStage(stagedDraft);
             logger.warn("Rejecting result for work item {} because runtime lease rejected the result with {}",
                     messageId, applyStatus);
             return ResultMutationOutcome.rejected();
@@ -304,7 +344,8 @@ class TaskResultService {
                                                                String detail,
                                                                String errorCode,
                                                                Map<String, Object> output,
-                                                               RuntimeResultApplyContext ctx) {
+                                                               RuntimeResultApplyContext ctx,
+                                                               TaskResultCallbackDraft stagedDraft) {
         ActiveRuntimeProjection activeProjection = rebuildActiveProjection(taskId, messageId, ctx);
         if (activeProjection == null) {
             logger.warn("Cannot ingest task result because msg {} was not found in task {} "
@@ -320,9 +361,9 @@ class TaskResultService {
 
         ResultApplyStatus applyStatus = ctx.outcome().status();
         if (success) {
-            return handleSuccess(task, taskId, workSummary, activeAttempt, detail, output);
+            return handleSuccess(task, taskId, workSummary, activeAttempt, detail, output, stagedDraft);
         }
-        return handleRuntimeAcceptedFailure(task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
+        return handleRuntimeAcceptedFailure(task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
     }
 
     ResultMutationOutcome compensateDispatchSubmitFailure(Task task,
@@ -502,7 +543,8 @@ class TaskResultService {
                                               RuntimeWorkSummary workSummary,
                                               AttemptProjectionView activeAttempt,
                                               String detail,
-                                              Map<String, Object> output) {
+                                              Map<String, Object> output,
+                                              TaskResultCallbackDraft stagedDraft) {
         String messageId = workSummary.messageId();
         RuntimeWorkSummary successBase = workSummary;
         if (workSummary.status() == MessageStatus.ASSIGNED) {
@@ -542,6 +584,12 @@ class TaskResultService {
         );
         // Projection writes are @CompatibilityProjectionOnly residue - submitted async
         // so they cannot block the runtime callback hot path.
+        CommitResult commit = commitVisibleFinal(successSummary, activeAttempt, stagedDraft);
+        if (!commit.visible()) {
+            logger.warn("Result runtime visible commit failed for success result taskId={}, messageId={}, status={}, reason={}",
+                    taskId, messageId, commit.status(), commit.reason());
+            return ResultMutationOutcome.acceptedNoop();
+        }
         final RuntimeWorkSummary capturedSummary = successSummary;
         final AttemptProjectionView capturedAttempt = activeAttempt;
         taskManager.submitProjectionWrite(() -> {
@@ -554,19 +602,21 @@ class TaskResultService {
         if (task != null) {
             publishWorkAttemptClosed(task, successSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "work attempt succeeded");
-            publishWorkLogicallyFinal(task, successSummary, activeAttempt,
+            publishWorkLogicallyFinalOnce(task, successSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable success");
         }
-        return ResultMutationOutcome.acceptedDirty();
+        cleanupStageIfConverged(stagedDraft, commit.row());
+        return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
     private ResultMutationOutcome handleRetryableFailure(Task task,
                                                        String taskId,
                                                        RuntimeWorkSummary workSummary,
                                                        AttemptProjectionView activeAttempt,
-                                                       String detail,
-                                                       String errorCode,
-                                                       Map<String, Object> output) {
+                                                      String detail,
+                                                      String errorCode,
+                                                      Map<String, Object> output,
+                                                      TaskResultCallbackDraft stagedDraft) {
         RuntimeWorkSummary retrySummary = resetForRetryWithoutPublishingAttemptClosure(
                 task,
                 taskId,
@@ -580,6 +630,7 @@ class TaskResultService {
         if (retrySummary == null) {
             return ResultMutationOutcome.rejected();
         }
+        discardStage(stagedDraft);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         // Event publishing kept synchronous; use the already-loaded task (no extra storage read).
         if (task != null) {
@@ -686,9 +737,10 @@ class TaskResultService {
                                                             String taskId,
                                                             RuntimeWorkSummary workSummary,
                                                             AttemptProjectionView activeAttempt,
-                                                            String detail,
-                                                            String errorCode,
-                                                            Map<String, Object> output) {
+                                                           String detail,
+                                                           String errorCode,
+                                                           Map<String, Object> output,
+                                                           TaskResultCallbackDraft stagedDraft) {
         String messageId = workSummary.messageId();
         if (!activeAttempt.projectFailed(
                 AttemptFinalReason.BUSINESS_FAILURE,
@@ -715,6 +767,12 @@ class TaskResultService {
         );
 
         // Projection writes are @CompatibilityProjectionOnly residue - submitted async.
+        CommitResult commit = commitVisibleFinal(failureSummary, activeAttempt, stagedDraft);
+        if (!commit.visible()) {
+            logger.warn("Result runtime visible commit failed for failure result taskId={}, messageId={}, status={}, reason={}",
+                    taskId, messageId, commit.status(), commit.reason());
+            return ResultMutationOutcome.acceptedNoop();
+        }
         final RuntimeWorkSummary capturedSummary = failureSummary;
         final AttemptProjectionView capturedAttempt = activeAttempt;
         taskManager.submitProjectionWrite(() -> {
@@ -727,10 +785,11 @@ class TaskResultService {
         if (task != null) {
             publishWorkAttemptClosed(task, failureSummary, activeAttempt,
                     "HANDLE_TASK_RESULT", "retry budget exhausted closed the current attempt");
-            publishWorkLogicallyFinal(task, failureSummary, activeAttempt,
+            publishWorkLogicallyFinalOnce(task, failureSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
         }
-        return ResultMutationOutcome.acceptedDirty();
+        cleanupStageIfConverged(stagedDraft, commit.row());
+        return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
     private RuntimeWorkSummary summarizeRunning(RuntimeWorkSummary base) {
@@ -1004,6 +1063,138 @@ class TaskResultService {
                 .orElse(null);
     }
 
+    private TaskResultCallbackDraft buildCallbackDraft(Task task,
+                                                       String taskId,
+                                                       String messageId,
+                                                       boolean success,
+                                                       String detail,
+                                                       String errorCode,
+                                                       Map<String, Object> output) {
+        ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
+        TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
+        String attemptId = activeLease == null
+                ? null
+                : TaskWorkAttemptIdSupport.runtimeAttemptId(messageId, Math.max(1, activeLease.retryCount() + 1), activeLease);
+        String identityDigest = callbackIdentityDigest(taskId, messageId, success, detail, errorCode, output, activeLease);
+        return new TaskResultCallbackDraft(
+                TaskResultCallbackDraft.stageId(taskId, messageId, identityDigest),
+                taskId,
+                messageId,
+                success,
+                detail,
+                errorCode,
+                output,
+                Instant.now(),
+                attemptId,
+                activeLease != null ? activeLease.leaseToken() : null,
+                null,
+                null,
+                null,
+                identityDigest,
+                activeLease != null ? activeLease.workerId() : null,
+                activeLease != null ? activeLease.workerContextId() : null,
+                activeLease != null ? activeLease.batchId() : null,
+                activeLease != null ? activeLease.payloadRef() : runtimeWork != null ? runtimeWork.payloadRef() : null,
+                runtimeWork != null ? runtimeWork.eventCode() : task != null ? com.xa.mass.base.model.TaskSharedConfig.sdkEventCode(task) : null,
+                activeLease != null ? activeLease.retryCount() : runtimeWork != null ? runtimeWork.retryCount() : 0,
+                runtimeWork != null ? runtimeWork.maxRetryCount() : 0,
+                activeLease != null ? activeLease.leasedAt() : null,
+                runtimeWork != null ? runtimeWork.createdAt() : Instant.now()
+        );
+    }
+
+    private String callbackIdentityDigest(String taskId,
+                                          String messageId,
+                                          boolean success,
+                                          String detail,
+                                          String errorCode,
+                                          Map<String, Object> output,
+                                          ActiveLeaseRecord activeLease) {
+        String raw = String.join("|",
+                Objects.toString(taskId, ""),
+                Objects.toString(messageId, ""),
+                Objects.toString(activeLease != null ? activeLease.leaseToken() : null, ""),
+                Objects.toString(activeLease != null ? activeLease.workerId() : null, ""),
+                Boolean.toString(success),
+                Objects.toString(errorCode, ""),
+                Objects.toString(detail, ""),
+                Objects.toString(output, ""));
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(raw.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to compute result callback identity digest", e);
+        }
+    }
+
+    private CommitResult commitVisibleFinal(RuntimeWorkSummary summary,
+                                            AttemptProjectionView attempt,
+                                            TaskResultCallbackDraft stagedDraft) {
+        if (summary == null) {
+            return CommitResult.rejected("summary must not be null");
+        }
+        return taskResultRuntime.commitVisibleFinal(new TaskResultFinalDraft(
+                summary.taskId(),
+                summary.messageId(),
+                stagedDraft != null ? stagedDraft.eventCode() : null,
+                summary.status() != null ? summary.status().name() : null,
+                summary.finalReason() != null ? summary.finalReason().name() : null,
+                summary.retryCount(),
+                summary.maxRetryCount(),
+                attempt != null ? attempt.workerId() : summary.latestAttemptWorkerId(),
+                attempt != null ? attempt.workerContextId() : summary.latestAttemptWorkerContextId(),
+                attempt != null ? attempt.batchId() : summary.latestAttemptBatchId(),
+                attempt != null ? attempt.attemptId() : summary.latestAttemptId(),
+                summary.payloadRef(),
+                toInstant(summary.createTime()),
+                toInstant(summary.assignedTime()),
+                toInstant(summary.startTime()),
+                toInstant(summary.completeTime()),
+                toInstant(summary.updateTime()),
+                summary.errorCode(),
+                summary.errorMessage(),
+                summary.output(),
+                stagedDraft != null ? stagedDraft.stageId() : null
+        ));
+    }
+
+    private void publishWorkLogicallyFinalOnce(Task task,
+                                               RuntimeWorkSummary workSummary,
+                                               AttemptProjectionView attempt,
+                                               TaskResultRuntimeRow row,
+                                               String trigger,
+                                               String reason) {
+        if (row == null) {
+            return;
+        }
+        BarrierClaim claim = taskResultRuntime.claimLogicalFinalPublish(row.taskId(), row.messageId(), row.seq());
+        if (!claim.claimedByCaller()) {
+            return;
+        }
+        publishWorkLogicallyFinal(task, workSummary, attempt, trigger, reason);
+        taskResultRuntime.markLogicalFinalPublished(row.taskId(), row.messageId(), row.seq());
+    }
+
+    private void cleanupStageIfConverged(TaskResultCallbackDraft stagedDraft, TaskResultRuntimeRow row) {
+        if (stagedDraft == null || row == null) {
+            return;
+        }
+        TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(row);
+        if (current.logicalFinalPublished() && current.progressApplied()) {
+            discardStage(stagedDraft);
+        }
+    }
+
+    private void discardStage(TaskResultCallbackDraft stagedDraft) {
+        if (stagedDraft != null) {
+            taskResultRuntime.discardStagedCallback(stagedDraft.stageId());
+        }
+    }
+
+    private Instant toInstant(LocalDateTime value) {
+        return value == null ? null : value.atZone(ZoneId.systemDefault()).toInstant();
+    }
+
     private String normalizeDispatchSubmitFailureDetail(String detail) {
         if (detail == null || detail.isBlank()) {
             return "dispatch submit failed before transport delivery";
@@ -1012,8 +1203,102 @@ class TaskResultService {
     }
 
     void shutdown() {
-        // Session delayed wakeups are managed by TaskDispatchRequestService.
-        // Batch redispatch recovery is driven by runtime ready visibility.
+        repairExecutor.shutdownNow();
+    }
+
+    private void startRepairPump() {
+        if (!Boolean.getBoolean("xa.mass.engine.resultRepairPumpDisabled")) {
+            long intervalMillis = Long.getLong("xa.mass.engine.resultRepairPumpIntervalMillis", 1_000L);
+            repairExecutor.scheduleWithFixedDelay(
+                    this::repairResultRuntimeCandidatesSafely,
+                    intervalMillis,
+                    intervalMillis,
+                    TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    private void repairResultRuntimeCandidatesSafely() {
+        try {
+            repairResultRuntimeCandidates(Integer.getInteger("xa.mass.engine.resultRepairPumpBatchSize", 100));
+        } catch (Exception e) {
+            logger.warn("Result runtime repair pump failed: {}", e.getMessage(), e);
+        }
+    }
+
+    int repairResultRuntimeCandidates(int limit) {
+        if (limit <= 0) {
+            return 0;
+        }
+        List<TaskResultRepairCandidate> candidates = taskResultRuntime.scanRepairCandidates(limit);
+        int repaired = 0;
+        for (TaskResultRepairCandidate candidate : candidates) {
+            if (repairResultRuntimeCandidate(candidate)) {
+                repaired++;
+            }
+        }
+        return repaired;
+    }
+
+    private boolean repairResultRuntimeCandidate(TaskResultRepairCandidate candidate) {
+        if (candidate == null || candidate.draft() == null) {
+            return false;
+        }
+        TaskResultCallbackDraft draft = candidate.draft();
+        Task task = taskManager.getTask(draft.taskId());
+        RecentFinalWorkReceipt receipt = taskManager.getRecentFinalReceipt(draft.taskId(), draft.messageId()).orElse(null);
+        if (receipt == null || taskResultRuntime.getVisibleByMessageId(draft.taskId(), draft.messageId()).isPresent()) {
+            return false;
+        }
+        RuntimeWorkSummary summary = rebuildFinalSummaryForRepair(task, draft, receipt);
+        CommitResult commit = commitVisibleFinal(summary, null, draft);
+        if (!commit.visible()) {
+            return false;
+        }
+        if (task != null) {
+            publishWorkLogicallyFinalOnce(task, summary, null, commit.row(),
+                    "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
+            taskManager.applyTaskResultProgressOnce(commit.row().taskId(), commit.row().messageId(), commit.row().seq());
+        }
+        cleanupStageIfConverged(draft, commit.row());
+        return true;
+    }
+
+    private RuntimeWorkSummary rebuildFinalSummaryForRepair(Task task,
+                                                            TaskResultCallbackDraft draft,
+                                                            RecentFinalWorkReceipt receipt) {
+        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createTime = draft.createTime() == null
+                ? now
+                : LocalDateTime.ofInstant(draft.createTime(), ZoneId.systemDefault());
+        LocalDateTime leasedAt = draft.leasedAt() == null
+                ? null
+                : LocalDateTime.ofInstant(draft.leasedAt(), ZoneId.systemDefault());
+        LocalDateTime completedAt = receipt.completedAt() == null
+                ? now
+                : LocalDateTime.ofInstant(receipt.completedAt(), ZoneId.systemDefault());
+        return new RuntimeWorkSummary(
+                draft.messageId(),
+                draft.taskId(),
+                draft.attemptId(),
+                draft.workerId(),
+                draft.workerContextId(),
+                draft.batchId(),
+                receiptSummary.status(),
+                leasedAt,
+                createTime,
+                completedAt,
+                leasedAt,
+                completedAt,
+                Math.max(0, receipt.retryCount()),
+                Math.max(0, draft.maxRetryCount()),
+                draft.detail(),
+                receipt.errorCode() != null ? receipt.errorCode() : draft.errorCode(),
+                receiptSummary.finalReason(),
+                draft.payloadRef(),
+                draft.output()
+        );
     }
 
     private void requestRetryDispatch(Task task, long workRetryDelayMillis) {
@@ -1094,12 +1379,13 @@ class TaskResultService {
                                                              ResultApplyStatus applyStatus,
                                                              String detail,
                                                              String errorCode,
-                                                             Map<String, Object> output) {
+                                                             Map<String, Object> output,
+                                                             TaskResultCallbackDraft stagedDraft) {
         return switch (resultContractMode(task)) {
             case BATCH -> handleBatchRuntimeAcceptedFailure(
-                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
+                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
             case SESSION -> handleSessionRuntimeAcceptedFailure(
-                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output);
+                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
         };
     }
 
@@ -1110,11 +1396,12 @@ class TaskResultService {
                                                                   ResultApplyStatus applyStatus,
                                                                   String detail,
                                                                   String errorCode,
-                                                                  Map<String, Object> output) {
+                                                                  Map<String, Object> output,
+                                                                  TaskResultCallbackDraft stagedDraft) {
         if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
-            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output, stagedDraft);
         }
-        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output, stagedDraft);
     }
 
     private ResultMutationOutcome handleSessionRuntimeAcceptedFailure(Task task,
@@ -1124,11 +1411,12 @@ class TaskResultService {
                                                                     ResultApplyStatus applyStatus,
                                                                     String detail,
                                                                     String errorCode,
-                                                                    Map<String, Object> output) {
+                                                                    Map<String, Object> output,
+                                                                    TaskResultCallbackDraft stagedDraft) {
         if (applyStatus == ResultApplyStatus.RETRY_SCHEDULED) {
-            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+            return handleRetryableFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output, stagedDraft);
         }
-        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output);
+        return handleRetryExhaustedFailure(task, taskId, workSummary, activeAttempt, detail, errorCode, output, stagedDraft);
     }
 
     private RuntimeWorkSummary summarizeBatchLeaseExpiryFinal(RuntimeWorkSummary base, String detail) {
@@ -1152,9 +1440,19 @@ class TaskResultService {
         }
 
         private final Status status;
+        private final String progressTaskId;
+        private final String progressMessageId;
+        private final long progressSeq;
 
         private ResultMutationOutcome(Status status) {
+            this(status, null, null, 0L);
+        }
+
+        private ResultMutationOutcome(Status status, String progressTaskId, String progressMessageId, long progressSeq) {
             this.status = java.util.Objects.requireNonNull(status, "status");
+            this.progressTaskId = progressTaskId;
+            this.progressMessageId = progressMessageId;
+            this.progressSeq = progressSeq;
         }
 
         static ResultMutationOutcome rejected() {
@@ -1169,6 +1467,10 @@ class TaskResultService {
             return new ResultMutationOutcome(Status.ACCEPTED_DIRTY);
         }
 
+        static ResultMutationOutcome acceptedDirtyWithProgressBarrier(String taskId, String messageId, long seq) {
+            return new ResultMutationOutcome(Status.ACCEPTED_DIRTY, taskId, messageId, seq);
+        }
+
         Status status() {
             return status;
         }
@@ -1179,6 +1481,22 @@ class TaskResultService {
 
         boolean progressDirty() {
             return status == Status.ACCEPTED_DIRTY;
+        }
+
+        boolean hasProgressBarrier() {
+            return progressTaskId != null && progressMessageId != null && progressSeq > 0L;
+        }
+
+        String progressTaskId() {
+            return progressTaskId;
+        }
+
+        String progressMessageId() {
+            return progressMessageId;
+        }
+
+        long progressSeq() {
+            return progressSeq;
         }
     }
 

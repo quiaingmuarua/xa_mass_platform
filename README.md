@@ -12,7 +12,7 @@ Trust code and verified runtime behavior over historical documentation.
 - [doc/README.md](./doc/README.md)
 - [transport/AGENTS.md](./transport/AGENTS.md)
 
-Design-only reference:
+Additional current baseline:
 
 - [doc/HIGH_VOLUME_MODEL_BASELINE.md](./doc/HIGH_VOLUME_MODEL_BASELINE.md)
 
@@ -77,10 +77,11 @@ Current integration boundary rule:
 - `platform_infra/mass-queue-primitives`: narrow keyed queue/blocking-poll/backpressure primitive used by runtime modules that should not own queue bookkeeping directly
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
-- `platform_infra/mass-runtime-redis`: Redis runtime keyspace/index baseline plus future `TaskWorkRuntime` module; not part of the current verified runtime path
+- `platform_infra/mass-runtime-redis`: Redis-backed `TaskWorkRuntime` implementation plus its keyspace/index baseline; explicit opt-in, not the current default verified runtime path
 - `platform_infra/mass-storage-api`: shared task/worker/rule storage contracts and storage-adjacent rule types used across engine, JDBC adapters, server, SDK, and tests
 - `platform_infra/mass-storage-memory`: in-memory control-plane task/worker storage plus the current in-memory rule helpers used by SDK/server defaults and focused tests
 - `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth; current implementation also keeps compatibility projections in-process
+- `platform_infra/mass-trace-sink`: canonical execution-event model plus the default asynchronous JSONL trace sink
 - `transport/transport_api`: transport-neutral dispatch/result/system-event contracts and transport model surface
 - `transport/transport_runtime`: shared transport runtime assembly, adapter routing, and delivery/result-ingest runtime glue
 - `transport/polling-adapter`: polling/pull worker transport adapter

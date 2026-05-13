@@ -19,9 +19,8 @@ Stable boundary:
 - durable control-plane truth belongs here
 - hot-path queue, lease, retry visibility, and backpressure truth do not
 - high-volume task-message detail and attempt timelines do not
-- if some detail clearly fits a future trace/audit stream better than either DB
-  or runtime state, do not widen JDBC ownership just because trace is not fully
-  implemented yet
+- if some detail clearly fits trace/audit better than either DB or runtime
+  state, do not widen JDBC ownership
 
 Current implementation facts:
 
@@ -45,9 +44,9 @@ Current implementation drift to keep explicit:
 - `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
   projection for worker/context/lock residue, but that residue is still
   in-process and restart-volatile
-- some of that residue is present only because the trace/audit layer is not yet
-  landed; treat it as bounded compatibility state, not as evidence that JDBC
-  should absorb message history or execution timelines
+- some of that residue remains because JDBC is not the owner for high-volume
+  message history or execution timelines; treat it as bounded compatibility
+  state rather than widening JDBC ownership
 
 Do not describe those drift points as target architecture. If they change,
 update this README in the same change.
