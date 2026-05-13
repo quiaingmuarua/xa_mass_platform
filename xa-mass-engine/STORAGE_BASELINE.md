@@ -31,10 +31,10 @@ What the engine assumes today:
 - ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime
 - result/expiry recovery should prefer runtime work-envelope metadata
-  (`payloadRef`, retry counters, create time) before falling back to
-  compatibility message-projection residue
-- bounded message/attempt projections are still used by result repair, attempt
-  identity validation, focused tests, and explicit projection audit
+  (`payloadRef`, retry counters, create time); projection residue does not
+  repair public result rows
+- bounded message/attempt projections are still used by attempt identity
+  display/audit, focused tests, and explicit projection audit
 - ingest enqueue must not roll back or fail runtime admission just because the
   compatibility message row could not be written in the same turn
 - dispatch handoff no longer requires message-projection input or a persisted
@@ -47,10 +47,9 @@ What the engine assumes today:
 ## TaskDetailStore
 
 `TaskDetailStore` is not control-plane storage truth. It is the bounded
-projection seam that still carries compatibility reads and result/repair
-helpers.
+projection seam that still carries projection reads and audit/debug residue.
 
-Current runtime-essential helpers:
+Current bounded projection helpers:
 
 - `upsertTaskMessageProjection(TaskMessageProjection)`
 - `getTaskMessageProjection(...)`

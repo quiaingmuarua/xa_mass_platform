@@ -13,8 +13,6 @@ public interface TaskResultRuntime {
 
     List<TaskResultRepairCandidate> scanRepairCandidates(int limit);
 
-    CommitResult repairVisibleFinal(TaskResultRepairCandidate candidate);
-
     BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq);
 
     void markLogicalFinalPublished(String taskId, String messageId, long finalSeq);
@@ -28,8 +26,6 @@ public interface TaskResultRuntime {
     long countVisibleResults(String taskId);
 
     Optional<TaskResultRuntimeRow> getVisibleByMessageId(String taskId, String messageId);
-
-    long compactTerminalTask(String taskId, TaskResultRetentionPolicy policy);
 
     long discardTask(String taskId);
 

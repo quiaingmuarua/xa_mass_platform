@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
@@ -29,6 +30,23 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime) {
         super(taskScheduler, taskStorage, taskDetailStore, taskWorkRuntime);
+        this.taskDetailStore = taskDetailStore;
+        this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
+                taskDetailStore,
+                this::getTask,
+                this::getActiveLease,
+                this::getTaskWork,
+                this::getActiveLeases,
+                this::getTaskWorkStats
+        );
+    }
+
+    public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
+                                      TaskStorage taskStorage,
+                                      TaskDetailStore taskDetailStore,
+                                      TaskWorkRuntime taskWorkRuntime,
+                                      TaskResultRuntime taskResultRuntime) {
+        super(taskScheduler, taskStorage, taskDetailStore, taskWorkRuntime, taskResultRuntime, null);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,

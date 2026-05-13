@@ -47,7 +47,7 @@ then lets engine lifecycle policy converge the task aggregate.
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, recent receipts | trace policy, projection storage, public result reads |
 | runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, logical-final/progress barriers | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
 | engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, projection submission, result-side events, convergence trigger | durable ledger storage, transport I/O |
-| compatibility residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and compatibility read view | callback acceptance truth, retry/finality truth, public result read truth |
+| projection residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and review read view | callback acceptance truth, retry/finality truth, public result read truth |
 
 ## 3. Runtime Apply Truth
 
@@ -72,8 +72,8 @@ message-final rows:
 - visible sequence: task-local monotonic `seq` allocated at first final commit
 
 Active stable-final result commit must not reject solely because a task has
-many visible rows. Retention and compaction are terminal-task policy, not the
-active final callback path.
+many visible rows. Explicit task discard is the only result-runtime cleanup
+surface in the current kernel.
 
 ## 4. Transport Ingress
 
@@ -94,7 +94,7 @@ ledger semantics.
 
 ## 5. Projection Residue
 
-Projection writes after result apply are best-effort compatibility residue.
+Projection writes after result apply are best-effort projection residue.
 They are submitted after runtime acceptance so UI/debug/audit readers can see a
 bounded message and latest-attempt view. They are not the result commit point.
 
@@ -108,11 +108,11 @@ Projection residue must not decide:
 - `/api/v1/tasks/{taskId}/results`
 - SDK `TaskResultQueryOperations`
 
-Public result reads and archive generation now read committed stable-final rows
-from `TaskResultRuntime`. Controllers must not fall back to projection to "fill"
-missing result rows. Memory result runtime is volatile local/dev truth; Redis
-result runtime is the cross-process runtime truth. Durability follows the
-selected runtime implementation.
+Public result reads and archive generation read committed stable-final rows
+from `TaskResultRuntime`. Controllers must not read projection rows to build or
+fill public result responses. Memory result runtime is volatile local/dev
+truth; Redis result runtime is the cross-process runtime truth. Durability
+follows the selected runtime implementation.
 
 ## 6. Repair And Barriers
 

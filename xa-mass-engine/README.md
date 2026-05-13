@@ -139,8 +139,8 @@ Keep these facts fixed unless the owning global baselines change:
   `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
   shapes; production engine services should translate them inside the
   engine boundary instead of returning them as engine-facing API results
-- public result reads must use `TaskResultRuntime`; projection residue is not a
-  fallback for `/results`, SDK result query, or archive generation
+- public result reads must use `TaskResultRuntime`; projection residue must not
+  source `/results`, SDK result query, or archive generation
 - runtime ingest must stay correct when compatibility message-projection writes
   fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes
   are best-effort residue

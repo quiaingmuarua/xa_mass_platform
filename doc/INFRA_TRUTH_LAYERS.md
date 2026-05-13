@@ -39,12 +39,12 @@ more implemented than another.
 | active lease ownership / expiry | runtime state | hot-path callback and expiry truth | bounded mirrors for debug only | JDBC durable truth |
 | worker lock / occupancy / online churn | runtime state | volatile worker execution state | bounded in-process residue | JDBC durable truth |
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
-| per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded compatibility projection | JDBC durable event history |
-| per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
+| per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded projection residue | JDBC durable event history |
+| per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded projection residue | JDBC durable event history |
 | engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/message projection truth or a duplicate ready queue |
 | transport -> engine result / dispatch-failure inboxes | runtime state | hot-path cross-JVM ingress back into engine-owned result/compensation ports | bounded Redis inboxes drained by engine process | server/API owner semantics or transport-owned lifecycle state |
 | runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | message/attempt projection or transport envelope metadata |
-| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | `TaskDetailStore`, JDBC result tables, server/controller fallback logic |
+| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | `TaskDetailStore`, JDBC result tables, server/controller projection reads |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
@@ -59,9 +59,9 @@ state as well; they are not an excuse to promote message projection back into
 mainline callback acceptance. If runtime no longer has an active lease and no
 recent final receipt exists, callback acceptance must not fall back to message
 projection residue to recover a second acceptance truth.
-Public result reads now come from `TaskResultRuntime` committed stable-final
-rows. Projection residue remains debug/audit/compatibility material and must not
-be used as fallback for `/results`, archive generation, or SDK result query.
+Public result reads come from `TaskResultRuntime` committed stable-final rows.
+Projection residue remains debug/audit material and must not be used for
+`/results`, archive generation, or SDK result query.
 A durable result ledger or archive materialized view still requires a separate
 design and must not be implied by result ingress or projection residue.
 

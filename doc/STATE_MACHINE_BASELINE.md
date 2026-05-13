@@ -32,7 +32,7 @@ Use with:
 9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side event/progress barriers. `TaskMessageProjection` remains bounded compatibility/debug residue for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains auditable execution-history residue for concrete dispatch attempts.
 10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
-12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; projection writes are submitted best-effort after runtime acceptance and are not the result commit point or public result read fallback.
+12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; projection writes are submitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 
 ## 2. TaskStatus
 

@@ -44,7 +44,7 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(!source.contains("TaskMessageProjection"),
                 "TaskApiController result endpoints must use TaskResultQueryOperations, not TaskMessageProjection");
         assertTrue(!source.contains("getTaskMessageProjections"),
-                "TaskApiController must not fall back to TaskDetailStore projection rows for public results");
+                "TaskApiController must not read TaskDetailStore projection rows for public results");
     }
 
     private static void collectViolations(Path path, List<String> violations) {

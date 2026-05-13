@@ -19,8 +19,17 @@ import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.CommitResult;
+import com.xa.mass.runtime.api.TaskResultCallbackDraft;
+import com.xa.mass.runtime.api.TaskResultFinalDraft;
+import com.xa.mass.runtime.api.TaskResultRepairCandidate;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageAttemptProjection;
 import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageProjection;
@@ -840,6 +850,122 @@ class TaskManagerLifecycleTest {
         );
         assertNotNull(latestAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, latestAttempt.status());
+    }
+
+    @Test
+    void ingestTaskResultCommitsVisibleRuntimeResultRowAndDuplicateDoesNotAppend() {
+        Task task = createTask(buildRequest("task-result-runtime-visible", List.of("alpha"), 0));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        assignMessage(task, message);
+
+        AtomicInteger logicalFinalEvents = new AtomicInteger();
+        taskManager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
+                logicalFinalEvents.incrementAndGet());
+
+        assertTrue(taskManager.ingestTaskResult(
+                task.getTid(),
+                message.messageId(),
+                true,
+                "done",
+                null,
+                Map.of("value", "ok")));
+
+        TaskResultWindow window = taskManager.getTaskResultRuntime().readWindow(task.getTid(), 0, 10);
+        assertEquals(1, window.items().size());
+        TaskResultRuntimeRow row = window.items().get(0);
+        assertEquals(message.messageId(), row.messageId());
+        assertEquals(1L, row.seq());
+        assertEquals("SUCCESS", row.status());
+        assertEquals("BUSINESS_SUCCESS", row.finalReason());
+        assertEquals(Map.of("value", "ok"), row.output());
+        assertTrue(row.logicalFinalPublished());
+        assertTrue(row.progressApplied());
+        assertEquals(1, logicalFinalEvents.get());
+
+        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "late-duplicate"));
+
+        TaskResultWindow afterDuplicate = taskManager.getTaskResultRuntime().readWindow(task.getTid(), 0, 10);
+        assertEquals(1, afterDuplicate.items().size());
+        assertEquals(1, logicalFinalEvents.get());
+    }
+
+    @Test
+    void retryableFailureDiscardsStageAndDoesNotCreateVisibleRuntimeResultRow() {
+        Task task = createTask(buildRequest("task-result-runtime-retry", List.of("alpha"), 1));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
+        assignMessage(task, message);
+
+        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "boom-once", "BOOM"));
+
+        assertEquals(0, taskManager.getTaskResultRuntime().countVisibleResults(task.getTid()));
+        assertTrue(taskManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+    }
+
+    @Test
+    void visibleCommitFailureLeavesStagedDraftAndRepairPumpCompletesResultProgressOnce() {
+        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
+        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
+        ProjectionAwareTaskManager manager = null;
+        try {
+            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
+            resultRuntime.blockRepairPumpScans();
+            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
+            manager = new ProjectionAwareTaskManager(
+                    new RecordingTaskScheduler(),
+                    repairStorage,
+                    repairStorage,
+                    new InMemoryTaskWorkRuntime(),
+                    resultRuntime
+            );
+
+            Task task = createTask(manager, buildRequest("task-result-runtime-repair", List.of("alpha"), 0));
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(manager, task, message);
+
+            AtomicInteger logicalFinalEvents = new AtomicInteger();
+            manager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
+                    logicalFinalEvents.incrementAndGet());
+
+            resultRuntime.failNextVisibleCommit();
+            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
+
+            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
+            assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
+            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+
+            resultRuntime.allowRepairPumpScans();
+            ProjectionAwareTaskManager capturedManager = manager;
+            awaitCondition(
+                    () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
+                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
+                    "repair pump should commit visible result and apply progress");
+
+            TaskResultRuntimeRow row = manager.getTaskResultRuntime()
+                    .getVisibleByMessageId(task.getTid(), message.messageId())
+                    .orElseThrow();
+            assertEquals("SUCCESS", row.status());
+            assertTrue(row.logicalFinalPublished());
+            assertTrue(row.progressApplied());
+            assertEquals(1, logicalFinalEvents.get());
+            assertTrue(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+        } finally {
+            if (manager != null) {
+                manager.shutdown();
+            }
+            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
+        }
     }
 
     @Test
@@ -2721,6 +2847,15 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMessageProjectionStatus.FAILED, updated.status());
         assertEquals(TaskMessageProjectionFinalReason.RETRY_EXHAUSTED, updated.finalReason());
 
+        TaskResultRuntimeRow resultRow = taskManager.getTaskResultRuntime()
+                .getVisibleByMessageId(task.getTid(), message.messageId())
+                .orElseThrow();
+        assertEquals("FAILED", resultRow.status());
+        assertEquals("RETRY_EXHAUSTED", resultRow.finalReason());
+        assertEquals("LEASE_EXPIRED", resultRow.errorCode());
+        assertTrue(resultRow.logicalFinalPublished());
+        assertTrue(resultRow.progressApplied());
+
         // All messages are final, so the task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
@@ -2818,6 +2953,9 @@ class TaskManagerLifecycleTest {
                     events.add("dispatch:" + currentTask.getStatus()));
 
             assertTrue(taskManager.expireLeasedWork(task.getTid(), message.messageId()));
+
+            assertEquals(0, taskManager.getTaskResultRuntime().countVisibleResults(task.getTid()));
+            assertTrue(taskManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
 
             TaskDetailStore.TaskMessageProjection retriedMessage = awaitVisibleTaskMessageProjection(
                     taskManager,
@@ -3372,6 +3510,112 @@ class TaskManagerLifecycleTest {
             }
         }
         return lastSeen;
+    }
+
+    private static void awaitCondition(BooleanSupplier condition, String failureMessage) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadlineNanos) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    private static final class FlakyCommitTaskResultRuntime implements TaskResultRuntime {
+        private final InMemoryTaskResultRuntime delegate = new InMemoryTaskResultRuntime();
+        private volatile boolean failNextVisibleCommit;
+        private volatile boolean blockRepairPumpScans;
+
+        private void failNextVisibleCommit() {
+            failNextVisibleCommit = true;
+        }
+
+        private void blockRepairPumpScans() {
+            blockRepairPumpScans = true;
+        }
+
+        private void allowRepairPumpScans() {
+            blockRepairPumpScans = false;
+        }
+
+        @Override
+        public com.xa.mass.runtime.api.StageResult stageCallback(TaskResultCallbackDraft draft) {
+            return delegate.stageCallback(draft);
+        }
+
+        @Override
+        public boolean discardStagedCallback(String stageId) {
+            return delegate.discardStagedCallback(stageId);
+        }
+
+        @Override
+        public CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
+            if (failNextVisibleCommit) {
+                failNextVisibleCommit = false;
+                return CommitResult.unavailable("simulated visible commit failure");
+            }
+            return delegate.commitVisibleFinal(finalDraft);
+        }
+
+        @Override
+        public List<TaskResultRepairCandidate> scanRepairCandidates(int limit) {
+            if (blockRepairPumpScans && Thread.currentThread().getName().startsWith("engine-result-repair-")) {
+                return List.of();
+            }
+            return delegate.scanRepairCandidates(limit);
+        }
+
+        @Override
+        public BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
+            return delegate.claimLogicalFinalPublish(taskId, messageId, finalSeq);
+        }
+
+        @Override
+        public void markLogicalFinalPublished(String taskId, String messageId, long finalSeq) {
+            delegate.markLogicalFinalPublished(taskId, messageId, finalSeq);
+        }
+
+        @Override
+        public BarrierClaim claimProgressApply(String taskId, String messageId, long finalSeq) {
+            return delegate.claimProgressApply(taskId, messageId, finalSeq);
+        }
+
+        @Override
+        public void markProgressApplied(String taskId, String messageId, long finalSeq) {
+            delegate.markProgressApplied(taskId, messageId, finalSeq);
+        }
+
+        @Override
+        public TaskResultWindow readWindow(String taskId, long afterSeq, int limit) {
+            return delegate.readWindow(taskId, afterSeq, limit);
+        }
+
+        @Override
+        public long countVisibleResults(String taskId) {
+            return delegate.countVisibleResults(taskId);
+        }
+
+        @Override
+        public java.util.Optional<TaskResultRuntimeRow> getVisibleByMessageId(String taskId, String messageId) {
+            return delegate.getVisibleByMessageId(taskId, messageId);
+        }
+
+        @Override
+        public long discardTask(String taskId) {
+            return delegate.discardTask(taskId);
+        }
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
+        }
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

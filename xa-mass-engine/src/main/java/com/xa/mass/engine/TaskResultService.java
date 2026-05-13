@@ -143,10 +143,6 @@ class TaskResultService {
                     + activeAttempt.status(), 0);
             return ResultMutationOutcome.rejected();
         }
-        final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
-        taskManager.submitProjectionWrite(() ->
-                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
-                        "mark attempt expired"));
         boolean retryScheduled = workOutcome.status() == ResultApplyStatus.RETRY_SCHEDULED;
         Task freshTask = taskManager.getTask(taskId);
         RuntimeWorkSummary currentSummary;
@@ -162,9 +158,13 @@ class TaskResultService {
                     workRetryDelayMillis,
                     "EXPIRE_LEASED_WORK", "TaskManager", "lease expired but retry budget allows re-dispatch");
             final RuntimeWorkSummary capturedRetrySummary = retrySummary;
-            taskManager.submitProjectionWrite(() ->
-                    persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
-                            "persist expiry retry-reset compatibility summary"));
+            final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
+            taskManager.submitProjectionWrite(() -> {
+                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
+                        "mark attempt expired");
+                persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
+                        "persist expiry retry-reset compatibility summary");
+            });
             currentSummary = retrySummary;
             discardStage(stagedDraft);
         } else {
@@ -188,9 +188,13 @@ class TaskResultService {
                 return ResultMutationOutcome.acceptedNoop();
             }
             final RuntimeWorkSummary capturedFinalSummary = logicallyFinalSummary;
-            taskManager.submitProjectionWrite(() ->
-                    persistWorkProjectionBestEffort(taskId, capturedFinalSummary,
-                            "persist expiry compatibility summary"));
+            final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
+            taskManager.submitProjectionWrite(() -> {
+                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
+                        "mark attempt expired");
+                persistWorkProjectionBestEffort(taskId, capturedFinalSummary,
+                        "persist expiry compatibility summary");
+            });
             currentSummary = logicallyFinalSummary;
         }
         traceEventLogger.leaseExpired(

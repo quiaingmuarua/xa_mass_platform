@@ -20,7 +20,6 @@ import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
-import com.xa.mass.storage.api.TaskDetailStore;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -291,31 +290,6 @@ final class TaskApiContractAssembler {
         );
     }
 
-    ApiTaskResultItem toResultItem(TaskDetailStore.TaskMessageProjection projection, long seq) {
-        return new ApiTaskResultItem(
-                seq,
-                projection.messageId(),
-                resolveProjectionEventCode(projection),
-                enumName(projection.status()),
-                enumName(projection.finalReason()),
-                projection.retryCount(),
-                projection.maxRetryCount(),
-                projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
-                projection.latestAttemptBatchId(),
-                projection.latestAttemptId(),
-                projection.payloadRef(),
-                formatDateTime(projection.createTime()),
-                formatDateTime(projection.assignedTime()),
-                formatDateTime(projection.startTime()),
-                formatDateTime(projection.completeTime()),
-                formatDateTime(projection.updateTime()),
-                projection.errorCode(),
-                projection.errorMessage(),
-                projection.output()
-        );
-    }
-
     ApiTaskResultItem toResultItem(TaskResultItemSnapshot row) {
         return new ApiTaskResultItem(
                 row.getSeq(),
@@ -350,14 +324,6 @@ final class TaskApiContractAssembler {
                 normalized.getMaxRuntimeSeconds(),
                 normalized.getDefaultMaxRetryCount()
         );
-    }
-
-    private String resolveProjectionEventCode(TaskDetailStore.TaskMessageProjection projection) {
-        if (projection == null || projection.input() == null) {
-            return null;
-        }
-        Object rawValue = projection.input().get("eventCode");
-        return rawValue == null ? null : String.valueOf(rawValue);
     }
 
     private String enumName(Enum<?> value) {

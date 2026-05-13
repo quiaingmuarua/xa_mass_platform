@@ -6,14 +6,11 @@ import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
-import com.xa.mass.runtime.api.TaskResultRetentionPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
 
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -111,40 +108,6 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     }
 
     @Override
-    public synchronized CommitResult repairVisibleFinal(TaskResultRepairCandidate candidate) {
-        if (candidate == null || candidate.draft() == null) {
-            return CommitResult.rejected("candidate must not be null");
-        }
-        TaskResultCallbackDraft draft = candidate.draft();
-        Instant now = Instant.now();
-        String status = draft.success() ? "SUCCESS" : "FAILED";
-        String finalReason = draft.success() ? "BUSINESS_SUCCESS" : "BUSINESS_FAILED";
-        return commitVisibleFinal(new TaskResultFinalDraft(
-                draft.taskId(),
-                draft.messageId(),
-                draft.eventCode(),
-                status,
-                finalReason,
-                draft.retryCount(),
-                draft.maxRetryCount(),
-                draft.workerId(),
-                draft.workerContextId(),
-                draft.batchId(),
-                draft.attemptId(),
-                draft.payloadRef(),
-                draft.createTime() != null ? draft.createTime() : draft.receivedAt(),
-                draft.leasedAt(),
-                draft.leasedAt(),
-                now,
-                now,
-                draft.errorCode(),
-                draft.detail(),
-                draft.output(),
-                draft.stageId()
-        ));
-    }
-
-    @Override
     public synchronized BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
         return claimBarrier(logicalFinalBarriers, taskId, messageId, finalSeq, true);
     }
@@ -199,29 +162,6 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
             return Optional.empty();
         }
         return Optional.ofNullable(visibleByMessage.get(new ResultKey(taskId, messageId)));
-    }
-
-    @Override
-    public synchronized long compactTerminalTask(String taskId, TaskResultRetentionPolicy policy) {
-        if (isBlank(taskId) || policy == null || policy.keepLatestRows() == Long.MAX_VALUE) {
-            return 0L;
-        }
-        TreeMap<Long, TaskResultRuntimeRow> rows = visibleByTaskSeq.get(taskId);
-        if (rows == null || rows.size() <= policy.keepLatestRows()) {
-            return 0L;
-        }
-        long removeCount = rows.size() - policy.keepLatestRows();
-        List<Long> toRemove = rows.keySet().stream()
-                .sorted(Comparator.naturalOrder())
-                .limit(removeCount)
-                .toList();
-        for (Long seq : toRemove) {
-            TaskResultRuntimeRow row = rows.remove(seq);
-            if (row != null) {
-                visibleByMessage.remove(new ResultKey(row.taskId(), row.messageId()));
-            }
-        }
-        return toRemove.size();
     }
 
     @Override

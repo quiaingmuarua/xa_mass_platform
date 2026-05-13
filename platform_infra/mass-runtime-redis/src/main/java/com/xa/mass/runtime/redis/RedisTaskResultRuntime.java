@@ -11,7 +11,6 @@ import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
-import com.xa.mass.runtime.api.TaskResultRetentionPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
@@ -179,38 +178,6 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
     }
 
     @Override
-    public CommitResult repairVisibleFinal(TaskResultRepairCandidate candidate) {
-        if (candidate == null || candidate.draft() == null) {
-            return CommitResult.rejected("candidate must not be null");
-        }
-        TaskResultCallbackDraft draft = candidate.draft();
-        Instant now = clock.get();
-        return commitVisibleFinal(new TaskResultFinalDraft(
-                draft.taskId(),
-                draft.messageId(),
-                draft.eventCode(),
-                draft.success() ? "SUCCESS" : "FAILED",
-                draft.success() ? "BUSINESS_SUCCESS" : "BUSINESS_FAILED",
-                draft.retryCount(),
-                draft.maxRetryCount(),
-                draft.workerId(),
-                draft.workerContextId(),
-                draft.batchId(),
-                draft.attemptId(),
-                draft.payloadRef(),
-                draft.createTime() != null ? draft.createTime() : draft.receivedAt(),
-                draft.leasedAt(),
-                draft.leasedAt(),
-                now,
-                now,
-                draft.errorCode(),
-                draft.detail(),
-                draft.output(),
-                draft.stageId()
-        ));
-    }
-
-    @Override
     public BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
         return claimBarrier(keyspace.logicalFinalBarrier(taskId, messageId, finalSeq), taskId, messageId, finalSeq, true);
     }
@@ -276,24 +243,6 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
             return Optional.empty();
         }
         return Optional.of(GSON.fromJson(json, TaskResultRuntimeRow.class));
-    }
-
-    @Override
-    public long compactTerminalTask(String taskId, TaskResultRetentionPolicy policy) {
-        if (isBlank(taskId) || policy == null || policy.keepLatestRows() == Long.MAX_VALUE) {
-            return 0L;
-        }
-        long count = countVisibleResults(taskId);
-        long removeCount = count - policy.keepLatestRows();
-        if (removeCount <= 0L) {
-            return 0L;
-        }
-        List<String> messageIds = commands.zrange(keyspace.taskVisibleZset(taskId), 0, removeCount - 1);
-        for (String messageId : messageIds) {
-            commands.del(keyspace.taskVisibleRow(taskId, messageId));
-            commands.zrem(keyspace.taskVisibleZset(taskId), messageId);
-        }
-        return messageIds.size();
     }
 
     @Override

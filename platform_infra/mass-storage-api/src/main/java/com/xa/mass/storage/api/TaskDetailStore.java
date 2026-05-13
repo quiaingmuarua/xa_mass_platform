@@ -22,10 +22,9 @@ import java.util.Optional;
  * engine orchestration code. The current in-memory and JDBC implementations
  * implement both interfaces; future trace sinks implement only this one.
  *
- * <p>Callers should treat this seam in two tiers:
- * runtime-essential compatibility projection helpers used by result repair and
- * bounded convergence, and shell/debug reads that must not grow into
- * pagination, analytics, or durable-history contracts.
+ * <p>Callers should treat this seam as bounded projection residue for
+ * review/debug/audit and projection health checks. It is not result repair
+ * truth, public result read truth, or a durable-history contract.
  *
  * <p>This seam exposes only neutral storage-edge projection records. Any
  * compatibility materialization belongs to engine-internal residue owners, not
