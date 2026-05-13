@@ -39,7 +39,8 @@ more implemented than another.
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
 | per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded compatibility projection | JDBC durable event history |
 | per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded compatibility projection | JDBC durable event history |
-| engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded compatibility synthesis for tests only | JDBC/message projection truth |
+| engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/message projection truth or a duplicate ready queue |
+| transport -> engine result / dispatch-failure inboxes | runtime state | hot-path cross-JVM ingress back into engine-owned result/compensation ports | bounded Redis inboxes drained by engine process | server/API owner semantics or transport-owned lifecycle state |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
@@ -65,6 +66,8 @@ projection residue to recover a second acceptance truth.
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
 | memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
+| Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
+| Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads through neutral records only | not message CRUD ownership and not runtime truth |
 | engine assembly | wires `TaskStorage` and `TaskDetailStore` separately | prevents storage-shell truth from silently redefining detail/projection ownership |
 | `doc/TRACE_CONTRACT.md` | required trace semantics | contract exists before full sink/module convergence |

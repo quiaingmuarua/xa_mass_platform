@@ -6,10 +6,7 @@ import com.xa.mass.api.auth.ApiSecurityScenario;
 import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.api.model.task.TaskCommandApiRequest;
-import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
-import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
-import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.api.model.task.*;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -61,6 +58,7 @@ public class TaskApiController {
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
+    private final TaskApiContractAssembler taskApiContractAssembler;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
@@ -107,10 +105,11 @@ public class TaskApiController {
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
+        this.taskApiContractAssembler = new TaskApiContractAssembler(DATE_TIME_FORMATTER);
     }
 
     @GetMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listTasks(
+    public ResponseEntity<ApiResponse<ApiTaskListResult>> listTasks(
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                       @RequestParam(required = false) String keyword,
@@ -126,20 +125,20 @@ public class TaskApiController {
             List<TaskSummarySnapshot> candidates = status != null
                     ? taskQueries.getTaskSummariesByStatus(status)
                     : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
-            List<Map<String, Object>> items = candidates.stream()
+            List<ApiTask> items = candidates.stream()
                     .filter(task -> canViewTaskSummary(task, submitterViewer))
                     .filter(task -> matchesProject(task.getProject(), normalizedProject))
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
                             .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
-                    .map(this::toTaskSummaryView)
+                    .map(taskApiContractAssembler::toApiTask)
                     .toList();
-            return ok(Map.of("items", items, "total", items.size()));
+            return ok(taskApiContractAssembler.toTaskListResult(items));
         });
     }
 
     @PostMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(
+    public ResponseEntity<ApiResponse<ApiTaskCreateOutcome>> createTask(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             HttpServletRequest httpRequest,
@@ -154,12 +153,10 @@ public class TaskApiController {
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
-                return ok(Map.of(
-                        "taskId", task.getTaskId(),
-                        "project", task.getProject(),
-                        "userId", task.getUserId() != null ? task.getUserId() : submitterTaskCreate.userId(),
-                        "principalId", submitterTaskCreate.principal().getPrincipalId(),
-                        "message", "Task shell created"
+                return ok(taskApiContractAssembler.toCreateOutcome(
+                        task,
+                        submitterTaskCreate.principal().getPrincipalId(),
+                        "Task shell created"
                 ));
             }
 
@@ -168,27 +165,27 @@ public class TaskApiController {
                     toMassTaskShellCreateRequest(requestBody),
                     operator
             ));
-            return ok(Map.of("taskId", task.getTaskId(), "message", "Task shell created"));
+            return ok(taskApiContractAssembler.toCreateOutcome(task, operator.getPrincipalId(), "Task shell created"));
         });
     }
 
     @GetMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(
+    public ResponseEntity<ApiResponse<ApiTaskGetResult>> getTask(
                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                     @PathVariable String taskId) {
         return executeApi("Task lookup failed", () -> {
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("task", toTaskDetailView(task));
-            response.put("security", taskSecurityViewSupport.toSecurityView(task.getSharedConfig()));
-            return ok(response);
+            return ok(taskApiContractAssembler.toGetResult(
+                    task,
+                    taskSecurityViewSupport.toSecurityView(task.getSharedConfig())
+            ));
         });
     }
 
     @PatchMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
-                                                                       @RequestBody TaskUpdateApiRequest requestBody) {
+    public ResponseEntity<ApiResponse<ApiTaskUpdateOutcome>> updateTask(@PathVariable String taskId,
+                                                                        @RequestBody TaskUpdateApiRequest requestBody) {
         return executeApi("Task update failed", () -> {
             TaskStateSnapshot state = getExistingTaskState(taskId);
             String status = state == null ? null : state.getStatus();
@@ -199,12 +196,12 @@ public class TaskApiController {
             validateKnownFields(requestBody, "task update");
             MassTaskUpdateRequest request = toTaskUpdateRequest(requestBody);
             taskAdmin.updateTaskDefinition(taskId, request);
-            return ok(Map.of("message", "Task updated"));
+            return ok(taskApiContractAssembler.toUpdateOutcome(taskId, state, "Task updated"));
         });
     }
 
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(
+    public ResponseEntity<ApiResponse<ApiTaskAppendOutcome>> appendTaskItems(
                                                                              @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                              @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                              @PathVariable String taskId,
@@ -230,14 +227,20 @@ public class TaskApiController {
                     .eventCode(requestBody.getEventCode())
                     .items(items)
                     .build());
-            return ok(Map.of("message", "Items appended", "added", added));
+            return ok(taskApiContractAssembler.toAppendOutcome(
+                    taskId,
+                    added,
+                    null,
+                    task.getIntakeStatus(),
+                    "Items appended"
+            ));
         });
     }
 
     @PostMapping("/{taskId}/commands")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> executeTaskCommand(HttpServletRequest httpRequest,
-                                                                               @PathVariable String taskId,
-                                                                               @RequestBody TaskCommandApiRequest requestBody) {
+    public ResponseEntity<ApiResponse<ApiTaskCommandOutcome>> executeTaskCommand(HttpServletRequest httpRequest,
+                                                                                 @PathVariable String taskId,
+                                                                                 @RequestBody TaskCommandApiRequest requestBody) {
         return executeApi("Task command failed", () -> {
             validateKnownFields(requestBody, "task command");
             TaskCommandAuthorization authorization = resolveTaskCommandAuthorization(requestBody.getCommand());
@@ -245,7 +248,7 @@ public class TaskApiController {
 
             TaskCommandResult result = taskAdmin.executeTaskCommand(taskId, toMassTaskCommandRequest(requestBody));
             if (result.isAccepted()) {
-                return ok(toTaskCommandResponse(result));
+                return ok(taskApiContractAssembler.toCommandOutcome(result));
             }
             if (!result.isTaskExists()) {
                 throw notFoundError("Task not found: " + taskId);
@@ -257,7 +260,7 @@ public class TaskApiController {
     }
 
     @GetMapping("/{taskId}/results")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskResults(
+    public ResponseEntity<ApiResponse<ApiTaskResultWindow>> getTaskResults(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId,
@@ -271,28 +274,25 @@ public class TaskApiController {
             ensureTaskDetailStoreConfigured();
             List<TaskDetailStore.TaskMessageProjection> projections = loadAllTaskMessageProjections(taskId);
             int resolvedLimit = resolveResultWindow(limit);
-            List<Map<String, Object>> items = sliceTaskResultItems(projections, afterSeq, resolvedLimit);
-            long nextAfterSeq = items.isEmpty() ? afterSeq : ((Number) items.get(items.size() - 1).get("seq")).longValue();
+            List<ApiTaskResultItem> items = sliceTaskResultItems(projections, afterSeq, resolvedLimit);
+            long nextAfterSeq = items.isEmpty() ? afterSeq : items.get(items.size() - 1).seq();
             boolean taskTerminal = isTerminalTask(task);
             boolean archiveReady = isArchiveReady(task);
 
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("mode", taskTerminal && archiveReady ? "ARCHIVE_READY" : "LIVE");
-            response.put("taskId", taskId);
-            response.put("taskTerminal", taskTerminal);
-            response.put("archiveReady", archiveReady);
-            response.put("items", items);
-            response.put("nextAfterSeq", nextAfterSeq);
-            response.put("hasMore", nextAfterSeq < projections.size());
-            if (archiveReady) {
-                response.put("archiveUrl", "/api/v1/tasks/" + taskId + "/results/archive");
-            }
-            return ok(response);
+            return ok(taskApiContractAssembler.toResultWindow(
+                    taskId,
+                    taskTerminal,
+                    archiveReady,
+                    items,
+                    nextAfterSeq,
+                    nextAfterSeq < projections.size(),
+                    archiveReady ? "/api/v1/tasks/" + taskId + "/results/archive" : null
+            ));
         });
     }
 
     @GetMapping("/{taskId}/results/archive")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskResultsArchiveManifest(
+    public ResponseEntity<ApiResponse<ApiTaskResultArchive>> getTaskResultsArchiveManifest(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId) {
@@ -300,25 +300,28 @@ public class TaskApiController {
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
             ensureTaskDetailStoreConfigured();
             boolean ready = isArchiveReady(task);
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("ready", ready);
-            response.put("taskId", taskId);
-            response.put("format", "ndjson");
-            response.put("contentType", NDJSON_MEDIA_TYPE.toString());
-            response.put("contentEncoding", "gzip");
-            response.put("downloadUrl", ready ? "/api/v1/tasks/" + taskId + "/results/archive/content" : "");
             if (ready) {
                 List<TaskDetailStore.TaskMessageProjection> projections = loadAllTaskMessageProjections(taskId);
                 byte[] archiveBytes = buildTaskResultArchive(projections);
-                response.put("itemCount", projections.size());
-                response.put("byteSize", archiveBytes.length);
-                response.put("checksum", sha256Hex(archiveBytes));
-            } else {
-                response.put("itemCount", 0);
-                response.put("byteSize", 0);
-                response.put("checksum", "");
+                return ok(taskApiContractAssembler.toResultArchive(
+                        taskId,
+                        true,
+                        NDJSON_MEDIA_TYPE.toString(),
+                        projections.size(),
+                        archiveBytes.length,
+                        sha256Hex(archiveBytes),
+                        "/api/v1/tasks/" + taskId + "/results/archive/content"
+                ));
             }
-            return ok(response);
+            return ok(taskApiContractAssembler.toResultArchive(
+                    taskId,
+                    false,
+                    NDJSON_MEDIA_TYPE.toString(),
+                    0,
+                    0,
+                    "",
+                    ""
+            ));
         });
     }
 

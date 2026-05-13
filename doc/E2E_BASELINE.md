@@ -47,7 +47,7 @@ Current mainline note:
 Fixture note:
 
 - E2E tests may still use white-box fixtures for setup and fault injection
-- prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `sealTask(...)` for batch/file ingest setup code
+- prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")` for batch/file ingest setup code
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
 
 Proof-surface note:

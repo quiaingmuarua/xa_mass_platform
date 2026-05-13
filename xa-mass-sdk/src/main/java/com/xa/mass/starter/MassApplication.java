@@ -18,8 +18,11 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
+import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
+import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -29,8 +32,9 @@ import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.dispatch.TaskDispatchHandoffPump;
+import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
+import com.xa.mass.transport.runtime.TransportDispatchFailureInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -80,6 +84,10 @@ public class MassApplication {
     private TransportDeliveryService transportDeliveryService;
     private TaskDispatchHandoff taskDispatchHandoff;
     private TaskDispatchHandoffPump taskDispatchHandoffPump;
+    private RedisTaskResultIngestChannel taskResultInbox;
+    private TaskResultIngestInboxPump taskResultInboxPump;
+    private RedisTransportDispatchFailureChannel dispatchFailureInbox;
+    private TransportDispatchFailureInboxPump dispatchFailureInboxPump;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
@@ -133,6 +141,13 @@ public class MassApplication {
             try {
                 stopTransportServers();
                 stopManagedTransportAdapters();
+                TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
+                if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+                    stopTaskDispatchHandoff();
+                    stopDistributedTransportInboxes();
+                } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
+                    stopDistributedTransportInboxes();
+                }
                 drainResultIngestBuffer();
 
                 if (engine != null && engineConfig.isEnabled()) {
@@ -140,6 +155,7 @@ public class MassApplication {
                 }
             } finally {
                 stopTaskDispatchHandoff();
+                closeDistributedTransportInboxes();
                 stopTransportDeliveryService();
                 stopWorkerPresenceStore();
                 stopTransportRuntimeTaskExecutor();
@@ -165,6 +181,7 @@ public class MassApplication {
         }
         try {
             stopTaskDispatchHandoff();
+            stopDistributedTransportInboxes();
             stopTransportServers();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -238,33 +255,61 @@ public class MassApplication {
                     "transport-runtime-",
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
+            TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
             TaskDispatchBatchListener taskDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
-            if (engineConfig.isEnabled()) {
+            if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+                taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
+                taskResultIngestChannel = taskResultInbox;
+                logger.info("Task result ingest channel initialized (redis inbox producer)");
+            } else if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 BufferedTaskResultIngestChannel buffer = new BufferedTaskResultIngestChannel(
                         new RuntimeTaskResultIngestChannel(taskResultIngestFacade));
                 bufferedResultIngestChannel = buffer;
                 taskResultIngestChannel = buffer;
                 logger.info("Task result ingest channel initialized (buffered async)");
+                if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
+                    taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
+                    taskResultInboxPump = new TaskResultIngestInboxPump(
+                            taskResultInbox,
+                            buffer,
+                            transportRuntimeTaskExecutor
+                    );
+                    taskResultInboxPump.start();
+                    dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
+                    dispatchFailureInboxPump = new TransportDispatchFailureInboxPump(
+                            dispatchFailureInbox,
+                            createTransportDispatchFailureHandler(),
+                            transportRuntimeTaskExecutor
+                    );
+                    dispatchFailureInboxPump.start();
+                    logger.info("Distributed transport inbox pumps started for engine-producer role");
+                }
+            }
+            if (taskResultIngestChannel == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
+                taskResultIngestChannel = report -> false;
+                logger.info("Task result ingest channel initialized (noop because engine is disabled)");
             }
 
-            for (TransportAdapterBootstrap transportAdapterBootstrap
-                    : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
-                TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                        endpointRegistry,
-                        taskResultIngestChannel,
-                        systemEventChannel,
-                        workerPresenceStore,
-                        deliveryService,
-                        transportRuntimeTaskExecutor
-                );
-                transportAdapterBootstrap.contribute(bootstrapContext);
-                registerTransportBootstrapContext(bootstrapContext, adapterBindings);
+            if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
+                for (TransportAdapterBootstrap transportAdapterBootstrap
+                        : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
+                    TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
+                            endpointRegistry,
+                            taskResultIngestChannel,
+                            systemEventChannel,
+                            workerPresenceStore,
+                            deliveryService,
+                            transportRuntimeTaskExecutor
+                    );
+                    transportAdapterBootstrap.contribute(bootstrapContext);
+                    registerTransportBootstrapContext(bootstrapContext, adapterBindings);
+                }
             }
 
-            if (engineConfig.isEnabled()) {
+            if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         engineConfig.getWorkerStorage(),
                         taskResultIngestChannel,
@@ -273,6 +318,8 @@ public class MassApplication {
                         deliveryService,
                         adapterBindings
                 );
+            }
+            if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 engineConfig.setWorkerReachabilityView(workerId -> {
                     WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
                     if (presence == null) {
@@ -284,9 +331,26 @@ public class MassApplication {
                         case OFFLINE -> com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
                     };
                 });
-                taskDispatchHandoff = new InMemoryTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
+                    TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
+                            createTransportDispatchFailureHandler(),
+                            transportRuntimeTaskExecutor
+                    );
+                    taskDispatchHandoffPump = new TaskDispatchHandoffPump(
+                            taskDispatchHandoff,
+                            batchListener,
+                            transportRuntimeTaskExecutor
+                    );
+                    taskDispatchHandoffPump.start();
+                }
+                taskDispatchListener = (task, dispatchBindings) ->
+                        taskDispatchHandoff.submit(new TaskDispatchBatch(task, dispatchBindings));
+            } else if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+                taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
                 TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
-                        createTransportDispatchFailureHandler(),
+                        dispatchFailureInbox,
                         transportRuntimeTaskExecutor
                 );
                 taskDispatchHandoffPump = new TaskDispatchHandoffPump(
@@ -295,13 +359,12 @@ public class MassApplication {
                         transportRuntimeTaskExecutor
                 );
                 taskDispatchHandoffPump.start();
-                taskDispatchListener = (task, dispatchBindings) ->
-                        taskDispatchHandoff.submit(new TaskDispatchBatch(task, dispatchBindings));
             }
             return taskDispatchListener;
         } catch (Exception e) {
             try {
                 stopTaskDispatchHandoff();
+                stopDistributedTransportInboxes();
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -341,6 +404,10 @@ public class MassApplication {
     }
 
     private void startEngine(TaskDispatchBatchListener taskDispatchListener) {
+        if (transportRuntimeComposition.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+            logger.info("MassEngine is skipped for transport-consumer runtime role");
+            return;
+        }
         if (!engineConfig.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
             return;
@@ -421,6 +488,37 @@ public class MassApplication {
         }
     }
 
+    private void stopDistributedTransportInboxes() {
+        stopDistributedTransportInboxPumps();
+        closeDistributedTransportInboxes();
+    }
+
+    private void stopDistributedTransportInboxPumps() {
+        TaskResultIngestInboxPump resultPump = taskResultInboxPump;
+        taskResultInboxPump = null;
+        if (resultPump != null) {
+            resultPump.stop();
+        }
+        TransportDispatchFailureInboxPump failurePump = dispatchFailureInboxPump;
+        dispatchFailureInboxPump = null;
+        if (failurePump != null) {
+            failurePump.stop();
+        }
+    }
+
+    private void closeDistributedTransportInboxes() {
+        RedisTaskResultIngestChannel resultInbox = taskResultInbox;
+        taskResultInbox = null;
+        if (resultInbox != null) {
+            resultInbox.shutdown();
+        }
+        RedisTransportDispatchFailureChannel failureInbox = dispatchFailureInbox;
+        dispatchFailureInbox = null;
+        if (failureInbox != null) {
+            failureInbox.shutdown();
+        }
+    }
+
     private void stopTransportRuntimeTaskExecutor() throws Exception {
         RuntimeTaskExecutor executor = transportRuntimeTaskExecutor;
         transportRuntimeTaskExecutor = null;
@@ -493,10 +591,12 @@ public class MassApplication {
     }
 
     public boolean isRunning() {
+        boolean engineExpected = engineConfig.isEnabled()
+                && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
         return running.get()
                 && managedTransportAdapters.stream().allMatch(ManagedTransportAdapter::isRunning)
                 && transportServers.stream().allMatch(TransportServer::isRunning)
-                && (!engineConfig.isEnabled() || engine == null || engine.isRunning());
+                && (!engineExpected || engine == null || engine.isRunning());
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {

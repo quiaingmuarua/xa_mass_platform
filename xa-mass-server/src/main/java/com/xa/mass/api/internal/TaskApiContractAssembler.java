@@ -1,0 +1,335 @@
+package com.xa.mass.api.internal;
+
+import com.xa.mass.api.model.task.ApiTask;
+import com.xa.mass.api.model.task.ApiTaskAppendOutcome;
+import com.xa.mass.api.model.task.ApiTaskCommandOutcome;
+import com.xa.mass.api.model.task.ApiTaskCounters;
+import com.xa.mass.api.model.task.ApiTaskCreateOutcome;
+import com.xa.mass.api.model.task.ApiTaskExecution;
+import com.xa.mass.api.model.task.ApiTaskGetResult;
+import com.xa.mass.api.model.task.ApiTaskListResult;
+import com.xa.mass.api.model.task.ApiTaskResultArchive;
+import com.xa.mass.api.model.task.ApiTaskResultItem;
+import com.xa.mass.api.model.task.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.ApiTaskTimestamps;
+import com.xa.mass.api.model.task.ApiTaskUpdateOutcome;
+import com.xa.mass.sdk.model.TaskCommandResult;
+import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.sdk.model.TaskSummarySnapshot;
+import com.xa.mass.storage.api.TaskDetailStore;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+
+final class TaskApiContractAssembler {
+
+    private final DateTimeFormatter dateTimeFormatter;
+
+    TaskApiContractAssembler(DateTimeFormatter dateTimeFormatter) {
+        this.dateTimeFormatter = dateTimeFormatter;
+    }
+
+    ApiTaskListResult toTaskListResult(List<ApiTask> items) {
+        List<ApiTask> safeItems = items == null ? List.of() : List.copyOf(items);
+        return new ApiTaskListResult(safeItems, safeItems.size());
+    }
+
+    ApiTaskCreateOutcome toCreateOutcome(TaskShellSnapshot task, String principalId, String message) {
+        ApiTask apiTask = toApiTask(task);
+        return new ApiTaskCreateOutcome(
+                apiTask,
+                task != null ? task.getTaskId() : null,
+                task != null ? task.getTaskName() : null,
+                task != null ? task.getProject() : null,
+                task != null ? task.getUserId() : null,
+                principalId,
+                task != null ? task.getContract() : null,
+                null,
+                message
+        );
+    }
+
+    ApiTaskGetResult toGetResult(TaskDetailSnapshot task, Map<String, Object> security) {
+        return new ApiTaskGetResult(toApiTask(task), security == null ? Map.of() : Map.copyOf(security));
+    }
+
+    ApiTaskUpdateOutcome toUpdateOutcome(String taskId, TaskStateSnapshot state, String message) {
+        return new ApiTaskUpdateOutcome(
+                taskId,
+                state != null ? state.getStatus() : null,
+                state != null ? state.getIntakeStatus() : null,
+                message
+        );
+    }
+
+    ApiTaskAppendOutcome toAppendOutcome(String taskId, int added, String status, String intakeStatus, String message) {
+        return new ApiTaskAppendOutcome(taskId, added, status, intakeStatus, message);
+    }
+
+    ApiTaskCommandOutcome toCommandOutcome(TaskCommandResult result) {
+        return new ApiTaskCommandOutcome(
+                result.getTaskId(),
+                result.getCommand(),
+                result.isAccepted(),
+                result.getStatus(),
+                result.getIntakeStatus(),
+                result.getTerminalReason(),
+                result.getHoldReason(),
+                result.getFailureReason(),
+                result.getReasonCode()
+        );
+    }
+
+    ApiTaskResultWindow toResultWindow(String taskId,
+                                       boolean taskTerminal,
+                                       boolean archiveReady,
+                                       List<ApiTaskResultItem> items,
+                                       long nextAfterSeq,
+                                       boolean hasMore,
+                                       String archiveUrl) {
+        return new ApiTaskResultWindow(
+                taskTerminal && archiveReady ? "ARCHIVE_READY" : "LIVE",
+                taskId,
+                taskTerminal,
+                archiveReady,
+                items == null ? List.of() : List.copyOf(items),
+                nextAfterSeq,
+                hasMore,
+                archiveUrl
+        );
+    }
+
+    ApiTaskResultArchive toResultArchive(String taskId,
+                                         boolean ready,
+                                         String contentType,
+                                         long itemCount,
+                                         long byteSize,
+                                         String checksum,
+                                         String downloadUrl) {
+        return new ApiTaskResultArchive(
+                ready,
+                taskId,
+                "ndjson",
+                contentType,
+                "gzip",
+                itemCount,
+                byteSize,
+                checksum == null ? "" : checksum,
+                downloadUrl == null ? "" : downloadUrl
+        );
+    }
+
+    ApiTask toApiTask(TaskSummarySnapshot task) {
+        if (task == null) {
+            return null;
+        }
+        ApiTaskExecution execution = toExecution(task.getExecutionSpec());
+        ApiTaskCounters counters = new ApiTaskCounters(
+                0,
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                0,
+                0,
+                0
+        );
+        String updatedAt = formatDateTime(task.getUpdateTime());
+        ApiTaskTimestamps timestamps = new ApiTaskTimestamps(null, updatedAt, null, null);
+        return new ApiTask(
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskName(),
+                task.getTenantId(),
+                task.getProject(),
+                task.getUserId(),
+                task.getContract(),
+                task.getStatus(),
+                null,
+                task.getTerminalReason(),
+                null,
+                null,
+                execution,
+                execution,
+                counters,
+                timestamps,
+                0,
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                0,
+                0,
+                0,
+                task.getTaskSuccessNumber(),
+                task.getTaskEligibleNumber(),
+                execution.profile(),
+                execution.workloadClass(),
+                execution.batchSize(),
+                execution.maxRuntimeSeconds(),
+                execution.defaultMaxRetryCount(),
+                null,
+                updatedAt,
+                null,
+                null,
+                updatedAt
+        );
+    }
+
+    ApiTask toApiTask(TaskDetailSnapshot task) {
+        if (task == null) {
+            return null;
+        }
+        ApiTaskExecution execution = toExecution(task.getExecutionSpec());
+        ApiTaskCounters counters = new ApiTaskCounters(
+                task.getTaskTargetNumber(),
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                task.getTaskNonSuccessNumber(),
+                task.getMinRequiredWorkerCount(),
+                task.getPeakAssignedWorkerCount()
+        );
+        String createdAt = formatDateTime(task.getCreateTime());
+        String updatedAt = formatDateTime(task.getUpdateTime());
+        String startedAt = formatDateTime(task.getStartTime());
+        String endedAt = formatDateTime(task.getEndTime());
+        ApiTaskTimestamps timestamps = new ApiTaskTimestamps(createdAt, updatedAt, startedAt, endedAt);
+        return new ApiTask(
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskName(),
+                task.getTenantId(),
+                task.getProject(),
+                task.getUserId(),
+                task.getContract(),
+                task.getStatus(),
+                task.getIntakeStatus(),
+                task.getTerminalReason(),
+                task.getHoldReason(),
+                task.getSourceRef(),
+                execution,
+                execution,
+                counters,
+                timestamps,
+                task.getTaskTargetNumber(),
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                task.getTaskNonSuccessNumber(),
+                task.getMinRequiredWorkerCount(),
+                task.getPeakAssignedWorkerCount(),
+                task.getTaskSuccessNumber(),
+                task.getTaskEligibleNumber(),
+                execution.profile(),
+                execution.workloadClass(),
+                execution.batchSize(),
+                execution.maxRuntimeSeconds(),
+                execution.defaultMaxRetryCount(),
+                createdAt,
+                updatedAt,
+                startedAt,
+                endedAt,
+                updatedAt
+        );
+    }
+
+    ApiTask toApiTask(TaskShellSnapshot task) {
+        if (task == null) {
+            return null;
+        }
+        ApiTaskExecution execution = toExecution(null);
+        ApiTaskCounters counters = new ApiTaskCounters(0, 0, 0, 0, 0, 0);
+        ApiTaskTimestamps timestamps = new ApiTaskTimestamps(null, null, null, null);
+        return new ApiTask(
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskId(),
+                task.getTaskName(),
+                task.getTenantId(),
+                task.getProject(),
+                task.getUserId(),
+                task.getContract(),
+                null,
+                null,
+                null,
+                null,
+                task.getSourceRef(),
+                execution,
+                execution,
+                counters,
+                timestamps,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                execution.profile(),
+                execution.workloadClass(),
+                execution.batchSize(),
+                execution.maxRuntimeSeconds(),
+                execution.defaultMaxRetryCount(),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    ApiTaskResultItem toResultItem(TaskDetailStore.TaskMessageProjection projection, long seq) {
+        return new ApiTaskResultItem(
+                seq,
+                projection.messageId(),
+                resolveProjectionEventCode(projection),
+                enumName(projection.status()),
+                enumName(projection.finalReason()),
+                projection.retryCount(),
+                projection.maxRetryCount(),
+                projection.latestAttemptWorkerId(),
+                projection.latestAttemptWorkerContextId(),
+                projection.latestAttemptBatchId(),
+                projection.latestAttemptId(),
+                projection.payloadRef(),
+                formatDateTime(projection.createTime()),
+                formatDateTime(projection.assignedTime()),
+                formatDateTime(projection.startTime()),
+                formatDateTime(projection.completeTime()),
+                formatDateTime(projection.updateTime()),
+                projection.errorCode(),
+                projection.errorMessage(),
+                projection.output()
+        );
+    }
+
+    private ApiTaskExecution toExecution(TaskExecutionOptions options) {
+        TaskExecutionOptions normalized = TaskExecutionOptions.normalized(options);
+        return new ApiTaskExecution(
+                normalized.getProfile(),
+                normalized.getWorkloadClass(),
+                normalized.getBatchSize(),
+                normalized.getMaxRuntimeSeconds(),
+                normalized.getDefaultMaxRetryCount()
+        );
+    }
+
+    private String resolveProjectionEventCode(TaskDetailStore.TaskMessageProjection projection) {
+        if (projection == null || projection.input() == null) {
+            return null;
+        }
+        Object rawValue = projection.input().get("eventCode");
+        return rawValue == null ? null : String.valueOf(rawValue);
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    private String formatDateTime(LocalDateTime value) {
+        return value == null ? "" : value.format(dateTimeFormatter);
+    }
+}

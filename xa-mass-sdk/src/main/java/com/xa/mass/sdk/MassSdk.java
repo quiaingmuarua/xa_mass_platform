@@ -11,6 +11,7 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
+import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
@@ -158,6 +159,51 @@ public final class MassSdk {
 
         public TransportOptions redisPresenceStore(String redisUri, String namespacePrefix) {
             delegate.redisPresenceStore(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDispatchHandoff(String redisUri) {
+            delegate.redisDispatchHandoff(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDispatchHandoff(String redisUri, String namespacePrefix) {
+            delegate.redisDispatchHandoff(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisResultInbox(String redisUri) {
+            delegate.redisResultInbox(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisResultInbox(String redisUri, String namespacePrefix) {
+            delegate.redisResultInbox(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDispatchFailureInbox(String redisUri) {
+            delegate.redisDispatchFailureInbox(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDispatchFailureInbox(String redisUri, String namespacePrefix) {
+            delegate.redisDispatchFailureInbox(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDistributedChannels(String redisUri) {
+            delegate.redisDistributedChannels(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDistributedChannels(String redisUri, String namespacePrefix) {
+            delegate.redisDistributedChannels(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions transportRuntimeRole(TransportRuntimeRole runtimeRole) {
+            delegate.transportRuntimeRole(runtimeRole);
             return this;
         }
 

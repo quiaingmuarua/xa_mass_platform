@@ -4,7 +4,10 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -12,6 +15,7 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -56,6 +60,9 @@ public class TransportRuntimeComposition {
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
+    private final Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory;
+    private final Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
+    private final Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
@@ -64,6 +71,7 @@ public class TransportRuntimeComposition {
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
     private final long workerPresenceLeaseMillis;
+    private final TransportRuntimeRole runtimeRole;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
@@ -88,6 +96,9 @@ public class TransportRuntimeComposition {
                 .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.deliveryStoreFactory = source.deliveryStoreFactory();
+        this.taskDispatchHandoffFactory = source.taskDispatchHandoffFactory();
+        this.taskResultInboxFactory = source.taskResultInboxFactory();
+        this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
@@ -96,6 +107,7 @@ public class TransportRuntimeComposition {
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
         this.workerPresenceLeaseMillis = source.getWorkerPresenceLeaseMillis();
+        this.runtimeRole = source.getRuntimeRole();
     }
 
     public boolean isEnabled() {
@@ -189,6 +201,26 @@ public class TransportRuntimeComposition {
                 : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems, maxDeliveryItemsPerRoute);
     }
 
+    public TaskDispatchHandoff resolveTaskDispatchHandoff(int defaultCapacity) {
+        return taskDispatchHandoffFactory != null
+                ? taskDispatchHandoffFactory.get()
+                : new InMemoryTaskDispatchHandoff(defaultCapacity);
+    }
+
+    public RedisTaskResultIngestChannel resolveTaskResultInbox() {
+        if (taskResultInboxFactory == null) {
+            throw new IllegalStateException("Task result inbox is not configured for split transport runtime");
+        }
+        return taskResultInboxFactory.get();
+    }
+
+    public RedisTransportDispatchFailureChannel resolveDispatchFailureInbox() {
+        if (dispatchFailureInboxFactory == null) {
+            throw new IllegalStateException("Dispatch failure inbox is not configured for split transport runtime");
+        }
+        return dispatchFailureInboxFactory.get();
+    }
+
     public WorkerPresenceStore resolveWorkerPresenceStore() {
         if (runtimeOwnedPresenceStore == null) {
             runtimeOwnedPresenceStore = presenceStoreFactory != null
@@ -232,6 +264,10 @@ public class TransportRuntimeComposition {
 
     public int getTransportRuntimeMaxPendingTasks() {
         return transportRuntimeMaxPendingTasks;
+    }
+
+    public TransportRuntimeRole getRuntimeRole() {
+        return runtimeRole;
     }
 
     public int getEventRuntimeMaxPendingTasks() {

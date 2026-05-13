@@ -76,6 +76,7 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
+import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -423,6 +424,42 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertSame(store, runtimeComposition.resolveTransportDeliveryStore());
+    }
+
+    @Test
+    void transportRuntimeRoleDefaultsToEmbeddedAndSnapshotsConfiguredValue() {
+        TransportConfig config = new TransportConfig();
+        assertEquals(TransportRuntimeRole.EMBEDDED, config.snapshotRuntimeComposition().getRuntimeRole());
+
+        config.setRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        config.setRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER);
+
+        assertEquals(TransportRuntimeRole.ENGINE_PRODUCER, runtimeComposition.getRuntimeRole());
+        assertEquals(TransportRuntimeRole.TRANSPORT_CONSUMER, config.snapshotRuntimeComposition().getRuntimeRole());
+
+        config.setRuntimeRole(null);
+        assertEquals(TransportRuntimeRole.EMBEDDED, config.snapshotRuntimeComposition().getRuntimeRole());
+    }
+
+    @Test
+    void sdkTransportOptionsExposeDistributedRuntimeRoleAndRedisChannels() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                        .redisDistributedChannels("redis://localhost:6379", "test:xa:distributed")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(true))
+                .build();
+
+        TransportRuntimeComposition runtimeComposition = readField(
+                requireDelegate(app),
+                "transportRuntimeComposition",
+                TransportRuntimeComposition.class
+        );
+
+        assertEquals(TransportRuntimeRole.TRANSPORT_CONSUMER, runtimeComposition.getRuntimeRole());
+        assertNull(requireDelegate(app).getEngine());
     }
 
     @Test
@@ -1455,7 +1492,7 @@ class MassSdkTest {
     }
 
     @Test
-    void taskAdminCommandsUseSdkCommandSurface() {
+    void taskAdminCommandsUseSdkResumeAndUpdateSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskCommandService taskCommands = mock(TaskCommandService.class);
@@ -1475,7 +1512,6 @@ class MassSdkTest {
         when(taskQueries.getTask("task-1")).thenReturn(task);
         when(taskCommands.resumeTaskDetailed("task-1")).thenReturn(TaskResumeResult.resumedToReady());
         when(taskCommands.updateTask(task)).thenReturn(true);
-        when(taskCommands.deleteTask("task-1")).thenReturn(true);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1485,7 +1521,6 @@ class MassSdkTest {
                 .userId("user-2")
                 .sharedConfig(Map.of("routingCode", "us"))
                 .build());
-        boolean deleted = app.deleteTask("task-1");
 
         assertTrue(resumeResult.success());
         assertEquals("READY", resumeResult.status());
@@ -1494,10 +1529,8 @@ class MassSdkTest {
         assertEquals("testApp", task.getProject());
         assertEquals("user-2", task.getUser().getUserId());
         assertEquals(Map.of("routingCode", "us"), task.getSharedConfig());
-        assertTrue(deleted);
         verify(taskCommands).resumeTaskDetailed("task-1");
         verify(taskCommands).updateTask(task);
-        verify(taskCommands).deleteTask("task-1");
     }
 
     @Test

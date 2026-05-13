@@ -51,12 +51,12 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> rejectResponse = rejectTask(taskId);
         assertApiOk(rejectResponse);
-        assertEquals("BLOCKED", responseData(rejectResponse).get("newStatus"));
+        assertEquals("BLOCKED", responseData(rejectResponse).get("status"));
         assertEquals("BLOCKED", task(taskId).get("status"));
 
         Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
-        assertEquals("READY", responseData(approveResponse).get("newStatus"));
+        assertEquals("READY", responseData(approveResponse).get("status"));
         assertEquals("READY", task(taskId).get("status"));
     }
 
@@ -178,7 +178,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void deleteGuardRejectsApprovedTaskButAllowsDeletingNewTask() {
+    void publicDeleteRouteIsNotSupported() {
         String approvedTaskId = createSeededTaskShell("guard-delete-approved");
 
         Map<String, Object> approveResponse = approveTask(approvedTaskId);
@@ -190,24 +190,8 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
                 HttpMethod.DELETE,
                 null
         );
-        assertApiError(rejectDeleteResponse, 400);
+        assertApiError(rejectDeleteResponse, 405);
         assertEquals("READY", task(approvedTaskId).get("status"));
-
-        String newTaskId = createSeededTaskShell("guard-delete-new");
-        Map<String, Object> deleteNewResponse = exchange(
-                "/api/v1/tasks/" + newTaskId,
-                HttpMethod.DELETE,
-                null
-        );
-        assertApiOk(deleteNewResponse);
-
-        ResponseEntity<Map> missingTaskResponse = restTemplate.exchange(
-                "http://127.0.0.1:" + port + "/api/v1/tasks/" + newTaskId,
-                HttpMethod.GET,
-                HttpEntity.EMPTY,
-                Map.class
-        );
-        assertEquals(404, missingTaskResponse.getStatusCode().value());
     }
 
     @Test

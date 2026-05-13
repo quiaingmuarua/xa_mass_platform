@@ -3,12 +3,15 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
+import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -48,6 +51,9 @@ public class TransportConfig {
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<TransportDeliveryStore> deliveryStoreFactory;
+    private Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory;
+    private Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
+    private Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
@@ -56,6 +62,7 @@ public class TransportConfig {
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
     private long workerPresenceLeaseMillis = 30_000L;
+    private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
@@ -84,6 +91,9 @@ public class TransportConfig {
                 .toList();
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.deliveryStoreFactory = source.deliveryStoreFactory;
+        this.taskDispatchHandoffFactory = source.taskDispatchHandoffFactory;
+        this.taskResultInboxFactory = source.taskResultInboxFactory;
+        this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
@@ -92,6 +102,7 @@ public class TransportConfig {
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.workerPresenceLeaseMillis = source.workerPresenceLeaseMillis;
+        this.runtimeRole = source.runtimeRole;
     }
 
     public boolean isEnabled() {
@@ -254,6 +265,30 @@ public class TransportConfig {
         this.deliveryStoreFactory = deliveryStoreFactory;
     }
 
+    public Supplier<TaskDispatchHandoff> getTaskDispatchHandoffFactory() {
+        return taskDispatchHandoffFactory;
+    }
+
+    public void setTaskDispatchHandoffFactory(Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory) {
+        this.taskDispatchHandoffFactory = taskDispatchHandoffFactory;
+    }
+
+    public Supplier<RedisTaskResultIngestChannel> getTaskResultInboxFactory() {
+        return taskResultInboxFactory;
+    }
+
+    public void setTaskResultInboxFactory(Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory) {
+        this.taskResultInboxFactory = taskResultInboxFactory;
+    }
+
+    public Supplier<RedisTransportDispatchFailureChannel> getDispatchFailureInboxFactory() {
+        return dispatchFailureInboxFactory;
+    }
+
+    public void setDispatchFailureInboxFactory(Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory) {
+        this.dispatchFailureInboxFactory = dispatchFailureInboxFactory;
+    }
+
     public TransportAdapterBootstrap getPrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap;
     }
@@ -311,6 +346,14 @@ public class TransportConfig {
         return eventHandlerTimeoutMillis;
     }
 
+    public TransportRuntimeRole getRuntimeRole() {
+        return runtimeRole;
+    }
+
+    public void setRuntimeRole(TransportRuntimeRole runtimeRole) {
+        this.runtimeRole = runtimeRole == null ? TransportRuntimeRole.EMBEDDED : runtimeRole;
+    }
+
     public int getTransportRuntimeMaxPendingTasks() {
         return transportRuntimeMaxPendingTasks;
     }
@@ -346,6 +389,18 @@ public class TransportConfig {
 
     Supplier<TransportDeliveryStore> deliveryStoreFactory() {
         return deliveryStoreFactory;
+    }
+
+    Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory() {
+        return taskDispatchHandoffFactory;
+    }
+
+    Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory() {
+        return taskResultInboxFactory;
+    }
+
+    Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory() {
+        return dispatchFailureInboxFactory;
     }
 
     Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver() {

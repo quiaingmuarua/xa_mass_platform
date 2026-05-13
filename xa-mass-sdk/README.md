@@ -116,6 +116,55 @@ presence explicitly through `redisPresenceStore(...)` or `presenceStoreFactory(.
 Adapters still own local session/connect/heartbeat ingress, but shared presence
 projection belongs to transport runtime rather than engine-local worker status.
 
+Distributed transport v1 splits one engine producer JVM from one or more
+transport consumer JVMs without adding server-owned transport endpoints. Use
+Redis-backed runtime channels for dispatch handoff, result ingest, and
+dispatch-failure compensation:
+
+```java
+import com.xa.mass.starter.config.TransportRuntimeRole;
+
+String redisUri = "redis://localhost:6379";
+
+MassSdkApplication engineProducer = MassSdk.builder()
+        .transport(transport -> transport
+                .transportRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER)
+                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .redisPresenceStore(redisUri, "xa:mass:prod:presence")
+                .redisDeliveryStore(redisUri, "xa:mass:prod:delivery")
+                .webSocketAdapter(webSocket -> webSocket
+                        .enabled(false)
+                        .serverEnabled(false)))
+        .engine(engine -> engine.enabled(true))
+        .build();
+```
+
+```java
+import com.xa.mass.starter.config.TransportRuntimeRole;
+
+String redisUri = "redis://localhost:6379";
+
+MassSdkApplication transportConsumer = MassSdk.builder()
+        .transport(transport -> transport
+                .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .redisPresenceStore(redisUri, "xa:mass:prod:presence")
+                .redisDeliveryStore(redisUri, "xa:mass:prod:delivery")
+                .webSocketAdapter(webSocket -> webSocket
+                        .adapterId("ws-public")
+                        .server(19090, "/ws")
+                        .enabled(true)
+                        .serverEnabled(true)))
+        .engine(engine -> engine.enabled(false))
+        .build();
+```
+
+The dispatch handoff carries only post-claim `TaskDispatchBatch` values. It is
+not a duplicate of the runtime ready queue, and transport consumers must not
+apply results, retry tasks, or mutate task lifecycle directly. Result and
+retryable dispatch-failure inboxes are drained by the engine producer into its
+local engine ports.
+
 For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
 same concept. For example, two bundled WebSocket instances might use adapter ids
 such as `ws-public` and `ws-internal`; both still belong to transport hint
@@ -231,7 +280,10 @@ Assignment no longer hands dispatch-ready batches straight into the transport
 routing listener. SDK runtime assembly now inserts an explicit
 `TaskDispatchHandoff` seam between engine and transport; the bundled default is
 still an in-memory queue plus pump, but the replacement boundary is now
-explicit for future durable or cross-node runtime wiring.
+explicit for split runtime wiring through `redisDispatchHandoff(...)` or
+`redisDistributedChannels(...)`. The companion result and dispatch-failure
+Redis inboxes are runtime channels back to the engine process; they are not
+server APIs and they do not move task lifecycle ownership into transport.
 
 ## Compatibility Policy
 

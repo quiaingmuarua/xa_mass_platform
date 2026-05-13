@@ -436,7 +436,7 @@ High-signal classes:
 
 Fixture rules:
 
-- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `sealTask(...)`
+- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
 - worker JSON and worker-context JSON are fixture inputs, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
 - direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to

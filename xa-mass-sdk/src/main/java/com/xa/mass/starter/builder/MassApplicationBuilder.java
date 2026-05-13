@@ -17,12 +17,16 @@ import com.xa.mass.starter.RuntimeEventBusEngineBridge;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
+import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
+import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.dispatch.RedisTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
@@ -78,9 +82,12 @@ public class MassApplicationBuilder {
                 engineSnapshot.isEnabled());
 
         MassEngine engine = null;
-        if (engineSnapshot.isEnabled()) {
+        if (engineSnapshot.isEnabled()
+                && transportSnapshot.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER) {
             engine = new MassEngine(engineSnapshot);
             logger.info("MassEngine built");
+        } else if (transportSnapshot.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+            logger.info("MassEngine is skipped for transport-consumer runtime role");
         } else {
             logger.info("MassEngine is disabled, skipping build");
         }
@@ -94,6 +101,9 @@ public class MassApplicationBuilder {
 
     private static void autoWireRuntimeEventBusBridge(TransportConfig transportSnapshot, EngineConfig engineSnapshot) {
         if (!engineSnapshot.isEnabled()) {
+            return;
+        }
+        if (transportSnapshot.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
             return;
         }
         if (engineSnapshot.getRuntimeBridge() != EngineRuntimeBridge.noop()) {
@@ -232,6 +242,62 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder redisDispatchHandoff(String redisUri) {
+            return redisDispatchHandoff(redisUri, RedisTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisDispatchHandoff(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = requireRedisUri(redisUri);
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            config.setTaskDispatchHandoffFactory(() -> new RedisTaskDispatchHandoff(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    RedisTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES
+            ));
+            return this;
+        }
+
+        public TransportBuilder redisResultInbox(String redisUri) {
+            return redisResultInbox(redisUri, RedisTaskResultIngestChannel.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisResultInbox(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = requireRedisUri(redisUri);
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            config.setTaskResultInboxFactory(() -> new RedisTaskResultIngestChannel(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    RedisTaskResultIngestChannel.DEFAULT_MAX_QUEUED_RESULTS
+            ));
+            return this;
+        }
+
+        public TransportBuilder redisDispatchFailureInbox(String redisUri) {
+            return redisDispatchFailureInbox(redisUri, RedisTransportDispatchFailureChannel.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisDispatchFailureInbox(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = requireRedisUri(redisUri);
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            config.setDispatchFailureInboxFactory(() -> new RedisTransportDispatchFailureChannel(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    RedisTransportDispatchFailureChannel.DEFAULT_MAX_QUEUED_FAILURES
+            ));
+            return this;
+        }
+
+        public TransportBuilder redisDistributedChannels(String redisUri) {
+            return redisDistributedChannels(redisUri, "xa:mass:transport:distributed:v1");
+        }
+
+        public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            return redisDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-handoff")
+                    .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
+                    .redisDispatchFailureInbox(redisUri, normalizedNamespacePrefix + ":dispatch-failure");
+        }
+
         public TransportBuilder presenceStoreFactory(Supplier<com.xa.mass.transport.presence.WorkerPresenceStore> presenceStoreFactory) {
             config.setPresenceStoreFactory(Objects.requireNonNull(presenceStoreFactory, "presenceStoreFactory"));
             return this;
@@ -273,6 +339,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder transportRuntimeRole(TransportRuntimeRole runtimeRole) {
+            config.setRuntimeRole(runtimeRole);
+            return this;
+        }
+
         public TransportBuilder transportRuntimeMaxPendingTasks(int maxPendingTasks) {
             config.setTransportRuntimeMaxPendingTasks(maxPendingTasks);
             return this;
@@ -307,6 +378,22 @@ public class MassApplicationBuilder {
         public TransportBuilder queueMode() {
             config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
             return this;
+        }
+
+        private String requireRedisUri(String redisUri) {
+            String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
+            if (normalizedRedisUri.isBlank()) {
+                throw new IllegalArgumentException("redisUri must not be blank");
+            }
+            return normalizedRedisUri;
+        }
+
+        private String requireNamespacePrefix(String namespacePrefix) {
+            String normalizedNamespacePrefix = Objects.requireNonNull(namespacePrefix, "namespacePrefix").trim();
+            if (normalizedNamespacePrefix.isBlank()) {
+                throw new IllegalArgumentException("namespacePrefix must not be blank");
+            }
+            return normalizedNamespacePrefix;
         }
 
         /**

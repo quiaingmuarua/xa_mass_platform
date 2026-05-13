@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-05-11
+Last updated: 2026-05-13
 
 Status: current transport boundary baseline.
 
@@ -45,6 +45,8 @@ Transport should stay centered on these concepts only:
   delivery
 - `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
+- `TaskDispatchHandoff`: post-claim assignment queue between engine and
+  transport; it is not the runtime ready queue
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
@@ -105,6 +107,51 @@ Shared-store implementations such as Redis must preserve the same canonical
 presence record shape and route-ownership semantics as the in-memory default;
 transport runtime may swap the store implementation, but engine reachability
 consumption must remain unchanged.
+
+## Distributed Transport V1
+
+The first split deployment is central engine plus independent transport JVMs.
+It is queue-first and does not add server-owned transport ingress endpoints.
+`xa-mass-server` remains a shell/API validation surface, not the transport data
+plane owner.
+
+The split runtime uses three transport/runtime channels:
+
+- dispatch handoff: engine submits `TaskDispatchBatch` values after claim,
+  attempt creation, lease, and worker binding have already happened; transport
+  drains only this small assigned window
+- delivery inbox: transport routes dispatch envelopes into
+  `TransportDeliveryStore` by `adapterId + routeKey`
+- result/compensation inboxes: transport writes `TransportResultEnvelope`
+  values and retryable dispatch-failure events to Redis-backed inboxes; the
+  engine process drains those inboxes into its local result ingest and
+  assignment compensation ports
+
+These queues are runtime-state queues. They must be bounded and must preserve
+backpressure instead of growing without limit. They also must not be treated as
+durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
+membership, delayed visibility, active lease, retry timing, result application,
+and terminal convergence.
+
+`TaskDispatchBatch` is the process-boundary payload for dispatch handoff. It
+contains `TaskDispatchContext` plus `List<TaskDispatchBinding>` and must stay
+JSON-safe. Large item bodies continue to use `payloadRef` when needed; the
+handoff queue is not a copy of a million-item task queue.
+
+SDK/starter assembly exposes three runtime roles:
+
+- `EMBEDDED`: engine, local handoff pump, transport runtime, adapters, and local
+  result ingest run in one JVM
+- `ENGINE_PRODUCER`: engine runs and submits dispatch batches into the configured
+  handoff; it drains result and dispatch-failure inboxes back into local engine
+  ports, but does not start transport adapters
+- `TRANSPORT_CONSUMER`: transport adapters, presence, delivery store, and
+  handoff pump run without starting the engine; results and retryable dispatch
+  failures are enqueued for engine-side draining
+
+Transport consumers may read shared worker/control-plane storage for worker
+lookup through storage contracts. They must not call engine/server APIs for
+worker lookup, result finality, retry, release, or task state mutation.
 
 Presence owner semantics are also part of the transport contract:
 
@@ -260,12 +307,12 @@ maps beyond the immutable copies already owned by packet assembly. Retryable
 dispatch outcomes must correlate by explicit `attemptId`; transport trace ids
 are diagnostics and must not double as compensation keys.
 
-Assignment-to-transport handoff is also part of the hot path. The current
-runtime uses an in-memory `TaskDispatchHandoff` plus `TaskDispatchHandoffPump`
-as the explicit producer/consumer seam. This is still node-local today, but it
-is now the queue/store replacement point for a future durable or cross-node
-handoff. Do not reintroduce direct synchronous engine->transport callback
-coupling as a parallel mainline.
+Assignment-to-transport handoff is also part of the hot path. The embedded
+runtime uses an in-memory `TaskDispatchHandoff` plus `TaskDispatchHandoffPump`;
+split runtime uses a Redis-backed handoff with the same producer/consumer
+contract. Do not reintroduce direct synchronous engine->transport callback
+coupling as a parallel mainline, and do not treat the handoff queue as a second
+runtime ready queue.
 
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has both per-worker queue caps and a configurable total
