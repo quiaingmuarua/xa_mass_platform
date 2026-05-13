@@ -39,9 +39,15 @@ with the owning module README under `mass-storage-memory/` or
 Current truth for this conservative first slice:
 
 - `mass-queue-primitives` owns narrow keyed queue/blocking-poll/backpressure mechanics shared by runtime modules without redefining task or transport semantics
-- `mass-runtime-api` owns the shared `TaskWorkRuntime` contract and related value types
-- `mass-runtime-memory` owns the current in-memory runtime implementation and its focused tests
-- `mass-runtime-redis` now owns the Redis-backed runtime implementation plus its keyspace/index baseline; it remains an explicit opt-in path outside the verified default runtime mainline
+- `mass-runtime-api` owns the shared runtime contracts and related value types:
+  `TaskWorkRuntime` for queue/lease/retry/apply truth and
+  `TaskResultRuntime` for stable-final result-read truth, repair staging,
+  task-local result sequence, and barriers
+- `mass-runtime-memory` owns the current in-memory runtime implementations and
+  their focused tests
+- `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
+  their keyspace/index baseline; it remains an explicit opt-in path outside the
+  verified default runtime mainline
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
@@ -62,7 +68,9 @@ Boundary to keep stable:
 - runtime modules own queue, lease, delayed, expiry, counter, and backpressure truth
 - storage modules own durable control-plane truth
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
-- when trace/audit sinks are not landed yet, keep trace-shaped detail in bounded runtime projections or logs only as temporary residue; do not redefine that residue as control-plane truth
+- bounded compatibility projection and runtime residue remain temporary/debug
+  material even though `mass-trace-sink` is landed; do not redefine that
+  residue as control-plane truth, lifecycle truth, or public result-read truth
 
 When docs and code disagree inside `platform_infra/`, preserve the disagreement
 explicitly in the owner README as "current implementation drift" rather than

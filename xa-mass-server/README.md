@@ -24,12 +24,6 @@ assets.
 - acts as a reference host and validation shell; server HTTP/auth/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
 - acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
-- default `dev` startup can seed a mainline in-process demo shell through `DevDemoBootstrapConfiguration` when `mass.demo.bootstrap.enabled=true`
-- the default dev demo shell registers demo projects, events, submitters, workers, contexts, and seeded task shells strictly through SDK-native APIs
-- the same default dev path now auto-starts embedded sample WebSocket clients against the local adapter so those SDK-registered demo workers actually go `ONLINE` and process the seeded demo tasks
-- JSON fixture bootstrap remains a test-only input path; packaged fixture files are not the default dev startup source anymore
-- default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
-  protected by `X-Sample-Bootstrap-Key`
 
 Controller/console ownership now includes:
 
@@ -37,6 +31,12 @@ Controller/console ownership now includes:
 - DTO / request-response boundary
 - backend-hosted control console shell
 - frontend route serving from built `frontend/dist`
+
+What this module does not own:
+
+- task lifecycle, assignment, retry, terminal, or result-kernel semantics
+- the stable integration contract for external workers or embedding callers
+- runtime truth defined by transport or sample/demo protocol details
 
 ## Security Wiring
 
@@ -114,25 +114,28 @@ Control-console routing note:
   `/api/v1/projects/**`, and the console exposes it as a first-class navigation
   entry through `Resources -> Projects`
 
-## Dev Demo Bootstrap
+## Dev Shell Details
+
+Everything below this section is intentionally dev/demo/sample wiring. It is
+useful for local validation, Boot-shell E2E, and black-box debugging, but it is
+not the stable definition of platform ownership.
+
+### Dev Demo Bootstrap
 
 When `spring.profiles.active=dev` and `mass.demo.bootstrap.enabled=true`, the server starts with a mainline demo shell instead of an external fixture bootstrap.
 
-Current default demo shape:
+The demo bootstrap intentionally stays inside server-owned dev wiring:
 
-- projects: `demoApp`, `demoOps`
-- events: `demo.dispatch`, `demo.dispatch.gb`
-- submitter credentials:
-  - `demo-app-key`
-  - `demo-ops-key`
-  - `demo-admin-key`
-- workers: `36` SDK-registered demo workers with lane-tagged contexts
-- tasks: `12` seeded tasks with `1500` items each by default
-- task mix per project: active/running backlog, pending approval, paused, and blocked states
+- demo projects, events, submitters, workers, contexts, and seeded task shells
+  are registered strictly through SDK-native APIs
+- the default dev path can auto-start embedded sample adapter clients so the
+  seeded demo workers go `ONLINE` and process demo tasks
+- JSON fixture bootstrap remains a test-only input path; packaged fixture files
+  are not the default dev startup source
+- sample-only bootstrap writes stay behind `/sample-api/bootstrap/*` protected
+  by `X-Sample-Bootstrap-Key`
 
-The demo bootstrap intentionally stays inside server-owned dev wiring. It does not add new SDK product semantics and it does not rely on test-only JSON aggregate fixtures.
-
-## Effective Sample Client Startup
+### Effective Sample Client Startup
 
 For test or explicit fixture paths, embedded sample clients are owned by `xa-mass-worker-pack` and started by:
 
@@ -151,7 +154,7 @@ Startup behavior:
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
 
-## Worker Resource Fixtures
+### Worker Resource Fixtures
 
 `MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
 
@@ -174,7 +177,7 @@ Default worker fixtures now carry a small executor profile:
 These labels are dev/E2E routing and observability signals. Production-style
 resources should still be created through the SDK resource APIs.
 
-## Sample Worker Execution Behavior
+### Sample Worker Execution Behavior
 
 Auto-started sample WebSocket clients behave like lightweight executors:
 
@@ -187,7 +190,7 @@ Auto-started sample WebSocket clients behave like lightweight executors:
 The extra payload fields are server observability data. Lifecycle decisions
 still come from the task kernel, attempts, and result status.
 
-## Sample Command Runtime
+### Sample Command Runtime
 
 `xa-mass-server` exposes the worker-pack sample command runtime through normal task execution.
 

@@ -28,7 +28,10 @@ Current kernel truth is intentionally narrow:
 
 - `Task.contract` answers whether the task is `SESSION` or `BATCH`
 - `Task.intakeStatus` answers whether ingress remains `OPEN` or is already `SEALED`
-- `TaskWorkRuntime` answers ready/delayed/lease/result/counter truth for execution
+- `TaskWorkRuntime` answers ready/delayed/lease/counter truth for execution
+- result convergence is runtime-first, but the active owner split is documented
+  in [`doc/RESULT_BOUNDARY_BASELINE.md`](./doc/RESULT_BOUNDARY_BASELINE.md)
+  and current engine/runtime code rather than frozen in this summary
 
 Current mainline execution path:
 
@@ -68,16 +71,19 @@ Current integration boundary rule:
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; runtime ingress payload or `payloadRef` is the per-item payload boundary
-- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and result application; message/attempt projection residue remains bounded compatibility/audit material rather than kernel runtime truth
+- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and backpressure truth
+- result convergence remains runtime-first; verify the active split between
+  runtime apply truth, stable-final result rows, and compatibility residue from
+  [`doc/RESULT_BOUNDARY_BASELINE.md`](./doc/RESULT_BOUNDARY_BASELINE.md)
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 
 ## Module Map
 
 - `xa-mass-base`: shared base models, enums, utility infrastructure, and low-level channel primitives used across the reactor
 - `platform_infra/mass-queue-primitives`: narrow keyed queue/blocking-poll/backpressure primitive used by runtime modules that should not own queue bookkeeping directly
-- `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contract used by engine, transport, server, and test shells
-- `platform_infra/mass-runtime-memory`: in-memory `TaskWorkRuntime` implementation for the current default embedded path and focused runtime tests
-- `platform_infra/mass-runtime-redis`: Redis-backed `TaskWorkRuntime` implementation plus its keyspace/index baseline; explicit opt-in, not the current default verified runtime path
+- `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contracts plus the active result-runtime boundary used by engine, transport, server, and test shells
+- `platform_infra/mass-runtime-memory`: in-memory runtime implementations for the current default embedded path and focused runtime tests
+- `platform_infra/mass-runtime-redis`: Redis-backed runtime implementations plus their keyspace/index baseline; explicit opt-in, not the current default verified runtime path
 - `platform_infra/mass-storage-api`: shared task/worker/rule storage contracts and storage-adjacent rule types used across engine, JDBC adapters, server, SDK, and tests
 - `platform_infra/mass-storage-memory`: in-memory control-plane task/worker storage plus the current in-memory rule helpers used by SDK/server defaults and focused tests
 - `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth; current implementation also keeps compatibility projections in-process
@@ -99,6 +105,7 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 ## Pointers
 
 - runtime infra ownership: [platform_infra/README.md](./platform_infra/README.md)
+- result owner baseline: [doc/RESULT_BOUNDARY_BASELINE.md](./doc/RESULT_BOUNDARY_BASELINE.md)
 - storage-jdbc ownership and current drift notes: [platform_infra/mass-storage-jdbc/README.md](./platform_infra/mass-storage-jdbc/README.md)
 - Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
 - startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)

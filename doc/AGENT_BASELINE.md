@@ -22,7 +22,9 @@ flows, commands, and module-local inventories.
 - kernel truth is explicitly split across:
   - `Task.contract`
   - `Task.intakeStatus`
-  - `TaskWorkRuntime`
+  - `TaskWorkRuntime` for ready/delayed/lease/counter truth
+- result convergence is runtime-first, but the active owner split must be
+  verified from `RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime code
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
@@ -48,7 +50,11 @@ Current owner vocabulary:
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
-  and result application
+  and backpressure truth
+- result apply and visible final-result ownership are runtime-first concerns;
+  verify `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`,
+  `TaskResultRuntime`, and `RESULT_BOUNDARY_BASELINE.md` together before
+  documenting the split more narrowly
 - current bounded compatibility residue lives behind engine-internal owners plus
   neutral storage-edge projection records; legacy message-model naming is
   intentionally not part of the active public/kernel vocabulary
@@ -96,11 +102,17 @@ Boundary rules:
 - embedded runtime composition: `xa-mass-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions
 - current runtime/storage split:
-  - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts
+  - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts plus
+    the active result-runtime boundary
   - `platform_infra/mass-runtime-memory` is the current verified runtime implementation
   - `platform_infra/mass-storage-api` owns task/worker/rule storage contracts
 - current engine truth:
-  - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and backpressure truth
+  - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry,
+    and backpressure truth
+  - result convergence is runtime-first and currently crosses
+    `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`, and the
+    result-runtime/public-result boundary documented in
+    `RESULT_BOUNDARY_BASELINE.md`
   - bounded message/attempt compatibility state is carried through
     `TaskMessageProjection` / `TaskMessageAttemptProjection` plus
     engine-internal projection access
@@ -120,14 +132,17 @@ Read these before inferring architecture from historical vocabulary:
 2. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskLifecycleService.java`
 3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java`
 4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java`
-5. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
+5. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java`
+6. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
+7. `doc/RESULT_BOUNDARY_BASELINE.md`
 
 Read them to verify three things quickly:
 
 - runtime admission happens through `TaskWorkRuntime`, not through a
   task-message CRUD mainline
-- callback/expiry/result convergence is runtime-first, with compatibility
-  projection written afterward as bounded residue
+- callback/expiry/result convergence is runtime-first; verify the split between
+  runtime apply truth, stable-final result rows, and compatibility residue from
+  the active result baseline and code
 - bounded message/attempt reads live behind explicit compatibility surfaces and
   are not the default engine query model
 

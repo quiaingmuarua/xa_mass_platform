@@ -11,7 +11,10 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - Kernel truth is currently split across:
   - `Task.contract` for runtime contract
   - `Task.intakeStatus` for intake-window truth
-  - `TaskWorkRuntime` for ready/delayed/lease/result/counter truth
+  - `TaskWorkRuntime` for ready/delayed/lease/counter truth
+- result convergence is runtime-first, but the active owner split must be
+  verified from `doc/RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime
+  code rather than inferred from historical `TaskWorkRuntime` wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
 - Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.
@@ -71,6 +74,8 @@ Start here based on the change:
 
 - engine lifecycle, matching, assignment, result, or concurrency:
   [xa-mass-engine/README.md](xa-mass-engine/README.md)
+- result owner split and runtime/public-result boundaries:
+  [doc/RESULT_BOUNDARY_BASELINE.md](doc/RESULT_BOUNDARY_BASELINE.md)
 - runtime queue/lease/counter ownership or storage/runtime/trace placement:
   [platform_infra/README.md](platform_infra/README.md),
   [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md),

@@ -13,6 +13,8 @@ Most tasks only need one contract lane plus one owner README:
   [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md),
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
   [E2E_BASELINE.md](./E2E_BASELINE.md)
+- result owner split / runtime result truth:
+  [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - storage / runtime / trace placement:
   [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md),
   [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
@@ -32,6 +34,7 @@ Most tasks only need one contract lane plus one owner README:
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
 | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
+| [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |

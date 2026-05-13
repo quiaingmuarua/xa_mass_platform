@@ -118,16 +118,27 @@ class TaskResultService {
                     "work item status " + workSummary.status() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
             return ResultMutationOutcome.rejected();
         }
+        TaskResultCallbackDraft stagedDraft = buildCallbackDraft(
+                task, taskId, messageId, false, expiryDetail, LEASE_EXPIRED_ERROR_CODE, null);
+        StageResult stageResult = taskResultRuntime.stageCallback(stagedDraft);
+        if (!stageResult.accepted()) {
+            logger.warn("Cannot expire leased work because result runtime stage failed for taskId={}, messageId={}, reason={}",
+                    taskId, messageId, stageResult.reason());
+            return ResultMutationOutcome.rejected();
+        }
+        stagedDraft = stageResult.draft() != null ? stageResult.draft() : stagedDraft;
         boolean retryRequestedByPolicy = shouldRetryExpiredLease(task, fromStatus);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, retryRequestedByPolicy);
         ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
                 false, expiryDetail, null, null, retryRequestedByPolicy, true);
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
                 || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            discardStage(stagedDraft);
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime lease rejected expiry result: " + workOutcome.status(), 0);
             return ResultMutationOutcome.rejected();
         }
         if (!activeAttempt.projectExpired(AttemptFinalReason.LEASE_EXPIRED, "leased work expired")) {
+            discardStage(stagedDraft);
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                     + activeAttempt.status(), 0);
             return ResultMutationOutcome.rejected();
@@ -140,6 +151,7 @@ class TaskResultService {
         Task freshTask = taskManager.getTask(taskId);
         RuntimeWorkSummary currentSummary;
         RuntimeWorkSummary logicallyFinalSummary = null;
+        CommitResult visibleFinalCommit = null;
         if (retryScheduled) {
             RuntimeWorkSummary retrySummary = summarizeRetryReset(workSummary);
             traceEventLogger.taskWorkRetryReset(retrySummary.toTraceView(),
@@ -154,6 +166,7 @@ class TaskResultService {
                     persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
                             "persist expiry retry-reset compatibility summary"));
             currentSummary = retrySummary;
+            discardStage(stagedDraft);
         } else {
             logicallyFinalSummary = summarizeLeaseExpiryFinal(task, workSummary, expiryDetail);
             traceEventLogger.taskWorkStatusTransition(
@@ -168,6 +181,12 @@ class TaskResultService {
                     "TaskManager",
                     expiryDetail
             );
+            visibleFinalCommit = commitVisibleFinal(logicallyFinalSummary, activeAttempt, stagedDraft);
+            if (!visibleFinalCommit.visible()) {
+                logger.warn("Result runtime visible commit failed for lease expiry taskId={}, messageId={}, status={}, reason={}",
+                        taskId, messageId, visibleFinalCommit.status(), visibleFinalCommit.reason());
+                return ResultMutationOutcome.acceptedNoop();
+            }
             final RuntimeWorkSummary capturedFinalSummary = logicallyFinalSummary;
             taskManager.submitProjectionWrite(() ->
                     persistWorkProjectionBestEffort(taskId, capturedFinalSummary,
@@ -194,7 +213,7 @@ class TaskResultService {
                             : expiryDetail);
         }
         if (!retryScheduled && freshTask != null) {
-            publishWorkLogicallyFinal(freshTask, logicallyFinalSummary, activeAttempt,
+            publishWorkLogicallyFinalOnce(freshTask, logicallyFinalSummary, activeAttempt, visibleFinalCommit.row(),
                     "EXPIRE_LEASED_WORK", expiryDetail);
         }
         LogUtils.logOperationSuccess(expiryDetail, 0);
@@ -203,8 +222,10 @@ class TaskResultService {
             if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
                 requestRetryDispatch(updatedTask, workRetryDelayMillis);
             }
+            return ResultMutationOutcome.acceptedDirty();
         }
-        return ResultMutationOutcome.acceptedDirty();
+        cleanupStageIfConverged(stagedDraft, visibleFinalCommit.row());
+        return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, visibleFinalCommit.row().seq());
     }
 
     ResultMutationOutcome ingestTaskResult(String taskId, String messageId, boolean success, String detail) {

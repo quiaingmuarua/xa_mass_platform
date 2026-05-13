@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 Status: current project-level testing index.
 
@@ -44,6 +44,7 @@ Use with:
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
+- [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [../xa-mass-server/README.md](../xa-mass-server/README.md)
@@ -447,6 +448,7 @@ Use first when:
 | `project / submitter / worker / workerContext` boundary | Boot-shell E2E | controller/API contract tests |
 | task lifecycle / contract / intake | engine acceptance/concurrency + representative Boot-shell E2E | chaos for degraded edge behavior |
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
+| `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
 | hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |
