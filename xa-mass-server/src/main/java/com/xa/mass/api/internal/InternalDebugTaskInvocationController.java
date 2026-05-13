@@ -17,6 +17,7 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
@@ -110,8 +111,8 @@ public class InternalDebugTaskInvocationController {
                     .eventCode(requestBody.getEventCode())
                     .items(requestBody.getItems())
                     .build());
-            taskAdmin.sealTask(task.getTaskId());
-            taskAdmin.approveTask(task.getTaskId());
+            taskAdmin.executeTaskCommand(task.getTaskId(), MassTaskCommandRequest.builder().command("SEAL").build());
+            taskAdmin.executeTaskCommand(task.getTaskId(), MassTaskCommandRequest.builder().command("APPROVE").build());
 
             String taskId = task.getTaskId();
             Optional<TaskWorkFinalSnapshot> result =

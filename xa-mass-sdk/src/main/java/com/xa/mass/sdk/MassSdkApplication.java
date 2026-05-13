@@ -184,19 +184,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean approveTask(String taskId) {
-        return requireStartedTaskCommands().approveTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("APPROVE").build()).isAccepted();
     }
 
     public boolean rejectTask(String taskId) {
-        return requireStartedTaskCommands().rejectTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("REJECT").build()).isAccepted();
     }
 
     public boolean blockTask(String taskId) {
-        return requireStartedTaskCommands().blockTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("BLOCK").build()).isAccepted();
     }
 
     public boolean pauseTask(String taskId) {
-        return requireStartedTaskCommands().pauseTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("PAUSE").build()).isAccepted();
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
@@ -210,7 +210,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean resumeTask(String taskId) {
-        return requireStartedTaskCommands().resumeTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("RESUME").build()).isAccepted();
     }
 
     public boolean cancelTask(String taskId) {
@@ -218,10 +218,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean terminateTask(String taskId, String reason) {
-        return requireStartedTaskCommands().terminateTask(
-                requireTaskId(taskId),
-                parseTaskTerminalReason(reason, com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED)
-        );
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder()
+                .command("TERMINATE")
+                .reason(reason)
+                .build()).isAccepted();
     }
 
     @Override
@@ -232,7 +232,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean sealTask(String taskId) {
-        return requireStartedTaskCommands().sealTask(requireTaskId(taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("SEAL").build()).isAccepted();
     }
 
     public TaskDiagnosticOperations taskDiagnostics() {
@@ -263,8 +263,43 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public boolean deleteTask(String taskId) {
-        return requireStartedTaskCommands().deleteTask(taskId);
+    public TaskCommandResult executeTaskCommand(String taskId, MassTaskCommandRequest request) {
+        Objects.requireNonNull(request, "request");
+        String normalizedTaskId = requireTaskId(taskId);
+        String normalizedCommand = normalizeTaskCommand(request.getCommand());
+        TaskQueryService taskQueries = requireStartedTaskQueries();
+        TaskCommandService taskCommands = requireStartedTaskCommands();
+
+        Task before = taskQueries.getTask(normalizedTaskId);
+        if (before == null) {
+            return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, false,
+                    null, "Task not found", "TASK_NOT_FOUND");
+        }
+
+        boolean accepted = switch (normalizedCommand) {
+            case "APPROVE" -> taskCommands.approveTask(normalizedTaskId);
+            case "REJECT" -> taskCommands.rejectTask(normalizedTaskId);
+            case "BLOCK" -> executeBlockTask(taskCommands, normalizedTaskId, before);
+            case "PAUSE" -> taskCommands.pauseTask(normalizedTaskId);
+            case "RESUME" -> taskCommands.resumeTaskDetailed(normalizedTaskId).isSuccess();
+            case "TERMINATE" -> taskCommands.terminateTask(
+                    normalizedTaskId,
+                    parseTaskTerminalReason(request.getReason(),
+                            com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED)
+            );
+            case "SEAL" -> taskCommands.sealTask(normalizedTaskId);
+            default -> throw new IllegalArgumentException("Unsupported task command: " + normalizedCommand);
+        };
+
+        Task after = taskQueries.getTask(normalizedTaskId);
+        if (accepted) {
+            return toTaskCommandResult(normalizedTaskId, normalizedCommand, true, true,
+                    after != null ? after : before, null, null);
+        }
+        return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, true,
+                after != null ? after : before,
+                "Task command is not allowed in the current state",
+                "COMMAND_NOT_ALLOWED");
     }
 
     @Override
@@ -1303,6 +1338,43 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private Worker loadWorker(String workerId) {
         return requireStartedWorkerStorage().getWorker(workerId).orElse(null);
+    }
+
+    private boolean executeBlockTask(TaskCommandService taskCommands, String taskId, Task currentTask) {
+        if (taskCommands.blockTask(taskId)) {
+            return true;
+        }
+        return currentTask != null
+                && currentTask.getStatus() == com.xa.mass.base.enums.task.TaskStatus.NEW
+                && taskCommands.rejectTask(taskId);
+    }
+
+    private TaskCommandResult toTaskCommandResult(String taskId,
+                                                  String command,
+                                                  boolean accepted,
+                                                  boolean taskExists,
+                                                  Task task,
+                                                  String failureReason,
+                                                  String reasonCode) {
+        return new TaskCommandResult(
+                taskId,
+                command,
+                accepted,
+                taskExists,
+                task != null ? enumName(task.getStatus()) : null,
+                task != null ? enumName(task.getIntakeStatus()) : null,
+                task != null ? enumName(task.getTerminalReason()) : null,
+                task != null ? enumName(task.getHoldReason()) : null,
+                failureReason,
+                reasonCode
+        );
+    }
+
+    private String normalizeTaskCommand(String command) {
+        if (command == null || command.isBlank()) {
+            throw new IllegalArgumentException("command is required");
+        }
+        return command.trim().toUpperCase(Locale.ROOT);
     }
 
     private WorkerSnapshot toWorkerSnapshot(Worker worker) {

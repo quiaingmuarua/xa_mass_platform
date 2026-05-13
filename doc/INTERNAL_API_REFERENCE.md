@@ -393,16 +393,39 @@ Current server guardrails:
 - max single item serialized size: `64 KiB`
 - max total serialized batch size: `1 MiB`
 
-### 4.7 Seal Task Intake
+### 4.7 Task Command Surface
 
 - Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:seal`
+- Path: `/api/v1/tasks/{taskId}/commands`
 - Status: `Implemented`
 
-Behavior:
+Request shape:
 
-- closes the task intake window
-- once sealed, later append is rejected
+```json
+{
+  "command": "SEAL",
+  "reason": "optional",
+  "options": {}
+}
+```
+
+Supported commands:
+
+- `APPROVE`
+- `REJECT`
+- `BLOCK`
+- `PAUSE`
+- `RESUME`
+- `TERMINATE`
+- `SEAL`
+
+Response notes:
+
+- returns unified command execution result
+- includes post-command task state fields such as `status`, `intakeStatus`,
+  `terminalReason`, and `holdReason`
+- invalid command name returns `400`
+- command rejected by current task state returns `409`
 
 ### 4.8 Task Detail Boundaries
 
@@ -410,107 +433,81 @@ Behavior:
 - task shell detail remains separate from task review/export payload visibility
 - residue or projection diagnostics are not part of the default task detail contract
 
-### 4.9 Task Review Preview
+### 4.9 Task Result Stream
 
 - Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/review`
+- Path: `/api/v1/tasks/{taskId}/results`
 - Status: `Implemented`
 
-Behavior:
+Query parameters:
 
-- returns bounded seed preview rows and result preview rows for console review
-- returns summary counters and export URLs
-- keeps compatibility projection residue out of the default shell detail route
-- current preview is bounded by server config, default `12`
+- `afterSeq` optional
+- `limit` optional, bounded read window rather than paging contract
 
 Response notes:
 
-- `seedPreview[*]` includes `messageId`, `eventCode`, input snapshot, and ingest/runtime residue timestamps
-- `resultPreview[*]` includes `messageId`, final/result status, latest attempt worker attribution, and output snapshot
-- this is a read-only review surface for console/demo use; it is not a CRUD or paging contract
+- returns append-only ordered result rows
+- response fields include `mode`, `taskTerminal`, `archiveReady`, `items`,
+  `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
+- callers own checkpointing through `afterSeq`
+- this route does not expose paging or ack semantics
 
-### 4.10 Task Seed Export
-
-- Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/review/seed-export`
-- Status: `Implemented`
-
-Behavior:
-
-- downloads a JSON attachment containing the visible task seed rows
-- export size is bounded by server config, default `20000`
-
-### 4.11 Task Result Export
+### 4.10 Task Result Archive Manifest
 
 - Method: `GET`
-- Path: `/api/v1/tasks/{taskId}/review/result-export`
+- Path: `/api/v1/tasks/{taskId}/results/archive`
 - Status: `Implemented`
 
 Behavior:
 
-- downloads a JSON attachment containing the visible task result rows
-- includes latest visible worker / worker-context / batch attribution per row
+- returns terminal-result archive manifest
+- archive contract is fixed to `ndjson`
+- content encoding is surfaced explicitly, currently `gzip`
 
-### 4.12 Approve Task
+### 4.11 Task Result Archive Content
 
-- Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:approve`
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/results/archive/content`
 - Status: `Implemented`
 
 Behavior:
 
-- advances shell review state into runnable state when allowed
+- downloads the archive payload for terminal task results
+- `Content-Type: application/x-ndjson`
+- `Content-Encoding: gzip` when declared by the manifest
 
-### 4.13 Reject Task
+### 4.12 Internal Review Preview
 
 - Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:reject`
+- Path: `/internal/v1/review/tasks/{taskId}`
 - Status: `Implemented`
 
 Behavior:
 
-- review rejection path
+- returns bounded seed/result preview rows for console or debug review only
+- this is not part of the public task API contract
 
-### 4.14 Pause Task
+### 4.13 Internal Review Seed Export
 
-- Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:pause`
+- Method: `GET`
+- Path: `/internal/v1/review/tasks/{taskId}/seed-export`
 - Status: `Implemented`
 
-### 4.15 Resume Task
+### 4.14 Internal Review Result Export
 
-- Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:resume`
+- Method: `GET`
+- Path: `/internal/v1/review/tasks/{taskId}/result-export`
 - Status: `Implemented`
 
-### 4.16 Block Task
-
-- Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:block`
-- Status: `Implemented`
-
-Behavior:
-
-- explicit runtime block endpoint
-- unlike review reject, this is not limited to `NEW`
-
-### 4.17 Terminate Task
-
-- Method: `POST`
-- Path: `/api/v1/tasks/{taskId}:terminate`
-- Status: `Implemented`
-
-Behavior:
-
-- closes any non-terminal task to `TERMINAL`
-
-### 4.18 Removed Task Route Shapes
+### 4.15 Removed Task Route Shapes
 
 The following historical task route shapes are no longer part of the active
 public API:
 
 - create-with-inputs on public create
-- non-`POST` task command routes
+- `:approve`, `:reject`, `:pause`, `:resume`, `:block`, `:terminate`, `:seal`
+- public `/review`, `/review/seed-export`, `/review/result-export`
+- public `DELETE /api/v1/tasks/{taskId}`
 - `/messages` as the main item list route
 
 ## 5. Runtime Diagnostics API

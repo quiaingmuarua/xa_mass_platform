@@ -58,11 +58,7 @@ public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest
         assertFalse(createdValidation.isNeedsResolution());
         assertEquals("NEW", createdValidation.getStatus().name());
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         Map<String, Object> terminal = waitForTaskDetail(taskId, "TERMINAL");
@@ -81,11 +77,7 @@ public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest
     void getTaskExposesNeedsResolutionWhenTaskIsReopenedAfterMessagesCompleted() throws Exception {
         String taskId = createSeededTaskShell("state-validation-needs-resolution");
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");
@@ -112,11 +104,7 @@ public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest
     void getTaskExposesInvalidStateWhenTerminalReasonIsMissing() throws Exception {
         String taskId = createSeededTaskShell("state-validation-missing-terminal-reason");
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");
@@ -139,11 +127,7 @@ public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest
     void getTaskExposesInvalidStateWhenTerminalReasonDoesNotMatchMessageResults() throws Exception {
         String taskId = createSeededTaskShell("state-validation-terminal-reason-mismatch");
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");

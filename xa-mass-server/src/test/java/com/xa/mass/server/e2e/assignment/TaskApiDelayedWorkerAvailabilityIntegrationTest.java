@@ -45,11 +45,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractSampleE2eT
     void readyTaskAdvancesAfterNewMatchingWorkerBecomesAvailable() throws Exception {
         String taskId = createTaskId("delayed-worker", "delayed worker availability integration", "target-a");
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         RuntimeTaskSnapshot readySnapshot = waitForRuntimeTaskSnapshot(taskId, "READY", 8, 500L);

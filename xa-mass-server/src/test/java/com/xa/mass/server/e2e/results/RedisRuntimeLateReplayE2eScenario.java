@@ -70,11 +70,7 @@ class RedisRuntimeLateReplayE2eScenario extends ProjectionSampleE2eTest {
             waitUntil(() -> app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker must become online");
 
             String taskId = createTaskId("redis-runtime-late-replay", "redis runtime replay integration", List.of("target-a"), 1, 1);
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             JsonObject firstDispatch = chaosClient.awaitTask(3, TimeUnit.SECONDS);

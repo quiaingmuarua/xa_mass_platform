@@ -55,11 +55,7 @@ public class TaskApiCallbackReplayIntegrationTest extends ProjectionSampleE2eTes
     void duplicateWebSocketCallbackReplayKeepsFirstFinalMessageState() throws Exception {
         String taskId = createTaskId("integration-task-callback-replay", "integration callback replay", List.of("target-a", "target-b"), 1);
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         TaskSnapshot terminalSnapshot = waitForTerminalTask(taskId);

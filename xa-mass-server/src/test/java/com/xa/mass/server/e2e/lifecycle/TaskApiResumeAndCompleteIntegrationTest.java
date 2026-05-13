@@ -42,22 +42,14 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
     void resumedPausedTaskCompletesAfterWorkerConnectsAndSendsCallback() throws Exception {
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
-        Map<String, Object> approveResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
 
         RuntimeTaskSnapshot readySnapshot = waitForRuntimeTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, readySnapshot.stats().readyCount());
 
-        Map<String, Object> pauseResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":pause",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> pauseResponse = pauseTask(taskId);
         assertApiOk(pauseResponse);
 
         RuntimeTaskSnapshot pausedSnapshot = waitForRuntimeTaskSnapshot(taskId, "PAUSED", 4, 500L);
@@ -72,11 +64,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
         try {
             assertClientConnects(client, "Sample client failed to connect");
 
-            Map<String, Object> resumeResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":resume",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> resumeResponse = resumeTask(taskId);
             assertApiOk(resumeResponse);
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);

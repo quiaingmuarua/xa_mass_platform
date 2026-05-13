@@ -68,11 +68,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ProjectionSampleE2eTest {
                     1
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             TaskSnapshot terminal = waitForTerminalTask(taskId);
@@ -112,11 +108,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ProjectionSampleE2eTest {
                     2
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             JsonObject first = client.awaitTask(3, TimeUnit.SECONDS);

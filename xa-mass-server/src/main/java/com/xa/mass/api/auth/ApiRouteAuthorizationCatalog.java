@@ -34,23 +34,6 @@ public class ApiRouteAuthorizationCatalog {
                         ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                         : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
                 case "PATCH" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
-                case "DELETE" -> route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
-                default -> null;
-            };
-        }
-        if (uri.matches("^/api/v1/tasks/[^/:]+/review$")) {
-            return switch (method) {
-                case "GET" -> sdkCredentialAttempt
-                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
-                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
-                default -> null;
-            };
-        }
-        if (uri.matches("^/api/v1/tasks/[^/:]+/review/(seed-export|result-export)$")) {
-            return switch (method) {
-                case "GET" -> sdkCredentialAttempt
-                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
-                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
                 default -> null;
             };
         }
@@ -60,26 +43,30 @@ public class ApiRouteAuthorizationCatalog {
                 default -> null;
             };
         }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:approve$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);
+        if (uri.matches("^/api/v1/tasks/[^/:]+/commands$") && "POST".equals(method)) {
+            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
         }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:reject$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.APPROVE, ApiPermissionNames.TASK_APPROVE);
+        if (uri.matches("^/api/v1/tasks/[^/:]+/results$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
         }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:pause$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.PAUSE, ApiPermissionNames.TASK_PAUSE);
+        if (uri.matches("^/api/v1/tasks/[^/:]+/results/archive(/content)?$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
         }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:resume$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.RESUME, ApiPermissionNames.TASK_RESUME);
-        }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:terminate$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.TERMINATE, ApiPermissionNames.TASK_TERMINATE);
-        }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:block$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
-        }
-        if (uri.matches("^/api/v1/tasks/[^/:]+:seal$") && "POST".equals(method)) {
-            return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+        if (uri.matches("^/internal/v1/review/tasks/[^/:]+(/seed-export|/result-export)?$")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
         }
         if (uri.equals("/api/v1/projects") && "GET".equals(method)) {
             return sdkCredentialAttempt

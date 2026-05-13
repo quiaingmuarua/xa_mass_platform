@@ -50,21 +50,13 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
             assertClientConnects(client, "Sample client failed to connect");
 
             String firstTaskId = createTaskId("reuse-first", "single worker reuse first", "target-a");
-            Map<String, Object> firstApprove = exchange(
-                    "/api/v1/tasks/" + firstTaskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> firstApprove = approveTask(firstTaskId);
             assertApiOk(firstApprove);
             RuntimeTaskSnapshot firstTerminal = waitForRuntimeTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
             assertEquals(1, firstTerminal.stats().successCount());
 
             String secondTaskId = createTaskId("reuse-second", "single worker reuse second", "target-b");
-            Map<String, Object> secondApprove = exchange(
-                    "/api/v1/tasks/" + secondTaskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> secondApprove = approveTask(secondTaskId);
             assertApiOk(secondApprove);
             RuntimeTaskSnapshot secondTerminal = waitForRuntimeTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
             assertEquals(1, secondTerminal.stats().successCount());

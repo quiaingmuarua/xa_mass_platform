@@ -100,7 +100,9 @@ app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
                 java.util.Map.of("target", "target-a")))
         .build());
 
-app.sealTask(task.getTid());
+app.executeTaskCommand(task.getTid(), com.xa.mass.sdk.model.MassTaskCommandRequest.builder()
+        .command("SEAL")
+        .build());
 
 app.pullWorker("crawler-worker-1").connect();
 ```
@@ -155,7 +157,9 @@ app.appendTaskItems(botTask.getTid(), MassTaskItemBatchAppendRequest.builder()
                 java.util.Map.of("command", "/start")))
         .build());
 
-app.sealTask(botTask.getTid());
+app.executeTaskCommand(botTask.getTid(), com.xa.mass.sdk.model.MassTaskCommandRequest.builder()
+        .command("SEAL")
+        .build());
 ```
 
 Register a lightweight principal credential binding when an embedding app wants
@@ -186,21 +190,21 @@ credential keeps its own permissions, project scopes, and event scopes.
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
+- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
 - operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
 - raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
 - pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `sealTask(...)`, `replaceDefaultRules(...)`
+- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:
 
 | Area | Contract |
 | --- | --- |
-| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` / `sealTask(...)`; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
+| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
 | worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online) |
 | resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker-context project checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |

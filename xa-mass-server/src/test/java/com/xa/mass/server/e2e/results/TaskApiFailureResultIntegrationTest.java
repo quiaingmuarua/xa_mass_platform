@@ -48,11 +48,7 @@ public class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
         assertMinOnlineWorkers(2);
         String taskId = createTaskId("integration-task-failure", "integration failure smoke", List.of("target-a", "target-b"), 1);
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);

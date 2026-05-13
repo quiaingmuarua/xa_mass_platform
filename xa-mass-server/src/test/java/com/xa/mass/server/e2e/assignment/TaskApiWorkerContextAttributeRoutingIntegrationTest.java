@@ -68,11 +68,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
             assertClientConnects(otherClient, "other worker client failed to connect");
 
             String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
-            Map<String, Object> auditResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> auditResponse = approveTask(taskId);
             assertApiOk(auditResponse);
 
             JsonObject matchedDispatch = matchedClient.awaitTask(3, TimeUnit.SECONDS);

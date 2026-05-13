@@ -66,11 +66,7 @@ class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
             TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
 
-            Map<String, Object> firstTerminate = exchange(
-                    "/api/v1/tasks/" + firstTaskId + ":terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> firstTerminate = terminateTask(firstTaskId);
             assertApiOk(firstTerminate);
 
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
@@ -86,11 +82,7 @@ class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
             TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
 
-            Map<String, Object> secondTerminate = exchange(
-                    "/api/v1/tasks/" + secondTaskId + ":terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> secondTerminate = terminateTask(secondTaskId);
             assertApiOk(secondTerminate);
             waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
             assertEquals("IDLE", app.getWorkerContexts(workerId).get(0).getStatus());

@@ -65,11 +65,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
             waitUntil(() -> app.isWorkerOnline(workerId), "poll worker connect must surface transport presence online");
             String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
 
-            Map<String, Object> auditResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> auditResponse = approveTask(taskId);
             assertApiOk(auditResponse);
 
             // Poll until at least one message appears.
@@ -110,7 +106,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractSampleE2eTest {
         session.connect();
         try {
             String taskId = createTaskId("polling-drain-task", "drain test", "target-drain-001");
-            exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
+            approveTask(taskId);
 
             // Drain until we receive the message.
             List<TaskDispatchItem> items = List.of();

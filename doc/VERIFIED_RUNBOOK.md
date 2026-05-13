@@ -118,15 +118,19 @@ curl -s -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
   -d '{"eventCode":"demo.dispatch","items":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}]}'
 
-curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}:seal \
-  -H 'X-Mass-Api-Key: demo-app-key'
+curl -i -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/commands \
+  -H 'X-Mass-Api-Key: demo-app-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"SEAL"}'
 ```
 
 Approve it:
 
 ```bash
-curl -i -X POST "http://127.0.0.1:8088/api/v1/tasks/{taskId}:approve" \
-  -H 'X-Mass-Api-Key: demo-app-key'
+curl -i -X POST "http://127.0.0.1:8088/api/v1/tasks/{taskId}/commands" \
+  -H 'X-Mass-Api-Key: demo-app-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"APPROVE"}'
 ```
 
 Inspect task:
@@ -189,7 +193,7 @@ Open-ended and targeted worker debug:
 
 - `Task.intakeStatus` is the append-window truth.
 - `POST /api/v1/tasks/{taskId}/items` appends inputs only while intake is open.
-- `POST /api/v1/tasks/{taskId}:seal` closes intake and resumes normal terminal convergence.
+- `POST /api/v1/tasks/{taskId}/commands` with `{"command":"SEAL"}` closes intake and resumes normal terminal convergence.
 - worker debug/test flows use `/internal/v1/debug/task-invocations:sync` for one-item sync execution, or the normal shell-create + append flow for standard task runs.
 
 ## 5. Core Acceptance Commands

@@ -54,11 +54,7 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("SEALED", createdTask.get("intakeStatus"));
         assertEquals(false, createdTask.containsKey("openEnded"));
 
-        Map<String, Object> auditResponse = exchange(
-                "/api/v1/tasks/" + taskId + ":approve",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
         RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);

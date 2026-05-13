@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.SdkTaskResumeResult;
+import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -14,9 +14,11 @@ import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskAccessSnapshot;
+import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
@@ -40,6 +42,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -72,7 +75,8 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider)
+                new TaskApiController(taskQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider),
+                new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
 
@@ -170,22 +174,43 @@ class TaskApiControllerTest {
 
     @Test
     void approveUsesCommandRoute() throws Exception {
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY"));
-        when(taskAdmin.approveTask(TASK_ID)).thenReturn(true);
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "APPROVE", true, true, "READY", "OPEN",
+                        null, null, null, null
+                ));
 
-        mockMvc.perform(post("/api/v1/tasks/{taskId}:approve", TASK_ID))
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "command":"APPROVE"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.newStatus").value("READY"));
+                .andExpect(jsonPath("$.data.command").value("APPROVE"))
+                .andExpect(jsonPath("$.data.status").value("READY"));
     }
 
     @Test
     void resumeReturnsTerminalCloseMessageWhenAlreadyCompletedWhilePaused() throws Exception {
-        when(taskAdmin.resumeTaskDetailed(TASK_ID))
-                .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", "ALL_MESSAGES_SUCCEEDED", true));
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "RESUME", true, true, "TERMINAL", "SEALED",
+                        "ALL_MESSAGES_SUCCEEDED", null, null, null
+                ));
 
-        mockMvc.perform(post("/api/v1/tasks/{taskId}:resume", TASK_ID))
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "command":"RESUME"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.newStatus").value("TERMINAL"))
+                .andExpect(jsonPath("$.data.status").value("TERMINAL"))
                 .andExpect(jsonPath("$.data.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
     }
 
@@ -233,12 +258,12 @@ class TaskApiControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/v1/tasks/{taskId}/review", TASK_ID))
+        mockMvc.perform(get("/internal/v1/review/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.summary.totalItems").value(2))
                 .andExpect(jsonPath("$.data.seedPreview[0].eventCode").value("crawler.fetch-page"))
                 .andExpect(jsonPath("$.data.resultPreview[0].workerId").value("worker-001"))
-                .andExpect(jsonPath("$.data.exports.seedUrl").value("/api/v1/tasks/task-001/review/seed-export"));
+                .andExpect(jsonPath("$.data.exports.seedUrl").value("/internal/v1/review/tasks/task-001/seed-export"));
     }
 
     @Test
@@ -270,10 +295,60 @@ class TaskApiControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/v1/tasks/{taskId}/review/seed-export", TASK_ID))
+        mockMvc.perform(get("/internal/v1/review/tasks/{taskId}/seed-export", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.taskId").value(TASK_ID))
                 .andExpect(jsonPath("$.rows[0].messageId").value("msg-001"));
+    }
+
+    @Test
+    void getTaskResultsReturnsLiveOrderedWindow() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(3, 1, 0, 0, 2));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 3)).thenReturn(List.of(
+                projection("msg-001", TaskMessageProjectionStatus.SUCCESS, TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        Map.of("html", "<ok-a>"), "worker-001"),
+                projection("msg-002", TaskMessageProjectionStatus.RUNNING, null,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/b"),
+                        Map.of(), "worker-002"),
+                projection("msg-003", TaskMessageProjectionStatus.ASSIGNED, null,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/c"),
+                        Map.of(), "worker-003")
+        ));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
+                        .param("afterSeq", "1")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("LIVE"))
+                .andExpect(jsonPath("$.data.taskTerminal").value(false))
+                .andExpect(jsonPath("$.data.archiveReady").value(false))
+                .andExpect(jsonPath("$.data.items[0].seq").value(2))
+                .andExpect(jsonPath("$.data.items[0].messageId").value("msg-002"))
+                .andExpect(jsonPath("$.data.items[1].seq").value(3))
+                .andExpect(jsonPath("$.data.nextAfterSeq").value(3))
+                .andExpect(jsonPath("$.data.hasMore").value(false));
+    }
+
+    @Test
+    void getTaskResultArchiveManifestReturnsArchiveMetadataForTerminalTask() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(1, 1, 0, 0, 0));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 1)).thenReturn(List.of(
+                projection("msg-001", TaskMessageProjectionStatus.SUCCESS, TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        Map.of("html", "<ok-a>"), "worker-001")
+        ));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results/archive", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ready").value(true))
+                .andExpect(jsonPath("$.data.format").value("ndjson"))
+                .andExpect(jsonPath("$.data.contentType").value("application/x-ndjson"))
+                .andExpect(jsonPath("$.data.contentEncoding").value("gzip"))
+                .andExpect(jsonPath("$.data.itemCount").value(1))
+                .andExpect(jsonPath("$.data.downloadUrl").value("/api/v1/tasks/task-001/results/archive/content"));
     }
 
     @Test
@@ -334,21 +409,29 @@ class TaskApiControllerTest {
 
     @Test
     void sealTaskUsesCommandRoute() throws Exception {
-        when(taskAdmin.sealTask(TASK_ID)).thenReturn(true);
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING"));
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "SEAL", true, true, "RUNNING", "SEALED",
+                        null, null, null, null
+                ));
 
-        mockMvc.perform(post("/api/v1/tasks/{taskId}:seal", TASK_ID))
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "command":"SEAL"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.message").value("Task sealed"));
+                .andExpect(jsonPath("$.data.command").value("SEAL"))
+                .andExpect(jsonPath("$.data.intakeStatus").value("SEALED"));
     }
 
     @Test
-    void deleteTaskUsesVersionedRoute() throws Exception {
-        when(taskAdmin.deleteTask(TASK_ID)).thenReturn(true);
-
+    void deleteTaskRouteIsNotMapped() throws Exception {
         mockMvc.perform(delete("/api/v1/tasks/{taskId}", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.message").value("Task deleted"));
+                .andExpect(status().isMethodNotAllowed());
     }
 
     @Test
@@ -375,8 +458,51 @@ class TaskApiControllerTest {
         return new TaskStateSnapshot(TASK_ID, status, null, "OPEN");
     }
 
+    private PrincipalContext operatorPrincipal() {
+        return new PrincipalContext(
+                "operator-1",
+                PrincipalType.SERVICE,
+                "operator-user",
+                null,
+                List.of("*", "task:edit", "task:govern", "task:control"),
+                List.of("*"),
+                List.of("*"),
+                Map.of()
+        );
+    }
+
     private TaskAccessSnapshot taskAccess(String project) {
         return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
+    }
+
+    private TaskDetailStore.TaskMessageProjection projection(String messageId,
+                                                             TaskMessageProjectionStatus status,
+                                                             TaskMessageProjectionFinalReason finalReason,
+                                                             Map<String, Object> input,
+                                                             Map<String, Object> output,
+                                                             String workerId) {
+        return new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                TASK_ID,
+                input,
+                null,
+                status,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                3,
+                null,
+                null,
+                finalReason,
+                output,
+                "attempt-" + messageId,
+                workerId,
+                "context-" + workerId,
+                "batch-" + messageId
+        );
     }
 
     private TaskDetailSnapshot taskDetail(String status, String taskName, String project) {

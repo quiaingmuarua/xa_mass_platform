@@ -65,11 +65,7 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
                     1
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
@@ -80,11 +76,7 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(firstClient.awaitTask(3, TimeUnit.SECONDS), "First worker did not receive a task dispatch");
             assertNotNull(secondClient.awaitTask(3, TimeUnit.SECONDS), "Second worker did not receive a task dispatch");
 
-            Map<String, Object> terminateResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> terminateResponse = terminateTask(taskId);
             assertApiOk(terminateResponse);
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
@@ -94,21 +86,21 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
             assertEquals(0, terminalSnapshot.stats().processingCount());
             assertTrue(terminalSnapshot.activeLeases().isEmpty(), "terminate must release in-flight runtime leases");
 
-            Map<String, Object> deleteResponse = exchange(
-                    "/api/v1/tasks/" + taskId,
+            ResponseEntity<Map> deleteResponse = restTemplate.exchange(
+                    "http://127.0.0.1:" + port + "/api/v1/tasks/" + taskId,
                     HttpMethod.DELETE,
-                    null
+                    org.springframework.http.HttpEntity.EMPTY,
+                    Map.class
             );
-            assertApiOk(deleteResponse);
+            assertEquals(405, deleteResponse.getStatusCode().value());
 
-            ResponseEntity<Map> deletedTaskResponse = restTemplate.exchange(
+            ResponseEntity<Map> taskResponseAfterDeleteAttempt = restTemplate.exchange(
                     "http://127.0.0.1:" + port + "/api/v1/tasks/" + taskId,
                     HttpMethod.GET,
                     org.springframework.http.HttpEntity.EMPTY,
                     Map.class
             );
-            assertEquals(404, deletedTaskResponse.getStatusCode().value());
-            assertEquals(404, ((Number) deletedTaskResponse.getBody().get("code")).intValue());
+            assertEquals(200, taskResponseAfterDeleteAttempt.getStatusCode().value());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();

@@ -17,6 +17,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
     static final String SDK_CREDENTIAL_BYPASS = "__SDK_CREDENTIAL_BYPASS__";
     static final String SDK_OR_OPERATOR_ROUTE = "__SDK_OR_OPERATOR_ROUTE__";
+    static final String OPERATOR_AUTH_ONLY = "__OPERATOR_AUTH_ONLY__";
     public static final String AUTHENTICATED_PRINCIPAL_ATTR =
             ApiAuthInterceptor.class.getName() + ".authenticatedPrincipal";
 
@@ -72,6 +73,9 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                 }
                 PrincipalContext principal = apiAuthService.requireAuthenticated(request);
                 request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, principal);
+                if (OPERATOR_AUTH_ONLY.equals(routeAuthorization.requiredPermission())) {
+                    return true;
+                }
                 apiAuthorizationService.requireOperatorRoutePermission(
                         principal,
                         routeAuthorization.resourceType(),

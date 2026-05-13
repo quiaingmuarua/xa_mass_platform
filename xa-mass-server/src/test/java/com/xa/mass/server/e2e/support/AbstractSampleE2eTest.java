@@ -238,31 +238,54 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected Map<String, Object> sealTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":seal", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "SEAL");
     }
 
     protected Map<String, Object> approveTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":approve", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "APPROVE");
     }
 
     protected Map<String, Object> rejectTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":reject", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "REJECT");
     }
 
     protected Map<String, Object> pauseTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":pause", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "PAUSE");
     }
 
     protected Map<String, Object> resumeTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":resume", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "RESUME");
     }
 
     protected Map<String, Object> blockTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":block", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "BLOCK");
     }
 
     protected Map<String, Object> terminateTask(String taskId) {
-        return exchange("/api/v1/tasks/" + taskId + ":terminate", HttpMethod.POST, null);
+        return executeTaskCommand(taskId, "TERMINATE");
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId, String command) {
+        return executeTaskCommand(taskId, command, null);
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId, String command, String reason) {
+        return executeTaskCommand(taskId, command, reason, null);
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId,
+                                                     String command,
+                                                     String reason,
+                                                     HttpHeaders headers) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("command", command);
+        if (reason != null && !reason.isBlank()) {
+            body.put("reason", reason);
+        }
+        if (headers == null) {
+            return exchange("/api/v1/tasks/" + taskId + "/commands", HttpMethod.POST, body);
+        }
+        return exchange("/api/v1/tasks/" + taskId + "/commands", HttpMethod.POST, body, headers);
     }
 
     @SuppressWarnings("unchecked")

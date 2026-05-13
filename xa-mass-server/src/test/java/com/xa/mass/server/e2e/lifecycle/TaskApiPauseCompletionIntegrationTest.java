@@ -64,11 +64,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
                     1
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
@@ -80,11 +76,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(firstDispatch);
             assertNotNull(secondDispatch);
 
-            Map<String, Object> pauseResponse = exchange(
-                    "/api/v1/tasks/" + taskId + ":pause",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> pauseResponse = pauseTask(taskId);
             assertApiOk(pauseResponse);
 
             RuntimeTaskSnapshot pausedSnapshot = waitForRuntimeTaskSnapshot(taskId, "PAUSED", 20, 250L);
