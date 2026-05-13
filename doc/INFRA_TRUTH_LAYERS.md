@@ -30,6 +30,7 @@ more implemented than another.
 | --- | --- | --- | --- | --- |
 | task shell truth (`Task` id/project/status/sharedConfig/terminal reason) | control-plane storage | restart recovery and operator task truth depend on it | none beyond caches | trace-only logs or hot queue state |
 | worker registration / worker-context registration | control-plane storage | stable registration truth | runtime cache/projection for lookup speed | transient transport events |
+| worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker registration or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |
 | ready queue membership | runtime state | hot-path scheduling state | none beyond bounded mirrors | JDBC durable truth |
@@ -66,7 +67,8 @@ projection residue to recover a second acceptance truth.
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
 | memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
-| Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
+| Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; node-targeted inboxes are keyed by `transportNodeId` | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
+| Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker registration |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads through neutral records only | not message CRUD ownership and not runtime truth |
 | engine assembly | wires `TaskStorage` and `TaskDetailStore` separately | prevents storage-shell truth from silently redefining detail/projection ownership |

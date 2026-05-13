@@ -16,6 +16,7 @@ import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -63,6 +64,7 @@ public class TransportRuntimeComposition {
     private final Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory;
     private final Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
     private final Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
+    private final Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
@@ -72,10 +74,12 @@ public class TransportRuntimeComposition {
     private final long eventHandlerTimeoutMillis;
     private final long workerPresenceLeaseMillis;
     private final TransportRuntimeRole runtimeRole;
+    private final String transportNodeId;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
     private transient WorkerPresenceStore runtimeOwnedPresenceStore;
+    private transient TransportNodeRegistry runtimeOwnedTransportNodeRegistry;
 
     public TransportRuntimeComposition(TransportConfig source) {
         this.transporterType = source.getTransporterType();
@@ -99,6 +103,7 @@ public class TransportRuntimeComposition {
         this.taskDispatchHandoffFactory = source.taskDispatchHandoffFactory();
         this.taskResultInboxFactory = source.taskResultInboxFactory();
         this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory();
+        this.transportNodeRegistryFactory = source.transportNodeRegistryFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
@@ -108,6 +113,7 @@ public class TransportRuntimeComposition {
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
         this.workerPresenceLeaseMillis = source.getWorkerPresenceLeaseMillis();
         this.runtimeRole = source.getRuntimeRole();
+        this.transportNodeId = source.getTransportNodeId();
     }
 
     public boolean isEnabled() {
@@ -221,13 +227,37 @@ public class TransportRuntimeComposition {
         return dispatchFailureInboxFactory.get();
     }
 
+    public TransportNodeRegistry resolveTransportNodeRegistry() {
+        if (transportNodeRegistryFactory == null) {
+            return null;
+        }
+        if (runtimeOwnedTransportNodeRegistry == null) {
+            runtimeOwnedTransportNodeRegistry = transportNodeRegistryFactory.get();
+        }
+        return runtimeOwnedTransportNodeRegistry;
+    }
+
     public WorkerPresenceStore resolveWorkerPresenceStore() {
         if (runtimeOwnedPresenceStore == null) {
             runtimeOwnedPresenceStore = presenceStoreFactory != null
                     ? presenceStoreFactory.get()
-                    : new InMemoryWorkerPresenceStore(workerPresenceLeaseMillis);
+                    : new InMemoryWorkerPresenceStore(workerPresenceLeaseMillis, transportNodeId);
         }
         return runtimeOwnedPresenceStore;
+    }
+
+    public String getTransportNodeId() {
+        return transportNodeId;
+    }
+
+    public java.util.Map<String, String> resolveAdapterTransportHintsById() {
+        java.util.LinkedHashMap<String, String> hintsByAdapterId = new java.util.LinkedHashMap<>();
+        for (TransportAdapterDescriptor descriptor : resolveRegistrationDescriptors()) {
+            if (descriptor != null && descriptor.getAdapterId() != null && descriptor.getTransportHint() != null) {
+                hintsByAdapterId.put(descriptor.getAdapterId(), descriptor.getTransportHint());
+            }
+        }
+        return java.util.Map.copyOf(hintsByAdapterId);
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {

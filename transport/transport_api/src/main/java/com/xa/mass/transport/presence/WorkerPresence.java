@@ -68,6 +68,10 @@ public final class WorkerPresence {
         return transportInstanceId;
     }
 
+    public String getTransportNodeId() {
+        return transportInstanceId;
+    }
+
     public String getConnectionId() {
         return connectionId;
     }

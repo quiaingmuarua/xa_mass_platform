@@ -1,0 +1,142 @@
+package com.xa.mass.transport.runtime.worker;
+
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class NodeTargetedTaskDispatchSubmitterTest {
+
+    @Test
+    void splitsBatchBySelectedTransportNodeAndCompensatesMissingOwner() {
+        InMemoryWorkerPresenceStore presenceNodeOne = new InMemoryWorkerPresenceStore(30_000L, "node-1");
+        InMemoryWorkerPresenceStore presenceNodeTwo = new InMemoryWorkerPresenceStore(30_000L, "node-2");
+        presenceNodeOne.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
+        presenceNodeTwo.markOnline("worker-2", "websocket", "route-2", "conn-2", "connected");
+        CombinedRouteView routeView = new CombinedRouteView(List.of(presenceNodeOne, presenceNodeTwo));
+        InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
+        nodes.register("node-1", List.of("websocket"), 1L);
+        nodes.register("node-2", List.of("websocket"), 1L);
+        WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
+                routeView,
+                nodes,
+                Map.of("websocket", WorkerTransportHints.REALTIME)
+        );
+        CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
+        List<TaskDispatchBinding> compensated = new ArrayList<>();
+        NodeTargetedTaskDispatchSubmitter submitter = new NodeTargetedTaskDispatchSubmitter(
+                handoff,
+                workerId -> switch (workerId) {
+                    case "worker-1" -> worker("worker-1");
+                    case "worker-2" -> worker("worker-2");
+                    case "worker-missing-route" -> worker("worker-missing-route");
+                    default -> null;
+                },
+                selector,
+                (task, dispatchBindings, detail) -> {
+                    compensated.addAll(dispatchBindings);
+                    return true;
+                }
+        );
+
+        submitter.onTaskDispatchBatch(context(), List.of(
+                binding("msg-1", "worker-1"),
+                binding("msg-2", "worker-2"),
+                binding("msg-3", "worker-missing-route")
+        ));
+
+        assertEquals(List.of("msg-1"), messages(handoff.submittedByNode.get("node-1")));
+        assertEquals(List.of("msg-2"), messages(handoff.submittedByNode.get("node-2")));
+        assertEquals(List.of("msg-3"), compensated.stream().map(TaskDispatchBinding::messageId).toList());
+    }
+
+    private static TaskDispatchContext context() {
+        return new TaskDispatchContext("task-1", "task", "demo", "user", "demo.event", Map.of());
+    }
+
+    private static TaskDispatchBinding binding(String messageId, String workerId) {
+        return new TaskDispatchBinding(
+                "task-1",
+                messageId,
+                "demo.event",
+                Map.of(),
+                null,
+                0,
+                "attempt-" + messageId,
+                1,
+                "lease-" + messageId,
+                workerId,
+                "ctx-1",
+                "batch-1"
+        );
+    }
+
+    private static Worker worker(String workerId) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setAdapterId("websocket");
+        worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
+        return worker;
+    }
+
+    private static List<String> messages(TaskDispatchBatch batch) {
+        return batch == null
+                ? List.of()
+                : batch.dispatchBindings().stream().map(TaskDispatchBinding::messageId).toList();
+    }
+
+    private static final class CombinedRouteView implements com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView {
+        private final List<InMemoryWorkerPresenceStore> stores;
+
+        private CombinedRouteView(List<InMemoryWorkerPresenceStore> stores) {
+            this.stores = stores;
+        }
+
+        @Override
+        public List<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> findOwners(String workerId) {
+            return stores.stream()
+                    .flatMap(store -> store.findOwners(workerId).stream())
+                    .toList();
+        }
+    }
+
+    private static final class CapturingNodeTargetedHandoff implements NodeTargetedTaskDispatchHandoff {
+        private final Map<String, TaskDispatchBatch> submittedByNode = new LinkedHashMap<>();
+
+        @Override
+        public void submit(String transportNodeId, TaskDispatchBatch batch) {
+            submittedByNode.put(transportNodeId, batch);
+        }
+
+        @Override
+        public TaskDispatchBatch poll(String transportNodeId, long timeoutMillis) {
+            return null;
+        }
+
+        @Override
+        public void submit(TaskDispatchBatch batch) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public TaskDispatchBatch poll(long timeoutMillis) {
+            return null;
+        }
+
+        @Override
+        public void shutdown() {
+        }
+    }
+}

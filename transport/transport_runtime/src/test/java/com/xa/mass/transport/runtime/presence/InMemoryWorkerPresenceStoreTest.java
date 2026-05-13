@@ -37,14 +37,15 @@ class InMemoryWorkerPresenceStoreTest {
     }
 
     @Test
-    void routeOwnershipMovesWithNewestOnlinePresenceAndOfflineClearsIt() {
+    void workerCanExposeMultipleOnlineRouteOwnersAndOfflineOneRouteOnly() {
         InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
 
         store.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
         store.markOnline("worker-1", "socket", "route-9", "conn-9", "reconnected");
 
-        assertFalse(store.isRouteOnline("websocket", "route-1"));
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
         assertTrue(store.isRouteOnline("socket", "route-9"));
+        assertEquals(2, store.findOwners("worker-1").size());
 
         WorkerPresence onlinePresence = store.getPresence("worker-1");
         assertNotNull(onlinePresence);
@@ -54,34 +55,36 @@ class InMemoryWorkerPresenceStoreTest {
 
         store.markOffline("worker-1", "socket", "route-9", "conn-9", "disconnect");
 
-        WorkerPresence offlinePresence = store.getPresence("worker-1");
-        assertNotNull(offlinePresence);
-        assertEquals(WorkerPresenceState.OFFLINE, offlinePresence.getPresenceState());
+        WorkerPresence remainingPresence = store.getPresence("worker-1");
+        assertNotNull(remainingPresence);
+        assertEquals(WorkerPresenceState.ONLINE, remainingPresence.getPresenceState());
+        assertEquals("websocket", remainingPresence.getAdapterId());
         assertFalse(store.isRouteOnline("socket", "route-9"));
-        assertTrue(store.listActivePresences().isEmpty());
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
+        assertEquals(1, store.findOwners("worker-1").size());
     }
 
     @Test
-    void staleHeartbeatOrDisconnectDoesNotKnockDownNewConnectionOwner() {
+    void reconnectOnSameRouteRejectsStaleHeartbeatAndDisconnect() {
         InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
 
-        store.markOnline("worker-1", "websocket", "route-old", "conn-old", "connected");
-        store.markOnline("worker-1", "websocket", "route-new", "conn-new", "reconnected");
+        store.markOnline("worker-1", "websocket", "route-1", "conn-old", "connected");
+        store.markOnline("worker-1", "websocket", "route-1", "conn-new", "reconnected");
 
-        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-1", "websocket", "route-old", "conn-old", "stale-heartbeat");
+        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-old", "stale-heartbeat");
         assertNotNull(ignoredHeartbeat);
         assertEquals("conn-new", ignoredHeartbeat.getConnectionId());
-        assertEquals("route-new", ignoredHeartbeat.getRouteKey());
-        assertTrue(store.isRouteOnline("websocket", "route-new"));
+        assertEquals("route-1", ignoredHeartbeat.getRouteKey());
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
 
-        WorkerPresence ignoredOffline = store.markOffline("worker-1", "websocket", "route-old", "conn-old", "stale-disconnect");
+        WorkerPresence ignoredOffline = store.markOffline("worker-1", "websocket", "route-1", "conn-old", "stale-disconnect");
         assertNotNull(ignoredOffline);
         assertEquals(WorkerPresenceState.ONLINE, ignoredOffline.getPresenceState());
-        assertTrue(store.isRouteOnline("websocket", "route-new"));
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
 
-        WorkerPresence finalOffline = store.markOffline("worker-1", "websocket", "route-new", "conn-new", "disconnect");
+        WorkerPresence finalOffline = store.markOffline("worker-1", "websocket", "route-1", "conn-new", "disconnect");
         assertNotNull(finalOffline);
         assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
-        assertFalse(store.isRouteOnline("websocket", "route-new"));
+        assertFalse(store.isRouteOnline("websocket", "route-1"));
     }
 }

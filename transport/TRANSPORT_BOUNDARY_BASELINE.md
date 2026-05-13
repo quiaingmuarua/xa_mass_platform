@@ -19,8 +19,9 @@ over richer but expensive observability state.
 Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
-- worker presence truth keyed by `workerId` with canonical route address
-  `adapterId + routeKey`
+- worker presence truth as a shared readable runtime view keyed by worker with
+  one or more route-owner records addressed by `adapterId + routeKey +
+  transportNodeId`
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
@@ -47,11 +48,16 @@ Transport should stay centered on these concepts only:
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 - `TaskDispatchHandoff`: post-claim assignment queue between engine and
   transport; it is not the runtime ready queue
+- `NodeTargetedTaskDispatchHandoff`: per-transport-node dispatch inbox for the
+  same post-claim `TaskDispatchBatch` shape
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
 - `WorkerPresenceStore`: shared transport-owned reachability projection with
   lease-based `ONLINE/STALE/OFFLINE` semantics
+- `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
+  engine-side dispatch routing after worker matching has already selected a
+  worker
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -79,8 +85,9 @@ behavior that cannot fit one of these concepts.
 - result-envelope validation and runtime logging
 - routing from task assignment events to adapter dispatch channels
 - engine-to-transport dispatch handoff queue/store ownership after assignment;
-  current default wiring is an in-memory `TaskDispatchHandoff` drained by a
-  runtime pump, not a direct engine->transport listener invocation
+  current embedded default wiring is an in-memory `TaskDispatchHandoff` drained
+  by a runtime pump, while split adapter runtimes may use node-targeted Redis
+  inboxes
 - both producer and consumer sides now speak `TaskDispatchBatchListener` at
   this seam; engine submits immutable `TaskDispatchContext +
   List<TaskDispatchBinding>` batches into handoff, and transport drains the same
@@ -103,10 +110,12 @@ Engine may read transport reachability for matching and dispatch eligibility,
 but transport owns the online truth itself. Heartbeat expiry is a transport
 lease rule, not an engine selector heuristic. `STALE` is transport-owned
 diagnostic state and must be treated as not dispatchable on the engine side.
-Shared-store implementations such as Redis must preserve the same canonical
-presence record shape and route-ownership semantics as the in-memory default;
-transport runtime may swap the store implementation, but engine reachability
-consumption must remain unchanged.
+Shared-store implementations such as Redis must preserve the same route-owner
+semantics as the in-memory default. A worker may have multiple route owners;
+`getPresence(workerId)` is only a compatibility projection, while
+`findOwners(workerId)` is the route-owner view for dispatch routing. Engine
+must not write presence, read adapter sessions, or treat presence as a schedule
+owner.
 
 ## Distributed Transport V1
 
@@ -119,7 +128,9 @@ The split runtime uses three transport/runtime channels:
 
 - dispatch handoff: engine submits `TaskDispatchBatch` values after claim,
   attempt creation, lease, and worker binding have already happened; transport
-  drains only this small assigned window
+  drains only this small assigned window. Multi-process adapter mode uses
+  `NodeTargetedTaskDispatchHandoff` queues keyed by `transportNodeId` so each
+  transport JVM consumes only its own inbox.
 - delivery inbox: transport routes dispatch envelopes into
   `TransportDeliveryStore` by `adapterId + routeKey`
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
@@ -137,6 +148,21 @@ and terminal convergence.
 contains `TaskDispatchContext` plus `List<TaskDispatchBinding>` and must stay
 JSON-safe. Large item bodies continue to use `payloadRef` when needed; the
 handoff queue is not a copy of a million-item task queue.
+
+Worker runtime state is not a queue. The shared worker view contains
+route-owner records:
+
+```text
+workerId, adapterId, routeKey, transportNodeId, connectionId,
+state, leaseExpireAt, updatedAt
+```
+
+Engine matching still selects a worker from control-plane registration,
+capability, rule, lock, and reachability inputs. Only after assignment has
+produced concrete bindings does dispatch routing choose one ONLINE route owner
+and write the batch to that owner's node inbox. Missing/stale/offline route
+owners or offline transport nodes go through engine-owned compensation/retry;
+transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
@@ -309,10 +335,12 @@ are diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. The embedded
 runtime uses an in-memory `TaskDispatchHandoff` plus `TaskDispatchHandoffPump`;
-split runtime uses a Redis-backed handoff with the same producer/consumer
-contract. Do not reintroduce direct synchronous engine->transport callback
-coupling as a parallel mainline, and do not treat the handoff queue as a second
-runtime ready queue.
+split runtime uses Redis-backed handoffs with the same producer/consumer
+contract. Single-queue Redis handoff remains available for simple split
+deployments, while node-targeted Redis handoff is the multi-adapter mainline.
+Do not reintroduce direct synchronous engine->transport callback coupling as a
+parallel mainline, and do not treat any handoff queue as a second runtime ready
+queue.
 
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has both per-worker queue caps and a configurable total

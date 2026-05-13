@@ -6,6 +6,7 @@ import com.xa.mass.transport.presence.WorkerPresenceStore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,7 +21,8 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
 
     private final long leaseMillis;
     private final String transportInstanceId;
-    private final ConcurrentMap<String, WorkerPresence> presenceByWorkerId = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, WorkerPresence> presenceByRouteId = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> latestRouteIdByWorkerId = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workerIdByRoute = new ConcurrentHashMap<>();
 
     public InMemoryWorkerPresenceStore() {
@@ -63,7 +65,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                 now,
                 null
         );
-        return upsert(next);
+        return upsert(next, true);
     }
 
     @Override
@@ -78,7 +80,11 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
             return getPresence(workerId);
         }
         long now = System.currentTimeMillis();
-        return presenceByWorkerId.compute(normalizedWorkerId, (workerIdKey, stored) -> {
+        String routeId = findRouteIdByConnection(normalizedWorkerId, normalizedConnectionId);
+        if (routeId == null) {
+            return getPresence(workerId);
+        }
+        return presenceByRouteId.compute(routeId, (routeIdKey, stored) -> {
             WorkerPresence current = materialize(stored, now);
             if (current == null || !normalizedConnectionId.equals(current.getConnectionId())) {
                 return current != null ? current : stored;
@@ -95,7 +101,8 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                     now,
                     current.getDisconnectReason()
             );
-            workerIdByRoute.put(routeIdentity(next.getAdapterId(), next.getRouteKey()), normalizedWorkerId);
+            workerIdByRoute.put(routeIdentity(next.getAdapterId(), next.getRouteKey()), current.getWorkerId());
+            latestRouteIdByWorkerId.put(current.getWorkerId(), routeIdKey);
             return next;
         });
     }
@@ -111,9 +118,10 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = materialize(presenceByWorkerId.get(normalizedWorkerId), now);
+        String routeId = routeIdentity(normalizedAdapterId, normalizedRouteKey);
+        WorkerPresence previous = materialize(presenceByRouteId.get(routeId), now);
         if (previous == null || normalizedConnectionId == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return previous;
+            return getPresence(normalizedWorkerId);
         }
         WorkerPresence next = new WorkerPresence(
                 normalizedWorkerId,
@@ -127,8 +135,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                 now,
                 normalizeNullable(reason)
         );
-        presenceByWorkerId.put(normalizedWorkerId, next);
+        presenceByRouteId.put(routeId, next);
         workerIdByRoute.remove(routeIdentity(normalizedAdapterId, normalizedRouteKey), normalizedWorkerId);
+        refreshLatestRouteProjection(normalizedWorkerId);
         return next;
     }
 
@@ -138,7 +147,29 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         if (normalizedWorkerId == null) {
             return null;
         }
-        return materialize(presenceByWorkerId.get(normalizedWorkerId), System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        String routeId = latestRouteIdByWorkerId.get(normalizedWorkerId);
+        WorkerPresence latest = routeId != null ? materialize(presenceByRouteId.get(routeId), now) : null;
+        if (latest != null && latest.getPresenceState() == WorkerPresenceState.ONLINE) {
+            return latest;
+        }
+        WorkerPresence newestOnline = presenceByRouteId.values().stream()
+                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
+                .map(presence -> materialize(presence, now))
+                .filter(Objects::nonNull)
+                .filter(presence -> presence.getPresenceState() == WorkerPresenceState.ONLINE)
+                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+                .orElse(null);
+        if (newestOnline != null) {
+            latestRouteIdByWorkerId.put(normalizedWorkerId, routeIdentity(newestOnline.getAdapterId(), newestOnline.getRouteKey()));
+            return newestOnline;
+        }
+        return presenceByRouteId.values().stream()
+                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
+                .map(presence -> materialize(presence, now))
+                .filter(Objects::nonNull)
+                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+                .orElse(latest);
     }
 
     @Override
@@ -148,11 +179,8 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         if (normalizedAdapterId == null || normalizedRouteKey == null) {
             return false;
         }
-        String workerId = workerIdByRoute.get(routeIdentity(normalizedAdapterId, normalizedRouteKey));
-        if (workerId == null) {
-            return false;
-        }
-        WorkerPresence presence = getPresence(workerId);
+        WorkerPresence presence = materialize(presenceByRouteId.get(routeIdentity(normalizedAdapterId, normalizedRouteKey)),
+                System.currentTimeMillis());
         return presence != null
                 && normalizedAdapterId.equals(presence.getAdapterId())
                 && normalizedRouteKey.equals(presence.getRouteKey())
@@ -163,7 +191,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
     public List<WorkerPresence> listActivePresences() {
         long now = System.currentTimeMillis();
         List<WorkerPresence> active = new ArrayList<>();
-        for (WorkerPresence stored : presenceByWorkerId.values()) {
+        for (WorkerPresence stored : presenceByRouteId.values()) {
             WorkerPresence materialized = materialize(stored, now);
             if (materialized != null && materialized.getPresenceState() == WorkerPresenceState.ONLINE) {
                 active.add(materialized);
@@ -176,10 +204,12 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
     public int pruneExpired() {
         int pruned = 0;
         long now = System.currentTimeMillis();
-        for (WorkerPresence stored : List.copyOf(presenceByWorkerId.values())) {
+        for (WorkerPresence stored : List.copyOf(presenceByRouteId.values())) {
             WorkerPresence materialized = materialize(stored, now);
             if (materialized != null && materialized.getPresenceState() == WorkerPresenceState.STALE) {
-                presenceByWorkerId.remove(materialized.getWorkerId(), materialized);
+                String routeId = routeIdentity(materialized.getAdapterId(), materialized.getRouteKey());
+                presenceByRouteId.remove(routeId, materialized);
+                latestRouteIdByWorkerId.remove(materialized.getWorkerId(), routeId);
                 workerIdByRoute.remove(routeIdentity(materialized.getAdapterId(), materialized.getRouteKey()),
                         materialized.getWorkerId());
                 pruned++;
@@ -197,16 +227,16 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         return transportInstanceId;
     }
 
-    private WorkerPresence upsert(WorkerPresence next) {
+    private WorkerPresence upsert(WorkerPresence next, boolean latest) {
         Objects.requireNonNull(next, "next");
-        presenceByWorkerId.compute(next.getWorkerId(), (workerId, previous) -> {
-            WorkerPresence materializedPrevious = materialize(previous, System.currentTimeMillis());
-            if (materializedPrevious != null) {
-                workerIdByRoute.remove(routeIdentity(materializedPrevious.getAdapterId(), materializedPrevious.getRouteKey()), workerId);
-            }
-            workerIdByRoute.put(routeIdentity(next.getAdapterId(), next.getRouteKey()), workerId);
+        String routeId = routeIdentity(next.getAdapterId(), next.getRouteKey());
+        presenceByRouteId.compute(routeId, (ignored, previous) -> {
+            workerIdByRoute.put(routeId, next.getWorkerId());
             return next;
         });
+        if (latest) {
+            latestRouteIdByWorkerId.put(next.getWorkerId(), routeId);
+        }
         return next;
     }
 
@@ -216,10 +246,36 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         }
         WorkerPresence effective = stored.effectiveAt(now);
         if (effective != stored) {
-            presenceByWorkerId.put(stored.getWorkerId(), effective);
+            String routeId = routeIdentity(stored.getAdapterId(), stored.getRouteKey());
+            presenceByRouteId.put(routeId, effective);
+            latestRouteIdByWorkerId.remove(stored.getWorkerId(), routeId);
             workerIdByRoute.remove(routeIdentity(stored.getAdapterId(), stored.getRouteKey()), stored.getWorkerId());
         }
         return effective;
+    }
+
+    private void refreshLatestRouteProjection(String workerId) {
+        if (workerId == null) {
+            return;
+        }
+        WorkerPresence next = getPresence(workerId);
+        if (next == null) {
+            latestRouteIdByWorkerId.remove(workerId);
+        } else {
+            latestRouteIdByWorkerId.put(workerId, routeIdentity(next.getAdapterId(), next.getRouteKey()));
+        }
+    }
+
+    private String findRouteIdByConnection(String workerId, String connectionId) {
+        for (Map.Entry<String, WorkerPresence> entry : presenceByRouteId.entrySet()) {
+            WorkerPresence presence = entry.getValue();
+            if (presence != null
+                    && workerId.equals(presence.getWorkerId())
+                    && connectionId.equals(presence.getConnectionId())) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private static String routeIdentity(String adapterId, String routeKey) {

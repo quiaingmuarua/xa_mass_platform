@@ -46,13 +46,9 @@ class RedisWorkerPresenceStoreTest {
     @AfterEach
     void tearDown() {
         if (observerCommands != null) {
-            for (String workerId : observerCommands.smembers(namespacePrefix + ":workers")) {
-                observerCommands.del(namespacePrefix + ":worker:" + workerId);
-            }
-            for (String key : observerCommands.keys(namespacePrefix + ":route:*")) {
+            for (String key : observerCommands.keys(namespacePrefix + ":*")) {
                 observerCommands.del(key);
             }
-            observerCommands.del(namespacePrefix + ":workers");
         }
         if (store != null) {
             store.shutdown();
@@ -111,36 +107,42 @@ class RedisWorkerPresenceStoreTest {
     }
 
     @Test
-    void newestRouteOwnershipReplacesOldRouteMapping() {
+    void workerCanExposeMultipleOnlineRouteOwners() {
         store.markOnline("worker-3", "websocket", "route-old", "conn-1", "connected");
         store.markOnline("worker-3", "socket", "route-new", "conn-2", "reconnected");
 
-        assertFalse(store.isRouteOnline("websocket", "route-old"));
+        assertTrue(store.isRouteOnline("websocket", "route-old"));
         assertTrue(store.isRouteOnline("socket", "route-new"));
+        assertEquals(2, store.findOwners("worker-3").size());
+        assertEquals("socket", store.getPresence("worker-3").getAdapterId());
         assertEquals("worker-3", observerCommands.get(namespacePrefix + ":route:socket" + '\u0000' + "route-new"));
+        store.markOffline("worker-3", "socket", "route-new", "conn-2", "disconnect");
+        assertTrue(store.isRouteOnline("websocket", "route-old"));
+        assertFalse(store.isRouteOnline("socket", "route-new"));
+        assertEquals(1, store.findOwners("worker-3").size());
     }
 
     @Test
-    void staleHeartbeatOrDisconnectDoesNotOverrideNewConnectionOwner() {
-        store.markOnline("worker-3", "websocket", "route-old", "conn-old", "connected");
-        store.markOnline("worker-3", "socket", "route-new", "conn-new", "reconnected");
+    void reconnectOnSameRouteRejectsStaleHeartbeatAndDisconnect() {
+        store.markOnline("worker-3", "websocket", "route-1", "conn-old", "connected");
+        store.markOnline("worker-3", "websocket", "route-1", "conn-new", "reconnected");
 
-        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-3", "websocket", "route-old", "conn-old", "stale-heartbeat");
+        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-3", "websocket", "route-1", "conn-old", "stale-heartbeat");
         assertNotNull(ignoredHeartbeat);
         assertEquals(WorkerPresenceState.ONLINE, ignoredHeartbeat.getPresenceState());
         assertEquals("conn-new", ignoredHeartbeat.getConnectionId());
-        assertEquals("route-new", ignoredHeartbeat.getRouteKey());
-        assertTrue(store.isRouteOnline("socket", "route-new"));
+        assertEquals("route-1", ignoredHeartbeat.getRouteKey());
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
 
-        WorkerPresence ignoredOffline = store.markOffline("worker-3", "websocket", "route-old", "conn-old", "stale-disconnect");
+        WorkerPresence ignoredOffline = store.markOffline("worker-3", "websocket", "route-1", "conn-old", "stale-disconnect");
         assertNotNull(ignoredOffline);
         assertEquals(WorkerPresenceState.ONLINE, ignoredOffline.getPresenceState());
-        assertTrue(store.isRouteOnline("socket", "route-new"));
+        assertTrue(store.isRouteOnline("websocket", "route-1"));
 
-        WorkerPresence finalOffline = store.markOffline("worker-3", "socket", "route-new", "conn-new", "disconnect");
+        WorkerPresence finalOffline = store.markOffline("worker-3", "websocket", "route-1", "conn-new", "disconnect");
         assertNotNull(finalOffline);
         assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
-        assertFalse(store.isRouteOnline("socket", "route-new"));
+        assertFalse(store.isRouteOnline("websocket", "route-1"));
     }
 
     @Test
@@ -174,50 +176,49 @@ class RedisWorkerPresenceStoreTest {
     }
 
     @Test
-    void crossInstanceReconnectKeepsNewestOwnerAliveWhenOldInstanceSignalsLate() {
+    void crossInstanceSameRouteReconnectKeepsNewestOwnerAliveWhenOldInstanceSignalsLate() {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
              RedisWorkerPresenceStore secondary =
                      new RedisWorkerPresenceStore(secondaryConnection, namespacePrefix, 1_000L, "runtime-b")) {
-            store.markOnline("worker-6", "websocket", "route-old", "conn-old", "connected");
-            secondary.markOnline("worker-6", "socket", "route-new", "conn-new", "reconnected");
+            store.markOnline("worker-6", "websocket", "route-1", "conn-old", "connected");
+            secondary.markOnline("worker-6", "websocket", "route-1", "conn-new", "reconnected");
 
             WorkerPresence staleHeartbeat = store.refreshHeartbeat(
                     "worker-6",
                     "websocket",
-                    "route-old",
+                    "route-1",
                     "conn-old",
                     "late-heartbeat"
             );
             assertNotNull(staleHeartbeat);
             assertEquals(WorkerPresenceState.ONLINE, staleHeartbeat.getPresenceState());
             assertEquals("conn-new", staleHeartbeat.getConnectionId());
-            assertEquals("socket", staleHeartbeat.getAdapterId());
-            assertEquals("route-new", staleHeartbeat.getRouteKey());
-            assertTrue(store.isRouteOnline("socket", "route-new"));
-            assertFalse(store.isRouteOnline("websocket", "route-old"));
+            assertEquals("websocket", staleHeartbeat.getAdapterId());
+            assertEquals("route-1", staleHeartbeat.getRouteKey());
+            assertTrue(store.isRouteOnline("websocket", "route-1"));
 
             WorkerPresence staleOffline = store.markOffline(
                     "worker-6",
                     "websocket",
-                    "route-old",
+                    "route-1",
                     "conn-old",
                     "late-disconnect"
             );
             assertNotNull(staleOffline);
             assertEquals(WorkerPresenceState.ONLINE, staleOffline.getPresenceState());
             assertEquals("conn-new", staleOffline.getConnectionId());
-            assertTrue(secondary.isRouteOnline("socket", "route-new"));
+            assertTrue(secondary.isRouteOnline("websocket", "route-1"));
 
             WorkerPresence finalOffline = secondary.markOffline(
                     "worker-6",
-                    "socket",
-                    "route-new",
+                    "websocket",
+                    "route-1",
                     "conn-new",
                     "disconnect"
             );
             assertNotNull(finalOffline);
             assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
-            assertFalse(store.isRouteOnline("socket", "route-new"));
+            assertFalse(store.isRouteOnline("websocket", "route-1"));
         }
     }
 

@@ -5,15 +5,13 @@ import java.util.List;
 /**
  * Shared transport-owned worker reachability projection.
  *
- * <p>The current presence owner is keyed by {@code workerId}. A new
- * {@link #markOnline(String, String, String, String, String)} call may replace
- * the previous owner by installing a new {@code connectionId}. Heartbeat
+ * <p>Presence may contain multiple active route owners for one worker. Heartbeat
  * refresh and offline transitions are owner-checked operations: they only
- * mutate the stored presence when the incoming {@code connectionId} still
- * matches the current owner. This prevents stale disconnect or heartbeat
- * events from an older connection from revoking a newer active route.</p>
+ * mutate a route when the incoming {@code connectionId} still matches that
+ * route owner. This prevents stale disconnect or heartbeat events from an
+ * older connection from revoking a newer active route.</p>
  */
-public interface WorkerPresenceStore {
+public interface WorkerPresenceStore extends WorkerDispatchRouteOwnerView {
 
     WorkerPresence markOnline(String workerId,
                               String adapterId,
@@ -36,13 +34,24 @@ public interface WorkerPresenceStore {
     WorkerPresence getPresence(String workerId);
 
     default boolean isWorkerOnline(String workerId) {
-        WorkerPresence presence = getPresence(workerId);
-        return presence != null && presence.getPresenceState() == WorkerPresenceState.ONLINE;
+        return hasOnlineOwner(workerId);
     }
 
     boolean isRouteOnline(String adapterId, String routeKey);
 
     List<WorkerPresence> listActivePresences();
+
+    @Override
+    default List<WorkerDispatchRouteOwner> findOwners(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return List.of();
+        }
+        String normalizedWorkerId = workerId.trim();
+        return listActivePresences().stream()
+                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
+                .map(WorkerDispatchRouteOwner::fromPresence)
+                .toList();
+    }
 
     int pruneExpired();
 

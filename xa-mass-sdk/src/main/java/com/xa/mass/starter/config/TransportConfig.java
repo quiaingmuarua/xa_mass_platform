@@ -9,6 +9,7 @@ import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
@@ -54,6 +55,7 @@ public class TransportConfig {
     private Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory;
     private Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
     private Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
+    private Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
@@ -63,6 +65,7 @@ public class TransportConfig {
     private long eventHandlerTimeoutMillis;
     private long workerPresenceLeaseMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
+    private String transportNodeId = java.util.UUID.randomUUID().toString();
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
@@ -94,6 +97,7 @@ public class TransportConfig {
         this.taskDispatchHandoffFactory = source.taskDispatchHandoffFactory;
         this.taskResultInboxFactory = source.taskResultInboxFactory;
         this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory;
+        this.transportNodeRegistryFactory = source.transportNodeRegistryFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
@@ -103,6 +107,7 @@ public class TransportConfig {
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.workerPresenceLeaseMillis = source.workerPresenceLeaseMillis;
         this.runtimeRole = source.runtimeRole;
+        this.transportNodeId = source.transportNodeId;
     }
 
     public boolean isEnabled() {
@@ -289,6 +294,14 @@ public class TransportConfig {
         this.dispatchFailureInboxFactory = dispatchFailureInboxFactory;
     }
 
+    public Supplier<TransportNodeRegistry> getTransportNodeRegistryFactory() {
+        return transportNodeRegistryFactory;
+    }
+
+    public void setTransportNodeRegistryFactory(Supplier<TransportNodeRegistry> transportNodeRegistryFactory) {
+        this.transportNodeRegistryFactory = transportNodeRegistryFactory;
+    }
+
     public TransportAdapterBootstrap getPrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap;
     }
@@ -354,6 +367,17 @@ public class TransportConfig {
         this.runtimeRole = runtimeRole == null ? TransportRuntimeRole.EMBEDDED : runtimeRole;
     }
 
+    public String getTransportNodeId() {
+        return transportNodeId;
+    }
+
+    public void setTransportNodeId(String transportNodeId) {
+        if (transportNodeId == null || transportNodeId.isBlank()) {
+            throw new IllegalArgumentException("transportNodeId must not be blank");
+        }
+        this.transportNodeId = transportNodeId.trim();
+    }
+
     public int getTransportRuntimeMaxPendingTasks() {
         return transportRuntimeMaxPendingTasks;
     }
@@ -401,6 +425,10 @@ public class TransportConfig {
 
     Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory() {
         return dispatchFailureInboxFactory;
+    }
+
+    Supplier<TransportNodeRegistry> transportNodeRegistryFactory() {
+        return transportNodeRegistryFactory;
     }
 
     Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver() {

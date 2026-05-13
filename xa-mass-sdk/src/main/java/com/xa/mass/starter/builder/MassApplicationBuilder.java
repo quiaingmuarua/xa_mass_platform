@@ -26,9 +26,11 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.dispatch.RedisNodeTargetedTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.dispatch.RedisTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -257,6 +259,22 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder redisNodeTargetedDispatchHandoff(String redisUri) {
+            return redisNodeTargetedDispatchHandoff(redisUri, RedisNodeTargetedTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisNodeTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = requireRedisUri(redisUri);
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            config.setTaskDispatchHandoffFactory(() -> new RedisNodeTargetedTaskDispatchHandoff(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    config.getTransportNodeId(),
+                    RedisNodeTargetedTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_NODE
+            ));
+            return this;
+        }
+
         public TransportBuilder redisResultInbox(String redisUri) {
             return redisResultInbox(redisUri, RedisTaskResultIngestChannel.DEFAULT_NAMESPACE_PREFIX);
         }
@@ -293,9 +311,12 @@ public class MassApplicationBuilder {
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            return redisDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-handoff")
+            return redisNodeTargetedDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-node")
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
-                    .redisDispatchFailureInbox(redisUri, normalizedNamespacePrefix + ":dispatch-failure");
+                    .redisDispatchFailureInbox(redisUri, normalizedNamespacePrefix + ":dispatch-failure")
+                    .redisPresenceStore(redisUri, normalizedNamespacePrefix + ":presence")
+                    .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery")
+                    .redisTransportNodeRegistry(redisUri, normalizedNamespacePrefix + ":nodes");
         }
 
         public TransportBuilder presenceStoreFactory(Supplier<com.xa.mass.transport.presence.WorkerPresenceStore> presenceStoreFactory) {
@@ -319,8 +340,29 @@ public class MassApplicationBuilder {
             config.setPresenceStoreFactory(() -> new RedisWorkerPresenceStore(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    config.getWorkerPresenceLeaseMillis()
+                    config.getWorkerPresenceLeaseMillis(),
+                    config.getTransportNodeId()
             ));
+            return this;
+        }
+
+        public TransportBuilder redisTransportNodeRegistry(String redisUri) {
+            return redisTransportNodeRegistry(redisUri, RedisTransportNodeRegistry.DEFAULT_NAMESPACE_PREFIX);
+        }
+
+        public TransportBuilder redisTransportNodeRegistry(String redisUri, String namespacePrefix) {
+            String normalizedRedisUri = requireRedisUri(redisUri);
+            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
+            config.setTransportNodeRegistryFactory(() -> new RedisTransportNodeRegistry(
+                    normalizedRedisUri,
+                    normalizedNamespacePrefix,
+                    RedisTransportNodeRegistry.DEFAULT_LEASE_MILLIS
+            ));
+            return this;
+        }
+
+        public TransportBuilder transportNodeId(String transportNodeId) {
+            config.setTransportNodeId(transportNodeId);
             return this;
         }
 

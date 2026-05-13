@@ -172,6 +172,16 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions redisNodeTargetedDispatchHandoff(String redisUri) {
+            delegate.redisNodeTargetedDispatchHandoff(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisNodeTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
+            delegate.redisNodeTargetedDispatchHandoff(redisUri, namespacePrefix);
+            return this;
+        }
+
         public TransportOptions redisResultInbox(String redisUri) {
             delegate.redisResultInbox(redisUri);
             return this;
@@ -204,6 +214,11 @@ public final class MassSdk {
 
         public TransportOptions transportRuntimeRole(TransportRuntimeRole runtimeRole) {
             delegate.transportRuntimeRole(runtimeRole);
+            return this;
+        }
+
+        public TransportOptions transportNodeId(String transportNodeId) {
+            delegate.transportNodeId(transportNodeId);
             return this;
         }
 

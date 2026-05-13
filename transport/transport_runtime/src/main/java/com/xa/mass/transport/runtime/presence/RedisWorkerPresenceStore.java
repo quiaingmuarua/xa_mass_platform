@@ -121,6 +121,19 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         );
     }
 
+    public RedisWorkerPresenceStore(String redisUri,
+                                    String namespacePrefix,
+                                    long leaseMillis,
+                                    String transportInstanceId) {
+        this(
+                RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
+                namespacePrefix,
+                leaseMillis,
+                transportInstanceId,
+                true
+        );
+    }
+
     RedisWorkerPresenceStore(RedisClient redisClient,
                              String namespacePrefix,
                              long leaseMillis,
@@ -173,27 +186,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
         String nextConnectionId = normalizedConnectionId != null ? normalizedConnectionId : java.util.UUID.randomUUID().toString();
-        commands.eval(
-                MARK_ONLINE_SCRIPT,
-                ScriptOutputType.INTEGER,
-                new String[]{
-                        workerKey(normalizedWorkerId),
-                        workersKey(),
-                        routeKey(normalizedAdapterId, normalizedRouteKey)
-                },
-                normalizedWorkerId,
-                normalizedAdapterId,
-                normalizedRouteKey,
-                WorkerPresenceState.ONLINE.name(),
-                Long.toString(now),
-                Long.toString(now + leaseMillis),
-                transportInstanceId,
-                nullableField(nextConnectionId),
-                Long.toString(now),
-                "",
-                routeKeyPrefix()
-        );
-        return new WorkerPresence(
+        WorkerPresence next = new WorkerPresence(
                 normalizedWorkerId,
                 normalizedAdapterId,
                 normalizedRouteKey,
@@ -205,6 +198,13 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 now,
                 null
         );
+        persistPresence(workerKey(normalizedWorkerId), next);
+        persistPresence(routePresenceKey(normalizedAdapterId, normalizedRouteKey), next);
+        commands.set(routeKey(normalizedAdapterId, normalizedRouteKey), normalizedWorkerId);
+        commands.sadd(workersKey(), normalizedWorkerId);
+        commands.sadd(workerRoutesKey(normalizedWorkerId), routeIdentity(normalizedAdapterId, normalizedRouteKey));
+        commands.sadd(routesKey(), routeIdentity(normalizedAdapterId, normalizedRouteKey));
+        return next;
     }
 
     @Override
@@ -218,32 +218,12 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         if (normalizedWorkerId == null || normalizedConnectionId == null) {
             return getPresence(workerId);
         }
-        WorkerPresence previous = readStoredPresence(normalizedWorkerId);
+        WorkerPresence previous = readRoutePresence(normalizedWorkerId, adapterId, routeKey);
         if (previous == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return materialize(previous);
-        }
-        long now = System.currentTimeMillis();
-        Long updated = commands.eval(
-                REFRESH_HEARTBEAT_SCRIPT,
-                ScriptOutputType.INTEGER,
-                new String[]{
-                        workerKey(normalizedWorkerId),
-                        workersKey(),
-                        routeKey(previous.getAdapterId(), previous.getRouteKey())
-                },
-                normalizedConnectionId,
-                WorkerPresenceState.ONLINE.name(),
-                Long.toString(now),
-                Long.toString(now + leaseMillis),
-                transportInstanceId,
-                Long.toString(now),
-                "",
-                normalizedWorkerId
-        );
-        if (updated == null || updated.longValue() == 0L) {
             return getPresence(normalizedWorkerId);
         }
-        return new WorkerPresence(
+        long now = System.currentTimeMillis();
+        WorkerPresence next = new WorkerPresence(
                 previous.getWorkerId(),
                 previous.getAdapterId(),
                 previous.getRouteKey(),
@@ -255,6 +235,13 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 now,
                 null
         );
+        persistPresence(routePresenceKey(previous.getAdapterId(), previous.getRouteKey()), next);
+        persistPresence(workerKey(normalizedWorkerId), next);
+        commands.set(routeKey(previous.getAdapterId(), previous.getRouteKey()), normalizedWorkerId);
+        commands.sadd(workersKey(), normalizedWorkerId);
+        commands.sadd(workerRoutesKey(normalizedWorkerId), routeIdentity(previous.getAdapterId(), previous.getRouteKey()));
+        commands.sadd(routesKey(), routeIdentity(previous.getAdapterId(), previous.getRouteKey()));
+        return next;
     }
 
     @Override
@@ -268,27 +255,12 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = readStoredPresence(normalizedWorkerId);
+        WorkerPresence previous = readRoutePresence(normalizedWorkerId, normalizedAdapterId, normalizedRouteKey);
         if (previous == null || normalizedConnectionId == null || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return materialize(previous);
-        }
-        long lastHeartbeat = previous != null ? previous.getLastHeartbeatEpochMillis() : 0L;
-        Long updated = commands.eval(
-                MARK_OFFLINE_SCRIPT,
-                ScriptOutputType.INTEGER,
-                new String[]{workerKey(normalizedWorkerId)},
-                normalizedConnectionId,
-                WorkerPresenceState.OFFLINE.name(),
-                Long.toString(now),
-                transportInstanceId,
-                Long.toString(now),
-                nullableField(normalizeNullable(reason)),
-                routeKeyPrefix()
-        );
-        if (updated == null || updated.longValue() == 0L) {
             return getPresence(normalizedWorkerId);
         }
-        return new WorkerPresence(
+        long lastHeartbeat = previous != null ? previous.getLastHeartbeatEpochMillis() : 0L;
+        WorkerPresence next = new WorkerPresence(
                 normalizedWorkerId,
                 previous.getAdapterId() != null ? previous.getAdapterId() : normalizedAdapterId,
                 previous.getRouteKey() != null ? previous.getRouteKey() : normalizedRouteKey,
@@ -300,6 +272,14 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 now,
                 normalizeNullable(reason)
         );
+        persistPresence(routePresenceKey(normalizedAdapterId, normalizedRouteKey), next);
+        persistPresence(workerKey(normalizedWorkerId), next);
+        String routeStorageKey = routeKey(normalizedAdapterId, normalizedRouteKey);
+        String mappedWorkerId = commands.get(routeStorageKey);
+        if (normalizedWorkerId.equals(mappedWorkerId)) {
+            commands.del(routeStorageKey);
+        }
+        return next;
     }
 
     @Override
@@ -308,11 +288,33 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         if (normalizedWorkerId == null) {
             return null;
         }
-        WorkerPresence stored = readStoredPresence(normalizedWorkerId);
-        if (stored == null) {
-            return null;
+        long now = System.currentTimeMillis();
+        List<WorkerPresence> candidates = new ArrayList<>();
+        for (String routeId : commands.smembers(workerRoutesKey(normalizedWorkerId))) {
+            WorkerPresence presence = readStoredRoutePresence(routeId);
+            presence = presence != null ? materialize(presence) : null;
+            if (presence != null && normalizedWorkerId.equals(presence.getWorkerId())) {
+                candidates.add(presence);
+            }
         }
-        return materialize(stored);
+        WorkerPresence online = candidates.stream()
+                .filter(presence -> presence.getPresenceState() == WorkerPresenceState.ONLINE
+                        && presence.getLeaseExpireAtEpochMillis() > now)
+                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+                .orElse(null);
+        if (online != null) {
+            persistPresence(workerKey(normalizedWorkerId), online);
+            return online;
+        }
+        WorkerPresence latestRoute = candidates.stream()
+                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+                .orElse(null);
+        if (latestRoute != null) {
+            persistPresence(workerKey(normalizedWorkerId), latestRoute);
+            return latestRoute;
+        }
+        WorkerPresence stored = readStoredPresence(workerKey(normalizedWorkerId), normalizedWorkerId);
+        return stored != null ? materialize(stored) : null;
     }
 
     @Override
@@ -322,11 +324,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         if (normalizedAdapterId == null || normalizedRouteKey == null) {
             return false;
         }
-        String workerId = commands.get(routeKey(normalizedAdapterId, normalizedRouteKey));
-        if (workerId == null || workerId.isBlank()) {
-            return false;
-        }
-        WorkerPresence presence = getPresence(workerId);
+        WorkerPresence presence = readRoutePresence(null, normalizedAdapterId, normalizedRouteKey);
         return presence != null
                 && presence.getPresenceState() == WorkerPresenceState.ONLINE
                 && normalizedAdapterId.equals(presence.getAdapterId())
@@ -336,8 +334,9 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
     @Override
     public List<WorkerPresence> listActivePresences() {
         List<WorkerPresence> presences = new ArrayList<>();
-        for (String workerId : commands.smembers(workersKey())) {
-            WorkerPresence presence = getPresence(workerId);
+        for (String routeId : commands.smembers(routesKey())) {
+            WorkerPresence presence = readStoredRoutePresence(routeId);
+            presence = presence != null ? materialize(presence) : null;
             if (presence != null && presence.getPresenceState() == WorkerPresenceState.ONLINE) {
                 presences.add(presence);
             }
@@ -348,12 +347,18 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
     @Override
     public int pruneExpired() {
         int stale = 0;
-        for (String workerId : commands.smembers(workersKey())) {
-            WorkerPresence presence = getPresence(workerId);
+        for (String routeId : commands.smembers(routesKey())) {
+            WorkerPresence presence = readStoredRoutePresence(routeId);
+            presence = presence != null ? materialize(presence) : null;
             if (presence != null && presence.getPresenceState() == WorkerPresenceState.STALE) {
-                clearPreviousRoute(presence, workerId);
-                commands.del(workerKey(workerId));
-                commands.srem(workersKey(), workerId);
+                clearPreviousRoute(presence, presence.getWorkerId());
+                commands.del(routePresenceKey(presence.getAdapterId(), presence.getRouteKey()));
+                commands.srem(workerRoutesKey(presence.getWorkerId()), routeId);
+                commands.srem(routesKey(), routeId);
+                if (commands.scard(workerRoutesKey(presence.getWorkerId())) == 0L) {
+                    commands.del(workerRoutesKey(presence.getWorkerId()));
+                    commands.del(workerKey(presence.getWorkerId()));
+                }
                 stale++;
             }
         }
@@ -397,18 +402,8 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
     }
 
     private void persistMaterialized(WorkerPresence effective, WorkerPresence previous) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("workerId", effective.getWorkerId());
-        fields.put("adapterId", effective.getAdapterId());
-        fields.put("routeKey", effective.getRouteKey());
-        fields.put("presenceState", effective.getPresenceState().name());
-        fields.put("lastHeartbeatEpochMillis", Long.toString(effective.getLastHeartbeatEpochMillis()));
-        fields.put("leaseExpireAtEpochMillis", Long.toString(effective.getLeaseExpireAtEpochMillis()));
-        fields.put("transportInstanceId", effective.getTransportInstanceId());
-        fields.put("connectionId", nullableField(effective.getConnectionId()));
-        fields.put("updatedAtEpochMillis", Long.toString(effective.getUpdatedAtEpochMillis()));
-        fields.put("disconnectReason", nullableField(normalizeNullable(effective.getDisconnectReason())));
-        commands.hset(workerKey(effective.getWorkerId()), fields);
+        persistPresence(routePresenceKey(effective.getAdapterId(), effective.getRouteKey()), effective);
+        persistPresence(workerKey(effective.getWorkerId()), effective);
         if (previous != null && previous.getAdapterId() != null && previous.getRouteKey() != null) {
             commands.del(routeKey(previous.getAdapterId(), previous.getRouteKey()));
         }
@@ -425,13 +420,13 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         }
     }
 
-    private WorkerPresence readStoredPresence(String workerId) {
-        Map<String, String> fields = commands.hgetall(workerKey(workerId));
+    private WorkerPresence readStoredPresence(String key, String defaultWorkerId) {
+        Map<String, String> fields = commands.hgetall(key);
         if (fields == null || fields.isEmpty()) {
             return null;
         }
         return new WorkerPresence(
-                workerId,
+                normalizeNullable(fields.get("workerId")) != null ? normalizeNullable(fields.get("workerId")) : defaultWorkerId,
                 normalizeNullable(fields.get("adapterId")),
                 normalizeNullable(fields.get("routeKey")),
                 WorkerPresenceState.valueOf(fields.getOrDefault("presenceState", WorkerPresenceState.OFFLINE.name())),
@@ -444,12 +439,63 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         );
     }
 
+    private WorkerPresence readRoutePresence(String workerId, String adapterId, String routeKey) {
+        String normalizedAdapterId = normalizeNullable(adapterId);
+        String normalizedRouteKey = normalizeNullable(routeKey);
+        if (normalizedAdapterId == null || normalizedRouteKey == null) {
+            return null;
+        }
+        WorkerPresence presence = readStoredPresence(routePresenceKey(normalizedAdapterId, normalizedRouteKey), workerId);
+        return presence != null ? materialize(presence) : null;
+    }
+
+    private WorkerPresence readStoredRoutePresence(String routeId) {
+        int separator = routeId == null ? -1 : routeId.indexOf('\u0000');
+        if (separator <= 0 || separator >= routeId.length() - 1) {
+            return null;
+        }
+        String adapterId = routeId.substring(0, separator);
+        String routeKey = routeId.substring(separator + 1);
+        return readStoredPresence(routePresenceKey(adapterId, routeKey), null);
+    }
+
+    private void persistPresence(String key, WorkerPresence presence) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("workerId", presence.getWorkerId());
+        fields.put("adapterId", presence.getAdapterId());
+        fields.put("routeKey", presence.getRouteKey());
+        fields.put("presenceState", presence.getPresenceState().name());
+        fields.put("lastHeartbeatEpochMillis", Long.toString(presence.getLastHeartbeatEpochMillis()));
+        fields.put("leaseExpireAtEpochMillis", Long.toString(presence.getLeaseExpireAtEpochMillis()));
+        fields.put("transportInstanceId", presence.getTransportInstanceId());
+        fields.put("connectionId", nullableField(presence.getConnectionId()));
+        fields.put("updatedAtEpochMillis", Long.toString(presence.getUpdatedAtEpochMillis()));
+        fields.put("disconnectReason", nullableField(normalizeNullable(presence.getDisconnectReason())));
+        commands.hset(key, fields);
+    }
+
     private String workerKey(String workerId) {
         return namespacePrefix + ":worker:" + workerId;
     }
 
     private String workersKey() {
         return namespacePrefix + ":workers";
+    }
+
+    private String routesKey() {
+        return namespacePrefix + ":routes";
+    }
+
+    private String workerRoutesKey(String workerId) {
+        return namespacePrefix + ":worker-routes:" + workerId;
+    }
+
+    private String routePresenceKey(String adapterId, String routeKey) {
+        return namespacePrefix + ":route-presence:" + adapterId + '\u0000' + routeKey;
+    }
+
+    private static String routeIdentity(String adapterId, String routeKey) {
+        return adapterId + '\u0000' + routeKey;
     }
 
     private String routeKey(String adapterId, String routeKey) {

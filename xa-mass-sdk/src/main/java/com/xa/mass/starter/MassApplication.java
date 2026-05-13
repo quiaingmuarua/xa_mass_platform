@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
@@ -39,6 +40,10 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
+import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
+import com.xa.mass.transport.runtime.node.TransportNodeRegistryHeartbeat;
+import com.xa.mass.transport.runtime.worker.NodeTargetedTaskDispatchSubmitter;
+import com.xa.mass.transport.runtime.worker.WorkerDispatchRouteSelector;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -88,6 +93,8 @@ public class MassApplication {
     private TaskResultIngestInboxPump taskResultInboxPump;
     private RedisTransportDispatchFailureChannel dispatchFailureInbox;
     private TransportDispatchFailureInboxPump dispatchFailureInboxPump;
+    private TransportNodeRegistry transportNodeRegistry;
+    private TransportNodeRegistryHeartbeat transportNodeHeartbeat;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
@@ -141,6 +148,7 @@ public class MassApplication {
             try {
                 stopTransportServers();
                 stopManagedTransportAdapters();
+                stopTransportNodeHeartbeat();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                     stopTaskDispatchHandoff();
@@ -156,6 +164,8 @@ public class MassApplication {
             } finally {
                 stopTaskDispatchHandoff();
                 closeDistributedTransportInboxes();
+                stopTransportNodeHeartbeat();
+                closeTransportNodeRegistry();
                 stopTransportDeliveryService();
                 stopWorkerPresenceStore();
                 stopTransportRuntimeTaskExecutor();
@@ -212,6 +222,13 @@ public class MassApplication {
             logger.warn("Failed to stop worker presence store after startup failure", cleanupError);
         }
         try {
+            stopTransportNodeHeartbeat();
+            closeTransportNodeRegistry();
+        } catch (Exception cleanupError) {
+            startupFailure.addSuppressed(cleanupError);
+            logger.warn("Failed to stop transport node registry after startup failure", cleanupError);
+        }
+        try {
             stopTransportRuntimeTaskExecutor();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -248,6 +265,7 @@ public class MassApplication {
                     engineConfig.getExecutionEventSink()
             );
             workerPresenceStore = transportRuntimeComposition.resolveWorkerPresenceStore();
+            transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
             transportDeliveryService = deliveryService;
@@ -319,17 +337,28 @@ public class MassApplication {
                         adapterBindings
                 );
             }
+            if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+                startTransportNodeHeartbeat(adapterBindings);
+            }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 engineConfig.setWorkerReachabilityView(workerId -> {
-                    WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
-                    if (presence == null) {
-                        return com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
+                    if (workerPresenceStore == null || workerPresenceStore.findOwners(workerId).isEmpty()) {
+                        WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
+                        if (presence == null) {
+                            return com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
+                        }
+                        return switch (presence.getPresenceState()) {
+                            case ONLINE -> com.xa.mass.engine.WorkerReachabilityState.ONLINE;
+                            case STALE -> com.xa.mass.engine.WorkerReachabilityState.STALE;
+                            case OFFLINE -> com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
+                        };
                     }
-                    return switch (presence.getPresenceState()) {
-                        case ONLINE -> com.xa.mass.engine.WorkerReachabilityState.ONLINE;
-                        case STALE -> com.xa.mass.engine.WorkerReachabilityState.STALE;
-                        case OFFLINE -> com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
-                    };
+                    boolean hasDispatchableOwner = workerPresenceStore.findOwners(workerId).stream()
+                            .anyMatch(owner -> owner.isOnline(System.currentTimeMillis())
+                                    && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId())));
+                    return hasDispatchableOwner
+                            ? com.xa.mass.engine.WorkerReachabilityState.ONLINE
+                            : com.xa.mass.engine.WorkerReachabilityState.OFFLINE;
                 });
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
@@ -344,8 +373,7 @@ public class MassApplication {
                     );
                     taskDispatchHandoffPump.start();
                 }
-                taskDispatchListener = (task, dispatchBindings) ->
-                        taskDispatchHandoff.submit(new TaskDispatchBatch(task, dispatchBindings));
+                taskDispatchListener = createDispatchSubmitter(taskDispatchHandoff, runtimeRole);
             } else if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
@@ -389,6 +417,50 @@ public class MassApplication {
             return engineConfig.getTaskAssignmentRuntimePort()
                     .compensateDispatchSubmitFailure(storedTask, dispatchBindings, detail);
         };
+    }
+
+    private TaskDispatchBatchListener createDispatchSubmitter(TaskDispatchHandoff handoff,
+                                                              TransportRuntimeRole runtimeRole) {
+        if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
+                && handoff instanceof NodeTargetedTaskDispatchHandoff nodeTargetedHandoff) {
+            WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
+                    workerPresenceStore,
+                    transportNodeRegistry,
+                    transportRuntimeComposition.resolveAdapterTransportHintsById()
+            );
+            return new NodeTargetedTaskDispatchSubmitter(
+                    nodeTargetedHandoff,
+                    engineConfig.getWorkerStorage(),
+                    selector,
+                    createTransportDispatchFailureHandler()
+            );
+        }
+        return (task, dispatchBindings) -> handoff.submit(new TaskDispatchBatch(task, dispatchBindings));
+    }
+
+    private void startTransportNodeHeartbeat(List<TransportBinding> adapterBindings) {
+        TransportNodeRegistry registry = transportNodeRegistry;
+        if (registry == null) {
+            return;
+        }
+        String transportNodeId = transportRuntimeComposition.getTransportNodeId();
+        List<String> adapterIds = adapterBindings == null
+                ? List.of()
+                : adapterBindings.stream()
+                .map(TransportBinding::getAdapterId)
+                .filter(adapterId -> adapterId != null && !adapterId.isBlank())
+                .map(adapterId -> adapterId.trim().toLowerCase(java.util.Locale.ROOT))
+                .distinct()
+                .toList();
+        transportNodeHeartbeat = new TransportNodeRegistryHeartbeat(
+                registry,
+                transportNodeId,
+                adapterIds,
+                () -> endpointRegistry != null ? endpointRegistry.getActiveConnectionCount() : 0L,
+                5_000L
+        );
+        transportNodeHeartbeat.start();
+        logger.info("Transport node heartbeat started: transportNodeId={}, adapters={}", transportNodeId, adapterIds);
     }
 
     private void startManagedTransportAdapters() {
@@ -516,6 +588,22 @@ public class MassApplication {
         dispatchFailureInbox = null;
         if (failureInbox != null) {
             failureInbox.shutdown();
+        }
+    }
+
+    private void stopTransportNodeHeartbeat() {
+        TransportNodeRegistryHeartbeat heartbeat = transportNodeHeartbeat;
+        transportNodeHeartbeat = null;
+        if (heartbeat != null) {
+            heartbeat.stop();
+        }
+    }
+
+    private void closeTransportNodeRegistry() throws Exception {
+        TransportNodeRegistry registry = transportNodeRegistry;
+        transportNodeRegistry = null;
+        if (registry instanceof AutoCloseable closeable) {
+            closeable.close();
         }
     }
 

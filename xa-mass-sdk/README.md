@@ -111,15 +111,21 @@ app.pullWorker("crawler-worker-1").connect();
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
-When runtime reachability needs cross-instance truth, configure transport
-presence explicitly through `redisPresenceStore(...)` or `presenceStoreFactory(...)`.
-Adapters still own local session/connect/heartbeat ingress, but shared presence
-projection belongs to transport runtime rather than engine-local worker status.
+When runtime reachability needs cross-instance truth, configure shared transport
+presence through `redisDistributedChannels(...)`, `redisPresenceStore(...)`, or
+`presenceStoreFactory(...)`. Adapters still own local
+session/connect/heartbeat ingress, but shared presence projection belongs to
+transport runtime rather than engine-local worker status. A worker may have
+multiple route owners; dispatch routing reads the route-owner view and then
+writes the assigned batch to the selected `transportNodeId` inbox.
 
 Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and
-dispatch-failure compensation:
+dispatch-failure compensation. `redisDistributedChannels(...)` wires the
+node-targeted dispatch inbox, result inbox, dispatch-failure inbox, Redis
+presence, Redis delivery store, and transport-node registry under the supplied
+namespace:
 
 ```java
 import com.xa.mass.starter.config.TransportRuntimeRole;
@@ -130,8 +136,6 @@ MassSdkApplication engineProducer = MassSdk.builder()
         .transport(transport -> transport
                 .transportRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER)
                 .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
-                .redisPresenceStore(redisUri, "xa:mass:prod:presence")
-                .redisDeliveryStore(redisUri, "xa:mass:prod:delivery")
                 .webSocketAdapter(webSocket -> webSocket
                         .enabled(false)
                         .serverEnabled(false)))
@@ -147,9 +151,8 @@ String redisUri = "redis://localhost:6379";
 MassSdkApplication transportConsumer = MassSdk.builder()
         .transport(transport -> transport
                 .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                .transportNodeId("edge-node-a")
                 .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
-                .redisPresenceStore(redisUri, "xa:mass:prod:presence")
-                .redisDeliveryStore(redisUri, "xa:mass:prod:delivery")
                 .webSocketAdapter(webSocket -> webSocket
                         .adapterId("ws-public")
                         .server(19090, "/ws")
@@ -159,11 +162,13 @@ MassSdkApplication transportConsumer = MassSdk.builder()
         .build();
 ```
 
-The dispatch handoff carries only post-claim `TaskDispatchBatch` values. It is
-not a duplicate of the runtime ready queue, and transport consumers must not
-apply results, retry tasks, or mutate task lifecycle directly. Result and
-retryable dispatch-failure inboxes are drained by the engine producer into its
-local engine ports.
+The dispatch handoff carries only post-claim `TaskDispatchBatch` values. In
+multi-adapter mode the engine producer reads the shared worker route-owner view,
+selects an ONLINE route whose transport node is ONLINE, and writes the batch to
+that node's Redis inbox. It is not a duplicate of the runtime ready queue, and
+transport consumers must not apply results, retry tasks, or mutate task
+lifecycle directly. Result and retryable dispatch-failure inboxes are drained
+by the engine producer into its local engine ports.
 
 For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
 same concept. For example, two bundled WebSocket instances might use adapter ids
@@ -281,9 +286,11 @@ routing listener. SDK runtime assembly now inserts an explicit
 `TaskDispatchHandoff` seam between engine and transport; the bundled default is
 still an in-memory queue plus pump, but the replacement boundary is now
 explicit for split runtime wiring through `redisDispatchHandoff(...)` or
-`redisDistributedChannels(...)`. The companion result and dispatch-failure
-Redis inboxes are runtime channels back to the engine process; they are not
-server APIs and they do not move task lifecycle ownership into transport.
+`redisDistributedChannels(...)`. Multi-process adapter wiring uses
+`NodeTargetedTaskDispatchHandoff`, so each transport JVM polls only its own
+`transportNodeId` inbox. The companion result and dispatch-failure Redis
+inboxes are runtime channels back to the engine process; they are not server
+APIs and they do not move task lifecycle ownership into transport.
 
 ## Compatibility Policy
 
