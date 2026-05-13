@@ -56,6 +56,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
     private static final long DEFAULT_BARRIER_TTL_MILLIS = Long.getLong(
             "xa.mass.runtime.resultBarrierClaimTtlMillis", 30_000L);
     private static final Gson GSON = new GsonBuilder()
+            .serializeNulls()
             .registerTypeAdapter(Instant.class, new InstantMillisAdapter())
             .create();
     private static final String COMMIT_VISIBLE_FINAL_SCRIPT = """
