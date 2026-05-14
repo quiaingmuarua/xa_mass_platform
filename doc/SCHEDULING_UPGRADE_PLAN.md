@@ -1,187 +1,314 @@
 # Scheduling Upgrade Plan
 
-**Scope:** engine-layer scheduling capability upgrade across five phases.  
-**Goal:** make task-worker matching and worker invocation priority strategy a first-class,
-load-aware, verifiable capability — not a binary eligibility filter on storage-order iteration.  
-**Proof surface:** each phase is verified via `EngineSchedulingCoreSuite`,
-`ServerSchedulingE2eSuite`, and `xa-mass-trace` scenario analyzers.  
-**Prerequisite:** `xa-mass-trace` scenario analysis capability is already in place.
+**Scope:** engine scheduling capability upgrade across six phases.  
+**Goal:** remove WorkerContext model complexity, establish foreground/background task scheduling
+as first-class concepts, and build a load-aware worker matching and priority dispatch system.  
+**Proof surface:** `EngineSchedulingCoreSuite`, `ServerSchedulingE2eSuite`,
+and `xa-mass-trace` scenario analyzers at each phase.
 
 ---
 
-## Context: What Exists and What Is Thin
+## Background: Why This Sequence
 
-### What is solid
+The scheduling upgrade has two distinct layers:
 
-| Component | Status |
+**Layer 1 — Model cleanup (Phase 0)**  
+`WorkerContext` was designed as a "credential/account slot" model but its actual usage
+is: routing tags and attributes used only for matching, plus an `IDLE→RESERVED→OCCUPIED`
+state machine that duplicates what `tryLockWorker` already provides. The null-context path
+is first-class in matching code, and every test registers exactly one context per worker.
+Removing it before adding scheduling capability reduces the surface the new code must reason about.
+
+**Layer 2 — Scheduling upgrade (Phases 1–5)**  
+Built on the simplified model. `WorkerLoadView` provides the pre-aggregated load snapshot
+that makes load-aware matching feasible without N×M runtime queries. Candidate ranking,
+priority lanes, capacity reservation, and cross-task fairness follow in order.
+
+---
+
+## Current State: What Is Thin or Broken
+
+| Issue | Location |
 |---|---|
-| `RuleBasedTaskWorkerMatchingStrategy` prefilter | Binary eligibility: reachability, lock, project/event/routingCode |
-| QLExpress rule evaluation per `(worker, workerContext)` | Pluggable, trace-recorded |
-| `TaskAssignWorker` lane separation | INTERACTIVE / BULK each have own `LinkedBlockingQueue` + executor |
-| `WorkerReachabilityView` pattern | Push-updated snapshot, read-only at match time — proven pattern |
-| `TaskWorkerMatchingStrategy` SPI | Clean seam for strategy replacement |
-| Assignment trace coverage | `workerMatchAccepted`, `workerMatchRejected`, `assignmentSummary` all emit canonical events |
-
-### What is thin or declared but unimplemented
-
-| Gap | Location | Impact |
-|---|---|---|
-| `DispatchPriority.HIGH/NORMAL` declared, zero runtime effect | `TaskRuntimeProfile`, `TaskAssignWorker` | Lane-internal ordering is pure FIFO regardless of profile |
-| Candidate iteration is storage-order; no scoring or ranking | `RuleBasedTaskWorkerMatchingStrategy.matchWorkers()` | First eligible worker always wins; no load-awareness |
-| Worker load is not a runtime first-class concept | `WorkerMatchContext` | Rules cannot reference `currentLoad`, `availableCapacity` |
-| Load query in hot path would be N×M without pre-aggregation | — | Prerequisite: load must be a push-updated snapshot, not a live query |
-| `tryLockWorker` is binary; no capacity dimension | `WorkerManager` | Cannot express "worker can handle 3 concurrent tasks" |
-| `TaskScheduler` SPI is explicit dead code | `TaskScheduler`, `SimpleTaskScheduler` | Misleads readers; javadoc says "not called by mainline dispatch loop" |
-| Cross-task worker budget: large BULK tasks can exhaust worker pool | `TaskWorkerAssignListener` | INTERACTIVE tasks may starve under concurrent BULK load |
+| `WorkerContext` state machine duplicates `tryLockWorker`; null-context is first-class | `RuleBasedTaskWorkerMatchingStrategy`, `WorkerContext` |
+| Matching iterates `(worker, context)` pairs with dual null/non-null path | `matchWorkers()` |
+| No foreground/background concept: all tasks exclusively lock the worker | `TaskWorkerAssignListener`, `WorkerManager` |
+| Worker account capabilities are statically pre-registered, not worker-reported | `WorkerContext` registration API |
+| Account switch has no protocol: no dispatch instruction, no distinguishable failure code | Transport dispatch payload |
+| `DispatchPriority.HIGH/NORMAL` declared, zero runtime effect (FIFO within lane) | `TaskAssignWorker.LaneState` |
+| Candidate iteration is storage order; no scoring, no load awareness | `RuleBasedTaskWorkerMatchingStrategy` |
+| Worker load is not a runtime first-class concept; any load query in hot path = N×M | `WorkerMatchContext` |
+| `tryLockWorker` is binary; no capacity dimension for shared/background tasks | `WorkerManager` |
+| `TaskScheduler` SPI is explicit dead code (javadoc says so) | `TaskScheduler`, `SimpleTaskScheduler` |
+| Large BULK tasks can exhaust worker pool and starve INTERACTIVE tasks | `TaskWorkerAssignListener` |
 
 ---
 
-## Phase 0 — WorkerLoadView Foundation
+## Phase 0 — WorkerContext Retirement + Foreground/Background Task Model
 
-**Goal:** establish a push-updated, pre-aggregated worker load snapshot service that can be
-read at O(1) per worker during matching — no live runtime queries in the hot path.
+**Goal:** remove `WorkerContext` as a model, simplify the matching path to a single branch,
+establish `foreground` (exclusive) and background (shared) as the first-class scheduling
+dimension that replaces the `WorkerContextStatus` lifecycle.
 
-This phase produces no behavioral change. It is solely the infrastructure that makes
-Phases 2 and 3 feasible without a performance cliff.
+### What changes in the Worker model
 
-### Rationale
+Account and routing capabilities move from `WorkerContext` to `Worker.attributes`.
+Workers report capabilities at registration and refresh via heartbeat — the engine no
+longer requires operator-managed context CRUD.
 
-`WorkerReachabilityView` is the proven pattern: transport events push online/offline state
-into an engine-internal snapshot; matching reads the snapshot without touching transport.
-Worker load needs the same pattern: runtime claim/final events push load deltas into an
-engine-internal `WorkerLoadView`; matching reads the snapshot.
-
-Without this, any load-aware matching would require per-worker runtime queries inside
-`matchWorkers()`, producing N×M queries per assignment cycle under concurrent task load.
-
-### New types
+`Worker` gets one new field:
 
 ```
-xa-mass-engine:
-  WorkerLoadView (interface)
-    int getActiveLeaseCount(String workerId)
-    int getReservedCount(String workerId)
-    double getEstimatedLoadRatio(String workerId)   // leases / declared capacity, 0.0–1.0+
-    void recordWorkClaimed(String workerId)
-    void recordWorkFinal(String workerId)
-
-  InMemoryWorkerLoadView (default impl)
-    ConcurrentHashMap<workerId, AtomicInteger activeLeaseCount>
-    ConcurrentHashMap<workerId, Integer declaredCapacity>   // from worker.maxConcurrentWork
-    push-updated; stale by at most one assignment cycle — acceptable for scheduling
+maxConcurrentWork: int   // default 1 (exclusive-only, backward compatible)
+                         // >1 enables background/shared task scheduling
 ```
+
+`workerContextAttributes` as a QLExpress rule variable is replaced by `workerAttributes`
+(already present in `WorkerMatchContext`). Existing rules that reference
+`workerContextAttributes['key']` update to `workerAttributes['key']`.
+
+### What changes in the Task model
+
+`ExecutionSpec` gets one new field:
+
+```
+foreground: boolean   // default true (exclusive lock, backward compatible)
+                      // false = background/shared, worker may handle concurrently
+```
+
+Semantics:
+- `foreground=true`: task requires exclusive use of the worker for its duration.
+  Uses existing `tryLockWorker` mechanism. Worker with `maxConcurrentWork=1` supports only this.
+- `foreground=false`: task shares the worker with other background tasks.
+  Uses capacity counting (Phase 1 `WorkerLoadView`). Worker must declare `maxConcurrentWork > 1`.
+
+### Account switching via dispatch payload
+
+When a task's matching requires a specific account (resolved from `targetWorkerAttributes`
+or `routingCode` matching), the dispatch payload carries an optional field:
+
+```
+dispatchInstruction.targetAccount: String   // null if no account switch needed
+```
+
+Worker receives the dispatch, attempts account switch if `targetAccount` is set.
+
+If switch fails: worker returns a normal item result with a specific failure reason:
+
+```
+failureReason = "ACCOUNT_SWITCH_FAILED"
+```
+
+Engine processes this as a standard item failure through the existing result convergence
+path. No new protocol, no new message type, no ack handshake. Retry policy applies as
+normal; if the account is persistently unavailable, `maxRetryCount` exhaustion produces
+`ALL_MESSAGES_FAILED` with `finalReason=RETRY_EXHAUSTED` — distinguishable in trace via
+`failureReason=ACCOUNT_SWITCH_FAILED` on the individual item.
+
+`ACCOUNT_SWITCH_FAILED` is added to the result reason vocabulary so `xa-mass-trace`
+analyzers can distinguish account failures from execution failures.
+
+### Deleted
+
+| Artifact | Notes |
+|---|---|
+| `WorkerContext.java` | Entire model |
+| `WorkerContextStatus.java` | Entire enum + state machine |
+| `WorkerContextFixture`, `WorkerContextSnapshot` | Test/diagnostic support types |
+| `workerContextsByWorkerIds()` storage API | Replaced by worker attribute lookup |
+| `ExternalWorkerContextRegisterApiRequest` | Context registration endpoint |
+| `/api/v1/workers/{workerId}/contexts` endpoint | Context CRUD API |
+| All `workerContext*` variables in `WorkerMatchContext` | ~15 variables removed |
+| Null-context iteration path in `matchWorkers()` | Single path remains |
 
 ### Modified
 
 | File | Change |
 |---|---|
-| `WorkerManager` | Inject `WorkerLoadView`; expose `getWorkerLoad(workerId)` |
-| `WorkerMatchContext` | Add `currentActiveLeaseCount`, `estimatedLoadRatio` to context map so QLExpress rules can reference them immediately |
-| `TaskResultService` / `TaskResultIngestFacade` | Call `workerLoadView.recordWorkFinal(workerId)` on work terminal |
-| `TaskDispatchBinder` impl | Call `workerLoadView.recordWorkClaimed(workerId)` after successful claim |
-| `EngineConfig` / `MassEngineBuilder` | Wire `InMemoryWorkerLoadView` as default; accept injection |
+| `Worker` | Add `maxConcurrentWork: int` (default 1) |
+| `ExecutionSpec` | Add `foreground: boolean` (default true) |
+| `WorkerMatchContext` | Remove all `workerContext*` fields; context map shrinks from ~35 to ~20 variables |
+| `RuleBasedTaskWorkerMatchingStrategy` | Remove `List<WorkerContext>` per-worker iteration; single `Worker` path |
+| `prefilterCandidate()` | Remove context-related checks (`isAllocatable`, routing tag check, context project check) |
+| `TaskWorkerAssignListener` | `unlockWorkers()` logic unchanged; foreground flag drives lock vs count |
+| Transport dispatch payload | Add optional `dispatchInstruction.targetAccount` field |
+| Failure reason vocabulary | Add `ACCOUNT_SWITCH_FAILED` |
+| `WorkerStorage` API | Remove context storage methods |
+| `WorkerApiController` | Remove context endpoints |
 
 ### Out of scope
 
-- No change to matching algorithm yet.
-- No capacity reservation yet.
-- No QLExpress rule changes; just makes variables available.
+- No change to `tryLockWorker` mechanics (Phase 0 keeps lock semantics for foreground tasks).
+- No WorkerLoadView yet (Phase 1).
+- `maxConcurrentWork > 1` is declared but not yet enforced in dispatch (Phase 1 enforces it).
+- Dynamic attribute refresh via heartbeat: transport heartbeat already delivers worker events;
+  wiring attribute updates through that path is additive and can follow independently.
 
 ### Verification
 
-- Unit: `WorkerLoadViewTest` — claim/final increments/decrements, thread-safety under concurrent updates
-- Integration: full `EngineSchedulingCoreSuite` must stay green with zero behavioral change
-- Trace: no new scenario yet; existing `assignment-success-binding` trace output unchanged
+- Compile: `./mvnw -DskipTests compile` — reactor-wide
+- ArchUnit: no remaining references to deleted types
+- Engine suite: `EngineSchedulingCoreSuite` green
+- Server E2E: `ServerSchedulingE2eSuite` green — especially `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+  (rule updated from `workerContextAttributes['country']` to `workerAttributes['country']`)
+- New unit test: `WorkerMatchContextSimplificationTest` — verify context map has no `workerContext*` keys
 
 ---
 
-## Phase 1 — Implement DispatchPriority Within Lanes
+## Phase 1 — WorkerLoadView Foundation
 
-**Goal:** make `TaskRuntimeProfile.DispatchPriority.HIGH` and `NORMAL` have real runtime
-effect inside each lane's queue. INTERACTIVE/HIGH tasks must not wait behind INTERACTIVE/NORMAL
-tasks already queued in the same lane.
+**Goal:** establish a push-updated, pre-aggregated worker load snapshot service.
+No live runtime queries during matching. Enforce `maxConcurrentWork` for background tasks.
+
+### Why this must not be a hot-path query
+
+```
+matchWorkers() called once per assignment cycle.
+For each task: iterate M worker candidates.
+If load = live runtime query: N tasks × M workers = N×M queries per second.
+At scale this saturates the runtime layer.
+```
+
+The pattern is identical to `WorkerReachabilityView`: transport events push state into an
+engine-internal snapshot; matching reads snapshot at O(1) per worker.
+
+### New types
+
+```java
+// xa-mass-engine
+interface WorkerLoadView {
+    int getActiveCount(String workerId);       // active leases (foreground or background)
+    int getReservedCount(String workerId);     // optimistic reservations (Phase 4)
+    double getLoadRatio(String workerId);      // (active + reserved) / maxConcurrentWork
+    boolean isAtCapacity(String workerId);     // (active + reserved) >= maxConcurrentWork
+
+    void recordWorkClaimed(String workerId, String taskId, boolean foreground);
+    void recordWorkFinal(String workerId, String taskId);
+}
+
+// default impl
+class InMemoryWorkerLoadView implements WorkerLoadView {
+    // ConcurrentHashMap<workerId, AtomicInteger> activeCounts
+    // ConcurrentHashMap<workerId, Integer> declaredCapacity  (from Worker.maxConcurrentWork)
+    // fully thread-safe; stale by at most one assignment cycle — acceptable
+}
+```
+
+### Foreground vs background in load tracking
+
+- `foreground=true` task claimed: marks worker as at-capacity (activeCount = maxConcurrentWork)
+  — effectively the same as a full lock; `tryLockWorker` remains the serialization guard
+- `foreground=false` task claimed: increments activeCount by 1;
+  worker remains dispatchable until `activeCount >= maxConcurrentWork`
+
+`isAtCapacity(workerId)` replaces the role of `isLocked(workerId)` as the primary
+dispatch eligibility check in `prefilterCandidate`. `tryLockWorker` is retained for
+foreground serialization within a single assignment cycle (prevents double-dispatch).
+
+### Modified
+
+| File | Change |
+|---|---|
+| `WorkerManager` | Inject `WorkerLoadView`; expose `isWorkerAtCapacity(workerId)` |
+| `WorkerMatchContext` | Add `activeLeaseCount`, `loadRatio`, `isAtCapacity` to context map |
+| `prefilterCandidate()` | Add `isAtCapacity` check after reachability check |
+| `TaskDispatchBinder` impl | Call `workerLoadView.recordWorkClaimed(workerId, taskId, foreground)` after claim |
+| `TaskResultService` / result convergence | Call `workerLoadView.recordWorkFinal(workerId, taskId)` on work terminal |
+| `EngineConfig` / `MassEngineBuilder` | Wire `InMemoryWorkerLoadView` as default; injectable |
+
+### Out of scope
+
+- Capacity reservation (Phase 4).
+- No change to `tryLockWorker` role.
+- Redis-backed `WorkerLoadView` for multi-JVM (future; same interface, different impl).
+
+### Verification
+
+- Unit: `InMemoryWorkerLoadViewTest` — concurrent claim/final; foreground capacity semantics; thread-safety
+- Unit: `WorkerMatchContextLoadTest` — `isAtCapacity` variable present and correct
+- Engine suite: `EngineSchedulingCoreSuite` green with zero behavioral change
+- New integration: `TaskApiBackgroundTaskSharingIntegrationTest` — two background tasks dispatched to
+  same worker (maxConcurrentWork=2); both complete without blocking each other
+
+---
+
+## Phase 2 — DispatchPriority Within Lanes
+
+**Goal:** make `TaskRuntimeProfile.DispatchPriority.HIGH/NORMAL` have real runtime effect
+inside each lane's queue. Currently declared in the type system but FIFO in practice.
 
 ### What is wrong now
 
-`TaskAssignWorker` uses `LinkedBlockingQueue<TaskAssignmentSignal>` per lane — plain FIFO.
-`TaskRuntimeProfile.DispatchPriority` is declared in the type system but has zero runtime
-effect. An INTERACTIVE task submitted after a wave of INTERACTIVE/NORMAL tasks will wait
-behind all of them regardless of its declared priority.
+`TaskAssignWorker.LaneState` uses `LinkedBlockingQueue<TaskAssignmentSignal>` — plain FIFO.
+An `INTERACTIVE/HIGH` task submitted after a wave of `INTERACTIVE/NORMAL` tasks waits behind
+all of them. `DispatchPriority` exists as types but does nothing.
 
 ### Changes
 
 | File | Change |
 |---|---|
-| `TaskAssignmentSignal` (record) | Add `int priorityOrdinal` field resolved from `TaskRuntimeProfile.DispatchPriority.ordinal()` at submit time |
-| `TaskAssignWorker.LaneState` | Replace `LinkedBlockingQueue` with `PriorityBlockingQueue` ordered by `priorityOrdinal ASC` (lower ordinal = higher priority = dequeued first) |
+| `TaskAssignmentSignal` (record) | Add `int priorityOrdinal` (from `DispatchPriority.ordinal()`, lower = higher priority) |
+| `TaskAssignWorker.LaneState` | Replace `LinkedBlockingQueue` with `PriorityBlockingQueue` ordered by `priorityOrdinal ASC` |
 | `TaskAssignWorker.submit()` | Resolve `TaskRuntimeProfile` at submit time; stamp signal with priority ordinal |
-| `TaskRuntimeProfileResolver` | No change to logic; priority resolution already correct for INTERACTIVE→HIGH, BULK→NORMAL |
 
 ### Invariants
 
-- Lane separation (INTERACTIVE vs BULK) is unchanged; priority ordering is strictly within-lane.
-- Deduplication via `trackedTaskIds` is unchanged; deferred requeue logic is unchanged.
-- `DispatchLane` remains the primary separation; `DispatchPriority` is a secondary within-lane ordering.
+- Lane separation (INTERACTIVE vs BULK) unchanged; priority ordering is strictly within-lane.
+- Deduplication (`trackedTaskIds`) and deferred requeue logic unchanged.
+- `DispatchLane` = primary separation; `DispatchPriority` = secondary within-lane ordering.
 
 ### Out of scope
 
-- Cross-lane preemption (BULK tasks never preempt INTERACTIVE lane work).
-- Task-level user-defined priority beyond `workloadClass` mapping.
+- Cross-lane preemption (BULK never preempts INTERACTIVE).
+- User-defined task priority beyond `workloadClass` mapping.
 
 ### Verification
 
 - Unit: `TaskAssignWorkerPriorityTest` — submit HIGH and NORMAL signals to same lane; verify HIGH drains first
-- Engine suite: `EngineSchedulingCoreSuite` unchanged
-- Trace: new scenario `priority-lane-ordering` — two INTERACTIVE tasks, one marked HIGH priority;
-  verify `ASSIGNMENT_QUEUE_SNAPSHOT` events show HIGH processed before NORMAL
+- Engine suite: `EngineSchedulingCoreSuite` green
+- Trace: new scenario `priority-lane-ordering`
 
 ---
 
-## Phase 2 — WorkerCandidateRanker: Load-Aware Scoring
+## Phase 3 — WorkerCandidateRanker: Load-Aware Scoring
 
-**Goal:** after prefilter passes, rank eligible candidates by a composite score before
-lock acquisition. The first K ranked candidates acquire locks and become dispatch targets.
-First-available-in-storage-order is replaced by best-score-first.
+**Goal:** after eligibility prefilter, rank candidates by composite score before lock
+acquisition. Replaces first-in-storage-order selection with best-score-first.
 
 ### What is wrong now
 
-`RuleBasedTaskWorkerMatchingStrategy.matchWorkers()` iterates candidates in storage order.
-Two workers that both pass all rules are treated identically; the first one encountered wins
-every time. Under steady state the same "first" workers are always chosen, leaving lower-index
-workers perpetually overloaded and higher-index workers idle.
+`matchWorkers()` iterates candidates in storage order. Two workers that both pass prefilter
+are treated identically; the first encountered wins every time. Under steady state the same
+workers are always selected first, creating systematic load imbalance.
 
-### New types
+### New SPI
 
-```
-xa-mass-engine:
-  WorkerCandidateRanker (interface)
-    List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, Task task)
-    // returns same list in preference order; must not mutate input
+```java
+interface WorkerCandidateRanker {
+    // Returns same candidates in preference order. Must not mutate input.
+    List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, Task task);
+}
 ```
 
 ### Default implementation: `DefaultWorkerCandidateRanker`
 
-Composite score (lower = better):
+Composite score (lower = better candidate):
 
 ```
-score = w1 * loadRatio           // from WorkerLoadView via WorkerMatchContext
-      + w2 * (1 - affinityScore) // routingTag exact-match > partial-match > none
-      + w3 * contextPenalty      // AVAILABLE=0, USABLE=1, other=10
+score = 0.6 × loadRatio             // from WorkerLoadView via WorkerMatchContext
+      + 0.3 × (1 - affinityScore)   // routingTag exact-match=1.0, partial=0.5, none=0.0
+      + 0.1 × availabilityPenalty   // isAtCapacity=∞ (filtered), else 0
 ```
 
-Default weights: `w1=0.6, w2=0.3, w3=0.1` — configurable via system properties.
-
-Rules still gate eligibility; ranker only orders the eligible set. This is additive — the
-rule engine remains the correctness guard; the ranker adds quality.
+Weights configurable via system properties. Rules remain the eligibility gate;
+ranker adds quality above the eligibility threshold.
 
 ### Modified
 
 | File | Change |
 |---|---|
-| `RuleBasedTaskWorkerMatchingStrategy` | Insert ranker step: build all `WorkerMatchContext` objects for prefilter-passed candidates → call `ranker.rank()` → iterate ranked list for lock acquisition |
-| `WorkerMatchContext` | `currentActiveLeaseCount` and `estimatedLoadRatio` already available after Phase 0 |
-| `TaskWorkerMatchingStrategy` | No change to SPI |
-| `EngineConfig` / `MassEngineBuilder` | Wire `DefaultWorkerCandidateRanker` as default; accept injection |
+| `RuleBasedTaskWorkerMatchingStrategy` | Build `WorkerMatchContext` for all prefilter-passed candidates → call `ranker.rank()` → iterate ranked list for lock acquisition |
+| `EngineConfig` / `MassEngineBuilder` | Wire `DefaultWorkerCandidateRanker` as default; injectable |
 
 ### Lock acquisition after ranking
 
@@ -190,243 +317,215 @@ for candidate in ranker.rank(prefilterPassed, task):
     if matched.size() >= maxWorkerCount: break
     if tryLockWorker(candidate.workerId):
         matched.add(candidate)
-        traceEventLogger.workerMatchAccepted(...)
-    else:
-        traceEventLogger.workerMatchRejected(..., "lock conflict after ranking")
+    // lock conflict = concurrent assignment won the race; continue to next candidate
 ```
-
-Lock conflict on a ranked candidate is not a ranker failure — it means concurrent assignment
-won the race. Continue to next ranked candidate.
 
 ### Out of scope
 
-- No change to rule evaluation logic.
-- No capacity reservation yet (Phase 3).
-- No external scoring plugins yet; composite score is internal.
+- External scoring plugins.
+- Worker performance history (future: feed completion latency into score).
 
 ### Verification
 
-- Unit: `DefaultWorkerCandidateRankerTest` — high-load worker ranks below low-load worker;
-  routing affinity breaks ties correctly
-- Unit: `RuleBasedTaskWorkerMatchingStrategyTest` — extend with load-differentiated worker pool;
-  verify lower-load worker is chosen when rules are equivalent
-- Engine suite: `EngineSchedulingCoreSuite`, specifically `TaskWorkerEligibilityTest`,
-  `TaskWorkerContextContentionTest`
-- Server E2E: `TaskApiWorkerContextAttributeRoutingIntegrationTest` must stay green
-- Trace: new scenario `load-aware-worker-selection` — two identical-rule workers, one at 80% load,
-  one at 10% load; verify trace shows lower-load worker accepted on repeated assignments
+- Unit: `DefaultWorkerCandidateRankerTest` — high-load worker ranks below low-load; affinity tie-break
+- Unit: `RuleBasedTaskWorkerMatchingStrategyTest` — load-differentiated pool; lower-load worker selected
+- Server E2E: `TaskApiWorkerContextAttributeRoutingIntegrationTest` green (routing behavior preserved)
+- Trace: new scenario `load-aware-worker-selection`
 
 ---
 
-## Phase 3 — Optimistic Capacity Reservation
+## Phase 4 — Optimistic Capacity Reservation
 
-**Goal:** replace binary dispatch-cycle locking with capacity-aware reservation so that the
-load view reflects committed dispatch intent immediately — before the runtime claim confirms.
-This prevents the same worker from being over-committed across concurrent assignment waves.
+**Goal:** prevent the same worker from being over-committed across concurrent assignment
+waves. Bridge the window between "match committed" and "runtime claim confirmed".
 
 ### What is wrong now
 
-`tryLockWorker()` is a per-cycle binary lock: a worker is either locked or not.
-It serializes dispatch within one assignment attempt but does not express capacity.
-`WorkerLoadView` (from Phase 0) tracks actual lease counts but there is a window between
-"match committed, lock released" and "runtime claim confirmed" during which the load view
-shows stale data. Under high concurrency, two concurrent assignment cycles may both see the
-same worker as low-load and both select it before either claim confirms.
+`tryLockWorker` serializes dispatch within one assignment cycle but is released after
+binding. Between two concurrent assignment cycles, both can see the same worker as
+low-load and select it before either claim confirms. `WorkerLoadView.activeCount` (Phase 1)
+tracks confirmed leases but not in-flight reservations.
 
 ### Changes
 
+```java
+// WorkerLoadView additions
+boolean tryReserveCapacity(String workerId);   // atomic: if (active + reserved) < max → reserved++; return true
+void confirmReservation(String workerId);       // claim confirmed: reserved--, active++
+void releaseReservation(String workerId);       // dispatch failed: reserved--
 ```
-WorkerLoadView additions:
-  boolean tryReserveCapacity(String workerId)
-    // atomically: if (activeLeaseCount + reservedCount) < maxConcurrent → increment reservedCount; return true
-    // else return false — worker is at capacity
-  void confirmReservation(String workerId)
-    // reservation → active lease: reservedCount--, activeLeaseCount++
-  void releaseReservation(String workerId)
-    // dispatch failed: reservedCount--
-```
+
+For foreground tasks: `tryReserveCapacity` sets `reserved = maxConcurrentWork` (full capacity claim).  
+For background tasks: `tryReserveCapacity` increments by 1.
 
 | File | Change |
 |---|---|
-| `InMemoryWorkerLoadView` | Implement `tryReserveCapacity`, `confirmReservation`, `releaseReservation` with per-worker `AtomicInteger` for reservedCount |
-| `RuleBasedTaskWorkerMatchingStrategy` | Replace `tryLockWorker()` with `workerLoadView.tryReserveCapacity(workerId)`; keep `tryLockWorker` for serialization only |
-| `TaskWorkerAssignListener.onTaskAssign()` | On dispatch failure path: call `releaseReservation` for all candidates in `dispatchCandidates` |
-| `TaskDispatchBinder` impl | On successful work claim: call `confirmReservation(workerId)` |
-| `Worker` model (or `WorkerContext`) | Add `maxConcurrentWork` field (default: 1 for backward compat) so capacity limit is worker-declared |
+| `InMemoryWorkerLoadView` | Add per-worker `AtomicInteger reservedCount`; implement three reservation methods |
+| `RuleBasedTaskWorkerMatchingStrategy` | Replace `tryLockWorker` as capacity guard with `workerLoadView.tryReserveCapacity(workerId)`; `tryLockWorker` retained for intra-cycle serialization only |
+| `TaskWorkerAssignListener` | On dispatch failure: call `releaseReservation` for all dispatch candidates |
+| `TaskDispatchBinder` impl | On successful claim: call `confirmReservation(workerId)` |
 
-### Relationship with `tryLockWorker`
+### Invariants
 
-`tryLockWorker` remains as a coarse serialization guard within a single assignment cycle —
-it prevents the same worker from being locked twice in the same `matchWorkers()` call.
-`tryReserveCapacity` is a cross-cycle capacity guard — it prevents over-commitment across
-concurrent assignment waves. Both are needed; they operate at different scopes.
-
-### Out of scope
-
-- Capacity across JVM instances (requires Redis-backed `WorkerLoadView` — future phase).
-- Persistent capacity state across restarts.
+`tryLockWorker` is NOT removed. It still prevents the same worker from being selected
+twice within a single `matchWorkers()` call. `tryReserveCapacity` is the cross-cycle guard.
+They operate at different scopes and are complementary.
 
 ### Verification
 
-- Unit: `WorkerLoadViewCapacityTest` — concurrent `tryReserveCapacity` calls; verify capacity limit is respected
+- Unit: `WorkerLoadViewReservationTest` — concurrent `tryReserveCapacity`; capacity limit respected under contention
 - Engine suite: `TaskSchedulingContentionTest`, `TaskRedispatchCompetitionTest` extended with multi-wave concurrent scenarios
-- Trace: new scenario `capacity-reservation-under-concurrency` — N concurrent tasks, worker pool with declared capacity 2; verify no worker is over-committed in trace output
+- Trace: new scenario `capacity-reservation-under-concurrency`
 
 ---
 
-## Phase 4 — TaskScheduler SPI: Retire Dead Code
+## Phase 5 — TaskScheduler SPI Retirement
 
-**Goal:** eliminate the ambiguity introduced by a documented-but-dead SPI.
+**Goal:** remove documented dead code that misleads readers about dispatch architecture.
 
 ### What is wrong now
 
 `TaskScheduler` interface declares `scheduleTask`, `scheduleTasks`, `cancelTask`, `pauseTask`,
-`resumeTask`. Its own javadoc says:
+`resumeTask`. Its own javadoc states:
 
 > "These methods are advisory hooks — the mainline dispatch loop in `TaskAssignWorker` does
-> not call them directly. They are reserved for future integration with external scheduling
-> systems."
+> not call them directly. They are reserved for future integration with external scheduling systems."
 
-`SimpleTaskScheduler` is a pure no-op that only logs. The SPI has been wired via `EngineConfig`
-and `MassEngineBuilder` but has zero effect on any dispatch behavior. Readers encountering
-this interface have no way to know it is inert without reading the javadoc carefully.
+`SimpleTaskScheduler` logs and returns. Wired via `MassEngineBuilder` but zero effect.
 
-### Decision: retire
-
-There is no concrete use case for an external scheduler integration (Quartz, Spring Scheduler)
-in the current mainline. Dispatch is event-driven via `TaskAssignWorker` lanes; external
-timer-based scheduling would bypass the lane model and the contention guards.
-
-If an external scheduling integration is needed in the future, the correct seam is a new
-event source that submits tasks to `TaskAssignWorker.submit()` — not a separate parallel
-dispatch path.
+If external scheduler integration is ever needed, the correct seam is a new event source
+that calls `TaskAssignWorker.submit()` — not a parallel dispatch path bypassing lane queues
+and contention guards.
 
 ### Changes
 
 | Action | Files |
 |---|---|
-| Delete | `TaskScheduler.java` |
-| Delete | `SimpleTaskScheduler.java` |
-| Remove wiring | `MassEngineBuilder` — remove `scheduler()` method and field |
-| Remove wiring | Any `EngineConfig` reference |
+| Delete | `TaskScheduler.java`, `SimpleTaskScheduler.java` |
+| Remove wiring | `MassEngineBuilder.scheduler()` method and field |
 
 ### Verification
 
 - Compile: reactor-wide `./mvnw -DskipTests compile`
-- ArchUnit guard: no remaining references to deleted types
+- ArchUnit: no remaining references to deleted types
 - Engine suite: full `EngineSchedulingCoreSuite` — behavioral baseline unchanged
 
 ---
 
-## Phase 5 — Cross-Task Worker Fairness and Budget
+## Phase 6 — Cross-Task Worker Fairness and Budget
 
-**Goal:** prevent large BULK tasks from exhausting the worker pool and starving concurrently
-running INTERACTIVE tasks. Introduce a per-task worker budget as a first-class execution
-spec concept.
+**Goal:** prevent large BULK tasks from exhausting the worker pool and starving concurrent
+INTERACTIVE tasks. Introduce per-task worker budget as a first-class `ExecutionSpec` concept.
 
 ### What is wrong now
 
-`getDesiredDispatchWorkerCount(task, readyWorkCount)` in `TaskWorkerAssignListener` is
-task-local: `ceil(readyWorkCount / batchSize)`. A BULK task with 10,000 ready items and
-batchSize=1 will request 10,000 workers, effectively claiming the entire available pool and
-blocking any concurrent INTERACTIVE task from getting workers until the BULK task's
-assignment cycle completes.
+`getDesiredDispatchWorkerCount(task, readyWorkCount) = ceil(readyWork / batchSize)` is
+task-local. A BULK task with 10,000 ready items and batchSize=1 requests 10,000 workers,
+claiming the entire available pool before any INTERACTIVE task gets scheduled.
 
-### New concept: `WorkerBudget`
+`foreground` (Phase 0) establishes the exclusive/shared distinction but does not cap how
+many workers a single task can claim.
 
+### New concept: `WorkerBudgetPolicy`
+
+```java
+// ExecutionSpec addition
+int maxConcurrentWorkers   // 0 = use policy default
+
+// engine-internal
+class WorkerBudgetPolicy {
+    int resolveMaxConcurrentWorkers(Task task, int desiredCount);
+    // INTERACTIVE: min(desired, interactiveMaxConcurrent)   default: 5
+    // BULK:        min(desired, bulkMaxConcurrent)          default: 20
+    // task.executionSpec.maxConcurrentWorkers overrides policy default if > 0
+}
 ```
-ExecutionSpec additions:
-  int maxConcurrentWorkers    // 0 = unlimited (default for INTERACTIVE SESSION tasks)
-  // for BULK tasks: defaults to min(desiredWorkerCount, BULK_DEFAULT_MAX_CONCURRENT)
 
-WorkerBudgetPolicy (engine-internal):
-  int resolveMaxConcurrentWorkers(Task task, int desiredCount)
-    // INTERACTIVE: min(desired, interactiveMaxConcurrent) — default 5
-    // BULK:        min(desired, bulkMaxConcurrent)        — default 20 (configurable)
-    // task.executionSpec.maxConcurrentWorkers overrides if set
+### Cross-task worker count tracking
+
+`WorkerLoadView.recordWorkClaimed(workerId, taskId, foreground)` already takes `taskId`.
+Add:
+
+```java
+int getActiveWorkerCountForTask(String taskId);
 ```
 
-### Changes
+`TaskWorkerAssignListener.getDesiredDispatchWorkerCount()` caps the request to:
+`min(desired, budget - currentTaskWorkerCount)`.
+
+### Foreground task budget
+
+A foreground task with `maxConcurrentWorkers=1` is the natural default — one foreground
+task occupies one worker. INTERACTIVE foreground tasks with small batches stay within their
+budget by default. Budget policy primarily constrains BULK tasks.
+
+### Modified
 
 | File | Change |
 |---|---|
-| `TaskWorkerAssignListener.getDesiredDispatchWorkerCount()` | Apply `WorkerBudgetPolicy.resolveMaxConcurrentWorkers()` as a ceiling |
-| `WorkerLoadView` | Add `getActiveWorkerCountForTask(String taskId)` — tracks how many workers are currently assigned to each task |
-| `RuleBasedTaskWorkerMatchingStrategy` | Pass `currentTaskWorkerCount` to caller so `TaskWorkerAssignListener` can cap the request to `budget - currentCount` |
-| `ExecutionSpec` | Add optional `maxConcurrentWorkers` field (default 0 = use policy default) |
-| `MassEngineBuilder` | Expose `WorkerBudgetPolicy` injection point |
-
-### Per-task worker count tracking
-
-`WorkerLoadView.recordWorkClaimed(workerId, taskId)` and `recordWorkFinal(workerId, taskId)`
-(extend Phase 0 signatures to include taskId). This allows both per-worker load tracking
-(Phase 2, 3) and per-task worker count tracking (Phase 5) from the same service.
-
-### Out of scope
-
-- Dynamic budget adjustment at runtime (future).
-- Priority-weighted worker pool partitioning.
-- Per-project or per-operator budget quotas.
+| `ExecutionSpec` | Add `maxConcurrentWorkers: int` (default 0 = use policy) |
+| `TaskWorkerAssignListener` | Apply `WorkerBudgetPolicy` ceiling in `getDesiredDispatchWorkerCount()` |
+| `WorkerLoadView` | Add `getActiveWorkerCountForTask(String taskId)` |
+| `InMemoryWorkerLoadView` | Track per-task active worker count alongside per-worker counts |
+| `MassEngineBuilder` | Expose `WorkerBudgetPolicy` injection |
 
 ### Verification
 
-- Unit: `WorkerBudgetPolicyTest` — BULK task with large ready count is capped; INTERACTIVE task
-  gets through concurrently
+- Unit: `WorkerBudgetPolicyTest` — BULK task with large ready count is capped; INTERACTIVE task dispatched concurrently
 - Engine suite: `TaskWorkerContextContentionTest` extended with mixed INTERACTIVE/BULK concurrent scenario
-- Chaos probe: new `worker-starvation` probe — concurrent INTERACTIVE + BULK tasks; INTERACTIVE must
-  complete within P95 latency bound regardless of BULK queue depth
-- Trace: new scenario `cross-task-worker-fairness` — verify INTERACTIVE task dispatch is not blocked
-  by large concurrent BULK task in trace assignment timeline
+- Chaos probe: new `worker-starvation` probe — INTERACTIVE task must complete within latency bound regardless of concurrent BULK queue depth
+- Trace: new scenario `cross-task-worker-fairness`
 
 ---
 
-## Dependency Graph
+## Phase Dependency Graph
 
 ```
-Phase 0 (WorkerLoadView)
-    ↓
-Phase 1 (DispatchPriority)     ← independent of Phase 0; can run in parallel
-    ↓
-Phase 2 (CandidateRanker)      ← requires Phase 0 (load data in WorkerMatchContext)
-    ↓
-Phase 3 (CapacityReservation)  ← requires Phase 0 (extends WorkerLoadView API)
-    ↓
-Phase 4 (Retire TaskScheduler) ← independent; can run at any point after Phase 0
-Phase 5 (Cross-Task Budget)    ← requires Phase 0 and Phase 3 (extends WorkerLoadView tracking)
+Phase 0  WorkerContext Retirement + foreground/background model
+    │
+    ├── Phase 1  WorkerLoadView Foundation         (requires Phase 0 foreground flag)
+    │       │
+    │       ├── Phase 2  DispatchPriority          (independent of Phase 1; can run in parallel)
+    │       │
+    │       ├── Phase 3  CandidateRanker           (requires Phase 1 load data)
+    │       │       │
+    │       │       └── Phase 4  CapacityReservation  (requires Phase 1 WorkerLoadView API)
+    │       │
+    │       └── Phase 6  Cross-Task Budget         (requires Phase 1 task-level tracking)
+    │
+    └── Phase 5  Retire TaskScheduler SPI          (independent; any point after Phase 0)
 ```
 
-Minimum viable path to load-aware dispatch: **Phase 0 → Phase 2**.  
-Full production-grade scheduling: all five phases.
+**Minimum viable path to load-aware dispatch:** Phase 0 → Phase 1 → Phase 3.  
+**Full production-grade scheduling:** all six phases in order.
 
 ---
 
 ## Trace Scenario Additions Per Phase
 
-| Phase | New `xa-mass-trace` Scenario | Validates |
+| Phase | New Scenario | Validates |
 |---|---|---|
-| Phase 1 | `priority-lane-ordering` | HIGH-priority task dequeued before NORMAL in same lane |
-| Phase 2 | `load-aware-worker-selection` | Lower-load worker selected over higher-load equivalent |
-| Phase 3 | `capacity-reservation-under-concurrency` | No worker over-committed across concurrent waves |
-| Phase 5 | `cross-task-worker-fairness` | INTERACTIVE task not starved by concurrent BULK task |
-
-Each scenario follows the existing `analyze --scenario <name>` contract in `TraceOperatorService`.
+| Phase 0 | `account-switch-failure` | `ACCOUNT_SWITCH_FAILED` result reason flows through convergence correctly |
+| Phase 0 | `background-task-worker-sharing` | Two background tasks on same worker; both complete |
+| Phase 2 | `priority-lane-ordering` | HIGH-priority task dequeued before NORMAL in same lane |
+| Phase 3 | `load-aware-worker-selection` | Lower-load worker selected over equivalent higher-load worker |
+| Phase 4 | `capacity-reservation-under-concurrency` | No worker over-committed across concurrent assignment waves |
+| Phase 6 | `cross-task-worker-fairness` | INTERACTIVE task not starved by concurrent BULK task |
 
 ---
 
 ## What This Does Not Change
 
-- `TaskWorkerMatchingStrategy` SPI contract — still `matchWorkers(Task, int)`.
-- QLExpress rule evaluation — still the eligibility gate; ranker adds quality above eligibility.
-- `TaskAssignWorker` lane model — INTERACTIVE and BULK lanes unchanged; Phase 1 only adds within-lane ordering.
-- Result convergence barrier protocol — untouched.
-- `TaskLifecycleService` state machine — untouched.
-- Transport delivery layer — untouched.
+- `TaskWorkerMatchingStrategy` SPI contract — `matchWorkers(Task, int)` signature unchanged
+- QLExpress rule evaluation — eligibility gate unchanged; ranker adds quality above it
+- Result convergence barrier protocol — untouched
+- `TaskLifecycleService` state machine — untouched
+- Transport delivery layer — only additive: `dispatchInstruction.targetAccount` field added
+- `TaskAssignWorker` lane model — INTERACTIVE/BULK separation unchanged
 
 ---
 
 ## Minimum Verification Per Phase
-
-Each phase must pass before the next begins:
 
 ```bash
 # Engine core
@@ -437,9 +536,16 @@ Each phase must pass before the next begins:
 ./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false \
   -Dtest=ServerSchedulingE2eSuite test
 
-# Trace scenario for the phase (after xa-mass-trace scenario is added)
-./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile -Dmaven.test.skip=true \
-  compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+# Focused regression (routing + matching correctness)
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dtest=TaskApiWorkerContextAttributeRoutingIntegrationTest,\
+TaskApiWorkerWithoutContextIntegrationTest,\
+TaskApiMinimumWorkerGateIntegrationTest test
+
+# Trace scenario verification
+./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile \
+  -Dmaven.test.skip=true compile \
+  org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
   -Dexec.mainClass=com.xa.mass.trace.cli.XaMassTraceCli \
   -Dexec.args="analyze --path <trace-path> --scenario <new-scenario> --task-id <task-id>"
 ```
