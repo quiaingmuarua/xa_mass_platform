@@ -55,10 +55,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -435,20 +437,9 @@ class TaskApiControllerTest {
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
         when(syncTaskResultBridge.register(TASK_ID, "msg-001")).thenReturn(future);
-        when(syncTaskResultBridge.await(TASK_ID, "msg-001", future, 2000L))
-                .thenReturn(Optional.of(new TaskWorkFinalSnapshot(
-                        TASK_ID,
-                        "msg-001",
-                        "SUCCESS",
-                        "BUSINESS_SUCCESS",
-                        0,
-                        null,
-                        null,
-                        null,
-                        Map.of("ok", true)
-                )));
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-001")).thenReturn(Optional.empty());
 
-        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
                         .contentType("application/json")
                         .content("""
                                 {
@@ -457,6 +448,23 @@ class TaskApiControllerTest {
                                   "timeoutMs":2000
                                 }
                                 """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        future.complete(new TaskWorkFinalSnapshot(
+                TASK_ID,
+                "msg-001",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                0,
+                null,
+                null,
+                null,
+                Map.of("ok", true)
+        ));
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
                 .andExpect(jsonPath("$.data.messageId").value("msg-001"))
@@ -476,22 +484,27 @@ class TaskApiControllerTest {
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-009")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
         when(syncTaskResultBridge.register(TASK_ID, "msg-009")).thenReturn(future);
-        when(syncTaskResultBridge.await(TASK_ID, "msg-009", future, 5000L))
-                .thenReturn(Optional.empty());
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-009")).thenReturn(Optional.empty());
 
-        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
                         .contentType("application/json")
                         .content("""
                                 {
                                   "eventCode":"chatbot.reply",
-                                  "item":{"text":"hello"}
+                                  "item":{"text":"hello"},
+                                  "timeoutMs":1
                                 }
                                 """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.messageId").value("msg-009"))
                 .andExpect(jsonPath("$.data.synced").value(false))
                 .andExpect(jsonPath("$.data.timedOut").value(true))
-                .andExpect(jsonPath("$.data.timeoutMs").value(5000));
+                .andExpect(jsonPath("$.data.timeoutMs").value(1));
     }
 
     @Test

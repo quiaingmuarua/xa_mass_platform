@@ -467,6 +467,8 @@ Contract rules:
 - append requires request-level `eventCode` or item-level `eventCode`
 - resolved event/capability identity must collapse to exactly one eventCode
 - request is subject to the same ingress safety limits as normal append
+- server wait is handled as an async HTTP request lifecycle rather than blocking
+  a servlet thread for the full worker round-trip
 - timeout only ends the HTTP wait; the appended item continues running
 - response includes `taskId`, `messageId`, `synced`, `timedOut`, `timeoutMs`,
   and when available the stable-final result payload fields

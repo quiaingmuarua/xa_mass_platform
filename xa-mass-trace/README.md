@@ -22,15 +22,18 @@ Read this module first when you need one of these:
 Fast read order:
 
 1. [../doc/TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md)
-2. `src/main/java/com/xa/mass/trace/cli/XaMassTraceCli.java`
-3. `src/main/java/com/xa/mass/trace/query/TraceQueryBackend.java`
-4. `src/main/java/com/xa/mass/trace/query/DuckDbTraceQueryBackend.java`
-5. `src/test/java/com/xa/mass/trace/cli/XaMassTraceCliIntegrationTest.java`
+2. `src/main/java/com/xa/mass/trace/operator/TraceOperatorService.java`
+3. `src/main/java/com/xa/mass/trace/cli/XaMassTraceCli.java`
+4. `src/main/java/com/xa/mass/trace/query/TraceQueryBackend.java`
+5. `src/main/java/com/xa/mass/trace/query/DuckDbTraceQueryBackend.java`
+6. `src/test/java/com/xa/mass/trace/operator/TraceOperatorServiceIntegrationTest.java`
+7. `src/test/java/com/xa/mass/trace/cli/XaMassTraceCliIntegrationTest.java`
 
 ## Role
 
 - query canonical trace JSONL output through DuckDB
-- provide a local/operator CLI for trace diagnosis
+- own the operator-facing trace read/analyze service surface
+- provide a local CLI as an adapter over the operator service
 - reconstruct task/work timelines without falling back to compatibility
   projection or ad hoc engine logs
 - validate trace artifacts against the canonical schema and event registry
@@ -56,10 +59,16 @@ Current backend:
 
 - local JSONL trace output queried through DuckDB
 
-Planned backend seam:
+Current operator seam:
 
-- the CLI/query use case surface stays stable while query backends may later
-  expand beyond local DuckDB
+- `TraceOperatorService` owns request/response-shaped timeline, stats,
+  validate, and scenario-analysis use cases
+- the CLI is a thin adapter over that service
+
+Planned adapter/backend seam:
+
+- operator use cases stay stable while adapters may expand beyond CLI and
+  query backends may expand beyond local DuckDB
 
 Current operator/testing rule:
 
@@ -117,7 +126,9 @@ Run through Maven from the repository root:
 
 The MVP is integration-tested in both directions:
 
-- canonical `JsonlExecutionEventSink` output is queried end-to-end by the CLI
+- canonical `JsonlExecutionEventSink` output is queried end-to-end by
+  `TraceOperatorService`
+- the CLI is integration-tested as an adapter over that same service path
 - validation rejects malformed or non-canonical trace rows
 - this module is the default observation surface for trace-observed
   integration/E2E scenarios until a remote backend becomes a verified mainline

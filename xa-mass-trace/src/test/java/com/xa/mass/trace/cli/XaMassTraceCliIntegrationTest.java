@@ -36,10 +36,8 @@ class XaMassTraceCliIntegrationTest {
         JsonNode root = objectMapper.readTree(result.stdout);
         assertEquals("task-1", root.get("taskId").asText());
         assertEquals(3, root.get("count").asInt());
-        JsonNode first = root.get("events").get(0);
-        assertEquals("TASK_STATUS_TRANSITION", first.get("eventType").asText());
-        assertEquals("READY", first.get("src").asText());
-        assertEquals("RUNNING", first.get("dst").asText());
+        assertTrue(containsTimelineEvent(root, "TASK_STATUS_TRANSITION", "READY", "RUNNING"));
+        assertTrue(containsTimelineEvent(root, "TASK_TERMINAL_CLOSED", "RUNNING", "TERMINAL"));
         assertTrue(result.stderr.isBlank());
     }
 
@@ -266,6 +264,17 @@ class XaMassTraceCliIntegrationTest {
                 new PrintStream(stderr, true)
         );
         return new CommandResult(exitCode, stdout.toString(), stderr.toString());
+    }
+
+    private boolean containsTimelineEvent(JsonNode root, String eventType, String src, String dst) {
+        for (JsonNode event : root.withArray("events")) {
+            if (eventType.equals(event.path("eventType").asText())
+                    && src.equals(event.path("src").asText())
+                    && dst.equals(event.path("dst").asText())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private record CommandResult(int exitCode, String stdout, String stderr) {

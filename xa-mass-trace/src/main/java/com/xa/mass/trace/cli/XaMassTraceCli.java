@@ -48,7 +48,7 @@ public final class XaMassTraceCli {
     }
 
     int execute(String[] args, PrintStream out, PrintStream err) {
-        RootCommand root = new RootCommand(operatorService, objectMapper, out, err);
+        RootCommand root = new RootCommand(operatorService, objectMapper, out);
         CommandLine commandLine = new CommandLine(root);
         commandLine.addSubcommand("timeline", new TimelineCommand());
         commandLine.addSubcommand("stats", new StatsCommand());
@@ -84,8 +84,7 @@ public final class XaMassTraceCli {
 
         RootCommand(TraceOperatorService operatorService,
                     ObjectMapper objectMapper,
-                    PrintStream out,
-                    PrintStream err) {
+                    PrintStream out) {
             this.operatorService = operatorService;
             this.objectMapper = objectMapper;
             this.out = out;

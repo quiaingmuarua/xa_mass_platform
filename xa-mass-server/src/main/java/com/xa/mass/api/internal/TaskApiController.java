@@ -44,6 +44,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
@@ -51,6 +52,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
@@ -342,12 +344,12 @@ public class TaskApiController {
             summary = "Append one task item and wait for its final result",
             description = "Appends exactly one opaque work item to an active task and blocks until that item reaches stable finality or the caller timeout elapses. Timing out only ends the HTTP wait; task execution continues."
     )
-    public ResponseEntity<ApiResponse<ApiTaskSyncAppendOutcome>> appendTaskItemSync(
+    public Object appendTaskItemSync(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId,
             @RequestBody TaskItemSyncIngestApiRequest requestBody) {
-        return executeApi("Sync append failed", () -> {
+        try {
             validateKnownFields(requestBody, "task sync append");
             TaskAccessSnapshot task = requireTaskAccess(taskId);
             TaskStateSnapshot state = getExistingTaskState(taskId);
@@ -370,15 +372,52 @@ public class TaskApiController {
             long timeoutMs = resolveSyncTimeoutMs(requestBody.getTimeoutMs());
             SyncTaskResultBridge bridge = requireSyncTaskResultBridge();
             CompletableFuture<TaskWorkFinalSnapshot> future = bridge.register(taskId, messageId);
-            Optional<TaskWorkFinalSnapshot> finalSnapshot = bridge.await(taskId, messageId, future, timeoutMs);
+            DeferredResult<ResponseEntity<ApiResponse<ApiTaskSyncAppendOutcome>>> deferred = new DeferredResult<>();
+            CompletableFuture.runAsync(() -> {
+                bridge.unregister(taskId, messageId, future);
+                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        null
+                )));
+            }, CompletableFuture.delayedExecutor(timeoutMs, TimeUnit.MILLISECONDS));
+            deferred.onCompletion(() -> bridge.unregister(taskId, messageId, future));
 
-            return ok(taskApiContractAssembler.toSyncAppendOutcome(
-                    taskId,
-                    messageId,
-                    timeoutMs,
-                    finalSnapshot.orElse(null)
-            ));
-        });
+            Optional<TaskWorkFinalSnapshot> existing = bridge.getExistingFinal(taskId, messageId);
+            if (existing.isPresent()) {
+                bridge.unregister(taskId, messageId, future);
+                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        existing.get()
+                )));
+                return deferred;
+            }
+
+            future.whenComplete((finalSnapshot, throwable) -> {
+                if (throwable != null) {
+                    deferred.setResult(badRequest("Sync append failed: " + throwable.getMessage()));
+                    return;
+                }
+                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        finalSnapshot
+                )));
+            });
+            return deferred;
+        } catch (TaskApiException e) {
+            return e.toResponse();
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest("Sync append failed: " + e.getMessage());
+        }
     }
 
     @PostMapping("/{taskId}/commands")
