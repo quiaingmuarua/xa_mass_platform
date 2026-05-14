@@ -23,6 +23,7 @@ import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
+import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
@@ -83,18 +84,19 @@ public class TaskApiController {
     private final TaskSecurityViewSupport taskSecurityViewSupport;
     private final TaskApiContractAssembler taskApiContractAssembler;
     private final SyncTaskResultBridge syncTaskResultBridge;
+    private final TaskSyncRequestSupervisor taskSyncRequestSupervisor;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
         this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
-                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null);
+                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
-                new TaskSecurityViewSupport(), null);
+                new TaskSecurityViewSupport(), null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -104,7 +106,7 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -114,8 +116,20 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider,
                              SyncTaskResultBridge syncTaskResultBridge) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, authProvider, syncTaskResultBridge, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
         this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
+                taskSyncRequestSupervisor);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -124,7 +138,7 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -132,7 +146,7 @@ public class TaskApiController {
                              ControlPlaneCatalog catalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
     }
 
     @Autowired
@@ -143,7 +157,8 @@ public class TaskApiController {
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport,
-                             SyncTaskResultBridge syncTaskResultBridge) {
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
         this(taskQueries,
                 taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
                 taskAdmin,
@@ -152,7 +167,8 @@ public class TaskApiController {
                 apiAuthService,
                 apiAuthorizationService,
                 taskSecurityViewSupport,
-                syncTaskResultBridge);
+                syncTaskResultBridge,
+                taskSyncRequestSupervisor);
     }
 
     private TaskApiController(TaskQueryOperations taskQueries,
@@ -163,7 +179,8 @@ public class TaskApiController {
                               ApiAuthService apiAuthService,
                               ApiAuthorizationService apiAuthorizationService,
                               TaskSecurityViewSupport taskSecurityViewSupport,
-                              SyncTaskResultBridge syncTaskResultBridge) {
+                              SyncTaskResultBridge syncTaskResultBridge,
+                              TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
         this.taskQueries = taskQueries;
         this.taskResultQueries = taskResultQueries != null
                 ? taskResultQueries
@@ -176,6 +193,9 @@ public class TaskApiController {
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
         this.taskApiContractAssembler = new TaskApiContractAssembler(DATE_TIME_FORMATTER);
         this.syncTaskResultBridge = syncTaskResultBridge;
+        this.taskSyncRequestSupervisor = taskSyncRequestSupervisor == null
+                ? new TaskSyncRequestSupervisor()
+                : taskSyncRequestSupervisor;
     }
 
     @GetMapping("")
@@ -349,6 +369,7 @@ public class TaskApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId,
             @RequestBody TaskItemSyncIngestApiRequest requestBody) {
+        TaskSyncRequestSupervisor.SyncLease syncLease = null;
         try {
             validateKnownFields(requestBody, "task sync append");
             TaskAccessSnapshot task = requireTaskAccess(taskId);
@@ -363,6 +384,8 @@ public class TaskApiController {
             validateProjectAndEvent(task.getProject(), eventCode);
             resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
                     task.getSharedConfig(), List.of(eventCode));
+            syncLease = taskSyncRequestSupervisor.acquire(task.getProject(), taskId);
+            TaskSyncRequestSupervisor.SyncLease acquiredLease = syncLease;
 
             TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
@@ -375,47 +398,72 @@ public class TaskApiController {
             DeferredResult<ResponseEntity<ApiResponse<ApiTaskSyncAppendOutcome>>> deferred = new DeferredResult<>();
             CompletableFuture.runAsync(() -> {
                 bridge.unregister(taskId, messageId, future);
-                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
                         taskId,
                         messageId,
                         timeoutMs,
                         null
-                )));
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.TIMED_OUT);
+                }
             }, CompletableFuture.delayedExecutor(timeoutMs, TimeUnit.MILLISECONDS));
-            deferred.onCompletion(() -> bridge.unregister(taskId, messageId, future));
+            deferred.onCompletion(() -> {
+                bridge.unregister(taskId, messageId, future);
+                acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.CANCELLED);
+            });
 
             Optional<TaskWorkFinalSnapshot> existing = bridge.getExistingFinal(taskId, messageId);
             if (existing.isPresent()) {
                 bridge.unregister(taskId, messageId, future);
-                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
                         taskId,
                         messageId,
                         timeoutMs,
                         existing.get()
-                )));
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.SYNCED);
+                }
                 return deferred;
             }
 
             future.whenComplete((finalSnapshot, throwable) -> {
                 if (throwable != null) {
-                    deferred.setResult(badRequest("Sync append failed: " + throwable.getMessage()));
+                    if (deferred.setResult(badRequest("Sync append failed: " + throwable.getMessage()))) {
+                        acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+                    }
                     return;
                 }
-                deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
                         taskId,
                         messageId,
                         timeoutMs,
                         finalSnapshot
-                )));
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.SYNCED);
+                }
             });
             return deferred;
+        } catch (TaskSyncRequestSupervisor.SyncCapacityExceededException e) {
+            return tooManyRequests(e.getMessage());
         } catch (TaskApiException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
             return e.toResponse();
         } catch (SdkUnauthenticatedException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
             return unauthorized(e.getMessage());
         } catch (SecurityException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
             return forbidden(e.getMessage());
         } catch (Exception e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
             return badRequest("Sync append failed: " + e.getMessage());
         }
     }
@@ -559,6 +607,10 @@ public class TaskApiController {
 
     private <T> ResponseEntity<ApiResponse<T>> notFound(String message) {
         return ResponseEntity.status(404).body(ApiResponse.error(404, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> tooManyRequests(String message) {
+        return ResponseEntity.status(429).body(ApiResponse.error(429, message));
     }
 
     private <T> ResponseEntity<ApiResponse<T>> executeApi(String failurePrefix,

@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
+import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
@@ -87,12 +88,15 @@ class TaskApiControllerTest {
     @Mock
     private SyncTaskResultBridge syncTaskResultBridge;
 
+    private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
+        taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider, syncTaskResultBridge),
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider, syncTaskResultBridge, taskSyncRequestSupervisor),
                 new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
@@ -543,6 +547,31 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.msg").value("sync append requires exactly one resolved eventCode"));
 
         verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemSyncRejectsWhenTaskSyncCapacityIsExceeded() throws Exception {
+        TaskSyncRequestSupervisor zeroCapacitySupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 1);
+        zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
+        MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                        authProvider, syncTaskResultBridge, zeroCapacitySupervisor),
+                new InternalTaskReviewController(taskQueries, taskDetailStore)
+        ).build();
+
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+
+        capacityMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.msg").value("Too many in-flight sync task requests for task: task-001"));
     }
 
     @Test

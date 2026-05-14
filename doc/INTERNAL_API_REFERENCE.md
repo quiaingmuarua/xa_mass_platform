@@ -469,6 +469,8 @@ Contract rules:
 - request is subject to the same ingress safety limits as normal append
 - server wait is handled as an async HTTP request lifecycle rather than blocking
   a servlet thread for the full worker round-trip
+- server enforces in-flight protection at global, project, and task scope; when
+  exceeded this route returns HTTP `429`
 - timeout only ends the HTTP wait; the appended item continues running
 - response includes `taskId`, `messageId`, `synced`, `timedOut`, `timeoutMs`,
   and when available the stable-final result payload fields
