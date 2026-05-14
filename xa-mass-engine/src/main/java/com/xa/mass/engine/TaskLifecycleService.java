@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
@@ -240,7 +241,7 @@ class TaskLifecycleService {
         return doTerminateTask(taskId, reason, "TERMINATE_TASK");
     }
 
-    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+    TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
@@ -268,6 +269,9 @@ class TaskLifecycleService {
         validateAtomicAppendAdmission(task, addedItemCount(ingressItems));
         taskManager.addRuntimeIngressItems(task, ingressItems);
         int added = ingressItems.size();
+        List<String> messageIds = ingressItems.stream()
+                .map(RuntimeTaskIngressItem::messageId)
+                .toList();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
         taskManager.updateTask(task);
@@ -275,7 +279,11 @@ class TaskLifecycleService {
             taskManager.requestTaskDispatch(task);
         }
         logger.info("[appendTaskItems] Added {} items to task {}", added, taskId);
-        return added;
+        return new TaskAppendReceipt(taskId, added, messageIds);
+    }
+
+    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+        return appendTaskItemsWithReceipt(taskId, items).added();
     }
 
     private void validateAtomicAppendAdmission(Task task, int itemCount) {

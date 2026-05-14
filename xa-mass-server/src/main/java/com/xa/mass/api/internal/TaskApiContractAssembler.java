@@ -11,6 +11,7 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskTimestamps;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
 import com.xa.mass.sdk.model.TaskCommandResult;
@@ -20,6 +21,7 @@ import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -74,6 +76,25 @@ final class TaskApiContractAssembler {
 
     ApiTaskAppendOutcome toAppendOutcome(String taskId, int added, String status, String intakeStatus, String message) {
         return new ApiTaskAppendOutcome(taskId, added, status, intakeStatus, message);
+    }
+
+    ApiTaskSyncAppendOutcome toSyncAppendOutcome(String taskId,
+                                                 String messageId,
+                                                 long timeoutMs,
+                                                 TaskWorkFinalSnapshot finalSnapshot) {
+        boolean synced = finalSnapshot != null;
+        return new ApiTaskSyncAppendOutcome(
+                taskId,
+                messageId,
+                synced,
+                !synced,
+                timeoutMs,
+                synced ? finalSnapshot.status() : null,
+                synced ? finalSnapshot.finalReason() : null,
+                synced ? finalSnapshot.output() : null,
+                synced ? finalSnapshot.errorCode() : null,
+                synced ? finalSnapshot.errorMessage() : null
+        );
     }
 
     ApiTaskCommandOutcome toCommandOutcome(TaskCommandResult result) {

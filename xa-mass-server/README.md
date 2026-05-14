@@ -347,8 +347,8 @@ What this module proves:
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
 - public result reads and archive endpoints use SDK `TaskResultQueryOperations`
-  backed by `TaskResultRuntime` stable-final rows; controllers must not fall
-  back to `TaskDetailStore.TaskMessageProjection` for result rows
+  backed by `TaskResultRuntime` stable-final rows; controllers must not read
+  `TaskDetailStore.TaskMessageProjection` for result rows
 - representative scheduling scenarios on the real host path, not the full
   competition matrix
 

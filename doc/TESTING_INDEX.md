@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 Status: current project-level testing index.
 
@@ -31,6 +31,8 @@ Do not misread the current system:
 - `engine` local tests are still first-class PR protection
 - `Boot-shell E2E` is representative integrated proof, not the full competition matrix
 - `chaos/perf` own distributed edge and runtime pressure, not ordinary lifecycle correctness
+- trace-observed integration means reading canonical sink output through
+  `xa-mass-trace` or the same query backend path, not string-matching logs
 
 Use this file to answer four questions quickly:
 
@@ -46,6 +48,7 @@ Use with:
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
 - [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
+- [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
@@ -96,6 +99,8 @@ Preferred surfaces:
 - `xa-mass-engine` acceptance/concurrency tests as the primary matrix
 - representative `xa-mass-server` assignment E2E for real wiring proof
 - cross-language external worker black-box tests when adapter/language parity is the risk
+- use `xa-mass-trace` as the default observation surface when the scenario also
+  claims lifecycle trace coverage
 
 Does not prove:
 
@@ -122,6 +127,8 @@ Preferred surfaces:
 
 - engine acceptance/concurrency tests
 - focused lifecycle/service tests only when they directly protect kernel behavior
+- trace-observed integration coverage through `xa-mass-trace` when the changed
+  path must preserve canonical event emission as part of the contract
 
 Does not prove:
 
@@ -146,6 +153,8 @@ Preferred surfaces:
 
 - Boot-shell E2E
 - controller/API contract tests when a host-side surface changes
+- trace-observed E2E when the host/runtime path is expected to preserve
+  canonical lifecycle visibility
 
 Does not prove:
 
@@ -170,6 +179,8 @@ Preferred surfaces:
 
 - transport module tests
 - Boot-shell E2E when host/runtime integration is involved
+- trace-observed integration when the risk includes callback/result-ingest
+  visibility or adapter lifecycle visibility
 
 Does not prove:
 
@@ -192,6 +203,8 @@ Preferred surfaces:
 
 - `xa-mass-server` integration tests
 - cross-language external worker black-box tests
+- pair with `xa-mass-trace` when the scenario claims trace coverage for the
+  integrated lifecycle path
 
 Does not prove:
 
@@ -404,6 +417,8 @@ Report-only support:
   interactive lane worker so the smoke measures lane isolation under bulk
   pressure, and interactive retry wakeup starts `RuntimeReadyDispatchPump` so
   delayed retry visibility is consumed from `TaskWorkRuntime`.
+- when chaos/perf runners claim trace coverage, consume canonical trace through
+  `xa-mass-trace` or the same query backend path rather than grepping raw logs
 
 Does not prove:
 
@@ -448,6 +463,7 @@ Use first when:
 | `project / submitter / worker / workerContext` boundary | Boot-shell E2E | controller/API contract tests |
 | task lifecycle / contract / intake | engine acceptance/concurrency + representative Boot-shell E2E | chaos for degraded edge behavior |
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
+| trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |
 | `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
@@ -463,6 +479,8 @@ When changing this repo:
 3. prefer integration/E2E/edge-case coverage over local unit tests unless the logic is kernel-critical and cheaper to prove locally
 4. do not add new server tests that depend on `com.xa.mass.base.model.*` as host-stable API truth
 5. do not use direct storage/runtime mutation to manufacture a mainline scenario unless the test is explicitly audit-only or deterministic fault injection
+6. when a test claims trace visibility, observe canonical trace through
+   `xa-mass-trace` or the same backend path instead of raw log text
 
 ## 8. Read Next
 

@@ -53,6 +53,9 @@ public class ApiRequestSizeGuardFilter extends OncePerRequestFilter {
         if (uri != null && uri.matches("^/api/v1/tasks/[^/]+/items$")) {
             return MAX_ITEM_INGEST_REQUEST_BYTES;
         }
+        if (uri != null && uri.matches("^/api/v1/tasks/[^/]+/items:sync$")) {
+            return MAX_ITEM_INGEST_REQUEST_BYTES;
+        }
         return null;
     }
 

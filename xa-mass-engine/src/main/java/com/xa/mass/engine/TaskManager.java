@@ -11,6 +11,7 @@ import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -364,8 +365,16 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
      * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
     @Override
+    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items) {
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItemsWithReceipt(taskId, items));
+    }
+
+    /**
+     * Appends new work items to a READY or RUNNING task whose intake window is still open.
+     */
+    @Override
     public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
-        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, items));
+        return appendTaskItemsWithReceipt(taskId, items).added();
     }
 
     /**
@@ -779,7 +788,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         if (!markResult.completed()) {
             logger.warn("Task result progress barrier mark did not complete for taskId={}, messageId={}, seq={}, status={}, reason={}",
                     taskId, messageId, finalSeq, markResult.status(), markResult.reason());
+            return;
         }
+        cleanupResultStageIfConverged(taskId, messageId);
+    }
+
+    private void cleanupResultStageIfConverged(String taskId, String messageId) {
+        taskResultRuntime.getVisibleByMessageId(taskId, messageId)
+                .filter(row -> row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied())
+                .ifPresent(row -> taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId));
     }
 
     /**

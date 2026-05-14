@@ -26,7 +26,7 @@ callback / result inbox
       -> runtime outcome interpretation
       -> trace
       -> TaskResultRuntime.commitVisibleFinal(...) for stable-final rows
-      -> runtime logical-final/progress idempotency barriers
+      -> runtime attempt-closed/logical-final/progress idempotency barriers
       -> projection residue write submitted best-effort
       -> synchronous result-side event publish
       -> task progress / terminal convergence trigger
@@ -45,7 +45,7 @@ then lets engine lifecycle policy converge the task aggregate.
 | ingress channel / inbox | `TaskResultIngestChannel`, `RedisTaskResultIngestChannel` | bounded process/JVM ingress into engine result apply | durable result log, ack ledger, task state |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow callable surface from transport into engine result handling | server API ownership, public result read API |
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, recent receipts | trace policy, projection storage, public result reads |
-| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, logical-final/progress barriers | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
+| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, attempt-closed/logical-final/progress barriers | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
 | engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, projection submission, result-side events, convergence trigger | durable ledger storage, transport I/O |
 | projection residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and review read view | callback acceptance truth, retry/finality truth, public result read truth |
 
@@ -136,14 +136,15 @@ staged callback exists
 The explicit repair state is not a separate durable row written after failure.
 If visible commit fails after runtime apply, the staged draft remains the repair
 anchor. Callback and repair paths both use runtime barriers keyed by
-`taskId + messageId + finalSeq` before logical-final event publish and progress
-application.
+`taskId + messageId + finalSeq` before attempt-closed event publish,
+logical-final event publish, and progress application.
 
 Barrier protocol in the current kernel is:
 
 - claim returns a token plus `claimedAt` / `expiresAt`
 - stale claims may be stolen after TTL
 - row barrier bits remain final truth:
+  - `attemptClosedPublished`
   - `logicalFinalPublished`
   - `progressApplied`
 - callback path and repair path both mark those bits through runtime-owned
@@ -152,13 +153,14 @@ Barrier protocol in the current kernel is:
 Repair scan is bounded by runtime-owned indexes:
 
 - staged callbacks missing visible final rows
+- committed visible rows missing attempt-closed publish mark
 - committed visible rows missing logical-final publish mark
 - committed visible rows missing progress-apply mark
 
 This does not promise crash-gap exactly-once delivery. The current guarantee is
 recoverable at-least-once side effects with normal callback/repair race
-suppression. Logical-final listeners and progress-side consumers must stay
-idempotent on `taskId + messageId + seq`.
+suppression. Attempt-closed listeners, logical-final listeners, and progress-side
+consumers must stay idempotent on `taskId + messageId + seq`.
 
 Redis `TaskResultRuntime` v1 is designed for standalone or single-shard Redis.
 Redis Cluster key-slot design for multi-key barrier and commit scripts is out of

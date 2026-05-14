@@ -100,8 +100,9 @@ public abstract class TaskResultRuntimeContractTest {
         assertThat(runtime.scanRepairCandidates(10))
                 .extracting(candidate -> candidate.kind())
                 .containsExactlyInAnyOrder(
+                        TaskResultRepairKind.MISSING_ATTEMPT_CLOSED_PUBLISH,
                         TaskResultRepairKind.MISSING_LOGICAL_FINAL_PUBLISH,
-                    TaskResultRepairKind.MISSING_PROGRESS_APPLY
+                        TaskResultRepairKind.MISSING_PROGRESS_APPLY
                 );
     }
 
@@ -172,6 +173,17 @@ public abstract class TaskResultRuntimeContractTest {
     @Test
     void barriers_areIndependentAndIdempotent() {
         long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
+        BarrierClaim attemptClaim = runtime.claimAttemptClosedPublish("task-1", "msg-1", seq);
+
+        assertThat(attemptClaim.status())
+                .isEqualTo(BarrierClaimStatus.CLAIMED);
+        assertThat(runtime.claimAttemptClosedPublish("task-1", "msg-1", seq).status())
+                .isEqualTo(BarrierClaimStatus.BUSY);
+        assertThat(runtime.markAttemptClosedPublished("task-1", "msg-1", seq, attemptClaim.claimToken()).status())
+                .isEqualTo(BarrierMarkStatus.MARKED);
+        assertThat(runtime.claimAttemptClosedPublish("task-1", "msg-1", seq).status())
+                .isEqualTo(BarrierClaimStatus.ALREADY_DONE);
+
         BarrierClaim logicalClaim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
 
         assertThat(logicalClaim.status())
@@ -190,6 +202,7 @@ public abstract class TaskResultRuntimeContractTest {
                 .isEqualTo(BarrierMarkStatus.MARKED);
         assertThat(runtime.getVisibleByMessageId("task-1", "msg-1")).get()
                 .satisfies(row -> {
+                    assertThat(row.attemptClosedPublished()).isTrue();
                     assertThat(row.logicalFinalPublished()).isTrue();
                     assertThat(row.progressApplied()).isTrue();
                 });
@@ -222,12 +235,31 @@ public abstract class TaskResultRuntimeContractTest {
     }
 
     @Test
+    void scanRepairCandidatesCleansFullyConvergedVisibleStages() {
+        runtime.stageCallback(draft("task-1", "msg-1", "digest-1"));
+        runtime.stageCallback(draft("task-1", "msg-1", "digest-2"));
+        long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
+
+        BarrierClaim attemptClaim = runtime.claimAttemptClosedPublish("task-1", "msg-1", seq);
+        runtime.markAttemptClosedPublished("task-1", "msg-1", seq, attemptClaim.claimToken());
+        BarrierClaim logicalClaim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        runtime.markLogicalFinalPublished("task-1", "msg-1", seq, logicalClaim.claimToken());
+        BarrierClaim progressClaim = runtime.claimProgressApply("task-1", "msg-1", seq);
+        runtime.markProgressApplied("task-1", "msg-1", seq, progressClaim.claimToken());
+
+        assertThat(runtime.scanRepairCandidates(10)).isEmpty();
+        assertThat(runtime.discardStagedCallbacksForMessage("task-1", "msg-1")).isEqualTo(0);
+    }
+
+    @Test
     void discardTask_removesStagedVisibleAndBarriersForOneTask() {
         TaskResultCallbackDraft draft = draft("task-1", "msg-1", "digest-1");
         runtime.stageCallback(draft);
         long seq = runtime.commitVisibleFinal(finalDraft("task-1", "msg-1", "SUCCESS")).row().seq();
-        BarrierClaim claim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
-        runtime.markLogicalFinalPublished("task-1", "msg-1", seq, claim.claimToken());
+        BarrierClaim attemptClaim = runtime.claimAttemptClosedPublish("task-1", "msg-1", seq);
+        runtime.markAttemptClosedPublished("task-1", "msg-1", seq, attemptClaim.claimToken());
+        BarrierClaim logicalClaim = runtime.claimLogicalFinalPublish("task-1", "msg-1", seq);
+        runtime.markLogicalFinalPublished("task-1", "msg-1", seq, logicalClaim.claimToken());
         runtime.commitVisibleFinal(finalDraft("task-2", "msg-1", "SUCCESS"));
 
         assertThat(runtime.discardTask("task-1")).isGreaterThan(0L);

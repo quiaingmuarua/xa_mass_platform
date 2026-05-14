@@ -15,6 +15,7 @@ Trust code and verified runtime behavior over historical documentation.
 Additional current baseline:
 
 - [doc/HIGH_VOLUME_MODEL_BASELINE.md](./doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [xa-mass-trace/README.md](./xa-mass-trace/README.md)
 
 ## What It Is
 
@@ -88,6 +89,7 @@ Current integration boundary rule:
 - `platform_infra/mass-storage-memory`: in-memory control-plane task/worker storage plus the current in-memory rule helpers used by SDK/server defaults and focused tests
 - `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth; current implementation also keeps compatibility projections in-process
 - `platform_infra/mass-trace-sink`: canonical execution-event model plus the default asynchronous JSONL trace sink
+- `xa-mass-trace`: DuckDB-backed trace operator CLI for local timeline/stats/validation over canonical JSONL trace output; default human/agent read path for lifecycle trace diagnosis and trace-observed integration verification
 - `transport/transport_api`: transport-neutral dispatch/result/system-event contracts and transport model surface
 - `transport/transport_runtime`: shared transport runtime assembly, adapter routing, and delivery/result-ingest runtime glue
 - `transport/polling-adapter`: polling/pull worker transport adapter
@@ -105,6 +107,7 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 ## Pointers
 
 - runtime infra ownership: [platform_infra/README.md](./platform_infra/README.md)
+- trace operator CLI: [xa-mass-trace/README.md](./xa-mass-trace/README.md)
 - result owner baseline: [doc/RESULT_BOUNDARY_BASELINE.md](./doc/RESULT_BOUNDARY_BASELINE.md)
 - storage-jdbc ownership and current drift notes: [platform_infra/mass-storage-jdbc/README.md](./platform_infra/mass-storage-jdbc/README.md)
 - Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)

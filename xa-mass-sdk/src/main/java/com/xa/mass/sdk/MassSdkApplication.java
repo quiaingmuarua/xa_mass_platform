@@ -203,6 +203,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
+    public Optional<TaskWorkFinalSnapshot> getTaskWorkFinal(String taskId, String messageId) {
+        return requireStartedTaskResultRuntime()
+                .getVisibleByMessageId(requireTaskId(taskId), requireMessageId(messageId))
+                .map(this::toTaskWorkFinalSnapshot);
+    }
+
+    @Override
     public TaskResultArchiveSnapshot getTaskResultArchiveManifest(String taskId) {
         String normalizedTaskId = requireTaskId(taskId);
         TaskDetailSnapshot task = getTaskDetail(normalizedTaskId);
@@ -288,10 +295,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
+    public TaskItemBatchAppendReceipt appendTaskItemsWithReceipt(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
-        return requireStartedTaskCommands().appendTaskItems(requireTaskId(taskId), converted);
+        com.xa.mass.engine.model.TaskAppendReceipt receipt =
+                requireStartedTaskCommands().appendTaskItemsWithReceipt(requireTaskId(taskId), converted);
+        return new TaskItemBatchAppendReceipt(receipt.taskId(), receipt.added(), receipt.messageIds());
+    }
+
+    @Override
+    public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
+        return appendTaskItemsWithReceipt(taskId, request).added();
     }
 
     public boolean sealTask(String taskId) {
@@ -1602,6 +1616,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 row.updateTime(),
                 row.errorCode(),
                 row.errorMessage(),
+                row.output()
+        );
+    }
+
+    private TaskWorkFinalSnapshot toTaskWorkFinalSnapshot(TaskResultRuntimeRow row) {
+        return new TaskWorkFinalSnapshot(
+                row.taskId(),
+                row.messageId(),
+                row.status(),
+                row.finalReason(),
+                row.retryCount(),
+                row.errorCode(),
+                row.errorMessage(),
+                row.payloadRef(),
                 row.output()
         );
     }

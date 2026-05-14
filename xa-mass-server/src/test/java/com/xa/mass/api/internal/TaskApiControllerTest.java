@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
@@ -27,6 +28,8 @@ import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
@@ -43,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -78,12 +82,15 @@ class TaskApiControllerTest {
     @Mock
     private TaskDetailStore taskDetailStore;
 
+    @Mock
+    private SyncTaskResultBridge syncTaskResultBridge;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider),
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider, syncTaskResultBridge),
                 new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
@@ -421,6 +428,111 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void appendTaskItemSyncReturnsStableFinalResult() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-001")).thenReturn(future);
+        when(syncTaskResultBridge.await(TASK_ID, "msg-001", future, 2000L))
+                .thenReturn(Optional.of(new TaskWorkFinalSnapshot(
+                        TASK_ID,
+                        "msg-001",
+                        "SUCCESS",
+                        "BUSINESS_SUCCESS",
+                        0,
+                        null,
+                        null,
+                        null,
+                        Map.of("ok", true)
+                )));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"},
+                                  "timeoutMs":2000
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.messageId").value("msg-001"))
+                .andExpect(jsonPath("$.data.synced").value(true))
+                .andExpect(jsonPath("$.data.timedOut").value(false))
+                .andExpect(jsonPath("$.data.timeoutMs").value(2000))
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.finalReason").value("BUSINESS_SUCCESS"))
+                .andExpect(jsonPath("$.data.output.ok").value(true));
+    }
+
+    @Test
+    void appendTaskItemSyncReturnsTimeoutWithoutCancellingAppend() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-009")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-009")).thenReturn(future);
+        when(syncTaskResultBridge.await(TASK_ID, "msg-009", future, 5000L))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messageId").value("msg-009"))
+                .andExpect(jsonPath("$.data.synced").value(false))
+                .andExpect(jsonPath("$.data.timedOut").value(true))
+                .andExpect(jsonPath("$.data.timeoutMs").value(5000));
+    }
+
+    @Test
+    void appendTaskItemSyncRejectsNonActiveTaskState() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW", "OPEN"));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.msg").value("Task sync append requires READY or RUNNING task status"));
+
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemSyncRejectsMultipleResolvedEventCodes() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"eventCode":"crawler.fetch-page","text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("sync append requires exactly one resolved eventCode"));
+
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
     void sealTaskUsesCommandRoute() throws Exception {
         when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
                 .thenReturn(new TaskCommandResult(
@@ -468,7 +580,11 @@ class TaskApiControllerTest {
     }
 
     private TaskStateSnapshot taskState(String status) {
-        return new TaskStateSnapshot(TASK_ID, status, null, "OPEN");
+        return taskState(status, "OPEN");
+    }
+
+    private TaskStateSnapshot taskState(String status, String intakeStatus) {
+        return new TaskStateSnapshot(TASK_ID, status, null, intakeStatus);
     }
 
     private PrincipalContext operatorPrincipal() {

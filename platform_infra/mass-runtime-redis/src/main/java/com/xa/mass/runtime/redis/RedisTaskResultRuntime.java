@@ -59,12 +59,31 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
             .serializeNulls()
             .registerTypeAdapter(Instant.class, new InstantMillisAdapter())
             .create();
+    private static final String STAGE_CALLBACK_SCRIPT = """
+            local stageKey = KEYS[1]
+            local taskStagesSet = KEYS[2]
+            local taskMessageStagesSet = KEYS[3]
+            local allStagesZset = KEYS[4]
+            local draftJson = ARGV[1]
+            local stageId = ARGV[2]
+            local receivedAt = tonumber(ARGV[3])
+            local inserted = redis.call('SETNX', stageKey, draftJson)
+            if inserted == 1 then
+              redis.call('SADD', taskStagesSet, stageId)
+              redis.call('SADD', taskMessageStagesSet, stageId)
+              redis.call('ZADD', allStagesZset, receivedAt, stageId)
+              return { 'STAGED' }
+            end
+            local existing = redis.call('GET', stageKey)
+            return { 'DUPLICATE', existing }
+            """;
     private static final String COMMIT_VISIBLE_FINAL_SCRIPT = """
             local rowKey = KEYS[1]
             local seqKey = KEYS[2]
             local visibleZset = KEYS[3]
-            local logicalPendingZset = KEYS[4]
-            local progressPendingZset = KEYS[5]
+            local attemptPendingZset = KEYS[4]
+            local logicalPendingZset = KEYS[5]
+            local progressPendingZset = KEYS[6]
             local rowJson = ARGV[1]
             local messageId = ARGV[2]
             local pendingMemberPrefix = ARGV[3]
@@ -75,6 +94,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
             local seq = redis.call('INCR', seqKey)
             local row = cjson.decode(rowJson)
             row.seq = seq
+            row.attemptClosedPublished = false
             row.logicalFinalPublished = false
             row.progressApplied = false
             local encoded = cjson.encode(row)
@@ -82,6 +102,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
             redis.call('ZADD', visibleZset, seq, messageId)
             local pendingMember = pendingMemberPrefix .. tostring(seq)
             local observedAt = row.updateTime or row.completeTime or row.createTime or 0
+            redis.call('ZADD', attemptPendingZset, observedAt, pendingMember)
             redis.call('ZADD', logicalPendingZset, observedAt, pendingMember)
             redis.call('ZADD', progressPendingZset, observedAt, pendingMember)
             return { 'COMMITTED', tostring(seq), encoded }
@@ -238,14 +259,27 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
             return StageResult.rejected("draft must not be null");
         }
         String json = GSON.toJson(draft);
-        Boolean inserted = commands.setnx(keyspace.stagedDraft(draft.stageId()), json);
-        if (Boolean.TRUE.equals(inserted)) {
-            commands.sadd(keyspace.taskStagesSet(draft.taskId()), draft.stageId());
-            commands.sadd(keyspace.taskMessageStagesSet(draft.taskId(), draft.messageId()), draft.stageId());
-            commands.zadd(keyspace.allStagesZset(), toScore(draft.receivedAt()), draft.stageId());
+        List<Object> raw = commands.eval(
+                STAGE_CALLBACK_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{
+                        keyspace.stagedDraft(draft.stageId()),
+                        keyspace.taskStagesSet(draft.taskId()),
+                        keyspace.taskMessageStagesSet(draft.taskId(), draft.messageId()),
+                        keyspace.allStagesZset()
+                },
+                json,
+                draft.stageId(),
+                Long.toString(draft.receivedAt() == null ? 0L : draft.receivedAt().toEpochMilli())
+        );
+        String status = stringAt(raw, 0);
+        if ("STAGED".equals(status)) {
             return StageResult.staged(draft);
         }
-        TaskResultCallbackDraft existing = loadDraft(draft.stageId());
+        String existingJson = stringAt(raw, 1);
+        TaskResultCallbackDraft existing = isBlank(existingJson)
+                ? loadDraft(draft.stageId())
+                : GSON.fromJson(existingJson, TaskResultCallbackDraft.class);
         return StageResult.duplicate(existing != null ? existing : draft);
     }
 
@@ -288,7 +322,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
         if (finalDraft == null) {
             return CommitResult.rejected("finalDraft must not be null");
         }
-        TaskResultRuntimeRow template = rowFromDraft(finalDraft, 1L, false, false);
+        TaskResultRuntimeRow template = rowFromDraft(finalDraft, 1L, false, false, false);
         String taskId = finalDraft.taskId();
         String messageId = finalDraft.messageId();
         List<Object> raw = commands.eval(
@@ -298,6 +332,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
                         keyspace.taskVisibleRow(taskId, messageId),
                         keyspace.taskSeqCounter(taskId),
                         keyspace.taskVisibleZset(taskId),
+                        keyspace.attemptClosedPendingZset(),
                         keyspace.logicalFinalPendingZset(),
                         keyspace.progressPendingZset()
                 },
@@ -328,7 +363,9 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
                 commands.zrem(keyspace.allStagesZset(), stageId);
                 continue;
             }
-            if (getVisibleByMessageId(draft.taskId(), draft.messageId()).isPresent()) {
+            Optional<TaskResultRuntimeRow> visible = getVisibleByMessageId(draft.taskId(), draft.messageId());
+            if (visible.isPresent()) {
+                cleanupFullyConvergedStages(visible.get());
                 continue;
             }
             candidates.add(TaskResultRepairCandidate.missingVisibleFinal(draft));
@@ -336,9 +373,30 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
                 return List.copyOf(candidates);
             }
         }
-        collectPendingCandidates(candidates, keyspace.logicalFinalPendingZset(), true, limit);
-        collectPendingCandidates(candidates, keyspace.progressPendingZset(), false, limit);
+        collectPendingCandidates(candidates, keyspace.attemptClosedPendingZset(), BarrierField.ATTEMPT_CLOSED, limit);
+        collectPendingCandidates(candidates, keyspace.logicalFinalPendingZset(), BarrierField.LOGICAL_FINAL, limit);
+        collectPendingCandidates(candidates, keyspace.progressPendingZset(), BarrierField.PROGRESS, limit);
         return List.copyOf(candidates);
+    }
+
+    @Override
+    public BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq) {
+        return claimBarrier(keyspace.attemptClosedBarrier(taskId, messageId, finalSeq),
+                taskId,
+                messageId,
+                finalSeq,
+                "attemptClosedPublished");
+    }
+
+    @Override
+    public BarrierMarkResult markAttemptClosedPublished(String taskId, String messageId, long finalSeq, String claimToken) {
+        return markBarrier(keyspace.attemptClosedBarrier(taskId, messageId, finalSeq),
+                keyspace.attemptClosedPendingZset(),
+                taskId,
+                messageId,
+                finalSeq,
+                claimToken,
+                "attemptClosedPublished");
     }
 
     @Override
@@ -446,9 +504,11 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
         for (String messageId : messageIds) {
             TaskResultRuntimeRow row = getVisibleByMessageId(taskId, messageId).orElse(null);
             if (row != null) {
+                commands.zrem(keyspace.attemptClosedPendingZset(), pendingMember(taskId, messageId, row.seq()));
                 commands.zrem(keyspace.logicalFinalPendingZset(), pendingMember(taskId, messageId, row.seq()));
                 commands.zrem(keyspace.progressPendingZset(), pendingMember(taskId, messageId, row.seq()));
                 commands.del(
+                        keyspace.attemptClosedBarrier(taskId, messageId, row.seq()),
                         keyspace.logicalFinalBarrier(taskId, messageId, row.seq()),
                         keyspace.progressBarrier(taskId, messageId, row.seq())
                 );
@@ -470,7 +530,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
 
     private void collectPendingCandidates(List<TaskResultRepairCandidate> candidates,
                                           String pendingZset,
-                                          boolean logicalFinal,
+                                          BarrierField field,
                                           int limit) {
         if (candidates.size() >= limit) {
             return;
@@ -487,17 +547,11 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
                 commands.zrem(pendingZset, member);
                 continue;
             }
-            if (logicalFinal && row.get().logicalFinalPublished()) {
+            if (isBarrierDone(row.get(), field)) {
                 commands.zrem(pendingZset, member);
                 continue;
             }
-            if (!logicalFinal && row.get().progressApplied()) {
-                commands.zrem(pendingZset, member);
-                continue;
-            }
-            candidates.add(logicalFinal
-                    ? TaskResultRepairCandidate.missingLogicalFinalPublish(row.get())
-                    : TaskResultRepairCandidate.missingProgressApply(row.get()));
+            candidates.add(candidateFor(row.get(), field));
             if (candidates.size() >= limit) {
                 return;
             }
@@ -603,6 +657,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
 
     private TaskResultRuntimeRow rowFromDraft(TaskResultFinalDraft draft,
                                               long seq,
+                                              boolean attemptClosedPublished,
                                               boolean logicalFinalPublished,
                                               boolean progressApplied) {
         return new TaskResultRuntimeRow(
@@ -627,9 +682,32 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
                 draft.errorCode(),
                 draft.errorMessage(),
                 draft.output(),
+                attemptClosedPublished,
                 logicalFinalPublished,
                 progressApplied
         );
+    }
+
+    private void cleanupFullyConvergedStages(TaskResultRuntimeRow row) {
+        if (row != null && row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied()) {
+            discardStagedCallbacksForMessage(row.taskId(), row.messageId());
+        }
+    }
+
+    private static boolean isBarrierDone(TaskResultRuntimeRow row, BarrierField field) {
+        return switch (field) {
+            case ATTEMPT_CLOSED -> row.attemptClosedPublished();
+            case LOGICAL_FINAL -> row.logicalFinalPublished();
+            case PROGRESS -> row.progressApplied();
+        };
+    }
+
+    private static TaskResultRepairCandidate candidateFor(TaskResultRuntimeRow row, BarrierField field) {
+        return switch (field) {
+            case ATTEMPT_CLOSED -> TaskResultRepairCandidate.missingAttemptClosedPublish(row);
+            case LOGICAL_FINAL -> TaskResultRepairCandidate.missingLogicalFinalPublish(row);
+            case PROGRESS -> TaskResultRepairCandidate.missingProgressApply(row);
+        };
     }
 
     private void closeRedisResources() {
@@ -690,6 +768,12 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
     }
 
     private record PendingMember(String taskId, String messageId, long seq) {
+    }
+
+    private enum BarrierField {
+        ATTEMPT_CLOSED,
+        LOGICAL_FINAL,
+        PROGRESS
     }
 
     private static final class InstantMillisAdapter extends TypeAdapter<Instant> {

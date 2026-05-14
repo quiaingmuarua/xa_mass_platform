@@ -19,6 +19,7 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
@@ -37,7 +38,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @RestController
@@ -87,53 +87,52 @@ public class InternalDebugTaskInvocationController {
             validateIngestGuardrails(requestBody.getItems());
 
             long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
-            String correlationId = UUID.randomUUID().toString();
-            CompletableFuture<TaskWorkFinalSnapshot> future = syncBridge.register(correlationId);
-
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
             TaskShellSnapshot task;
             if (submitterTaskCreate != null) {
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
-                                submitterTaskCreate.userId(), correlationId),
+                                submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
             } else {
                 PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
                 task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                        toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
+                        toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId()),
                         operator
                 ));
             }
 
-            taskAdmin.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
+            TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(requestBody.getItems())
                     .build());
+            String taskId = task.getTaskId();
+            String messageId = requireSingleMessageId(receipt);
+            CompletableFuture<TaskWorkFinalSnapshot> future = syncBridge.register(taskId, messageId);
             taskAdmin.executeTaskCommand(task.getTaskId(), MassTaskCommandRequest.builder().command("SEAL").build());
             taskAdmin.executeTaskCommand(task.getTaskId(), MassTaskCommandRequest.builder().command("APPROVE").build());
 
-            String taskId = task.getTaskId();
             Optional<TaskWorkFinalSnapshot> result =
-                    syncBridge.await(correlationId, future, resolvedTimeoutMs);
+                    syncBridge.await(taskId, messageId, future, resolvedTimeoutMs);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("taskId", taskId);
+            data.put("messageId", messageId);
+            data.put("timeoutMs", resolvedTimeoutMs);
             if (result.isPresent()) {
                 TaskWorkFinalSnapshot msg = result.get();
-                data.put("messageId", msg.messageId() != null ? msg.messageId() : "");
                 data.put("synced", true);
                 data.put("timedOut", false);
                 data.put("status", msg.status() != null ? msg.status() : "UNKNOWN");
+                data.put("finalReason", msg.finalReason());
                 data.put("output", msg.output());
                 data.put("errorCode", msg.errorCode() != null ? msg.errorCode() : "");
                 data.put("errorMessage", msg.errorMessage() != null ? msg.errorMessage() : "");
             } else {
-                data.put("messageId", "");
                 data.put("synced", false);
                 data.put("timedOut", true);
-                data.put("timeoutMs", resolvedTimeoutMs);
             }
             return ResponseEntity.ok(ApiResponse.success(data));
         });
@@ -234,8 +233,7 @@ public class InternalDebugTaskInvocationController {
 
     private MassTaskShellCreateRequest toMassTaskShellCreateRequest(InternalDebugTaskInvocationApiRequest requestBody,
                                                                     String resolvedProject,
-                                                                    String resolvedUserId,
-                                                                    String syncKey) {
+                                                                    String resolvedUserId) {
         requireBusinessBindings(resolvedProject, resolvedUserId);
         if (requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank()) {
             validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
@@ -249,19 +247,27 @@ public class InternalDebugTaskInvocationController {
                 .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
                 .contract("BATCH")
-                .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
+                .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
                 .executionSpec(executionSpec)
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
 
-    private Map<String, Object> mergeSyncKey(Map<String, Object> existing, String syncKey) {
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (existing != null) {
-            merged.putAll(taskSecurityViewSupport.sanitizeSharedConfig(existing));
+    private String requireSingleMessageId(TaskItemBatchAppendReceipt receipt) {
+        if (receipt == null) {
+            throw new IllegalStateException("Sync append receipt is unavailable");
         }
-        merged.put(SyncTaskResultBridge.SYNC_KEY, syncKey);
-        return Map.copyOf(merged);
+        if (receipt.added() != 1) {
+            throw new IllegalStateException("Sync invocation must add exactly one item, got: " + receipt.added());
+        }
+        if (receipt.messageIds().size() != 1) {
+            throw new IllegalStateException("Sync invocation must return exactly one message id");
+        }
+        String messageId = receipt.messageIds().get(0);
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalStateException("Sync invocation returned blank message id");
+        }
+        return messageId;
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

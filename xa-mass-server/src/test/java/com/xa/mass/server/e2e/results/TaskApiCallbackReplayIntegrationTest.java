@@ -1,6 +1,5 @@
 package com.xa.mass.server.e2e.results;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
@@ -8,7 +7,6 @@ import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.HttpMethod;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -44,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class TaskApiCallbackReplayIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Gson GSON = new Gson();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {

@@ -15,11 +15,14 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
 import com.xa.mass.api.model.task.TaskCommandApiRequest;
 import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
+import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
@@ -47,6 +50,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/v1/tasks")
@@ -76,18 +80,19 @@ public class TaskApiController {
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
     private final TaskApiContractAssembler taskApiContractAssembler;
+    private final SyncTaskResultBridge syncTaskResultBridge;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
         this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
-                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
+                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
-                new TaskSecurityViewSupport());
+                new TaskSecurityViewSupport(), null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -97,7 +102,18 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -106,7 +122,7 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -114,7 +130,7 @@ public class TaskApiController {
                              ControlPlaneCatalog catalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null);
     }
 
     @Autowired
@@ -124,7 +140,8 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
-                             TaskSecurityViewSupport taskSecurityViewSupport) {
+                             TaskSecurityViewSupport taskSecurityViewSupport,
+                             SyncTaskResultBridge syncTaskResultBridge) {
         this(taskQueries,
                 taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
                 taskAdmin,
@@ -132,7 +149,8 @@ public class TaskApiController {
                 taskDetailStore,
                 apiAuthService,
                 apiAuthorizationService,
-                taskSecurityViewSupport);
+                taskSecurityViewSupport,
+                syncTaskResultBridge);
     }
 
     private TaskApiController(TaskQueryOperations taskQueries,
@@ -142,7 +160,8 @@ public class TaskApiController {
                               TaskDetailStore taskDetailStore,
                               ApiAuthService apiAuthService,
                               ApiAuthorizationService apiAuthorizationService,
-                              TaskSecurityViewSupport taskSecurityViewSupport) {
+                              TaskSecurityViewSupport taskSecurityViewSupport,
+                              SyncTaskResultBridge syncTaskResultBridge) {
         this.taskQueries = taskQueries;
         this.taskResultQueries = taskResultQueries != null
                 ? taskResultQueries
@@ -154,6 +173,7 @@ public class TaskApiController {
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
         this.taskApiContractAssembler = new TaskApiContractAssembler(DATE_TIME_FORMATTER);
+        this.syncTaskResultBridge = syncTaskResultBridge;
     }
 
     @GetMapping("")
@@ -313,6 +333,50 @@ public class TaskApiController {
                     null,
                     task.getIntakeStatus(),
                     "Items appended"
+            ));
+        });
+    }
+
+    @PostMapping("/{taskId}/items:sync")
+    @Operation(
+            summary = "Append one task item and wait for its final result",
+            description = "Appends exactly one opaque work item to an active task and blocks until that item reaches stable finality or the caller timeout elapses. Timing out only ends the HTTP wait; task execution continues."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskSyncAppendOutcome>> appendTaskItemSync(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId,
+            @RequestBody TaskItemSyncIngestApiRequest requestBody) {
+        return executeApi("Sync append failed", () -> {
+            validateKnownFields(requestBody, "task sync append");
+            TaskAccessSnapshot task = requireTaskAccess(taskId);
+            TaskStateSnapshot state = getExistingTaskState(taskId);
+            requireSyncAppendableState(state);
+
+            Object item = requireSyncItem(requestBody);
+            List<Object> items = List.of(item);
+            validateIngestGuardrails(items);
+
+            String eventCode = resolveSingleSyncEventCode(requestBody, item);
+            validateProjectAndEvent(task.getProject(), eventCode);
+            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
+                    task.getSharedConfig(), List.of(eventCode));
+
+            TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(requestBody.getEventCode())
+                    .items(items)
+                    .build());
+            String messageId = requireSingleMessageId(receipt);
+            long timeoutMs = resolveSyncTimeoutMs(requestBody.getTimeoutMs());
+            SyncTaskResultBridge bridge = requireSyncTaskResultBridge();
+            CompletableFuture<TaskWorkFinalSnapshot> future = bridge.register(taskId, messageId);
+            Optional<TaskWorkFinalSnapshot> finalSnapshot = bridge.await(taskId, messageId, future, timeoutMs);
+
+            return ok(taskApiContractAssembler.toSyncAppendOutcome(
+                    taskId,
+                    messageId,
+                    timeoutMs,
+                    finalSnapshot.orElse(null)
             ));
         });
     }
@@ -778,6 +842,16 @@ public class TaskApiController {
         }
     }
 
+    private void validateKnownFields(TaskItemSyncIngestApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
     private void validateKnownFields(TaskCommandApiRequest requestBody, String operationName) {
         if (requestBody == null || requestBody.getCommand() == null || requestBody.getCommand().isBlank()) {
             throw new IllegalArgumentException("task request body is required");
@@ -790,10 +864,15 @@ public class TaskApiController {
 
     private List<String> resolveAppendEventCodes(TaskItemBatchIngestApiRequest requestBody,
                                                  List<Object> items) {
+        return resolveAppendEventCodes(requestBody != null ? requestBody.getEventCode() : null, items);
+    }
+
+    private List<String> resolveAppendEventCodes(String batchEventCode,
+                                                 List<Object> items) {
         LinkedHashSet<String> eventCodes = new LinkedHashSet<>();
-        String batchEventCode = normalizeEventCode(requestBody != null ? requestBody.getEventCode() : null);
-        if (batchEventCode != null) {
-            eventCodes.add(batchEventCode);
+        String normalizedBatchEventCode = normalizeEventCode(batchEventCode);
+        if (normalizedBatchEventCode != null) {
+            eventCodes.add(normalizedBatchEventCode);
         }
         if (items != null) {
             for (Object item : items) {
@@ -815,6 +894,63 @@ public class TaskApiController {
             return null;
         }
         return normalizeEventCode(String.valueOf(rawEventCode));
+    }
+
+    private Object requireSyncItem(TaskItemSyncIngestApiRequest requestBody) {
+        if (requestBody == null || requestBody.getItem() == null) {
+            throw badRequestError("item is required");
+        }
+        return requestBody.getItem();
+    }
+
+    private String resolveSingleSyncEventCode(TaskItemSyncIngestApiRequest requestBody,
+                                              Object item) {
+        List<String> eventCodes = resolveAppendEventCodes(
+                requestBody != null ? requestBody.getEventCode() : null,
+                List.of(item)
+        );
+        if (eventCodes.isEmpty()) {
+            throw badRequestError("sync append requires request eventCode or item.eventCode");
+        }
+        if (eventCodes.size() != 1) {
+            throw badRequestError("sync append requires exactly one resolved eventCode");
+        }
+        return eventCodes.get(0);
+    }
+
+    private void requireSyncAppendableState(TaskStateSnapshot state) {
+        String status = state != null ? state.getStatus() : null;
+        if (!"READY".equalsIgnoreCase(status) && !"RUNNING".equalsIgnoreCase(status)) {
+            throw conflictError("Task sync append requires READY or RUNNING task status");
+        }
+        String intakeStatus = state != null ? state.getIntakeStatus() : null;
+        if (!"OPEN".equalsIgnoreCase(intakeStatus)) {
+            throw conflictError("Task sync append requires OPEN intake status");
+        }
+    }
+
+    private String requireSingleMessageId(TaskItemBatchAppendReceipt receipt) {
+        if (receipt == null) {
+            throw new IllegalStateException("Task append receipt is unavailable");
+        }
+        if (receipt.added() != 1) {
+            throw new IllegalStateException("Sync append must add exactly one item, got: " + receipt.added());
+        }
+        if (receipt.messageIds().size() != 1) {
+            throw new IllegalStateException("Sync append must return exactly one message id");
+        }
+        String messageId = receipt.messageIds().get(0);
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalStateException("Sync append returned blank message id");
+        }
+        return messageId;
+    }
+
+    private long resolveSyncTimeoutMs(Long requestedTimeoutMs) {
+        if (requestedTimeoutMs == null || requestedTimeoutMs <= 0L) {
+            return SyncTaskResultBridge.DEFAULT_TIMEOUT_MS;
+        }
+        return Math.min(requestedTimeoutMs, SyncTaskResultBridge.MAX_TIMEOUT_MS);
     }
 
     private String normalizeEventCode(String eventCode) {
@@ -915,6 +1051,13 @@ public class TaskApiController {
             throw new IllegalStateException("Task result runtime query surface is unavailable");
         }
         return taskResultQueries;
+    }
+
+    private SyncTaskResultBridge requireSyncTaskResultBridge() {
+        if (syncTaskResultBridge == null) {
+            throw new IllegalStateException("Task sync result bridge is unavailable");
+        }
+        return syncTaskResultBridge;
     }
 
     private TaskApiException badRequestError(String message) {

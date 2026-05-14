@@ -28,6 +28,7 @@ public record TaskResultRuntimeRow(
         String errorCode,
         String errorMessage,
         Map<String, Object> output,
+        boolean attemptClosedPublished,
         boolean logicalFinalPublished,
         boolean progressApplied
 ) {
@@ -46,14 +47,21 @@ public record TaskResultRuntimeRow(
         return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
                 retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
                 createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
-                output, true, progressApplied);
+                output, attemptClosedPublished, true, progressApplied);
     }
 
     public TaskResultRuntimeRow withProgressApplied() {
         return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
                 retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
                 createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
-                output, logicalFinalPublished, true);
+                output, attemptClosedPublished, logicalFinalPublished, true);
+    }
+
+    public TaskResultRuntimeRow withAttemptClosedPublished() {
+        return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
+                retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
+                createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
+                output, true, logicalFinalPublished, progressApplied);
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {

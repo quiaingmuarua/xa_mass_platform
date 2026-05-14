@@ -25,6 +25,7 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
+import com.xa.mass.runtime.api.TaskResultRepairKind;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
@@ -1020,6 +1021,75 @@ class TaskManagerLifecycleTest {
             awaitCondition(
                     () -> capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
                     "repair candidate should drain once visible final, logical-final publish, and progress apply all converge");
+        } finally {
+            if (manager != null) {
+                manager.shutdown();
+            }
+            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
+        }
+    }
+
+    @Test
+    void attemptClosedPublishFailureIsRepairedWithoutProjectionFallback() {
+        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
+        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
+        ProjectionAwareTaskManager manager = null;
+        try {
+            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
+            resultRuntime.blockRepairPumpScans();
+            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
+            manager = new ProjectionAwareTaskManager(
+                    new RecordingTaskScheduler(),
+                    repairStorage,
+                    repairStorage,
+                    new InMemoryTaskWorkRuntime(),
+                    resultRuntime
+            );
+
+            Task task = createTask(manager, buildRequest("task-result-attempt-repair", List.of("alpha"), 0));
+            manager.approveTask(task.getTid());
+            task.setStatus(TaskStatus.RUNNING);
+            manager.updateTask(task);
+
+            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
+            assignMessage(manager, task, message);
+
+            AtomicInteger attemptClosedEvents = new AtomicInteger();
+            AtomicInteger logicalFinalEvents = new AtomicInteger();
+            manager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
+                    attemptClosedEvents.incrementAndGet());
+            manager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
+                    logicalFinalEvents.incrementAndGet());
+
+            resultRuntime.failNextAttemptClosedClaim();
+            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
+
+            TaskResultRuntimeRow row = manager.getTaskResultRuntime()
+                    .getVisibleByMessageId(task.getTid(), message.messageId())
+                    .orElseThrow();
+            assertFalse(row.attemptClosedPublished());
+            assertTrue(row.logicalFinalPublished());
+            assertTrue(row.progressApplied());
+            assertEquals(0, attemptClosedEvents.get());
+            assertEquals(1, logicalFinalEvents.get());
+            assertTrue(manager.getTaskResultRuntime().scanRepairCandidates(10).stream()
+                    .anyMatch(candidate -> candidate.kind() == TaskResultRepairKind.MISSING_ATTEMPT_CLOSED_PUBLISH));
+
+            resultRuntime.allowRepairPumpScans();
+            ProjectionAwareTaskManager capturedManager = manager;
+            awaitCondition(
+                    () -> capturedManager.getTaskResultRuntime()
+                            .getVisibleByMessageId(task.getTid(), message.messageId())
+                            .map(TaskResultRuntimeRow::attemptClosedPublished)
+                            .orElse(false)
+                            && attemptClosedEvents.get() == 1,
+                    "repair pump should publish the missing attempt-closed event once");
+
+            assertEquals(1, logicalFinalEvents.get());
+            awaitCondition(
+                    () -> capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+                    "fully converged result repair should clean staged callbacks");
+            assertEquals(0, manager.getTaskResultRuntime().discardStagedCallbacksForMessage(task.getTid(), message.messageId()));
         } finally {
             if (manager != null) {
                 manager.shutdown();
@@ -3591,10 +3661,15 @@ class TaskManagerLifecycleTest {
     private static final class FlakyCommitTaskResultRuntime implements TaskResultRuntime {
         private final InMemoryTaskResultRuntime delegate = new InMemoryTaskResultRuntime();
         private volatile boolean failNextVisibleCommit;
+        private volatile boolean failNextAttemptClosedClaim;
         private volatile boolean blockRepairPumpScans;
 
         private void failNextVisibleCommit() {
             failNextVisibleCommit = true;
+        }
+
+        private void failNextAttemptClosedClaim() {
+            failNextAttemptClosedClaim = true;
         }
 
         private void blockRepairPumpScans() {
@@ -3635,6 +3710,20 @@ class TaskManagerLifecycleTest {
                 return List.of();
             }
             return delegate.scanRepairCandidates(limit);
+        }
+
+        @Override
+        public BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq) {
+            if (failNextAttemptClosedClaim) {
+                failNextAttemptClosedClaim = false;
+                return BarrierClaim.unavailable();
+            }
+            return delegate.claimAttemptClosedPublish(taskId, messageId, finalSeq);
+        }
+
+        @Override
+        public BarrierMarkResult markAttemptClosedPublished(String taskId, String messageId, long finalSeq, String claimToken) {
+            return delegate.markAttemptClosedPublished(taskId, messageId, finalSeq, claimToken);
         }
 
         @Override

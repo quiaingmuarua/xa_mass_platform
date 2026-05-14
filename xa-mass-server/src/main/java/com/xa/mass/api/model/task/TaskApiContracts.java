@@ -290,6 +290,31 @@ public final class TaskApiContracts {
     ) {
     }
 
+    @Schema(name = "ApiTaskSyncAppendOutcome", description = "Single-item synchronous append outcome")
+    public record ApiTaskSyncAppendOutcome(
+            @Schema(description = "Task id", example = "task-uuid")
+            String taskId,
+            @Schema(description = "Message id assigned to the appended item", example = "msg-001")
+            String messageId,
+            @Schema(description = "Whether a stable-final result was observed before the HTTP wait timed out")
+            boolean synced,
+            @Schema(description = "Whether the HTTP wait timed out before a stable-final result was observed")
+            boolean timedOut,
+            @Schema(description = "Resolved synchronous wait timeout in milliseconds", example = "5000")
+            long timeoutMs,
+            @Schema(description = "Stable-final item status when synced", example = "SUCCESS")
+            String status,
+            @Schema(description = "Stable-final reason when synced", example = "BUSINESS_SUCCESS")
+            String finalReason,
+            @Schema(description = "Opaque worker result payload when synced")
+            Map<String, Object> output,
+            @Schema(description = "Worker or business error code when synced and non-success")
+            String errorCode,
+            @Schema(description = "Worker or business error message when synced and non-success")
+            String errorMessage
+    ) {
+    }
+
     @Schema(name = "ApiTaskUpdateOutcome", description = "Task shell update response body")
     public record ApiTaskUpdateOutcome(
             @Schema(description = "Task id", example = "task-uuid")

@@ -68,7 +68,7 @@ public class TaskResourceReleaseListener {
     }
 
     public void onTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
-        if (task == null || event == null || task.getStatus().isFinal()) {
+        if (task == null || event == null) {
             return;
         }
         String workerId = event.workerId();

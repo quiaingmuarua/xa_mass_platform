@@ -440,6 +440,38 @@ Current server guardrails:
 - max single item serialized size: `64 KiB`
 - max total serialized batch size: `1 MiB`
 
+### 4.6.1 Sync Append One Item
+
+- Method: `POST`
+- Path: `/api/v1/tasks/{taskId}/items:sync`
+- Status: `Implemented`
+
+Request shape:
+
+```json
+{
+  "eventCode": "demo.dispatch",
+  "item": {
+    "target": "target-001"
+  },
+  "timeoutMs": 5000,
+  "clientRequestId": "req-001"
+}
+```
+
+Contract rules:
+
+- appends exactly one item to an already-created task
+- task must be in `READY` or `RUNNING`
+- task intake must be `OPEN`
+- append requires request-level `eventCode` or item-level `eventCode`
+- resolved event/capability identity must collapse to exactly one eventCode
+- request is subject to the same ingress safety limits as normal append
+- timeout only ends the HTTP wait; the appended item continues running
+- response includes `taskId`, `messageId`, `synced`, `timedOut`, `timeoutMs`,
+  and when available the stable-final result payload fields
+- this route reads final truth from runtime result state, not projection residue
+
 ### 4.7 Task Command Surface
 
 - Method: `POST`
@@ -531,8 +563,7 @@ Behavior:
 - `Content-Encoding: gzip` when declared by the manifest
 - response is streamed directly from the SDK/runtime writer; the controller does
   not buffer the full archive in memory before sending it
-- controller must not fall back to projection rows when runtime result rows are
-  missing
+- controller must not read projection rows for public result responses
 
 ### 4.12 Internal Review Preview
 
@@ -773,6 +804,8 @@ Contract rules:
 - uses the same ingest guardrails as public append
 - creates shell, appends the one item, seals, approves, and waits for a
   logically-final result
+- sync waiting is message-scoped (`taskId + messageId`), not encoded through
+  task-level `sharedConfig`
 
 ## 8. Console Surface
 

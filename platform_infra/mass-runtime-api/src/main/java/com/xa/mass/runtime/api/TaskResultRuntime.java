@@ -15,6 +15,10 @@ public interface TaskResultRuntime {
 
     List<TaskResultRepairCandidate> scanRepairCandidates(int limit);
 
+    BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq);
+
+    BarrierMarkResult markAttemptClosedPublished(String taskId, String messageId, long finalSeq, String claimToken);
+
     BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq);
 
     BarrierMarkResult markLogicalFinalPublished(String taskId, String messageId, long finalSeq, String claimToken);

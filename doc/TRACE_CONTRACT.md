@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-05-06
+Last updated: 2026-05-14
 
 Status: current global trace contract.
 
@@ -18,6 +18,7 @@ Use with:
 - [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md)
 - [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+- [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - [../platform_infra/mass-trace-sink/README.md](../platform_infra/mass-trace-sink/README.md)
 
 ## 1. Canonical Model
@@ -278,4 +279,12 @@ At minimum, tests must assert that:
 
 As engine and transport adopt the sink, lifecycle tests must assert the real
 event stream against this canonical model rather than against MDC log strings.
+
+Trace-observed integration rule:
+
+- when an integration, E2E, or chaos test claims trace coverage for a critical
+  lifecycle path, the assertion path should read canonical sink output through
+  `xa-mass-trace` or an equivalent query backend over the same canonical files
+- do not treat MDC string logs, ad hoc grep output, or compatibility projection
+  rows as a substitute for canonical trace observation
 

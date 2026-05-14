@@ -213,10 +213,13 @@ class TaskResultService {
                 expiryDetail
         );
         if (freshTask != null && activeAttempt != null) {
-            publishWorkAttemptClosed(freshTask, currentSummary, activeAttempt,
-                    "EXPIRE_LEASED_WORK", retryScheduled
-                            ? "lease expiry closed the current attempt before re-dispatch"
-                            : expiryDetail);
+            if (retryScheduled) {
+                publishWorkAttemptClosed(freshTask, currentSummary, activeAttempt,
+                        "EXPIRE_LEASED_WORK", "lease expiry closed the current attempt before re-dispatch");
+            } else {
+                publishWorkAttemptClosedOnce(freshTask, currentSummary, activeAttempt, visibleFinalCommit.row(),
+                        "EXPIRE_LEASED_WORK", expiryDetail);
+            }
         }
         if (!retryScheduled && freshTask != null) {
             publishWorkLogicallyFinalOnce(freshTask, logicallyFinalSummary, activeAttempt, visibleFinalCommit.row(),
@@ -628,7 +631,7 @@ class TaskResultService {
         });
         // Event publishing is kept synchronous - it drives downstream state transitions.
         if (task != null) {
-            publishWorkAttemptClosed(task, successSummary, activeAttempt,
+            publishWorkAttemptClosedOnce(task, successSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work attempt succeeded");
             publishWorkLogicallyFinalOnce(task, successSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable success");
@@ -811,7 +814,7 @@ class TaskResultService {
         });
         // Event publishing kept synchronous; use the already-loaded task.
         if (task != null) {
-            publishWorkAttemptClosed(task, failureSummary, activeAttempt,
+            publishWorkAttemptClosedOnce(task, failureSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "retry budget exhausted closed the current attempt");
             publishWorkLogicallyFinalOnce(task, failureSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
@@ -1208,12 +1211,34 @@ class TaskResultService {
         }
     }
 
+    private void publishWorkAttemptClosedOnce(Task task,
+                                              RuntimeWorkSummary workSummary,
+                                              AttemptProjectionView attempt,
+                                              TaskResultRuntimeRow row,
+                                              String trigger,
+                                              String reason) {
+        if (row == null || attempt == null) {
+            return;
+        }
+        BarrierClaim claim = taskResultRuntime.claimAttemptClosedPublish(row.taskId(), row.messageId(), row.seq());
+        if (!claim.claimedByCaller()) {
+            return;
+        }
+        publishWorkAttemptClosed(task, workSummary, attempt, trigger, reason);
+        BarrierMarkResult markResult = taskResultRuntime.markAttemptClosedPublished(
+                row.taskId(), row.messageId(), row.seq(), claim.claimToken());
+        if (!markResult.completed()) {
+            logger.warn("Attempt-closed barrier mark did not complete for taskId={}, messageId={}, seq={}, status={}, reason={}",
+                    row.taskId(), row.messageId(), row.seq(), markResult.status(), markResult.reason());
+        }
+    }
+
     private void cleanupStageIfConverged(String taskId, String messageId, TaskResultRuntimeRow row) {
         if (row == null || taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
             return;
         }
         TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(row);
-        if (current.logicalFinalPublished() && current.progressApplied()) {
+        if (current.attemptClosedPublished() && current.logicalFinalPublished() && current.progressApplied()) {
             taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId);
         }
     }
@@ -1288,6 +1313,7 @@ class TaskResultService {
         }
         return switch (candidate.kind()) {
             case MISSING_VISIBLE_FINAL -> repairMissingVisibleFinal(candidate);
+            case MISSING_ATTEMPT_CLOSED_PUBLISH -> repairMissingAttemptClosedPublish(candidate);
             case MISSING_LOGICAL_FINAL_PUBLISH -> repairMissingLogicalFinalPublish(candidate);
             case MISSING_PROGRESS_APPLY -> repairMissingProgressApply(candidate);
         };
@@ -1309,7 +1335,7 @@ class TaskResultService {
             return false;
         }
         if (task != null) {
-            publishWorkAttemptClosedRepair(task, summary, commit.row(),
+            publishWorkAttemptClosedRepairOnce(task, summary, commit.row(),
                     "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing attempt-closed event");
             publishWorkLogicallyFinalOnce(task, summary, null, commit.row(),
                     "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
@@ -1317,6 +1343,34 @@ class TaskResultService {
         }
         cleanupStageIfConverged(draft.taskId(), draft.messageId(), commit.row());
         return true;
+    }
+
+    private boolean repairMissingAttemptClosedPublish(TaskResultRepairCandidate candidate) {
+        TaskResultRuntimeRow row = candidate.row();
+        if (row == null) {
+            return false;
+        }
+        Task task = taskManager.getTask(row.taskId());
+        if (task == null) {
+            return false;
+        }
+        TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(null);
+        if (current == null || current.attemptClosedPublished()) {
+            return false;
+        }
+        RuntimeWorkSummary summary = rebuildFinalSummaryForRepair(
+                task,
+                current,
+                taskManager.getRecentFinalReceipt(row.taskId(), row.messageId()).orElse(null)
+        );
+        if (summary == null) {
+            return false;
+        }
+        publishWorkAttemptClosedRepairOnce(task, summary, current,
+                "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing attempt-closed event");
+        TaskResultRuntimeRow updated = taskResultRuntime.getVisibleByMessageId(current.taskId(), current.messageId()).orElse(null);
+        cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
+        return updated != null && updated.attemptClosedPublished();
     }
 
     private boolean repairMissingLogicalFinalPublish(TaskResultRepairCandidate candidate) {
@@ -1340,6 +1394,14 @@ class TaskResultService {
         if (summary == null) {
             return false;
         }
+        if (!current.attemptClosedPublished()) {
+            publishWorkAttemptClosedRepairOnce(task, summary, current,
+                    "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing attempt-closed event");
+            current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(null);
+            if (current == null || !current.attemptClosedPublished()) {
+                return false;
+            }
+        }
         publishWorkLogicallyFinalOnce(task, summary, null, current,
                 "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
         cleanupStageIfConverged(current.taskId(), current.messageId(), current);
@@ -1353,6 +1415,9 @@ class TaskResultService {
         }
         TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(null);
         if (current == null || current.progressApplied()) {
+            return false;
+        }
+        if (!current.attemptClosedPublished() || !current.logicalFinalPublished()) {
             return false;
         }
         taskManager.applyTaskResultProgressOnce(current.taskId(), current.messageId(), current.seq());
@@ -1444,11 +1509,11 @@ class TaskResultService {
         );
     }
 
-    private void publishWorkAttemptClosedRepair(Task task,
-                                                RuntimeWorkSummary workSummary,
-                                                TaskResultRuntimeRow row,
-                                                String trigger,
-                                                String reason) {
+    private void publishWorkAttemptClosedRepairOnce(Task task,
+                                                    RuntimeWorkSummary workSummary,
+                                                    TaskResultRuntimeRow row,
+                                                    String trigger,
+                                                    String reason) {
         if (task == null || workSummary == null || row == null || row.attemptId() == null || row.attemptId().isBlank()) {
             return;
         }
@@ -1466,7 +1531,7 @@ class TaskResultService {
         repairAttempt.errorMessage = workSummary.errorMessage();
         repairAttempt.errorCode = workSummary.errorCode();
         repairAttempt.output = workSummary.output();
-        publishWorkAttemptClosed(task, workSummary, repairAttempt, trigger, reason);
+        publishWorkAttemptClosedOnce(task, workSummary, repairAttempt, row, trigger, reason);
     }
 
     private AttemptStatus attemptStatusForRepair(MessageStatus status) {

@@ -44,7 +44,7 @@ more implemented than another.
 | engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/message projection truth or a duplicate ready queue |
 | transport -> engine result / dispatch-failure inboxes | runtime state | hot-path cross-JVM ingress back into engine-owned result/compensation ports | bounded Redis inboxes drained by engine process | server/API owner semantics or transport-owned lifecycle state |
 | runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | message/attempt projection or transport envelope metadata |
-| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | `TaskDetailStore`, JDBC result tables, server/controller projection reads |
+| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and attempt-closed/event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | `TaskDetailStore`, JDBC result tables, server/controller projection reads |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 

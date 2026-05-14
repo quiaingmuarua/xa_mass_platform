@@ -13,6 +13,10 @@ Most tasks only need one contract lane plus one owner README:
   [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md),
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
   [E2E_BASELINE.md](./E2E_BASELINE.md)
+- trace operator / trace-observed verification:
+  [../xa-mass-trace/README.md](../xa-mass-trace/README.md),
+  [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
+  [TESTING_INDEX.md](./TESTING_INDEX.md)
 - result owner split / runtime result truth:
   [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - storage / runtime / trace placement:
@@ -49,6 +53,7 @@ Most tasks only need one contract lane plus one owner README:
 Use owner docs for module-local truth:
 
 - engine: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
+- trace operator: [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - transport: [../transport/AGENTS.md](../transport/AGENTS.md)
 - infra: [../platform_infra/README.md](../platform_infra/README.md)
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)

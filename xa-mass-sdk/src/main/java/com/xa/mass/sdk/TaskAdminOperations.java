@@ -5,6 +5,7 @@ import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.TaskCommandResult;
+import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 
 /**
@@ -15,6 +16,8 @@ public interface TaskAdminOperations {
     TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request);
 
     boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request);
+
+    TaskItemBatchAppendReceipt appendTaskItemsWithReceipt(String taskId, MassTaskItemBatchAppendRequest request);
 
     int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request);
 

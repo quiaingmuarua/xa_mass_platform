@@ -55,6 +55,8 @@ For a new session, read only these before changing behavior:
 2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
 3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
 4. [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md) when the change touches storage, runtime, audit, or observability placement
+5. [xa-mass-trace/README.md](xa-mass-trace/README.md) when the change touches
+   trace, lifecycle observability, or trace-observed integration testing
 
 Then jump to the owning module README or owner contract. Use
 [doc/README.md](doc/README.md) as the expanded reading map only when needed.
@@ -89,6 +91,9 @@ Start here based on the change:
   [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),
   [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
+- trace operator CLI / local trace diagnosis:
+  [xa-mass-trace/README.md](xa-mass-trace/README.md),
+  [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md)
 - perf/concurrency/core acceptance:
   [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md),
   [xa-mass-testing/README.md](xa-mass-testing/README.md),

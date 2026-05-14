@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
@@ -68,8 +69,12 @@ public class TaskCommandService {
         return taskCommands.terminateTask(taskId, reason);
     }
 
+    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items) {
+        return taskCommands.appendTaskItemsWithReceipt(taskId, items);
+    }
+
     public int appendTaskItems(String taskId, List<Map<String, Object>> items) {
-        return taskCommands.appendTaskItems(taskId, items);
+        return appendTaskItemsWithReceipt(taskId, items).added();
     }
 
     public boolean sealTask(String taskId) {

@@ -43,6 +43,12 @@ public class ApiRouteAuthorizationCatalog {
                 default -> null;
             };
         }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items:sync$")) {
+            return switch (method) {
+                case "POST" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                default -> null;
+            };
+        }
         if (uri.matches("^/api/v1/tasks/[^/:]+/commands$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
         }

@@ -152,6 +152,30 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
+    void repairedAttemptClosedStillReleasesWorkerForTerminalTask() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.setStatus(TaskStatus.TERMINAL);
+
+        TaskWorkAttemptClosedEvent closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
+
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+
+        listener.onTaskWorkAttemptClosed(task, closedAttempt);
+
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
+        verify(maintenancePort, never()).requestTaskDispatch(any());
+    }
+
+    @Test
     void attemptClosedKeepsWorkerLockedWhenAnotherMessageIsStillProcessing() {
         Task task = new Task();
         task.setTid("task-1");

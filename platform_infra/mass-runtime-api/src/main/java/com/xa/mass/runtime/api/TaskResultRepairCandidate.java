@@ -53,6 +53,21 @@ public record TaskResultRepairCandidate(TaskResultRepairKind kind,
         );
     }
 
+    public static TaskResultRepairCandidate missingAttemptClosedPublish(TaskResultRuntimeRow row) {
+        if (row == null) {
+            throw new IllegalArgumentException("row must not be null");
+        }
+        return new TaskResultRepairCandidate(
+                TaskResultRepairKind.MISSING_ATTEMPT_CLOSED_PUBLISH,
+                row.taskId(),
+                row.messageId(),
+                row.seq(),
+                null,
+                row,
+                row.updateTime()
+        );
+    }
+
     public static TaskResultRepairCandidate missingProgressApply(TaskResultRuntimeRow row) {
         if (row == null) {
             throw new IllegalArgumentException("row must not be null");

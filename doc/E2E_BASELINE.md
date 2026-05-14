@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-05-12
+Last updated: 2026-05-14
 
 Status: current global E2E baseline.
 
@@ -55,6 +55,9 @@ Proof-surface note:
 - E2E is the preferred proof surface when the real risk is integrated lifecycle wiring, host/runtime interaction, transport interplay, or distributed edge behavior
 - E2E is not where the full worker-selection competition matrix should live; keep engine-first scheduling proof for contention, redispatch, and contract-aware convergence
 - compatibility projection may still be asserted as bounded residue, but it is not the primary proof surface for lifecycle correctness
+- when E2E claims trace coverage, read canonical sink output through
+  `xa-mass-trace` or the same query backend path rather than asserting raw log
+  strings
 
 ## 2. Mandatory Release-Gate Scenarios
 
@@ -131,6 +134,14 @@ then acceptance requires:
 3. trace coverage for the critical transition
 
 For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).
+
+Trace coverage note:
+
+- trace coverage means the scenario can be reconstructed from canonical
+  `ExecutionEvent` output using `xa-mass-trace` commands such as `timeline`,
+  `stats`, or `validate`, or using the same query backend path in-process
+- raw log lines may still assist diagnosis, but they are not the release-gate
+  proof surface for trace coverage
 
 ## 4. Relation To Local Kernel Tests
 

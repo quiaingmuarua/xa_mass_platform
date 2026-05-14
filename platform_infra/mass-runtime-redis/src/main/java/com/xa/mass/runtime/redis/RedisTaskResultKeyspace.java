@@ -52,8 +52,16 @@ public final class RedisTaskResultKeyspace {
         return namespaced("pending:logical-final");
     }
 
+    public String attemptClosedPendingZset() {
+        return namespaced("pending:attempt-closed");
+    }
+
     public String progressPendingZset() {
         return namespaced("pending:progress");
+    }
+
+    public String attemptClosedBarrier(String taskId, String messageId, long seq) {
+        return taskPrefix(taskId) + ":barrier:attempt-closed:" + requireToken(messageId, "messageId") + ":" + seq;
     }
 
     public String logicalFinalBarrier(String taskId, String messageId, long seq) {

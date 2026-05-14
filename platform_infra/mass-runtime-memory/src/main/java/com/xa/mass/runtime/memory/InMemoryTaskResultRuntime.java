@@ -36,8 +36,10 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     private final Map<ResultKey, TaskResultRuntimeRow> visibleByMessage = new HashMap<>();
     private final Map<String, TreeMap<Long, TaskResultRuntimeRow>> visibleByTaskSeq = new HashMap<>();
     private final Map<String, Long> nextSeqByTask = new HashMap<>();
+    private final Map<BarrierKey, BarrierLeaseState> attemptClosedBarriers = new HashMap<>();
     private final Map<BarrierKey, BarrierLeaseState> logicalFinalBarriers = new HashMap<>();
     private final Map<BarrierKey, BarrierLeaseState> progressBarriers = new HashMap<>();
+    private final TreeMap<PendingKey, Instant> attemptClosedPending = new TreeMap<>();
     private final TreeMap<PendingKey, Instant> logicalFinalPending = new TreeMap<>();
     private final TreeMap<PendingKey, Instant> progressPending = new TreeMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -118,7 +120,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
             return CommitResult.duplicate(existing);
         }
         long seq = nextSeqByTask.merge(finalDraft.taskId(), 1L, Long::sum);
-        TaskResultRuntimeRow row = rowFromDraft(finalDraft, seq, false, false);
+        TaskResultRuntimeRow row = rowFromDraft(finalDraft, seq, false, false, false);
         visibleByMessage.put(key, row);
         visibleByTaskSeq.computeIfAbsent(finalDraft.taskId(), ignored -> new TreeMap<>()).put(seq, row);
         addPending(row);
@@ -131,8 +133,10 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
             return List.of();
         }
         List<TaskResultRepairCandidate> candidates = new ArrayList<>(limit);
-        for (TaskResultCallbackDraft draft : stagedById.values()) {
-            if (visibleByMessage.containsKey(new ResultKey(draft.taskId(), draft.messageId()))) {
+        for (TaskResultCallbackDraft draft : new ArrayList<>(stagedById.values())) {
+            TaskResultRuntimeRow visible = visibleByMessage.get(new ResultKey(draft.taskId(), draft.messageId()));
+            if (visible != null) {
+                cleanupFullyConvergedStages(visible);
                 continue;
             }
             candidates.add(TaskResultRepairCandidate.missingVisibleFinal(draft));
@@ -140,14 +144,29 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                 return List.copyOf(candidates);
             }
         }
-        collectPendingCandidates(candidates, logicalFinalPending, true, limit);
-        collectPendingCandidates(candidates, progressPending, false, limit);
+        collectPendingCandidates(candidates, attemptClosedPending, BarrierField.ATTEMPT_CLOSED, limit);
+        collectPendingCandidates(candidates, logicalFinalPending, BarrierField.LOGICAL_FINAL, limit);
+        collectPendingCandidates(candidates, progressPending, BarrierField.PROGRESS, limit);
         return List.copyOf(candidates);
     }
 
     @Override
+    public synchronized BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq) {
+        return claimBarrier(attemptClosedBarriers, taskId, messageId, finalSeq, BarrierField.ATTEMPT_CLOSED);
+    }
+
+    @Override
+    public synchronized BarrierMarkResult markAttemptClosedPublished(String taskId,
+                                                                     String messageId,
+                                                                     long finalSeq,
+                                                                     String claimToken) {
+        return markBarrier(attemptClosedBarriers, attemptClosedPending, taskId, messageId, finalSeq,
+                claimToken, BarrierField.ATTEMPT_CLOSED);
+    }
+
+    @Override
     public synchronized BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
-        return claimBarrier(logicalFinalBarriers, taskId, messageId, finalSeq, true);
+        return claimBarrier(logicalFinalBarriers, taskId, messageId, finalSeq, BarrierField.LOGICAL_FINAL);
     }
 
     @Override
@@ -155,12 +174,13 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                                                                     String messageId,
                                                                     long finalSeq,
                                                                     String claimToken) {
-        return markBarrier(logicalFinalBarriers, logicalFinalPending, taskId, messageId, finalSeq, claimToken, true);
+        return markBarrier(logicalFinalBarriers, logicalFinalPending, taskId, messageId, finalSeq,
+                claimToken, BarrierField.LOGICAL_FINAL);
     }
 
     @Override
     public synchronized BarrierClaim claimProgressApply(String taskId, String messageId, long finalSeq) {
-        return claimBarrier(progressBarriers, taskId, messageId, finalSeq, false);
+        return claimBarrier(progressBarriers, taskId, messageId, finalSeq, BarrierField.PROGRESS);
     }
 
     @Override
@@ -168,7 +188,8 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                                                               String messageId,
                                                               long finalSeq,
                                                               String claimToken) {
-        return markBarrier(progressBarriers, progressPending, taskId, messageId, finalSeq, claimToken, false);
+        return markBarrier(progressBarriers, progressPending, taskId, messageId, finalSeq,
+                claimToken, BarrierField.PROGRESS);
     }
 
     @Override
@@ -229,12 +250,14 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (rows != null) {
             for (TaskResultRuntimeRow row : rows.values()) {
                 visibleByMessage.remove(new ResultKey(row.taskId(), row.messageId()));
+                attemptClosedPending.remove(new PendingKey(row.taskId(), row.messageId(), row.seq()));
                 logicalFinalPending.remove(new PendingKey(row.taskId(), row.messageId(), row.seq()));
                 progressPending.remove(new PendingKey(row.taskId(), row.messageId(), row.seq()));
                 removed++;
             }
         }
         nextSeqByTask.remove(taskId);
+        attemptClosedBarriers.keySet().removeIf(key -> taskId.equals(key.taskId));
         logicalFinalBarriers.keySet().removeIf(key -> taskId.equals(key.taskId));
         progressBarriers.keySet().removeIf(key -> taskId.equals(key.taskId));
         return removed;
@@ -251,8 +274,10 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         visibleByMessage.clear();
         visibleByTaskSeq.clear();
         nextSeqByTask.clear();
+        attemptClosedBarriers.clear();
         logicalFinalBarriers.clear();
         progressBarriers.clear();
+        attemptClosedPending.clear();
         logicalFinalPending.clear();
         progressPending.clear();
     }
@@ -264,7 +289,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
 
     private void collectPendingCandidates(List<TaskResultRepairCandidate> candidates,
                                           TreeMap<PendingKey, Instant> pendingIndex,
-                                          boolean logicalFinal,
+                                          BarrierField field,
                                           int limit) {
         if (candidates.size() >= limit) {
             return;
@@ -277,17 +302,11 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                 staleKeys.add(key);
                 continue;
             }
-            if (logicalFinal && row.logicalFinalPublished()) {
+            if (isBarrierDone(row, field)) {
                 staleKeys.add(key);
                 continue;
             }
-            if (!logicalFinal && row.progressApplied()) {
-                staleKeys.add(key);
-                continue;
-            }
-            candidates.add(logicalFinal
-                    ? TaskResultRepairCandidate.missingLogicalFinalPublish(row)
-                    : TaskResultRepairCandidate.missingProgressApply(row));
+            candidates.add(candidateFor(row, field));
             if (candidates.size() >= limit) {
                 break;
             }
@@ -299,7 +318,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                                       String taskId,
                                       String messageId,
                                       long finalSeq,
-                                      boolean logicalFinal) {
+                                      BarrierField field) {
         if (!running.get()) {
             return BarrierClaim.unavailable();
         }
@@ -310,7 +329,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (row == null || row.seq() != finalSeq) {
             return BarrierClaim.rejected();
         }
-        if ((logicalFinal && row.logicalFinalPublished()) || (!logicalFinal && row.progressApplied())) {
+        if (isBarrierDone(row, field)) {
             return BarrierClaim.alreadyDone();
         }
         BarrierKey key = new BarrierKey(taskId, messageId, finalSeq);
@@ -334,7 +353,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                                           String messageId,
                                           long finalSeq,
                                           String claimToken,
-                                          boolean logicalFinal) {
+                                          BarrierField field) {
         if (!running.get()) {
             return BarrierMarkResult.unavailable("result runtime is stopped");
         }
@@ -346,7 +365,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (row == null || row.seq() != finalSeq) {
             return BarrierMarkResult.rejected("visible row not found");
         }
-        if ((logicalFinal && row.logicalFinalPublished()) || (!logicalFinal && row.progressApplied())) {
+        if (isBarrierDone(row, field)) {
             return BarrierMarkResult.alreadyDone();
         }
         BarrierKey barrierKey = new BarrierKey(taskId, messageId, finalSeq);
@@ -360,9 +379,7 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
         if (isBlank(claimToken) || !claimToken.equals(state.claimToken)) {
             return BarrierMarkResult.tokenMismatch("claim token mismatch");
         }
-        TaskResultRuntimeRow updated = logicalFinal
-                ? row.withLogicalFinalPublished()
-                : row.withProgressApplied();
+        TaskResultRuntimeRow updated = markBarrierDone(row, field);
         visibleByMessage.put(resultKey, updated);
         TreeMap<Long, TaskResultRuntimeRow> rows = visibleByTaskSeq.get(taskId);
         if (rows != null) {
@@ -376,12 +393,14 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     private void addPending(TaskResultRuntimeRow row) {
         PendingKey pendingKey = new PendingKey(row.taskId(), row.messageId(), row.seq());
         Instant observedAt = row.updateTime() == null ? Instant.now() : row.updateTime();
+        attemptClosedPending.put(pendingKey, observedAt);
         logicalFinalPending.put(pendingKey, observedAt);
         progressPending.put(pendingKey, observedAt);
     }
 
     private TaskResultRuntimeRow rowFromDraft(TaskResultFinalDraft draft,
                                               long seq,
+                                              boolean attemptClosedPublished,
                                               boolean logicalFinalPublished,
                                               boolean progressApplied) {
         return new TaskResultRuntimeRow(
@@ -406,9 +425,40 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                 draft.errorCode(),
                 draft.errorMessage(),
                 draft.output(),
+                attemptClosedPublished,
                 logicalFinalPublished,
                 progressApplied
         );
+    }
+
+    private void cleanupFullyConvergedStages(TaskResultRuntimeRow row) {
+        if (row != null && row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied()) {
+            discardStagedCallbacksForMessage(row.taskId(), row.messageId());
+        }
+    }
+
+    private static boolean isBarrierDone(TaskResultRuntimeRow row, BarrierField field) {
+        return switch (field) {
+            case ATTEMPT_CLOSED -> row.attemptClosedPublished();
+            case LOGICAL_FINAL -> row.logicalFinalPublished();
+            case PROGRESS -> row.progressApplied();
+        };
+    }
+
+    private static TaskResultRuntimeRow markBarrierDone(TaskResultRuntimeRow row, BarrierField field) {
+        return switch (field) {
+            case ATTEMPT_CLOSED -> row.withAttemptClosedPublished();
+            case LOGICAL_FINAL -> row.withLogicalFinalPublished();
+            case PROGRESS -> row.withProgressApplied();
+        };
+    }
+
+    private static TaskResultRepairCandidate candidateFor(TaskResultRuntimeRow row, BarrierField field) {
+        return switch (field) {
+            case ATTEMPT_CLOSED -> TaskResultRepairCandidate.missingAttemptClosedPublish(row);
+            case LOGICAL_FINAL -> TaskResultRepairCandidate.missingLogicalFinalPublish(row);
+            case PROGRESS -> TaskResultRepairCandidate.missingProgressApply(row);
+        };
     }
 
     private void removeStageIndexes(TaskResultCallbackDraft draft) {
@@ -464,6 +514,12 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
     }
 
     private record BarrierKey(String taskId, String messageId, long seq) {
+    }
+
+    private enum BarrierField {
+        ATTEMPT_CLOSED,
+        LOGICAL_FINAL,
+        PROGRESS
     }
 
     private record BarrierLeaseState(String claimToken, Instant claimedAt, Instant expiresAt, boolean done) {

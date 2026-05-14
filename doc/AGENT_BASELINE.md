@@ -28,6 +28,8 @@ flows, commands, and module-local inventories.
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
+- canonical trace write-path ownership stays in `platform_infra/mass-trace-sink`;
+  operator trace read/query ownership stays in `xa-mass-trace`
 - process-local EventBus bridging is optional shell wiring, not default engine runtime truth
 
 SDK-first boundary rules:
@@ -55,6 +57,8 @@ Current owner vocabulary:
   verify `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`,
   `TaskResultRuntime`, and `RESULT_BOUNDARY_BASELINE.md` together before
   documenting the split more narrowly
+- `xa-mass-trace` is the current operator-facing read path for canonical trace
+  artifacts; it does not own a second event schema or lifecycle truth
 - current bounded compatibility residue lives behind engine-internal owners plus
   neutral storage-edge projection records; legacy message-model naming is
   intentionally not part of the active public/kernel vocabulary
@@ -106,6 +110,8 @@ Boundary rules:
     the active result-runtime boundary
   - `platform_infra/mass-runtime-memory` is the current verified runtime implementation
   - `platform_infra/mass-storage-api` owns task/worker/rule storage contracts
+  - `platform_infra/mass-trace-sink` owns canonical trace schema + sink write
+    path; `xa-mass-trace` owns local operator read/query over that output
 - current engine truth:
   - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry,
     and backpressure truth
@@ -135,6 +141,8 @@ Read these before inferring architecture from historical vocabulary:
 5. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java`
 6. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
 7. `doc/RESULT_BOUNDARY_BASELINE.md`
+8. `xa-mass-trace/README.md`
+9. `doc/TRACE_CONTRACT.md`
 
 Read them to verify three things quickly:
 
@@ -145,6 +153,8 @@ Read them to verify three things quickly:
   the active result baseline and code
 - bounded message/attempt reads live behind explicit compatibility surfaces and
   are not the default engine query model
+- canonical trace diagnosis should start from `xa-mass-trace` over sink output,
+  not from MDC string logs or ad hoc projection reads
 
 ## 5. Current Contract Summary
 
