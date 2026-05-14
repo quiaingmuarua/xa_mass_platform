@@ -15,5 +15,9 @@ public interface TraceQueryBackend {
                               String severity,
                               int limit) throws Exception;
 
+    List<TraceAssignmentRow> assignment(TraceSource source,
+                                        String taskId,
+                                        int limit) throws Exception;
+
     long countRows(TraceSource source) throws Exception;
 }

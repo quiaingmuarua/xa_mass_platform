@@ -51,6 +51,7 @@ Fast read order:
 Current commands:
 
 - `timeline`: task or task-work ordered event timeline
+- `assignment`: schedule and assignment decision timeline for a task
 - `stats`: grouped event counts with optional filters
 - `validate`: JSONL + canonical schema/event-registry validation
 - `analyze`: scenario-oriented trace analysis for known integrated flows
@@ -83,6 +84,9 @@ Current built-in scenario analyzers:
 
 - `single-message-success`
 - `duplicate-callback-replay`
+- `assignment-success-binding`
+- `assignment-min-worker-gate`
+- `assignment-retry-redispatch`
 
 ## Test Pairing Workflow
 
@@ -112,6 +116,10 @@ Run through Maven from the repository root:
 
 ```bash
 ./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.trace.cli.XaMassTraceCli -Dexec.args="stats --path trace-events --task-id task-123 --json"
+```
+
+```bash
+./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.trace.cli.XaMassTraceCli -Dexec.args="assignment --path trace-events --task-id task-123 --json"
 ```
 
 ```bash

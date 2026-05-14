@@ -11,7 +11,10 @@ public final class TraceScenarioRegistry {
     public TraceScenarioRegistry() {
         this(List.of(
                 new SingleMessageSuccessScenarioAnalyzer(),
-                new DuplicateCallbackReplayScenarioAnalyzer()
+                new DuplicateCallbackReplayScenarioAnalyzer(),
+                new AssignmentSuccessBindingScenarioAnalyzer(),
+                new AssignmentMinWorkerGateScenarioAnalyzer(),
+                new AssignmentRetryRedispatchScenarioAnalyzer()
         ));
     }
 

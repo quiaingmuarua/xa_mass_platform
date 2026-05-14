@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,6 +77,39 @@ class XaMassTraceCliIntegrationTest {
         JsonNode first = root.get("rows").get(0);
         assertEquals("CALLBACK_ACCEPTED", first.get("eventType").asText());
         assertEquals(2, first.get("count").asInt());
+    }
+
+    @Test
+    void assignmentJsonReadsScheduleFieldsProducedBySink() throws Exception {
+        writeAssignmentSuccessTrace(tempDir, "task-assignment-cli");
+        awaitJsonlFiles(tempDir, 1);
+
+        CommandResult result = run("assignment", "--path", tempDir.toString(), "--task-id", "task-assignment-cli", "--json");
+
+        assertEquals(0, result.exitCode, "stderr=" + result.stderr + System.lineSeparator() + "stdout=" + result.stdout);
+        JsonNode root = objectMapper.readTree(result.stdout);
+        assertEquals("task-assignment-cli", root.get("taskId").asText());
+        assertTrue(root.get("count").asInt() >= 3);
+        JsonNode summary = findEvent(root, "ASSIGNMENT_SUMMARY");
+        assertEquals("SUCCESS", summary.get("result").asText());
+        assertEquals(1, summary.get("usedWorkerCount").asInt());
+        JsonNode binding = findEvent(root, "DISPATCH_BINDING_SUMMARY");
+        assertEquals(2, binding.get("dispatchedMessageCount").asInt());
+        assertEquals(2, binding.get("perWorkerBatchLimit").asInt());
+    }
+
+    @Test
+    void assignmentHumanOutputIncludesReasonResultAndCounts() throws Exception {
+        writeAssignmentSuccessTrace(tempDir, "task-assignment-human");
+        awaitJsonlFiles(tempDir, 1);
+
+        CommandResult result = run("assignment", "--path", tempDir.toString(), "--task-id", "task-assignment-human");
+
+        assertEquals(0, result.exitCode, "stderr=" + result.stderr + System.lineSeparator() + "stdout=" + result.stdout);
+        assertTrue(result.stdout.contains("ASSIGNMENT_SUMMARY"));
+        assertTrue(result.stdout.contains("result=SUCCESS"));
+        assertTrue(result.stdout.contains("reason=matched workers dispatched"));
+        assertTrue(result.stdout.contains("dispatched=2"));
     }
 
     @Test
@@ -146,6 +180,23 @@ class XaMassTraceCliIntegrationTest {
         assertTrue(root.get("ok").asBoolean());
         assertEquals("duplicate-callback-replay", root.get("scenarioId").asText());
         assertEquals(1, root.get("eventTypeCounts").get("CALLBACK_IGNORED_DUPLICATE").asInt());
+    }
+
+    @Test
+    void analyzeRecognizesAssignmentSuccessBindingScenarioFromCanonicalTrace() throws Exception {
+        writeAssignmentSuccessTrace(tempDir, "task-assignment-analyze");
+        awaitJsonlFiles(tempDir, 1);
+
+        CommandResult result = run("analyze",
+                "--path", tempDir.toString(),
+                "--scenario", "assignment-success-binding",
+                "--task-id", "task-assignment-analyze",
+                "--json");
+
+        assertEquals(0, result.exitCode, "stderr=" + result.stderr + System.lineSeparator() + "stdout=" + result.stdout);
+        JsonNode root = objectMapper.readTree(result.stdout);
+        assertTrue(root.get("ok").asBoolean());
+        assertEquals("assignment-success-binding", root.get("scenarioId").asText());
     }
 
     @Test
@@ -234,6 +285,77 @@ class XaMassTraceCliIntegrationTest {
         }
     }
 
+    private void writeAssignmentSuccessTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1").workerContextId("ctx-1"))
+                    .outcome(true, null, "all rules matched")
+                    .attrs(Map.of("source", "RuleBasedTaskWorkerMatchingStrategy", "reason", "all rules matched", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_LOCK_ACQUIRED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
+                    .attrs(Map.of("trigger", "TRY_LOCK_WORKER", "source", "RuleBasedTaskWorkerMatchingStrategy", "reason", "all rules matched", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 2,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 2,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "pendingMessageCount", 2,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 2,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "uniqueWorkerContextCount", 1,
+                            "perWorkerBatchLimit", 2))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("READY", "RUNNING", "matched workers dispatched")
+                    .attrs(Map.of("trigger", "ASSIGNMENT_SUCCEEDED", "source", "TaskWorkerAssignListener", "reason", "matched workers dispatched", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .transition("CREATED", "LEASED", "attempt leased for dispatch")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt leased for dispatch", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .transition("LEASED", "DISPATCHED", "attempt dispatched")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+        }
+    }
+
     private void awaitJsonlFiles(Path outputDir, int minFiles) throws Exception {
         long deadline = System.currentTimeMillis() + 2_000L;
         while (System.currentTimeMillis() < deadline) {
@@ -275,6 +397,26 @@ class XaMassTraceCliIntegrationTest {
             }
         }
         return false;
+    }
+
+    private JsonNode findEvent(JsonNode root, String eventType) {
+        for (JsonNode event : root.withArray("events")) {
+            if (eventType.equals(event.path("eventType").asText())) {
+                return event;
+            }
+        }
+        throw new AssertionError("Missing eventType=" + eventType + " in " + root);
+    }
+
+    private static Map<String, Object> attrs(Object... values) {
+        if (values.length % 2 != 0) {
+            throw new IllegalArgumentException("attrs requires key/value pairs");
+        }
+        Map<String, Object> attrs = new LinkedHashMap<>();
+        for (int i = 0; i < values.length; i += 2) {
+            attrs.put((String) values[i], values[i + 1]);
+        }
+        return attrs;
     }
 
     private record CommandResult(int exitCode, String stdout, String stderr) {

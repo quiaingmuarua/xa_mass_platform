@@ -211,6 +211,53 @@ Standardized `attrs` fields currently include:
 Any new `attrs` field used by more than one emitter must be named consistently
 and documented here in the same change.
 
+### Schedule / assignment analysis fields
+
+The existing schedule and assignment event types are stable analysis input for
+operator-side decision-chain reconstruction. This does not add a new
+`ExecutionEventType`; it standardizes how the current events are read.
+
+Schedule analysis currently reads these event types from canonical sink output:
+
+- `DISPATCH_REQUESTED`
+- `DISPATCH_SKIPPED`
+- `ASSIGNMENT_SUMMARY`
+- `DISPATCH_BINDING_SUMMARY`
+- `ASSIGNMENT_QUEUE_SNAPSHOT`
+- `ASSIGNMENT_RETRY_SCHEDULED`
+- `WORKER_MATCH_ACCEPTED`
+- `WORKER_MATCH_REJECTED`
+- `WORKER_LOCK_ACQUIRED`
+- `WORKER_LOCK_RELEASED`
+- `TASK_STATUS_TRANSITION`
+- `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
+- `WORKER_CONTEXT_STATUS_TRANSITION`
+- `RESOURCE_RELEASED`
+- `RESOURCE_RELEASE_FAILED`
+- `LEASE_EXPIRED`
+
+Stable assignment-oriented fields are:
+
+- common fields: `trigger`, `source`, `reason`, `result`
+- scheduling profile fields: `initialStatus`, `currentStatus`,
+  `dispatchLane`, `workloadClass`, `batchPolicy`, `leaseProfile`
+- assignment summary counts: `pendingDispatchCount`,
+  `desiredDispatchWorkerCount`, `requiredStartWorkerCount`,
+  `requestedMatchCount`, `matchedWorkerCount`, `dispatchCandidateCount`,
+  `dispatchedMessageCount`, `usedWorkerCount`, `peakAssignedWorkerCount`
+- dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
+  `unassignedMessageCount`, `uniqueWorkerCount`,
+  `uniqueWorkerContextCount`, `perWorkerBatchLimit`
+- queue fields: `queueDepth`, `trackedBatchPendingCount`,
+  `scheduledRetryCount`, `queueAction`, `retryDelayMillis`
+
+`xa-mass-trace assignment` and schedule scenario analyzers must read these
+fields from canonical JSONL files through the trace query backend. They must
+not read MDC logs, compatibility message/attempt projection, task-detail DB
+tables, or runtime queues. Schedule trace explains why the scheduler made or
+skipped a decision; it does not participate in runtime correctness, lease
+acceptance, retry budgeting, dispatch ownership, or terminal convergence.
+
 ## 5. Minimum Required Paths
 
 The canonical model must be able to represent these flows:
@@ -287,4 +334,6 @@ Trace-observed integration rule:
   `xa-mass-trace` or an equivalent query backend over the same canonical files
 - do not treat MDC string logs, ad hoc grep output, or compatibility projection
   rows as a substitute for canonical trace observation
+- schedule/assignment analyzer tests must assert canonical JSONL query output,
+  not logger MDC capture or projection residue
 

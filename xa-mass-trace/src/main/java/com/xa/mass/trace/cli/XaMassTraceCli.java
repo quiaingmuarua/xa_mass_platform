@@ -3,6 +3,7 @@ package com.xa.mass.trace.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
+import com.xa.mass.trace.operator.TraceAssignmentRequest;
 import com.xa.mass.trace.operator.TraceOperatorService;
 import com.xa.mass.trace.operator.TraceStatsRequest;
 import com.xa.mass.trace.operator.TraceTimelineRequest;
@@ -52,6 +53,7 @@ public final class XaMassTraceCli {
         CommandLine commandLine = new CommandLine(root);
         commandLine.addSubcommand("timeline", new TimelineCommand());
         commandLine.addSubcommand("stats", new StatsCommand());
+        commandLine.addSubcommand("assignment", new AssignmentCommand());
         commandLine.addSubcommand("validate", new ValidateCommand());
         commandLine.addSubcommand("analyze", new AnalyzeCommand());
         commandLine.setExecutionExceptionHandler((ex, cmd, parseResult) -> {
@@ -190,6 +192,71 @@ public final class XaMassTraceCli {
                 root.out.printf("%-32s %-8s %d%n", row.eventType(), row.severity(), row.count());
             }
             return EXIT_OK;
+        }
+    }
+
+    @Command(name = "assignment", description = "Read schedule and assignment trace decisions.")
+    static final class AssignmentCommand implements Callable<Integer> {
+
+        @ParentCommand
+        private RootCommand root;
+
+        @Option(names = "--path", required = true, description = "Trace file or directory path.")
+        private String path;
+
+        @Option(names = "--task-id", required = true, description = "Task id.")
+        private String taskId;
+
+        @Option(names = "--limit", description = "Maximum rows to return.")
+        private Integer limit;
+
+        @Option(names = "--json", description = "Emit JSON output.")
+        private boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            var response = root.operatorService.assignment(new TraceAssignmentRequest(path, taskId, limit));
+            if (json) {
+                return root.printJson(response);
+            }
+            root.out.printf("assignment source=%s taskId=%s count=%d%n",
+                    response.source(),
+                    response.taskId(),
+                    response.count());
+            for (var row : response.events()) {
+                root.out.printf("%s %-34s result=%s worker=%s ctx=%s reason=%s counts=%s%n",
+                        row.tsIso(),
+                        row.eventType(),
+                        nullToDash(row.result()),
+                        nullToDash(row.workerId()),
+                        nullToDash(row.workerContextId()),
+                        nullToDash(row.reason()),
+                        assignmentCounts(row));
+            }
+            return EXIT_OK;
+        }
+
+        private String assignmentCounts(com.xa.mass.trace.query.TraceAssignmentRow row) {
+            StringBuilder builder = new StringBuilder();
+            appendCount(builder, "matched", row.matchedWorkerCount());
+            appendCount(builder, "candidates", row.dispatchCandidateCount());
+            appendCount(builder, "dispatched", row.dispatchedMessageCount());
+            appendCount(builder, "used", row.usedWorkerCount());
+            appendCount(builder, "pending", row.pendingMessageCount());
+            appendCount(builder, "slots", row.dispatchSlotCount());
+            appendCount(builder, "perWorker", row.perWorkerBatchLimit());
+            appendCount(builder, "queue", row.queueDepth());
+            return builder.isEmpty() ? "-" : builder.toString();
+        }
+
+        private void appendCount(StringBuilder builder, String name, Integer value) {
+            if (value == null) {
+                return;
+            }
+            if (!builder.isEmpty()) {
+                builder.append(',');
+            }
+            builder.append(name).append('=').append(value);
         }
     }
 

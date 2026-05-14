@@ -70,6 +70,19 @@ public final class TraceOperatorService {
         );
     }
 
+    public TraceAssignmentResponse assignment(TraceAssignmentRequest request) throws Exception {
+        TraceSource source = TraceSourceResolver.resolve(request.path());
+        String taskId = requireText(request.taskId(), "taskId");
+        int limit = positiveOrDefault(request.limit(), DEFAULT_TIMELINE_LIMIT, "limit");
+        var rows = queryBackend.assignment(source, taskId, limit);
+        return new TraceAssignmentResponse(
+                source.inputPath().toString(),
+                taskId,
+                rows.size(),
+                List.copyOf(rows)
+        );
+    }
+
     public TraceValidateResponse validate(TraceValidateRequest request) throws Exception {
         TraceSource source = TraceSourceResolver.resolve(request.path());
         TraceValidationReport report = validationService.validate(source);
