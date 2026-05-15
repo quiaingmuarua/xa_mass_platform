@@ -56,6 +56,29 @@ public class ServerMainlineE2eArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void schedulingTraceObservedTestsDoNotUseWorkerContextAsPrimaryProof() throws IOException {
+        Pattern workerContextEvidence = Pattern.compile("\\bworkerContextId\\b|\"workerContextId\"");
+        List<String> violations = new ArrayList<>();
+        for (Path file : selectedMainlineSuiteSourceFiles()) {
+            String filename = file.getFileName().toString();
+            if (!filename.contains("TraceObserved")) {
+                continue;
+            }
+            String source = Files.readString(file, StandardCharsets.UTF_8);
+            if (workerContextEvidence.matcher(source).find()
+                    && !filename.contains("Legacy")
+                    && !filename.contains("Context")) {
+                violations.add(file + " uses workerContextId as scheduling trace-observed proof");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "New scheduling trace-observed E2E proof must prefer worker scheduling evidence. "
+                        + "Keep workerContextId assertions only in explicitly legacy/context tests:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedMainlineSuiteSourceFiles() {
         List<Path> sourceFiles = MAINLINE_SUITE_CLASS_NAMES.stream()
                 .map(ServerMainlineE2eArchitectureGuardTest::loadSuiteClass)

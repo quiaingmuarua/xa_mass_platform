@@ -191,6 +191,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsWorkerAttributeRoutingWithoutContextScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeWorkerAttributeRoutingWithoutContextTrace(tempDir, "task-worker-attribute-routing", false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "worker-attribute-routing-without-context",
+                        "task-worker-attribute-routing"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("worker-attribute-routing-without-context", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -260,6 +275,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void workerAttributeRoutingWithoutContextScenarioFailsWhenAcceptedMatchUsesWorkerContext() throws Exception {
+        writeWorkerAttributeRoutingWithoutContextTrace(tempDir, "task-context-backed-routing", true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "worker-attribute-routing-without-context",
+                        "task-context-backed-routing"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "WORKER_CONTEXT_BACKED_MATCH_OBSERVED".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
@@ -269,6 +299,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
         assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
         assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
+        assertTrue(operatorService.scenarioIds().contains("worker-attribute-routing-without-context"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -619,6 +650,84 @@ class TraceOperatorServiceIntegrationTest {
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-shared"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+        }
+    }
+
+    private void writeWorkerAttributeRoutingWithoutContextTrace(Path outputDir,
+                                                                String taskId,
+                                                                boolean contextBackedMatch) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> {
+                        identity.taskId(taskId).workerId("worker-attribute-us");
+                        if (contextBackedMatch) {
+                            identity.workerContextId("ctx-attribute-us");
+                        }
+                    })
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerSchedulingResourceId", contextBackedMatch ? "ctx-attribute-us" : "worker-attribute-us",
+                            "workerSchedulingRoutingTags", "shared,us",
+                            "workerSchedulingAttributes", Map.of("routingTag", "us", "country", "us"),
+                            "workerSchedulingMatchesRoutingCode", true))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_LOCK_ACQUIRED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-attribute-us"))
+                    .attrs(attrs(
+                            "trigger", "TRY_LOCK_WORKER",
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched after candidate ranking",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "pendingMessageCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "uniqueWorkerContextCount", contextBackedMatch ? 1 : 0,
+                            "perWorkerBatchLimit", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 1,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
                     .build());
         }
     }

@@ -17,7 +17,8 @@ public final class TraceScenarioRegistry {
                 new AssignmentRetryRedispatchScenarioAnalyzer(),
                 new LoadAwareWorkerSelectionScenarioAnalyzer(),
                 new CapacityReservationUnderConcurrencyScenarioAnalyzer(),
-                new BackgroundWorkerSharingScenarioAnalyzer()
+                new BackgroundWorkerSharingScenarioAnalyzer(),
+                new WorkerAttributeRoutingWithoutContextScenarioAnalyzer()
         ));
     }
 

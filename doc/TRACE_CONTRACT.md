@@ -254,6 +254,9 @@ Stable assignment-oriented fields are:
 - dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
   `unassignedMessageCount`, `uniqueWorkerCount`,
   `uniqueWorkerContextCount`, `perWorkerBatchLimit`
+- worker scheduling evidence: `workerSchedulingResourceId`,
+  `workerSchedulingRoutingTags`, `workerSchedulingAttributes`,
+  `workerSchedulingMatchesRoutingCode`
 - queue fields: `queueDepth`, `trackedBatchPendingCount`,
   `scheduledRetryCount`, `queueAction`, `retryDelayMillis`
 
@@ -289,6 +292,10 @@ single background task: accepted worker match evidence must show
 `foreground=false`, existing active worker load, a new reservation within
 declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
 evidence for that task.
+The `worker-attribute-routing-without-context` analyzer uses worker scheduling
+evidence instead of `workerContextId`: accepted worker matches must have no
+`workerContextId`, must carry worker-level scheduling attributes or routing
+tags, and must show `workerSchedulingMatchesRoutingCode=true`.
 
 ## 5. Minimum Required Paths
 

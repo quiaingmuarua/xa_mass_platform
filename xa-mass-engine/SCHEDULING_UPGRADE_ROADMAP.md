@@ -107,6 +107,11 @@ Progress:
   snapshot field map, and `RuleBasedTaskWorkerMatchingStrategy` consumes that
   read model for prefilter records instead of maintaining a duplicate
   `workerScheduling*` / `workerContext*` snapshot builder.
+- 2026-05-15: WorkerContext retirement WC-2F proof replacement baseline was
+  implemented. Worker match trace now carries worker scheduling evidence, and
+  `worker-attribute-routing-without-context` proves stateless worker attribute
+  routing through canonical JSONL without using `workerContextId` as the
+  scheduling success proof.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
   `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path
@@ -956,6 +961,7 @@ WorkerContext retirement.
 | `load-aware-worker-selection` | Step 6 | Lower-load equivalent worker is selected first |
 | `capacity-reservation-under-concurrency` | Step 7 | Process-local capacity reservation is visible and accepted matches are not over committed |
 | `background-worker-sharing` | Step 7 | A background task reserves shared stateless worker capacity without long-lived worker lock evidence |
+| `worker-attribute-routing-without-context` | WorkerContext retirement WC-2F | Worker-level scheduling attributes route work without WorkerContext evidence |
 | `cross-task-worker-fairness` | Step 8 | Large BULK work does not starve concurrent INTERACTIVE work |
 | `account-switch-failure` | Step 9 | Account execution failure converges through result handling and trace |
 

@@ -228,6 +228,12 @@ exclusive resources.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
+Worker-match trace also carries worker scheduling evidence:
+`workerSchedulingResourceId`, `workerSchedulingRoutingTags`,
+`workerSchedulingAttributes`, and `workerSchedulingMatchesRoutingCode`. New
+scheduling proof must prefer these fields over `workerContextId`;
+`workerContextId` remains legacy runtime payload evidence while the binding and
+release compatibility path still exists.
 `WorkerLoadView` also exposes the current active worker count per task to
 allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
@@ -324,6 +330,12 @@ Focused proof for this step:
     which creates two `foreground=false` tasks through the real
     Boot/API/SDK/transport path against one capacity-2 stateless worker and
     analyzes canonical JSONL for the second task
+- `worker-attribute-routing-without-context`
+  - proves worker-level scheduling attributes and routing tags can satisfy
+    routing without `workerContextId`
+  - is also covered by `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest`,
+    which registers stateless workers through the real Boot/API/SDK/transport
+    path and analyzes canonical JSONL for worker attribute routing
 - `EngineSchedulingCoreSuite`
   - protects assignment behavior
 - `EngineSchedulingCoreArchitectureGuardTest`

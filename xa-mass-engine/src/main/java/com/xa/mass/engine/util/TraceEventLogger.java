@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
@@ -300,7 +301,7 @@ public final class TraceEventLogger {
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "SUCCESS",
-                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
+                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     public void workerMatchRejected(String taskId, Worker worker, WorkerContext workerContext, String reason) {
@@ -350,7 +351,7 @@ public final class TraceEventLogger {
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "REJECTED",
-                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
+                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     private void emitWorkerMatchEvent(ExecutionEventType eventType,
@@ -924,10 +925,11 @@ public final class TraceEventLogger {
     private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
                                                                  Integer candidateRank,
                                                                  Double candidateScore) {
-        return workerSchedulingRankAttrs(view, null, candidateRank, candidateScore);
+        return workerSchedulingRankAttrs(null, view, null, candidateRank, candidateScore);
     }
 
-    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
+    private static Map<String, Object> workerSchedulingRankAttrs(Task task,
+                                                                 WorkerSchedulingView view,
                                                                  WorkerLoadSnapshot workerLoadSnapshot,
                                                                  Integer candidateRank,
                                                                  Double candidateScore) {
@@ -935,6 +937,14 @@ public final class TraceEventLogger {
                 "candidateRank", candidateRank,
                 "candidateScore", candidateScore != null ? formatDouble(candidateScore) : null
         );
+        if (view != null) {
+            String routingCode = TaskSharedConfig.routingCode(task);
+            values.put("workerSchedulingResourceId", view.schedulingResourceId());
+            values.put("workerSchedulingRoutingTags", view.schedulingRoutingTags());
+            values.put("workerSchedulingAttributes", view.schedulingAttributes());
+            values.put("workerSchedulingMatchesRoutingCode",
+                    routingCode != null && view.schedulingRoutingTagsContain(routingCode));
+        }
         if (workerLoadSnapshot != null) {
             values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
             values.put("workerReservedCount", workerLoadSnapshot.reservedCount());

@@ -75,6 +75,25 @@ Current convergence work already reduced the blast radius:
 - architecture guards prevent context-first handoff types and scattered context
   state mutation from returning
 
+## Proof Replacement Matrix
+
+Before runtime lifecycle or public API deletion, scheduling proof must move from
+WorkerContext identity to worker scheduling evidence.
+
+| Current proof habit | Replacement proof |
+| --- | --- |
+| `workerContextId` proves routing selected the right account/context | `workerSchedulingAttributes`, `workerSchedulingRoutingTags`, and `workerSchedulingMatchesRoutingCode` prove worker-level routing |
+| `WorkerContextStatus IDLE -> RESERVED -> OCCUPIED` proves assignment resource ownership | `WORKER_MATCH_ACCEPTED`, worker capacity reservation fields, `WORKER_LOCK_ACQUIRED`, and dispatch binding summary prove scheduling/resource handoff |
+| context project proves project eligibility | `Worker.supportedProjects`, `supportsProject`, and worker scheduling attributes prove project/capability eligibility |
+| context release proves scheduling cleanup | attempt close, `RESOURCE_RELEASED`, `WORKER_LOCK_RELEASED`, and worker load finalization prove cleanup |
+| unique worker context counts prove dispatch spread | `uniqueWorkerCount`, worker scheduling resource evidence, and assignment/binding counts prove dispatch spread |
+
+The `worker-attribute-routing-without-context` trace scenario is the canonical
+proof that stateless worker attributes can satisfy routing without
+`workerContextId`. Legacy context lifecycle tests may continue to assert
+`workerContextId`, but new scheduling proof should prefer the replacement
+evidence above.
+
 ## Retirement Target
 
 The target engine shape is:
@@ -283,8 +302,11 @@ does not unwrap `candidate.getWorkerContext()` directly. `WorkerMatchContext`
 now owns the rule and diagnostic snapshot field map used by both QLExpress
 evaluation and prefilter rejection records, so `RuleBasedTaskWorkerMatchingStrategy`
 no longer carries a duplicate `workerScheduling*` / `workerContext*` snapshot
-builder. `WorkerSchedulingCandidate` still carries nullable legacy
-`WorkerContext` for runtime binding; full removal is not complete.
+builder. Canonical trace now includes worker scheduling evidence on worker match
+rows, and `worker-attribute-routing-without-context` proves stateless worker
+attribute routing without using `workerContextId`. `WorkerSchedulingCandidate`
+still carries nullable legacy `WorkerContext` for runtime binding; full removal
+is not complete.
 
 Goal: make engine matching fully worker-view based.
 
@@ -330,6 +352,11 @@ Acceptance:
 ### Phase WC-3: Remove Legacy WorkerContext Runtime Lifecycle
 
 Goal: delete the engine-owned context slot state machine.
+
+Prerequisite: trace and tests for the scheduling path must already have
+worker-level proof replacements for routing, resource handoff, and cleanup.
+Do not start this phase while a scheduling scenario still depends on
+`workerContextId` as its primary success evidence.
 
 Scope:
 

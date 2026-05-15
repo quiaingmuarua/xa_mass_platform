@@ -90,6 +90,7 @@ Current built-in scenario analyzers:
 - `load-aware-worker-selection`
 - `capacity-reservation-under-concurrency`
 - `background-worker-sharing`
+- `worker-attribute-routing-without-context`
 
 ## Test Pairing Workflow
 
