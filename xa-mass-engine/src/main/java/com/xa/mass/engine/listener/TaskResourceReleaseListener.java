@@ -61,10 +61,12 @@ public class TaskResourceReleaseListener {
             );
         }
 
-        for (String workerId : workerIds) {
-            workerManager.unlockWorker(workerId);
-            traceEventLogger.workerLockReleased(task.getTid(), workerId,
-                    "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
+        if (usesExclusiveWorkerLock(task)) {
+            for (String workerId : workerIds) {
+                workerManager.unlockWorker(workerId);
+                traceEventLogger.workerLockReleased(task.getTid(), workerId,
+                        "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
+            }
         }
     }
 
@@ -82,9 +84,11 @@ public class TaskResourceReleaseListener {
         }
 
         releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, event.workerContextId());
-        workerManager.unlockWorker(workerId);
-        traceEventLogger.workerLockReleased(task.getTid(), workerId,
-                "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
+        if (usesExclusiveWorkerLock(task)) {
+            workerManager.unlockWorker(workerId);
+            traceEventLogger.workerLockReleased(task.getTid(), workerId,
+                    "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
+        }
 
         if (task.getStatus() == TaskStatus.RUNNING
                 && maintenancePort.hasDispatchReadyWork(task.getTid())) {
@@ -94,6 +98,10 @@ public class TaskResourceReleaseListener {
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId) {
         return maintenancePort.hasActiveWorkForWorker(taskId, workerId);
+    }
+
+    private boolean usesExclusiveWorkerLock(Task task) {
+        return task == null || task.getExecutionSpec() == null || task.getExecutionSpec().isForeground();
     }
 
     private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {

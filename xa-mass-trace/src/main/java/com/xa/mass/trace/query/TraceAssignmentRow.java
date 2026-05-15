@@ -25,6 +25,7 @@ public record TraceAssignmentRow(
         String dispatchLane,
         String dispatchPriority,
         String workloadClass,
+        Boolean foreground,
         String batchPolicy,
         String leaseProfile,
         Integer pendingDispatchCount,

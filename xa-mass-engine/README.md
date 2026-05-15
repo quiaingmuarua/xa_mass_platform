@@ -139,6 +139,10 @@ Keep these facts fixed unless the owning global baselines change:
   matching reserves one unit of worker-declared capacity before lock
   acquisition, and dispatch binding confirms or releases that reservation
   around runtime claim outcomes
+- `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
+  through task model/API/trace surfaces; `foreground=true` is the default
+  exclusive worker-lock path, while `foreground=false` skips the long-lived
+  worker lock and relies on capacity reservation for stateless workers
 - worker match trace rows include reservation-time load snapshots so canonical
   assignment trace can prove the current process-local capacity guard
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and

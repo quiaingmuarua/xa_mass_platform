@@ -14,6 +14,7 @@ public class TaskExecutionOptions {
     private int batchSize;
     private int maxRuntimeSeconds;
     private int defaultMaxRetryCount;
+    private boolean foreground;
 
     public TaskExecutionOptions() {
         this.profile = "STANDARD";
@@ -21,6 +22,7 @@ public class TaskExecutionOptions {
         this.batchSize = 1;
         this.maxRuntimeSeconds = 0;
         this.defaultMaxRetryCount = 0;
+        this.foreground = true;
     }
 
     public static TaskExecutionOptions normalized(TaskExecutionOptions options) {
@@ -33,6 +35,7 @@ public class TaskExecutionOptions {
         normalized.setBatchSize(options.getBatchSize());
         normalized.setMaxRuntimeSeconds(options.getMaxRuntimeSeconds());
         normalized.setDefaultMaxRetryCount(options.getDefaultMaxRetryCount());
+        normalized.setForeground(options.isForeground());
         return normalized;
     }
 
@@ -76,6 +79,14 @@ public class TaskExecutionOptions {
         this.defaultMaxRetryCount = Math.max(defaultMaxRetryCount, 0);
     }
 
+    public boolean isForeground() {
+        return foreground;
+    }
+
+    public void setForeground(boolean foreground) {
+        this.foreground = foreground;
+    }
+
     @JsonSetter("contract")
     public void rejectLegacyContractField(Object ignored) {
         throw new IllegalArgumentException("executionSpec.contract has been removed; use top-level contract");
@@ -88,13 +99,14 @@ public class TaskExecutionOptions {
         return batchSize == that.batchSize
                 && maxRuntimeSeconds == that.maxRuntimeSeconds
                 && defaultMaxRetryCount == that.defaultMaxRetryCount
+                && foreground == that.foreground
                 && Objects.equals(profile, that.profile)
                 && Objects.equals(workloadClass, that.workloadClass);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
+        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount, foreground);
     }
 
     private static String normalizeToken(String value, String defaultValue) {

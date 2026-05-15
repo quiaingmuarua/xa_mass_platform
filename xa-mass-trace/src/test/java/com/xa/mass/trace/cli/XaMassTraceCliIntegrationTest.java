@@ -93,6 +93,7 @@ class XaMassTraceCliIntegrationTest {
         JsonNode summary = findEvent(root, "ASSIGNMENT_SUMMARY");
         assertEquals("SUCCESS", summary.get("result").asText());
         assertEquals("NORMAL", summary.get("dispatchPriority").asText());
+        assertTrue(summary.get("foreground").asBoolean());
         assertEquals(1, summary.get("usedWorkerCount").asInt());
         JsonNode binding = findEvent(root, "DISPATCH_BINDING_SUMMARY");
         assertEquals(2, binding.get("dispatchedMessageCount").asInt());
@@ -110,6 +111,7 @@ class XaMassTraceCliIntegrationTest {
         assertTrue(result.stdout.contains("ASSIGNMENT_SUMMARY"));
         assertTrue(result.stdout.contains("result=SUCCESS"));
         assertTrue(result.stdout.contains("priority=NORMAL"));
+        assertTrue(result.stdout.contains("foreground=true"));
         assertTrue(result.stdout.contains("reason=matched workers dispatched"));
         assertTrue(result.stdout.contains("dispatched=2"));
     }
@@ -320,6 +322,7 @@ class XaMassTraceCliIntegrationTest {
                             "usedWorkerCount", 1,
                             "peakAssignedWorkerCount", 1,
                             "workloadClass", "BULK",
+                            "foreground", true,
                             "dispatchLane", "BULK",
                             "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",

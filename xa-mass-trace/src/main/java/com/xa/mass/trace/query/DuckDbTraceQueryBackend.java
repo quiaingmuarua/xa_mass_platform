@@ -195,6 +195,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.dispatchLane') AS dispatchLane,
                     json_extract_string(%s, '$.dispatchPriority') AS dispatchPriority,
                     json_extract_string(%s, '$.workloadClass') AS workloadClass,
+                    try_cast(json_extract_string(%s, '$.foreground') AS BOOLEAN) AS foreground,
                     json_extract_string(%s, '$.batchPolicy') AS batchPolicy,
                     json_extract_string(%s, '$.leaseProfile') AS leaseProfile,
                     try_cast(json_extract_string(%s, '$.pendingDispatchCount') AS INTEGER) AS pendingDispatchCount,
@@ -228,7 +229,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
-                attrsJson,
+                attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
@@ -266,6 +267,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("dispatchLane"),
                         resultSet.getString("dispatchPriority"),
                         resultSet.getString("workloadClass"),
+                        booleanOrNull(resultSet, "foreground"),
                         resultSet.getString("batchPolicy"),
                         resultSet.getString("leaseProfile"),
                         integerOrNull(resultSet, "pendingDispatchCount"),
@@ -320,6 +322,11 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     private static Long longOrNull(ResultSet resultSet, String column) throws Exception {
         long value = resultSet.getLong(column);
+        return resultSet.wasNull() ? null : value;
+    }
+
+    private static Boolean booleanOrNull(ResultSet resultSet, String column) throws Exception {
+        boolean value = resultSet.getBoolean(column);
         return resultSet.wasNull() ? null : value;
     }
 

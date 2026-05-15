@@ -643,6 +643,52 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker lock conflict after candidate ranking", rejectedRecord.getReason());
     }
 
+    @Test
+    void backgroundTaskReservesCapacityWithoutExclusiveWorkerLock() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE,
+                loadView
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Worker worker = worker("worker-shared", "pool-a");
+        worker.setMaxConcurrentWork(2);
+        workerManager.addWorker(worker);
+
+        Task first = backgroundTask("task-background-1");
+        Task second = backgroundTask("task-background-2");
+        Task third = backgroundTask("task-background-3");
+
+        List<WorkerSchedulingCandidate> firstMatch = strategy.matchWorkers(first, 1);
+        List<WorkerSchedulingCandidate> secondMatch = strategy.matchWorkers(second, 1);
+        List<WorkerSchedulingCandidate> thirdMatch = strategy.matchWorkers(third, 1);
+
+        assertEquals(1, firstMatch.size());
+        assertEquals(1, secondMatch.size());
+        assertTrue(thirdMatch.isEmpty());
+        assertFalse(workerManager.isLocked("worker-shared"));
+        assertEquals(2, loadView.getReservedCount("worker-shared"));
+
+        AssignmentRecord acceptedRecord = findRecord(recordService, "task-background-1", "worker-shared");
+        assertEquals(AssignmentResult.SUCCESS, acceptedRecord.getResult());
+        assertFalse(acceptedRecord.getWorkerSnapshot().isWorkerLocked());
+        assertEquals("all rules matched and worker capacity reserved after candidate ranking", acceptedRecord.getReason());
+
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-background-3", "worker-shared");
+        assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
+        assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -669,6 +715,15 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         wc.setStatus(WorkerContextStatus.IDLE);
         wc.setAttributes(Map.of("country", country));
         return wc;
+    }
+
+    private Task backgroundTask(String taskId) {
+        Task task = new Task();
+        task.setTid(taskId);
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+        task.getExecutionSpec().setForeground(false);
+        return task;
     }
 
     private AssignmentRecord findRecord(AssignmentRecordService recordService, String taskId, String workerId) {

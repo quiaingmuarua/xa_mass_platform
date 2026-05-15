@@ -158,6 +158,13 @@ final class TaskSchedulingTestHarness {
         return addWorkerWithContext(workerId, contextId, routingCode, Map.of());
     }
 
+    Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
+        Worker worker = worker(workerId);
+        worker.setMaxConcurrentWork(maxConcurrentWork);
+        workerManager.addWorker(worker);
+        return worker;
+    }
+
     Worker addWorkerWithContext(String workerId,
                                 String contextId,
                                 String routingCode,

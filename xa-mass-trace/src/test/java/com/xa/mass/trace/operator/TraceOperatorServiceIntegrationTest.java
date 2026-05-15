@@ -71,6 +71,7 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals(1, summary.usedWorkerCount());
         assertEquals("BULK", summary.workloadClass());
         assertEquals("NORMAL", summary.dispatchPriority());
+        assertEquals(true, summary.foreground());
 
         var binding = response.events().stream()
                 .filter(row -> "DISPATCH_BINDING_SUMMARY".equals(row.eventType()))
@@ -317,6 +318,7 @@ class TraceOperatorServiceIntegrationTest {
                             "reason", "matched candidates produced dispatchable work",
                             "result", "SUCCESS",
                             "workloadClass", "BULK",
+                            "foreground", true,
                             "dispatchLane", "BULK",
                             "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
@@ -353,6 +355,7 @@ class TraceOperatorServiceIntegrationTest {
                             "usedWorkerCount", 1,
                             "peakAssignedWorkerCount", 1,
                             "workloadClass", "BULK",
+                            "foreground", true,
                             "dispatchLane", "BULK",
                             "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",

@@ -343,7 +343,8 @@ final class TaskApiContractAssembler {
                 normalized.getWorkloadClass(),
                 normalized.getBatchSize(),
                 normalized.getMaxRuntimeSeconds(),
-                normalized.getDefaultMaxRetryCount()
+                normalized.getDefaultMaxRetryCount(),
+                normalized.isForeground()
         );
     }
 

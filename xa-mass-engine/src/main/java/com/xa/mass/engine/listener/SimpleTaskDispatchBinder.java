@@ -130,9 +130,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
                 workerManager.releaseWorkerReservation(worker.getWorkerId(), task.getTid());
-                workerManager.unlockWorker(worker.getWorkerId());
-                traceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
-                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
+                releaseLockIfExclusive(task, worker.getWorkerId(), "workerContext not dispatchable");
                 continue;
             }
             dispatchSlots.add(new DispatchSlot(worker, workerContext));
@@ -178,9 +176,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             if (slot.assignedCount() == 0) {
                 releaseWorkerContextIfIdleForTask(task, slot.workerContext(), "matched worker received no messages");
                 workerManager.releaseWorkerReservation(slot.worker().getWorkerId(), task.getTid());
-                workerManager.unlockWorker(slot.worker().getWorkerId());
-                traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
-                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
+                releaseLockIfExclusive(task, slot.worker().getWorkerId(), "matched worker received no messages");
             }
         }
 
@@ -262,6 +258,19 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 .collect(Collectors.toList())) {
             workerManager.releaseWorkerReservation(workerId, task.getTid());
         }
+    }
+
+    private void releaseLockIfExclusive(Task task, String workerId, String reason) {
+        if (!usesExclusiveWorkerLock(task)) {
+            return;
+        }
+        workerManager.unlockWorker(workerId);
+        traceEventLogger.workerLockReleased(task.getTid(), workerId,
+                "UNLOCK_WORKER", "SimpleTaskDispatchBinder", reason);
+    }
+
+    private boolean usesExclusiveWorkerLock(Task task) {
+        return task == null || task.getExecutionSpec() == null || task.getExecutionSpec().isForeground();
     }
 
     private void releaseObservedWorkerLoad(List<TaskDispatchBinding> dispatchBindings) {

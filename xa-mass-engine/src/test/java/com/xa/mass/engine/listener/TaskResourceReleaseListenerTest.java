@@ -58,6 +58,20 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
+    void terminalBackgroundTaskReleasesLoadButDoesNotUnlockWorker() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.getExecutionSpec().setForeground(false);
+
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", null));
+
+        listener.onTaskTerminal(task);
+
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager, never()).unlockWorker("worker-1");
+    }
+
+    @Test
     void terminalTaskEmitsReleaseTrace() {
         Task task = new Task();
         task.setTid("task-1");
@@ -150,6 +164,26 @@ public class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
+        verify(maintenancePort).requestTaskDispatch(same(task));
+    }
+
+    @Test
+    void backgroundAttemptClosedReleasesLoadAndRequestsReplenishmentWithoutUnlock() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.setStatus(TaskStatus.RUNNING);
+        task.getExecutionSpec().setForeground(false);
+
+        TaskWorkAttemptClosedEvent closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", null);
+
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
+
+        listener.onTaskWorkAttemptClosed(task, closedAttempt);
+
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager, never()).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
 

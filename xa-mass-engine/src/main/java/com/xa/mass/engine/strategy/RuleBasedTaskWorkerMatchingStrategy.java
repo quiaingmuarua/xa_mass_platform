@@ -201,6 +201,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             Worker worker = candidate.getWorker();
             WorkerContext workerContext = candidate.getWorkerContext();
             double candidateScore = rankScore(rankedContext, task);
+            boolean foreground = task.getExecutionSpec().isForeground();
             if (!workerManager.tryReserveWorkerCapacity(worker.getWorkerId(), task.getTid())) {
                 traceEventLogger.workerMatchRejected(task.getTid(), candidate,
                         "worker capacity unavailable after candidate ranking", rank, candidateScore,
@@ -212,6 +213,23 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         workerManager.isLocked(worker.getWorkerId())
                 );
                 log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
+                continue;
+            }
+            if (!foreground) {
+                traceEventLogger.workerMatchAccepted(task.getTid(), candidate,
+                        "all rules matched and worker capacity reserved after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, worker, workerContext, AssignmentResult.SUCCESS,
+                        "all rules matched and worker capacity reserved after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), false
+                );
+                matchedWorkers.add(candidate);
+                log.info("Worker matched without exclusive lock: {} with context {} for background task {} at rank {}",
+                        worker.getWorkerId(),
+                        workerContext != null ? workerContext.getWorkerContextId() : "null",
+                        task.getTid(),
+                        rank);
                 continue;
             }
             if (workerManager.tryLockWorker(worker.getWorkerId())) {

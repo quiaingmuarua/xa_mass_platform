@@ -26,6 +26,7 @@ class SdkTaskRequestMapperTest {
         assertEquals(TaskWorkloadClass.INTERACTIVE, dto.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskContract.SESSION, dto.getContract());
         assertEquals("sdk", dto.getSharedConfig().get("source"));
+        assertEquals(true, dto.getExecutionSpec().isForeground());
     }
 
     @Test
@@ -43,6 +44,24 @@ class SdkTaskRequestMapperTest {
         assertEquals(TaskWorkloadClass.BULK, dto.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskContract.BATCH, dto.getContract());
         assertEquals("crawler.fetch-page", dto.getSharedConfig().get("eventCode"));
+    }
+
+    @Test
+    void massTaskShellCreateRequestMapsForegroundSchedulingMode() {
+        TaskExecutionOptions executionSpec = spec(TaskWorkloadClass.BULK, 4, 60);
+        executionSpec.setForeground(false);
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
+                .userId("agent")
+                .project("demoApp")
+                .contract(TaskContract.BATCH.name())
+                .executionSpec(executionSpec)
+                .build();
+
+        TaskShellCreateRequestDto dto = SdkResourceMapper.toEngineRequest(request);
+
+        assertEquals(false, dto.getExecutionSpec().isForeground());
+        assertEquals(TaskWorkloadClass.BULK, dto.getExecutionSpec().getWorkloadClass());
+        assertEquals(4, dto.getExecutionSpec().getBatchSize());
     }
 
     private TaskExecutionOptions spec(TaskWorkloadClass workloadClass,

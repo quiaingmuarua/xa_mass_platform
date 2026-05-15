@@ -1647,6 +1647,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         view.setBatchSize(spec.getBatchSize());
         view.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
         view.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
+        view.setForeground(spec.isForeground());
         return view;
     }
 

@@ -44,6 +44,16 @@ Progress:
   declare it, and `WorkerManager` synchronizes the declaration into
   `WorkerLoadView` snapshots. Shared/background execution is still not enabled;
   the existing worker lock remains the dispatch guard.
+- 2026-05-15: Step 7D foreground scheduling mode read surface was implemented.
+  `ExecutionSpec.foreground` now defaults to `true` and is carried through SDK
+  task options, server task execution responses, assignment trace attrs, and
+  `xa-mass-trace assignment` rows. Shared/background dispatch behavior is still
+  not enabled; the current worker lock remains exclusive.
+- 2026-05-15: Step 7E foreground/background lock behavior was implemented for
+  the current stateless-worker path. `foreground=true` keeps the existing
+  exclusive worker lock; `foreground=false` skips the long-lived worker lock and
+  relies on `WorkerLoadView` capacity reservation. Legacy WorkerContext-backed
+  resources remain context-exclusive until WorkerContext retirement.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -593,30 +603,30 @@ be a fallback, not the main owner.
 
 ## 14. Step 7: Capacity Reservation And Foreground/Background
 
-Status: reservation foundation, trace-observed analyzer, and worker-declared
-capacity read model implemented on 2026-05-15. The implemented slices keep
-`ExecutionSpec.foreground` out of scope and keep the existing long-lived worker
-lock as the current exclusive dispatch guard. `Worker.maxConcurrentWork` is now
-available as a declaration consumed by `WorkerLoadView`; it is not shared
-background execution yet.
+Status: reservation foundation, trace-observed analyzer, worker-declared
+capacity read model, foreground scheduling mode read surface, and initial
+foreground/background lock behavior implemented on 2026-05-15.
+`Worker.maxConcurrentWork` is available as a declaration consumed by
+`WorkerLoadView`, and `ExecutionSpec.foreground` controls whether matching
+requires the long-lived worker lock. `foreground=true` remains the compatible
+exclusive default. `foreground=false` can share stateless workers up to declared
+capacity; WorkerContext-backed resources remain context-exclusive until the
+WorkerContext retirement path removes that legacy runtime slot.
 
 ### Goal
 
 Prevent over-commitment across concurrent assignment waves and define exclusive
 versus shared worker usage.
 
-### Open model question
+### Implemented model declarations
 
-This step should not begin until the team has decided whether the platform needs
-foreground/background task semantics in the persisted task model.
-
-Candidate task field:
+The persisted task model now has:
 
 ```text
 ExecutionSpec.foreground: boolean
 ```
 
-Implemented worker field:
+The worker model has:
 
 ```text
 Worker.maxConcurrentWork: int
@@ -626,6 +636,14 @@ The field defaults to `1` and invalid values are normalized to `1`. SDK worker
 registration and worker snapshots expose it as a capability declaration. The
 current engine uses it for process-local reservation/load snapshots only; the
 long-lived worker lock still prevents shared foreground dispatch.
+
+`ExecutionSpec.foreground` defaults to `true` and is exposed through SDK task
+options, server task execution read models, and canonical assignment trace. A
+`false` value now changes worker-lock behavior: matching still reserves worker
+capacity, but it does not acquire the long-lived exclusive worker lock. This
+enables stateless worker sharing up to `Worker.maxConcurrentWork`. It does not
+make legacy WorkerContext-backed resources shared; those resources still follow
+their existing context reservation/occupation lifecycle.
 
 ### Proposed semantics
 
@@ -828,8 +846,9 @@ These questions should be answered before their corresponding step starts.
    concept implemented through existing worker lookup APIs first?
 3. During WorkerContext retirement, do we physically delete context APIs in one
    step or first stop using them in the engine hot path?
-4. Should `foreground/background` be a persisted task field, a runtime profile
-   derivation, or both?
+4. What exact runtime behavior should `foreground=false` enable once the
+   current read surface is wired: shared worker dispatch only, or also a
+   different result/lease profile?
 5. What is the exact unit of worker capacity: worker, active lease, active
    attempt, dispatched message, or assignment binding?
 6. How should stateless workers, multi-account workers, and future device pools
@@ -859,10 +878,12 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is the foreground/background model
-decision. The current ranker now uses reservation plus the existing worker lock
-as the dispatch guard, and trace can observe that foundation; worker-declared
-capacity is modeled, but shared background execution is still not implemented.
+The next recommended implementation step is a trace-observed foreground/
+background proof slice: add a narrow canonical-trace scenario for background
+stateless worker sharing and, if needed, a server E2E fixture that proves real
+Boot/SDK wiring can create `foreground=false` tasks. Avoid broad WorkerContext
+deletion until trace analyzers and server routing E2E no longer need
+context-specific fields as proof.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.

@@ -224,12 +224,13 @@ public final class XaMassTraceCli {
                     response.taskId(),
                     response.count());
             for (var row : response.events()) {
-                root.out.printf("%s %-34s result=%s lane=%s priority=%s worker=%s ctx=%s reason=%s counts=%s%n",
+                root.out.printf("%s %-34s result=%s lane=%s priority=%s foreground=%s worker=%s ctx=%s reason=%s counts=%s%n",
                         row.tsIso(),
                         row.eventType(),
                         nullToDash(row.result()),
                         nullToDash(row.dispatchLane()),
                         nullToDash(row.dispatchPriority()),
+                        row.foreground() == null ? "-" : row.foreground(),
                         nullToDash(row.workerId()),
                         nullToDash(row.workerContextId()),
                         nullToDash(row.reason()),

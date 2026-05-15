@@ -15,6 +15,7 @@ public class TaskExecutionSpec {
     private int batchSize;
     private int maxRuntimeSeconds;
     private int defaultMaxRetryCount;
+    private boolean foreground;
 
     public TaskExecutionSpec() {
         this.profile = TaskExecutionProfile.STANDARD;
@@ -22,6 +23,7 @@ public class TaskExecutionSpec {
         this.batchSize = 1;
         this.maxRuntimeSeconds = 0;
         this.defaultMaxRetryCount = 0;
+        this.foreground = true;
     }
 
     public static TaskExecutionSpec normalized(TaskExecutionSpec spec) {
@@ -34,6 +36,7 @@ public class TaskExecutionSpec {
         normalized.setBatchSize(spec.getBatchSize());
         normalized.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
         normalized.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
+        normalized.setForeground(spec.isForeground());
         return normalized;
     }
 
@@ -77,6 +80,14 @@ public class TaskExecutionSpec {
         this.defaultMaxRetryCount = Math.max(defaultMaxRetryCount, 0);
     }
 
+    public boolean isForeground() {
+        return foreground;
+    }
+
+    public void setForeground(boolean foreground) {
+        this.foreground = foreground;
+    }
+
     @JsonSetter("contract")
     public void rejectLegacyContractField(Object ignored) {
         throw new IllegalArgumentException("executionSpec.contract has been removed; use top-level contract");
@@ -89,12 +100,13 @@ public class TaskExecutionSpec {
         return batchSize == that.batchSize
                 && maxRuntimeSeconds == that.maxRuntimeSeconds
                 && defaultMaxRetryCount == that.defaultMaxRetryCount
+                && foreground == that.foreground
                 && profile == that.profile
                 && workloadClass == that.workloadClass;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount);
+        return Objects.hash(profile, workloadClass, batchSize, maxRuntimeSeconds, defaultMaxRetryCount, foreground);
     }
 }

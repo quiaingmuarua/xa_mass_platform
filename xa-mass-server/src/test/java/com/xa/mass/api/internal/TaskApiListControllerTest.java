@@ -84,6 +84,7 @@ class TaskApiListControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value("task-001"))
                 .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
                 .andExpect(jsonPath("$.data.items[0].execution.batchSize").value(2))
+                .andExpect(jsonPath("$.data.items[0].execution.foreground").value(true))
                 .andExpect(jsonPath("$.data.items[0].counters.successCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].timestamps.updatedAt").value("2026-04-21 09:30:00"))
                 .andExpect(jsonPath("$.data.items[0].successCount").value(6))

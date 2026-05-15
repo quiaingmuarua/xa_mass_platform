@@ -197,6 +197,7 @@ Standardized `attrs` fields currently include:
 - `currentStatus`
 - `requiredMinWorkerCount`
 - `workloadClass`
+- `foreground`
 - `dispatchLane`
 - `dispatchPriority`
 - `batchPolicy`
@@ -243,8 +244,8 @@ Stable assignment-oriented fields are:
   `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
   `workerEstimatedLoadRatio`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
-  `dispatchLane`, `dispatchPriority`, `workloadClass`, `batchPolicy`,
-  `leaseProfile`
+  `dispatchLane`, `dispatchPriority`, `workloadClass`, `foreground`,
+  `batchPolicy`, `leaseProfile`
 - assignment summary counts: `pendingDispatchCount`,
   `desiredDispatchWorkerCount`, `requiredStartWorkerCount`,
   `requestedMatchCount`, `matchedWorkerCount`, `dispatchCandidateCount`,
@@ -266,6 +267,11 @@ process-local reservation foundation. It is not a distributed capacity lock and
 does not prove shared worker execution. `workerDeclaredCapacity` reflects the
 current worker declaration observed by the engine-local `WorkerLoadView`; the
 default is `1`.
+`foreground` is the canonical read-side declaration of the task's current
+scheduling mode. It defaults to `true`. When `false`, current engine behavior
+skips the long-lived worker lock and relies on process-local capacity
+reservation for stateless worker sharing; WorkerContext-backed resources still
+follow their legacy context lifecycle and are not shared by this field alone.
 The `capacity-reservation-under-concurrency` analyzer interprets these fields
 only as process-local reservation evidence: accepted worker matches must not
 show `active + reserved > declaredCapacity`, and capacity rejections must show

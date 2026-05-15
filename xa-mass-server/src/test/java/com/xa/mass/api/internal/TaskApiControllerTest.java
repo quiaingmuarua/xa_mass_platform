@@ -113,7 +113,7 @@ class TaskApiControllerTest {
                                   "project":"demoApp",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "executionSpec":{"workloadClass":"INTERACTIVE","batchSize":2}
+                                  "executionSpec":{"workloadClass":"INTERACTIVE","batchSize":2,"foreground":false}
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -123,6 +123,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.project").value("demoApp"))
                 .andExpect(jsonPath("$.data.task.execution.workloadClass").value("INTERACTIVE"))
                 .andExpect(jsonPath("$.data.task.execution.batchSize").value(2))
+                .andExpect(jsonPath("$.data.task.execution.foreground").value(false))
                 .andExpect(jsonPath("$.data.task.counters.successCount").value(0));
 
         ArgumentCaptor<MassTaskShellCreateRequest> captor = ArgumentCaptor.forClass(MassTaskShellCreateRequest.class);
@@ -134,6 +135,7 @@ class TaskApiControllerTest {
         assertNull(request.getContract());
         assertEquals(2, request.getExecutionSpec().getBatchSize());
         assertEquals("INTERACTIVE", request.getExecutionSpec().getWorkloadClass());
+        assertEquals(false, request.getExecutionSpec().isForeground());
     }
 
     @Test

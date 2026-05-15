@@ -6,12 +6,14 @@ Status: current transitional baseline for the WorkerContext convergence path,
 including scheduling-candidate handoff, default rule surface convergence,
 worker load view wiring, load-aware ranking, and default-capacity reservation.
 Worker-declared capacity is now present as a read-model input to reservation
-and trace; shared foreground/background execution is still not enabled.
+and trace. `ExecutionSpec.foreground` is now present as a task scheduling-mode
+declaration in model/API/trace surfaces and controls long-lived worker lock
+usage. Stateless background tasks can share workers up to declared capacity;
+legacy WorkerContext-backed resources remain context-exclusive.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
-not delete WorkerContext, add foreground/background semantics, or remove legacy
-trace fields.
+not delete WorkerContext or remove legacy trace fields.
 
 ## Goal
 
@@ -32,6 +34,8 @@ The immediate convergence target is:
   confirms or releases that reservation around runtime claim
 - worker match accepted/rejected trace rows include reservation-time load
   snapshots for canonical schedule analysis
+- task assignment trace includes `foreground` so future behavior changes can be
+  proved against the declared task scheduling mode
 - later phases can remove legacy `workerContext*` rule variables
   without a single destructive rewrite
 
@@ -130,10 +134,16 @@ It exposes worker-level scheduling fields:
 The load fields are scheduling evidence in this baseline. Rule contexts and
 diagnostic snapshots can read them, the default ranker uses load ratio for
 preference ordering, and matching uses the reservation count as a process-local
-capacity guard. This is still not a shared capacity execution model: default
-declared capacity is `1`, `Worker.maxConcurrentWork` can raise the
-process-local reservation ceiling, and foreground/background shared execution
-is not implemented.
+capacity guard. This is still a process-local capacity execution model: default
+declared capacity is `1`, and `Worker.maxConcurrentWork` can raise the
+reservation ceiling for stateless background workers.
+`ExecutionSpec.foreground` currently defaults to `true` and is carried through
+SDK/server read models plus canonical assignment trace. `foreground=true` keeps
+the existing long-lived worker lock. `foreground=false` still reserves capacity
+but skips that long-lived lock, so multiple background tasks may share a
+stateless worker until `active + reserved >= declaredCapacity`.
+WorkerContext-backed resources are not shared by this slice; they still follow
+their current context reservation/occupation lifecycle.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
@@ -181,8 +191,7 @@ engine as system-event-updated worker scheduling attributes.
 
 - no WorkerContext model deletion
 - no WorkerContext storage/API deletion
-- no foreground/background task semantics
-- no shared background execution
+- no shared WorkerContext-backed dispatch behavior
 - no account-switch dispatch protocol
 - no trace field removal
 

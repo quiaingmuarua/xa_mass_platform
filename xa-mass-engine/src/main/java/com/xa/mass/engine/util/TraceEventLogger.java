@@ -915,6 +915,7 @@ public final class TraceEventLogger {
         }
         TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
         attrs.put("workloadClass", enumName(task.getExecutionSpec().getWorkloadClass()));
+        attrs.put("foreground", task.getExecutionSpec().isForeground());
         attrs.put("dispatchLane", enumName(profile.dispatchLane()));
         attrs.put("dispatchPriority", enumName(profile.dispatchPriority()));
         attrs.put("batchPolicy", enumName(profile.batchPolicy()));

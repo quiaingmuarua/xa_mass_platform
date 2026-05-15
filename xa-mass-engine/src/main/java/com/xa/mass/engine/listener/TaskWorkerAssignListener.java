@@ -182,7 +182,7 @@ public class TaskWorkerAssignListener {
         if (usedWorkerCount <= 0) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "matched candidates produced no bound work", allocationPlan.requiredStartWorkerCount());
-            unlockWorkers(dispatchCandidates);
+            releaseLocksIfExclusive(task, dispatchCandidates);
             emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), 0,
                     "matched candidates produced no bound work", "SKIPPED");
@@ -195,7 +195,7 @@ public class TaskWorkerAssignListener {
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
-            unlockWorkers(dispatchCandidates);
+            releaseLocksIfExclusive(task, dispatchCandidates);
             emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                     "task failed to transition from READY to RUNNING after dispatch", "FAILED");
@@ -224,13 +224,16 @@ public class TaskWorkerAssignListener {
         return eventCode != null && !eventCode.isBlank();
     }
 
-    private void unlockWorkers(List<WorkerSchedulingCandidate> workers) {
+    private void releaseLocksIfExclusive(Task task, List<WorkerSchedulingCandidate> workers) {
+        if (!usesExclusiveWorkerLock(task)) {
+            return;
+        }
         for (String workerId : workers.stream()
                 .map(WorkerSchedulingCandidate::getWorkerId)
                 .distinct()
                 .collect(Collectors.toList())) {
             workerManager.unlockWorker(workerId);
-            traceEventLogger.workerLockReleased(null, workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
+            traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
                     "surplus or skipped dispatch candidate");
         }
     }
@@ -241,10 +244,16 @@ public class TaskWorkerAssignListener {
                 .distinct()
                 .collect(Collectors.toList())) {
             workerManager.releaseWorkerReservation(workerId, task.getTid());
-            workerManager.unlockWorker(workerId);
-            traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
-                    "surplus or skipped dispatch candidate");
+            if (usesExclusiveWorkerLock(task)) {
+                workerManager.unlockWorker(workerId);
+                traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
+                        "surplus or skipped dispatch candidate");
+            }
         }
+    }
+
+    private boolean usesExclusiveWorkerLock(Task task) {
+        return task == null || task.getExecutionSpec() == null || task.getExecutionSpec().isForeground();
     }
 
     private void emitAssignmentSummary(Task task,
