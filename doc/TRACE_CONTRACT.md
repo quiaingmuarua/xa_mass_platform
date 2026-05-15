@@ -239,8 +239,12 @@ Schedule analysis currently reads these event types from canonical sink output:
 Stable assignment-oriented fields are:
 
 - common fields: `trigger`, `source`, `reason`, `result`
+- ranked worker candidate fields: `candidateRank`, `candidateScore`,
+  `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
+  `workerEstimatedLoadRatio`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
-  `dispatchLane`, `workloadClass`, `batchPolicy`, `leaseProfile`
+  `dispatchLane`, `dispatchPriority`, `workloadClass`, `batchPolicy`,
+  `leaseProfile`
 - assignment summary counts: `pendingDispatchCount`,
   `desiredDispatchWorkerCount`, `requiredStartWorkerCount`,
   `requestedMatchCount`, `matchedWorkerCount`, `dispatchCandidateCount`,

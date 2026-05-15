@@ -70,6 +70,7 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals(2, summary.pendingDispatchCount());
         assertEquals(1, summary.usedWorkerCount());
         assertEquals("BULK", summary.workloadClass());
+        assertEquals("NORMAL", summary.dispatchPriority());
 
         var binding = response.events().stream()
                 .filter(row -> "DISPATCH_BINDING_SUMMARY".equals(row.eventType()))
@@ -147,6 +148,19 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsLoadAwareWorkerSelectionScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeLoadAwareWorkerSelectionTrace(tempDir, "task-load-aware");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "load-aware-worker-selection", "task-load-aware"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("load-aware-worker-selection", response.scenarioId());
+        assertEquals(2L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -194,6 +208,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("assignment-success-binding"));
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
+        assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -274,6 +289,7 @@ class TraceOperatorServiceIntegrationTest {
                             "result", "SUCCESS",
                             "workloadClass", "BULK",
                             "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
                     .build());
@@ -309,6 +325,7 @@ class TraceOperatorServiceIntegrationTest {
                             "peakAssignedWorkerCount", 1,
                             "workloadClass", "BULK",
                             "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
                     .build());
@@ -346,6 +363,41 @@ class TraceOperatorServiceIntegrationTest {
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+        }
+    }
+
+    private void writeLoadAwareWorkerSelectionTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-low"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 0,
+                            "workerDeclaredCapacity", 4,
+                            "workerEstimatedLoadRatio", "0.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-high"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 2,
+                            "candidateScore", "0.6",
+                            "workerActiveLeaseCount", 3,
+                            "workerReservedCount", 0,
+                            "workerDeclaredCapacity", 4,
+                            "workerEstimatedLoadRatio", "0.8"))
                     .build());
         }
     }

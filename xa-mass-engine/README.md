@@ -129,6 +129,12 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskAssignWorker` owns session/interactive assignment-signal admission;
   queue-full pressure must converge through internal retry/defer behavior
   instead of silently dropping `READY` / redispatch signals
+- `TaskAssignWorker` orders assignment signals by `DispatchPriority` inside
+  each existing lane; `DispatchLane` remains the primary isolation boundary and
+  same-priority signals remain FIFO
+- `WorkerCandidateRanker` orders rule-passed scheduling candidates before lock
+  acquisition; rules remain the eligibility gate, and the default ranker uses
+  observed load plus routing affinity as preference signals
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
 - `TaskResultRuntime` owns stable-final public result rows, task-local result

@@ -224,10 +224,12 @@ public final class XaMassTraceCli {
                     response.taskId(),
                     response.count());
             for (var row : response.events()) {
-                root.out.printf("%s %-34s result=%s worker=%s ctx=%s reason=%s counts=%s%n",
+                root.out.printf("%s %-34s result=%s lane=%s priority=%s worker=%s ctx=%s reason=%s counts=%s%n",
                         row.tsIso(),
                         row.eventType(),
                         nullToDash(row.result()),
+                        nullToDash(row.dispatchLane()),
+                        nullToDash(row.dispatchPriority()),
                         nullToDash(row.workerId()),
                         nullToDash(row.workerContextId()),
                         nullToDash(row.reason()),
@@ -246,10 +248,23 @@ public final class XaMassTraceCli {
             appendCount(builder, "slots", row.dispatchSlotCount());
             appendCount(builder, "perWorker", row.perWorkerBatchLimit());
             appendCount(builder, "queue", row.queueDepth());
+            appendCount(builder, "rank", row.candidateRank());
+            appendCount(builder, "active", row.workerActiveLeaseCount());
+            appendDouble(builder, "load", row.workerEstimatedLoadRatio());
             return builder.isEmpty() ? "-" : builder.toString();
         }
 
         private void appendCount(StringBuilder builder, String name, Integer value) {
+            if (value == null) {
+                return;
+            }
+            if (!builder.isEmpty()) {
+                builder.append(',');
+            }
+            builder.append(name).append('=').append(value);
+        }
+
+        private void appendDouble(StringBuilder builder, String name, Double value) {
             if (value == null) {
                 return;
             }

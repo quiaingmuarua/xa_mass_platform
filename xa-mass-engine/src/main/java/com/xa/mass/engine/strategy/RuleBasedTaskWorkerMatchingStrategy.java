@@ -32,6 +32,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private final WorkerManager workerManager;
     private final AssignmentDiagnosticRecorder recordService;
     private final TraceEventLogger traceEventLogger;
+    private final WorkerCandidateRanker candidateRanker;
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
@@ -43,17 +44,30 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                                WorkerManager workerManager,
                                                AssignmentDiagnosticRecorder recordService,
                                                TraceEventLogger traceEventLogger) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, new DefaultWorkerCandidateRanker());
+    }
+
+    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                               WorkerManager workerManager,
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger,
+                                               WorkerCandidateRanker candidateRanker) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.traceEventLogger = traceEventLogger;
+        this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
     }
 
     @Override
     public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
         List<WorkerSchedulingCandidate> matchedWorkers = new ArrayList<>();
+        if (maxWorkerCount <= 0) {
+            return matchedWorkers;
+        }
         List<Worker> candidates = workerManager.findWorkerCandidates(task);
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
+        List<RulePassedCandidate> rulePassedCandidates = new ArrayList<>();
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",
                 task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(), rules.size());
@@ -68,12 +82,6 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         Set<String> completedWorkerIds = new HashSet<>();
 
         for (WorkerSchedulingCandidate candidate : schedulingCandidates) {
-            if (matchedWorkers.size() >= maxWorkerCount) {
-                log.info("[WorkerAssign] Max worker count {} reached for task {}, stopping matching",
-                        maxWorkerCount, task.getTid());
-                break;
-            }
-
             Worker worker = candidate.getWorker();
             WorkerContext workerContext = candidate.getWorkerContext();
             if (completedWorkerIds.contains(worker.getWorkerId())) {
@@ -124,33 +132,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         rules.size());
 
                 if (hitCount == rules.size()) {
-                    if (workerManager.tryLockWorker(worker.getWorkerId())) {
-                        traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
-                                "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
-                                "all rules matched");
-                        traceEventLogger.workerMatchAccepted(task.getTid(), worker, workerContext,
-                                "all rules matched and worker lock acquired");
-                        recordService.recordWorkerAssignment(
-                                task, worker, workerContext, AssignmentResult.SUCCESS,
-                                "all rules matched and worker lock acquired",
-                                ruleEvaluations, matchContext.getContext(), true
-                        );
-                        matchedWorkers.add(candidate);
-                        log.info("Worker matched: {} with context {} for task {}",
-                                worker.getWorkerId(),
-                                workerContext != null ? workerContext.getWorkerContextId() : "null",
-                                task.getTid());
-                    } else {
-                        traceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
-                                "worker lock conflict after rules matched");
-                        recordService.recordWorkerAssignment(
-                                task, worker, workerContext, AssignmentResult.CONFLICT,
-                                "worker lock conflict after rules matched",
-                                ruleEvaluations, matchContext.getContext(),
-                                workerManager.isLocked(worker.getWorkerId())
-                        );
-                        log.debug("Worker locked: {}", worker.getWorkerId());
-                    }
+                    rulePassedCandidates.add(new RulePassedCandidate(candidate, matchContext, ruleEvaluations));
                     completedWorkerIds.add(worker.getWorkerId());
                     continue;
                 }
@@ -196,9 +178,69 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
         }
 
+        Map<WorkerMatchContext, RulePassedCandidate> passedByContext = new IdentityHashMap<>();
+        List<WorkerMatchContext> contextsToRank = new ArrayList<>();
+        for (RulePassedCandidate passedCandidate : rulePassedCandidates) {
+            contextsToRank.add(passedCandidate.matchContext());
+            passedByContext.put(passedCandidate.matchContext(), passedCandidate);
+        }
+        List<WorkerMatchContext> rankedContexts = candidateRanker.rank(contextsToRank, task);
+        int rank = 0;
+        for (WorkerMatchContext rankedContext : rankedContexts) {
+            RulePassedCandidate passedCandidate = passedByContext.get(rankedContext);
+            if (passedCandidate == null) {
+                continue;
+            }
+            rank++;
+            if (matchedWorkers.size() >= maxWorkerCount) {
+                log.info("[WorkerAssign] Max worker count {} reached for task {}, stopping ranked matching",
+                        maxWorkerCount, task.getTid());
+                break;
+            }
+            WorkerSchedulingCandidate candidate = passedCandidate.candidate();
+            Worker worker = candidate.getWorker();
+            WorkerContext workerContext = candidate.getWorkerContext();
+            double candidateScore = rankScore(rankedContext, task);
+            if (workerManager.tryLockWorker(worker.getWorkerId())) {
+                traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
+                        "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
+                        "all rules matched after candidate ranking");
+                traceEventLogger.workerMatchAccepted(task.getTid(), candidate,
+                        "all rules matched and worker lock acquired after candidate ranking", rank, candidateScore);
+                recordService.recordWorkerAssignment(
+                        task, worker, workerContext, AssignmentResult.SUCCESS,
+                        "all rules matched and worker lock acquired after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), true
+                );
+                matchedWorkers.add(candidate);
+                log.info("Worker matched: {} with context {} for task {} at rank {}",
+                        worker.getWorkerId(),
+                        workerContext != null ? workerContext.getWorkerContextId() : "null",
+                        task.getTid(),
+                        rank);
+            } else {
+                traceEventLogger.workerMatchRejected(task.getTid(), candidate,
+                        "worker lock conflict after candidate ranking", rank, candidateScore);
+                recordService.recordWorkerAssignment(
+                        task, worker, workerContext, AssignmentResult.CONFLICT,
+                        "worker lock conflict after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.debug("Worker locked after candidate ranking: {}", worker.getWorkerId());
+            }
+        }
+
         log.info("[WorkerAssign] Total matched worker scheduling candidates: {} for task {}",
                 matchedWorkers.size(), task.getTid());
         return matchedWorkers;
+    }
+
+    private double rankScore(WorkerMatchContext context, Task task) {
+        if (candidateRanker instanceof DefaultWorkerCandidateRanker defaultRanker) {
+            return defaultRanker.score(context, task);
+        }
+        return Double.NaN;
     }
 
     private List<WorkerSchedulingCandidate> enumerateSchedulingCandidates(List<Worker> candidates) {
@@ -448,6 +490,11 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         }
 
         return evaluations;
+    }
+
+    private record RulePassedCandidate(WorkerSchedulingCandidate candidate,
+                                       WorkerMatchContext matchContext,
+                                       List<RuleEvaluationDetail> ruleEvaluations) {
     }
 
     private static final class PrefilterDecision {

@@ -10,6 +10,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -104,7 +105,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
             capture.assertHasEvent("WORKER_MATCH_ACCEPTED", mdc ->
                     "task-trace".equals(mdc.get("taskId"))
                             && "worker-us".equals(mdc.get("workerId"))
-                            && "ctx-us".equals(mdc.get("workerContextId")));
+                            && "ctx-us".equals(mdc.get("workerContextId"))
+                            && "1".equals(mdc.get("candidateRank"))
+                            && mdc.get("workerEstimatedLoadRatio") != null);
             capture.assertHasEvent("WORKER_MATCH_REJECTED", mdc ->
                     "task-trace".equals(mdc.get("taskId"))
                             && "worker-gb".equals(mdc.get("workerId"))
@@ -521,6 +524,47 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-target-attrs", "worker-us-gold");
         assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
         assertEquals(Boolean.TRUE, acceptedRecord.getContextSnapshot().get("matchesTargetWorkerAttributes"));
+    }
+
+    @Test
+    void ranksRulePassedCandidatesByObservedLoadBeforeLockAcquisition() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+        loadView.recordWorkClaimed("worker-high-load", "existing-task-1");
+        loadView.recordWorkClaimed("worker-high-load", "existing-task-2");
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE,
+                loadView
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-load-aware");
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+
+        Worker highLoadWorker = worker("worker-high-load", "pool-a");
+        Worker lowLoadWorker = worker("worker-low-load", "pool-b");
+        workerManager.addWorker(highLoadWorker);
+        workerManager.addWorker(lowLoadWorker);
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-low-load", matched.getFirst().getWorkerId());
+        assertTrue(workerManager.isLocked("worker-low-load"));
+        assertFalse(workerManager.isLocked("worker-high-load"));
+
+        AssignmentRecord acceptedRecord = findRecord(recordService, "task-load-aware", "worker-low-load");
+        assertEquals(0, acceptedRecord.getContextSnapshot().get("workerActiveLeaseCount"));
     }
 
     private RuleDefinition rule(String id, String content) {

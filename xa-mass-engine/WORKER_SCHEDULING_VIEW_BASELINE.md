@@ -195,8 +195,11 @@ changed in this slice.
 
 ## Next Cut
 
-The next small implementation step can either implement lane-local dispatch
-priority or introduce a load-aware candidate ranker over the already-observed
-load fields. WorkerContext physical model/API deletion remains a later, larger
-phase after runtime binding and trace compatibility no longer need
-context-specific fields.
+Lane-local dispatch priority is now implemented in `TaskAssignWorker`: signals
+are ordered by resolved `DispatchPriority` inside each lane, and same-priority
+signals retain FIFO order. Load-aware candidate ranking is also implemented:
+rule-passed `WorkerMatchContext` candidates are ranked before lock acquisition
+using observed worker load and routing affinity.
+
+WorkerContext physical model/API deletion remains a later, larger phase after
+runtime binding and trace compatibility no longer need context-specific fields.

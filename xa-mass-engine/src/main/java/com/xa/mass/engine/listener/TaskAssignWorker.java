@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Lane-aware assignment signal worker.
@@ -37,6 +38,7 @@ public class TaskAssignWorker {
     private final long retryDelayMillis;
     private final int assignmentQueueCapacity;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
+    private final TaskRuntimeProfileResolver taskRuntimeProfileResolver;
     private final TraceEventLogger traceEventLogger;
     private final Map<TaskRuntimeProfile.DispatchLane, LaneState> laneStates =
             new EnumMap<>(TaskRuntimeProfile.DispatchLane.class);
@@ -44,6 +46,7 @@ public class TaskAssignWorker {
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private final Set<String> trackedTaskIds = ConcurrentHashMap.newKeySet();
     private final Set<String> deferredRequeueTaskIds = ConcurrentHashMap.newKeySet();
+    private final AtomicLong signalSequence = new AtomicLong();
 
     private volatile boolean running = true;
 
@@ -77,6 +80,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 new TaskRuntimeRetryPolicyResolver(),
+                TASK_RUNTIME_PROFILE_RESOLVER,
                 traceEventLogger);
     }
 
@@ -88,6 +92,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
+                TASK_RUNTIME_PROFILE_RESOLVER,
                 TraceEventLogger.noop());
     }
 
@@ -95,12 +100,29 @@ public class TaskAssignWorker {
                      long retryDelayMillis,
                      int assignmentQueueCapacity,
                      TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
+                     TaskRuntimeProfileResolver taskRuntimeProfileResolver,
                      TraceEventLogger traceEventLogger) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
+        this.taskRuntimeProfileResolver = taskRuntimeProfileResolver != null
+                ? taskRuntimeProfileResolver
+                : TASK_RUNTIME_PROFILE_RESOLVER;
         this.traceEventLogger = traceEventLogger;
+    }
+
+    TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                     long retryDelayMillis,
+                     int assignmentQueueCapacity,
+                     TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
+                     TraceEventLogger traceEventLogger) {
+        this(workerAssignListener,
+                retryDelayMillis,
+                assignmentQueueCapacity,
+                taskRuntimeRetryPolicyResolver,
+                TASK_RUNTIME_PROFILE_RESOLVER,
+                traceEventLogger);
     }
 
     public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
@@ -208,7 +230,7 @@ public class TaskAssignWorker {
         while (running) {
             Task task = null;
             try {
-                TaskAssignmentSignal signal = laneState.queue.take();
+                TaskAssignmentSignal signal = laneState.take();
                 task = signal.task();
                 String taskId = task != null ? task.getTid() : null;
                 TaskStatus initialStatus = task != null ? task.getStatus() : null;
@@ -252,7 +274,7 @@ public class TaskAssignWorker {
                 task,
                 taskStatus,
                 laneState != null ? laneState.lane.name() : resolveDispatchLane(task).name(),
-                laneState != null ? laneState.queue.size() : totalQueueDepth(),
+                laneState != null ? laneState.queueDepth() : totalQueueDepth(),
                 pendingTasks.get(),
                 laneState != null ? laneState.scheduledRetryCount.get() : totalScheduledRetryCount(),
                 queueAction,
@@ -325,7 +347,13 @@ public class TaskAssignWorker {
         if (task == null || !running || laneState == null) {
             return false;
         }
-        return laneState.queue.offer(new TaskAssignmentSignal(task, reason));
+        TaskRuntimeProfile profile = taskRuntimeProfileResolver.resolve(task);
+        return laneState.offer(new TaskAssignmentSignal(
+                task,
+                reason,
+                profile.dispatchPriority().ordinal(),
+                signalSequence.getAndIncrement()
+        ));
     }
 
     private void scheduleSubmissionRetry(Task task, LaneState laneState) {
@@ -434,11 +462,11 @@ public class TaskAssignWorker {
     }
 
     private TaskRuntimeProfile.DispatchLane resolveDispatchLane(Task task) {
-        return TASK_RUNTIME_PROFILE_RESOLVER.resolve(task).dispatchLane();
+        return taskRuntimeProfileResolver.resolve(task).dispatchLane();
     }
 
     private int totalQueueDepth() {
-        return laneStates.values().stream().mapToInt(lane -> lane.queue.size()).sum();
+        return laneStates.values().stream().mapToInt(LaneState::queueDepth).sum();
     }
 
     private int totalScheduledRetryCount() {
@@ -501,19 +529,57 @@ public class TaskAssignWorker {
         REQUEUE
     }
 
-    private record TaskAssignmentSignal(Task task, AssignmentSignalReason reason) {
+    private record TaskAssignmentSignal(Task task,
+                                        AssignmentSignalReason reason,
+                                        int priorityOrdinal,
+                                        long sequence) implements Comparable<TaskAssignmentSignal> {
+
+        @Override
+        public int compareTo(TaskAssignmentSignal other) {
+            int priorityComparison = Integer.compare(priorityOrdinal, other.priorityOrdinal);
+            if (priorityComparison != 0) {
+                return priorityComparison;
+            }
+            return Long.compare(sequence, other.sequence);
+        }
     }
 
     private static final class LaneState {
         private final TaskRuntimeProfile.DispatchLane lane;
-        private final BlockingQueue<TaskAssignmentSignal> queue;
+        private final PriorityBlockingQueue<TaskAssignmentSignal> queue = new PriorityBlockingQueue<>();
+        private final Semaphore capacity;
         private final AtomicInteger scheduledRetryCount = new AtomicInteger(0);
         private ExecutorService executor;
         private ScheduledExecutorService retryExecutor;
 
         private LaneState(TaskRuntimeProfile.DispatchLane lane, int queueCapacity) {
             this.lane = lane;
-            this.queue = new LinkedBlockingQueue<>(queueCapacity);
+            this.capacity = new Semaphore(Math.max(1, queueCapacity));
+        }
+
+        private boolean offer(TaskAssignmentSignal signal) {
+            if (signal == null || !capacity.tryAcquire()) {
+                return false;
+            }
+            boolean offered = false;
+            try {
+                offered = queue.offer(signal);
+                return offered;
+            } finally {
+                if (!offered) {
+                    capacity.release();
+                }
+            }
+        }
+
+        private TaskAssignmentSignal take() throws InterruptedException {
+            TaskAssignmentSignal signal = queue.take();
+            capacity.release();
+            return signal;
+        }
+
+        private int queueDepth() {
+            return queue.size();
         }
     }
 }

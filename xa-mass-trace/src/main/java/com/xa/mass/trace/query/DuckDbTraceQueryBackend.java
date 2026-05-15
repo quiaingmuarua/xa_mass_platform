@@ -177,6 +177,12 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
                     json_extract_string(%s, '$.workerContextId') AS workerContextId,
+                    try_cast(json_extract_string(%s, '$.candidateRank') AS INTEGER) AS candidateRank,
+                    try_cast(json_extract_string(%s, '$.candidateScore') AS DOUBLE) AS candidateScore,
+                    try_cast(json_extract_string(%s, '$.workerActiveLeaseCount') AS INTEGER) AS workerActiveLeaseCount,
+                    try_cast(json_extract_string(%s, '$.workerReservedCount') AS INTEGER) AS workerReservedCount,
+                    try_cast(json_extract_string(%s, '$.workerDeclaredCapacity') AS INTEGER) AS workerDeclaredCapacity,
+                    try_cast(json_extract_string(%s, '$.workerEstimatedLoadRatio') AS DOUBLE) AS workerEstimatedLoadRatio,
                     json_extract_string(%s, '$.trigger') AS trigger,
                     json_extract_string(%s, '$.source') AS source,
                     json_extract_string(%s, '$.reason') AS reason,
@@ -187,6 +193,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         json_extract_string(%s, '$.taskStatus')
                     ) AS currentStatus,
                     json_extract_string(%s, '$.dispatchLane') AS dispatchLane,
+                    json_extract_string(%s, '$.dispatchPriority') AS dispatchPriority,
                     json_extract_string(%s, '$.workloadClass') AS workloadClass,
                     json_extract_string(%s, '$.batchPolicy') AS batchPolicy,
                     json_extract_string(%s, '$.leaseProfile') AS leaseProfile,
@@ -218,8 +225,10 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 LIMIT %d
                 """.formatted(
                 identityJson, identityJson, identityJson, identityJson, identityJson,
+                attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
+                attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
@@ -242,6 +251,12 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
                         resultSet.getString("workerContextId"),
+                        integerOrNull(resultSet, "candidateRank"),
+                        doubleOrNull(resultSet, "candidateScore"),
+                        integerOrNull(resultSet, "workerActiveLeaseCount"),
+                        integerOrNull(resultSet, "workerReservedCount"),
+                        integerOrNull(resultSet, "workerDeclaredCapacity"),
+                        doubleOrNull(resultSet, "workerEstimatedLoadRatio"),
                         resultSet.getString("trigger"),
                         resultSet.getString("source"),
                         resultSet.getString("reason"),
@@ -249,6 +264,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("initialStatus"),
                         resultSet.getString("currentStatus"),
                         resultSet.getString("dispatchLane"),
+                        resultSet.getString("dispatchPriority"),
                         resultSet.getString("workloadClass"),
                         resultSet.getString("batchPolicy"),
                         resultSet.getString("leaseProfile"),
@@ -304,6 +320,11 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     private static Long longOrNull(ResultSet resultSet, String column) throws Exception {
         long value = resultSet.getLong(column);
+        return resultSet.wasNull() ? null : value;
+    }
+
+    private static Double doubleOrNull(ResultSet resultSet, String column) throws Exception {
+        double value = resultSet.getDouble(column);
         return resultSet.wasNull() ? null : value;
     }
 }

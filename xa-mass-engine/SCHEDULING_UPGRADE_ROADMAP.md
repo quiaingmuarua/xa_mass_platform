@@ -125,7 +125,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | --- | --- | --- | --- |
 | `AssignmentAllocationPolicy` | Current internal seam | desired worker count, required start count, requested match count, dispatch candidate limit | matching, runtime claim, task state mutation |
 | Matching rules | Current fixed/rule-driven policy | eligibility of a candidate worker view | ranking, task terminal, runtime claim |
-| `WorkerCandidateRanker` | Planned | preference order among rule-passed candidates | eligibility correctness, locking/reservation |
+| `WorkerCandidateRanker` | Current internal seam | preference order among rule-passed candidates | eligibility correctness, locking/reservation |
 | `WorkerBudgetPolicy` | Planned | per-task worker budget ceiling | task state mutation, runtime claim |
 | Capacity/reservation policy | Planned | capacity units and foreground/background capacity decision | attempt lifecycle finality |
 | Runtime profile resolver | Current fixed policy | workload class to lane/priority/profile mapping | queue mechanism, worker selection |
@@ -211,8 +211,8 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented through default rule surface and candidate handoff; API cleanup proposed |
 | 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
 | 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented observational mode 2026-05-15 |
-| 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Proposed |
-| 6 | Worker candidate ranker | Medium | Matching strategy | Proposed |
+| 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
+| 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
 | 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Proposed |
 | 8 | Cross-task worker budget and fairness | High | Allocation policy/load view | Proposed |
 | 9 | System-event worker management boundary | High | Worker management integration | Proposed |
@@ -445,6 +445,8 @@ success paths. Release must happen for:
 
 ## 12. Step 5: Dispatch Priority Within Lanes
 
+Status: implemented on 2026-05-15 as lane-local queue mechanism.
+
 ### Goal
 
 Make `TaskRuntimeProfile.DispatchPriority` affect order inside each existing
@@ -452,22 +454,29 @@ lane while preserving lane separation.
 
 ### Current issue
 
-`TaskAssignWorker` currently uses FIFO queues per lane. `HIGH` and `NORMAL`
-priority are declared but do not affect runtime ordering.
+`TaskAssignWorker` used FIFO queues per lane. `HIGH` and `NORMAL` priority
+were declared but did not affect runtime ordering.
 
-### Scope
+### Implemented scope
 
 - Stamp assignment signals with priority ordinal.
 - Add a monotonic sequence number to preserve same-priority FIFO.
-- Replace or wrap lane queue with bounded priority semantics.
+- Replace the lane queue with bounded priority semantics using a
+  `PriorityBlockingQueue` plus a semaphore-backed capacity guard.
 - Preserve queue capacity and `trackedTaskIds` deduplication.
-- Add trace attrs for lane, priority, and dequeue/process order if missing.
+- Keep `ASSIGNMENT_QUEUE_SNAPSHOT` profile evidence queryable through
+  `xa-mass-trace assignment`, including `dispatchPriority`.
 
 ### Out of scope
 
 - No cross-lane preemption.
 - No user-defined priority beyond existing runtime profile resolution.
 - No candidate ranking or worker load changes.
+- No new trace scenario yet. The current fixed runtime profile maps
+  `INTERACTIVE` to `INTERACTIVE/HIGH` and `BULK` to `BULK/NORMAL`, so real
+  same-lane HIGH/NORMAL evidence needs a later profile-policy slice or a
+  canonical queue-order attribute before `priority-lane-ordering` becomes a
+  meaningful analyzer.
 
 ### Important design point
 
@@ -480,16 +489,19 @@ Do not directly replace bounded `LinkedBlockingQueue` with unbounded
 - Unit: same-priority FIFO order.
 - Unit: queue capacity still applies.
 - Engine scheduling suite.
-- Trace scenario: `priority-lane-ordering`.
+- Trace/operator: assignment rows expose `dispatchPriority` from canonical
+  JSONL. The dedicated `priority-lane-ordering` analyzer remains future work.
 
 ## 13. Step 6: WorkerCandidateRanker
+
+Status: implemented on 2026-05-15 as an engine-internal ranker seam.
 
 ### Goal
 
 Rank rule-passed candidates before lock/reservation so worker selection is not
 storage-order biased.
 
-### Proposed SPI
+### Implemented SPI
 
 ```java
 interface WorkerCandidateRanker {
@@ -534,7 +546,12 @@ be a fallback, not the main owner.
 
 - Add ranker interface and default implementation.
 - Inject ranker into `RuleBasedTaskWorkerMatchingStrategy`.
-- Add rank evidence to trace attrs if needed.
+- Add canonical rank/load evidence to worker match trace attrs:
+  `candidateRank`, `candidateScore`, `workerActiveLeaseCount`,
+  `workerReservedCount`, `workerDeclaredCapacity`,
+  `workerEstimatedLoadRatio`.
+- Register `load-aware-worker-selection` analyzer over canonical assignment
+  trace rows.
 - Keep `TaskWorkerMatchingStrategy.matchWorkers(Task, int)` unchanged.
 
 ### Out of scope
@@ -795,10 +812,10 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is either dispatch priority within
-lanes or a default `WorkerCandidateRanker` that consumes the already-observed
-load fields. The ranker step should still keep eligibility rules as the
-correctness gate and should not introduce capacity reservation.
+The next recommended implementation step is capacity reservation and the
+foreground/background model decision. That step should not begin until the
+team is ready to make a behavior-level capacity commitment; the current ranker
+still uses the existing worker lock as the dispatch guard.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.
