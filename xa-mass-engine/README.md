@@ -292,8 +292,11 @@ Matching boundaries:
   allocation, listener orchestration, and dispatch binding
 - `WorkerSchedulingCandidateEnumerator` is the transitional owner for expanding
   workers plus optional legacy WorkerContext resources into scheduling
-  candidates; `RuleBasedTaskWorkerMatchingStrategy` must not read WorkerContext
-  storage directly
+  candidates; `RuleBasedTaskWorkerMatchingStrategy` must not import
+  `WorkerContext` or read WorkerContext storage directly
+- worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
+  matching strategy code must not unwrap the nullable legacy WorkerContext
+  payload directly
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject

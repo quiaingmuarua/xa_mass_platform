@@ -8,6 +8,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerContextSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
@@ -31,11 +32,13 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
      * Records a worker-level assignment attempt.
      */
     @Override
-    public AssignmentRecord recordWorkerAssignment(Task task, Worker worker, WorkerContext workerContext,
+    public AssignmentRecord recordWorkerAssignment(Task task, WorkerSchedulingCandidate candidate,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
                                                    Map<String, Object> contextSnapshot,
                                                    boolean workerLocked) {
+        Worker worker = candidate.getWorker();
+        WorkerContext workerContext = candidate.getWorkerContext();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.WORKER_ASSIGN);

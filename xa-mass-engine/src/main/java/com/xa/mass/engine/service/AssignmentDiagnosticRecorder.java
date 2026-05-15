@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 
 import java.util.List;
 import java.util.Map;
@@ -20,8 +21,7 @@ import java.util.Map;
 public interface AssignmentDiagnosticRecorder {
 
     AssignmentRecord recordWorkerAssignment(Task task,
-                                            Worker worker,
-                                            WorkerContext workerContext,
+                                            WorkerSchedulingCandidate candidate,
                                             AssignmentResult result,
                                             String reason,
                                             List<RuleEvaluationDetail> ruleEvaluations,

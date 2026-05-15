@@ -275,8 +275,13 @@ The strategy now consumes candidates instead of owning context enumeration.
 Representative strategy tests now prove normal routing and trace behavior with
 stateless worker scheduling attributes; the remaining context-backed strategy
 fixtures are explicitly named `legacyContext*` and guarded as transitional
-coverage. `WorkerSchedulingCandidate` still carries nullable legacy
-`WorkerContext` for runtime binding; full removal is not complete.
+coverage. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
+`WorkerContext`; the strategy package's only direct production import/storage
+read is the transitional candidate enumerator. Worker-level assignment
+diagnostics now consume `WorkerSchedulingCandidate`, so matching strategy code
+does not unwrap `candidate.getWorkerContext()` directly. `WorkerSchedulingCandidate`
+still carries nullable legacy `WorkerContext` for runtime binding; full removal
+is not complete.
 
 Goal: make engine matching fully worker-view based.
 

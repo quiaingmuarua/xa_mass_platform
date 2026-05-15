@@ -93,6 +93,15 @@ Progress:
   stateless worker scheduling attributes by default; remaining context-backed
   strategy fixtures are explicitly named `legacyContext*` and guarded as
   transitional coverage.
+- 2026-05-15: WorkerContext retirement WC-2C strategy import convergence was
+  implemented. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
+  `WorkerContext`; the production strategy package's only direct WorkerContext
+  import/storage read is the transitional `WorkerSchedulingCandidateEnumerator`.
+- 2026-05-15: WorkerContext retirement WC-2D diagnostic handoff convergence
+  was implemented. Worker-level assignment diagnostics now consume
+  `WorkerSchedulingCandidate`; matching strategy code no longer unwraps
+  `candidate.getWorkerContext()` and leaves legacy payload extraction inside
+  trace/diagnostic owners.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
   `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path
@@ -226,7 +235,8 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | --- | --- | --- |
 | `TaskAssignWorker` | assignment signal queueing, lane workers, retry/defer, queue snapshots | runtime profile / dispatch priority |
 | `TaskWorkerAssignListener` | assignment orchestration, status transition, dispatch resource cleanup, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
-| `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views |
+| `WorkerSchedulingCandidateEnumerator` | transitional expansion from workers plus optional legacy WorkerContext resources into scheduling candidates | worker storage/read views |
+| `RuleBasedTaskWorkerMatchingStrategy` | scheduling-candidate consumption, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views, candidate enumerator |
 | `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
 | `TaskResourceReleaseListener` | worker load finalization, WorkerContext release orchestration, worker lock release orchestration after attempt/terminal close | `AssignmentRefillPolicy`, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
 | `LegacyWorkerContextResourceLifecycle` | transitional WorkerContext prepare/release state mutation and trace while WorkerContext remains a runtime payload | dispatch/release mechanisms |

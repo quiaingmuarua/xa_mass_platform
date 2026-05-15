@@ -61,9 +61,18 @@ WorkerContext is still live in these engine paths:
     diagnostic snapshots
 - `RuleBasedTaskWorkerMatchingStrategy`
   - consumes already-enumerated `WorkerSchedulingCandidate` objects
+  - does not import `WorkerContext`; it reads scheduling facts from the
+    candidate/view and no longer unwraps the candidate's nullable legacy
+    payload directly
   - prefilters context allocatability, project, and routing tags through the
     scheduling view while preserving legacy reasons
   - emits match accepted/rejected trace with `workerContextId`
+- `AssignmentDiagnosticRecorder`
+  - records worker-level matching diagnostics from
+    `WorkerSchedulingCandidate`
+  - keeps legacy WorkerContext snapshot extraction inside the diagnostic owner
+    while message-level assignment diagnostics still accept the current runtime
+    `WorkerContext` payload
 - `WorkerSchedulingCandidate`
   - is the internal handoff type between matching, allocation, listener
     orchestration, and dispatch binding
@@ -114,6 +123,10 @@ WorkerContext is still live in these engine paths:
     leaking outside `LegacyWorkerContextResourceLifecycle`
   - prevents retired context-first matching handoff types from returning to
     engine source or scheduling tests
+  - keeps production strategy-package `WorkerContext` imports and direct
+    storage reads isolated to `WorkerSchedulingCandidateEnumerator`
+  - prevents production strategy code from unwrapping
+    `candidate.getWorkerContext()` directly
   - keeps strategy-level WorkerContext registration fixtures explicitly named
     as `legacyContext*` transitional coverage
 

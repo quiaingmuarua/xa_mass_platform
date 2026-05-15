@@ -143,6 +143,37 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void strategyPackageWorkerContextImportStaysIsolatedToCandidateEnumerator() throws IOException {
+        Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
+        Path allowedEnumerator = strategyRoot.resolve("WorkerSchedulingCandidateEnumerator.java");
+        Pattern workerContextImport = Pattern.compile(
+                "\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;");
+        Pattern workerContextStorageRead = Pattern.compile("\\bgetWorkerContextsByWorkerIds\\s*\\(");
+        Pattern workerContextPayloadRead = Pattern.compile("\\.getWorkerContext\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(strategyRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            boolean allowed = path.equals(allowedEnumerator);
+            if (!allowed && workerContextImport.matcher(source).find()) {
+                violations.add(path + " imports WorkerContext outside the transitional candidate enumerator");
+            }
+            if (!allowed && workerContextStorageRead.matcher(source).find()) {
+                violations.add(path + " reads WorkerContext storage outside the transitional candidate enumerator");
+            }
+            if (!allowed && workerContextPayloadRead.matcher(source).find()) {
+                violations.add(path + " unwraps legacy WorkerContext payload outside the transitional candidate enumerator");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Matching strategy code must stay scheduling-candidate/view first. "
+                        + "The only allowed matching-side WorkerContext expansion point is "
+                        + "WorkerSchedulingCandidateEnumerator until legacy context-backed matching is retired:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void ruleBasedMatchingStrategyContextFixturesStayExplicitlyLegacy() throws IOException {
         Path strategyTestPath = TEST_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java");
