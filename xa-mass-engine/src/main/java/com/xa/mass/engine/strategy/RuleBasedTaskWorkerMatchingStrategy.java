@@ -11,6 +11,8 @@ import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -33,6 +35,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private final AssignmentDiagnosticRecorder recordService;
     private final TraceEventLogger traceEventLogger;
     private final WorkerCandidateRanker candidateRanker;
+    private final WorkerDispatchResourcePolicy resourcePolicy;
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
@@ -52,11 +55,22 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                                AssignmentDiagnosticRecorder recordService,
                                                TraceEventLogger traceEventLogger,
                                                WorkerCandidateRanker candidateRanker) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
+                new DefaultWorkerDispatchResourcePolicy());
+    }
+
+    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                               WorkerManager workerManager,
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger,
+                                               WorkerCandidateRanker candidateRanker,
+                                               WorkerDispatchResourcePolicy resourcePolicy) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.traceEventLogger = traceEventLogger;
         this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
     }
 
     @Override
@@ -201,7 +215,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             Worker worker = candidate.getWorker();
             WorkerContext workerContext = candidate.getWorkerContext();
             double candidateScore = rankScore(rankedContext, task);
-            boolean foreground = task.getExecutionSpec().isForeground();
+            boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
             if (!workerManager.tryReserveWorkerCapacity(worker.getWorkerId(), task.getTid())) {
                 traceEventLogger.workerMatchRejected(task, candidate,
                         "worker capacity unavailable after candidate ranking", rank, candidateScore,
@@ -215,7 +229,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
                 continue;
             }
-            if (!foreground) {
+            if (!exclusiveWorkerLock) {
                 traceEventLogger.workerMatchAccepted(task, candidate,
                         "all rules matched and worker capacity reserved after candidate ranking", rank, candidateScore,
                         workerManager.getWorkerLoad(worker.getWorkerId()));

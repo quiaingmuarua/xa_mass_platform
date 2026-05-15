@@ -8,12 +8,30 @@ import java.util.List;
 
 public final class DefaultAssignmentAllocationPolicy implements AssignmentAllocationPolicy {
 
+    private final WorkerBudgetPolicy workerBudgetPolicy;
+
+    public DefaultAssignmentAllocationPolicy() {
+        this(new DefaultWorkerBudgetPolicy());
+    }
+
+    public DefaultAssignmentAllocationPolicy(WorkerBudgetPolicy workerBudgetPolicy) {
+        this.workerBudgetPolicy = workerBudgetPolicy == null ? new DefaultWorkerBudgetPolicy() : workerBudgetPolicy;
+    }
+
     @Override
     public AssignmentAllocationPlan plan(AssignmentAllocationRequest request) {
         Task task = request.task();
         int batchSize = Math.max(task.getExecutionSpec().getBatchSize(), 1);
-        int desiredDispatchWorkerCount = Math.max(1,
+        int rawDesiredDispatchWorkerCount = Math.max(1,
                 (int) Math.ceil((double) Math.max(request.readyWorkCount(), 1) / batchSize));
+        WorkerBudgetDecision budgetDecision = workerBudgetPolicy.resolve(
+                task,
+                rawDesiredDispatchWorkerCount,
+                request.currentTaskWorkerCount()
+        );
+        int desiredDispatchWorkerCount = budgetDecision.workerBudget() == null
+                ? rawDesiredDispatchWorkerCount
+                : Math.min(rawDesiredDispatchWorkerCount, budgetDecision.availableWorkerCount());
         int requiredStartWorkerCount = request.initialStatus() == TaskStatus.READY
                 ? Math.max(task.getMinRequiredWorkerCount(), 1)
                 : 1;
@@ -24,14 +42,22 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         int dispatchCandidateLimit = request.taskLevelEventCapability()
                 ? desiredDispatchWorkerCount
                 : Integer.MAX_VALUE;
+        if (budgetDecision.workerBudget() != null) {
+            requestedMatchCount = Math.min(requestedMatchCount, budgetDecision.availableWorkerCount());
+            dispatchCandidateLimit = Math.min(dispatchCandidateLimit, budgetDecision.availableWorkerCount());
+        }
         return new AssignmentAllocationPlan(
                 task,
                 request.initialStatus(),
                 request.readyWorkCount(),
+                rawDesiredDispatchWorkerCount,
                 desiredDispatchWorkerCount,
                 requiredStartWorkerCount,
                 requestedMatchCount,
-                dispatchCandidateLimit
+                dispatchCandidateLimit,
+                budgetDecision.workerBudget(),
+                budgetDecision.currentTaskWorkerCount(),
+                budgetDecision.budgetLimited()
         );
     }
 
@@ -40,6 +66,13 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
                                                TaskStatus currentStatus,
                                                List<WorkerSchedulingCandidate> matchedWorkers) {
         List<WorkerSchedulingCandidate> matched = matchedWorkers == null ? List.of() : matchedWorkers;
+        if (plan.workerBudget() != null && plan.workerBudget() <= plan.currentTaskWorkerCount()) {
+            return new AssignmentAllocationDecision(
+                    AssignmentAllocationOutcome.BUDGET_EXHAUSTED,
+                    List.of(),
+                    "worker budget exhausted for task"
+            );
+        }
         if (matched.isEmpty()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.NO_MATCH,

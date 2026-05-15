@@ -17,6 +17,10 @@ public interface WorkerLoadView {
 
     WorkerLoadSnapshot snapshot(String workerId);
 
+    default int getActiveWorkerCountForTask(String taskId) {
+        return 0;
+    }
+
     default void recordDeclaredCapacity(String workerId, int declaredCapacity) {
     }
 

@@ -13,6 +13,8 @@ import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -39,6 +41,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final AssignmentDiagnosticRecorder recordService;
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
+    private final WorkerDispatchResourcePolicy resourcePolicy;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
@@ -58,11 +61,22 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
+        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+                new DefaultWorkerDispatchResourcePolicy());
+    }
+
+    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                             WorkerManager workerManager,
+                             AssignmentDiagnosticRecorder recordService,
+                             TaskDispatchBatchListener dispatchListener,
+                             TraceEventLogger traceEventLogger,
+                             WorkerDispatchResourcePolicy resourcePolicy) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
     }
 
     @Override
@@ -261,16 +275,12 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     private void releaseLockIfExclusive(Task task, String workerId, String reason) {
-        if (!usesExclusiveWorkerLock(task)) {
+        if (!resourcePolicy.usageForTask(task).exclusiveWorkerLock()) {
             return;
         }
         workerManager.unlockWorker(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId,
                 "UNLOCK_WORKER", "SimpleTaskDispatchBinder", reason);
-    }
-
-    private boolean usesExclusiveWorkerLock(Task task) {
-        return task == null || task.getExecutionSpec() == null || task.getExecutionSpec().isForeground();
     }
 
     private void releaseObservedWorkerLoad(List<TaskDispatchBinding> dispatchBindings) {

@@ -245,6 +245,9 @@ public final class XaMassTraceCli {
             appendCount(builder, "candidates", row.dispatchCandidateCount());
             appendCount(builder, "dispatched", row.dispatchedMessageCount());
             appendCount(builder, "used", row.usedWorkerCount());
+            appendCount(builder, "budget", row.workerBudget());
+            appendCount(builder, "taskWorkers", row.currentTaskWorkerCount());
+            appendBoolean(builder, "budgetLimited", row.budgetLimited());
             appendCount(builder, "pending", row.pendingMessageCount());
             appendCount(builder, "slots", row.dispatchSlotCount());
             appendCount(builder, "perWorker", row.perWorkerBatchLimit());
@@ -256,6 +259,16 @@ public final class XaMassTraceCli {
         }
 
         private void appendCount(StringBuilder builder, String name, Integer value) {
+            if (value == null) {
+                return;
+            }
+            if (!builder.isEmpty()) {
+                builder.append(',');
+            }
+            builder.append(name).append('=').append(value);
+        }
+
+        private void appendBoolean(StringBuilder builder, String name, Boolean value) {
             if (value == null) {
                 return;
             }

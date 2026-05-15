@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -147,6 +148,43 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(0, harness.stats(thirdTask.getTid()).readyCount());
         assertEquals(1, harness.stats(thirdTask.getTid()).inflightCount());
+    }
+
+    @Test
+    void largeBulkTaskIsCappedAndLeavesWorkersForInteractiveTask() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        for (int i = 0; i < 25; i++) {
+            harness.addWorkerWithContext("worker-budget-" + i, "ctx-budget-" + i, "us");
+        }
+        List<java.util.Map<String, Object>> bulkItems = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            bulkItems.add(harness.item("bulk-" + i));
+        }
+        Task bulkTask = harness.createReadyBatchTask("bulk-budget-cap", bulkItems);
+        Task interactiveTask = harness.createSessionTask(
+                "interactive-after-bulk-budget",
+                List.of(harness.item("interactive")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(interactiveTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(bulkTask.getTid())));
+        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, harness.activeLeases(bulkTask.getTid()).size());
+        assertEquals(80, harness.stats(bulkTask.getTid()).readyCount());
+        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, harness.stats(bulkTask.getTid()).inflightCount());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(interactiveTask.getTid())));
+
+        List<ActiveLeaseRecord> interactiveLeases = harness.activeLeases(interactiveTask.getTid());
+        Set<String> bulkWorkers = harness.activeLeases(bulkTask.getTid()).stream()
+                .map(ActiveLeaseRecord::workerId)
+                .collect(Collectors.toSet());
+        assertEquals(1, interactiveLeases.size());
+        assertFalse(bulkWorkers.contains(interactiveLeases.getFirst().workerId()));
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(interactiveTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(interactiveTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(interactiveTask.getTid()).inflightCount());
     }
 
     @Test

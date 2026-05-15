@@ -34,6 +34,28 @@ class InMemoryWorkerLoadViewTest {
     }
 
     @Test
+    void activeWorkerCountForTaskCountsDistinctWorkers() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+
+        loadView.recordWorkClaimed("worker-1", "task-1");
+        loadView.recordWorkClaimed("worker-1", "task-1");
+        loadView.recordWorkClaimed("worker-2", "task-1");
+        loadView.recordWorkClaimed("worker-3", "task-2");
+
+        assertEquals(2, loadView.getActiveWorkerCountForTask("task-1"));
+        assertEquals(1, loadView.getActiveWorkerCountForTask("task-2"));
+
+        loadView.recordWorkFinal("worker-1", "task-1");
+        assertEquals(2, loadView.getActiveWorkerCountForTask("task-1"));
+
+        loadView.recordWorkFinal("worker-1", "task-1");
+        assertEquals(1, loadView.getActiveWorkerCountForTask("task-1"));
+
+        loadView.recordWorkFinal("worker-2", "task-1");
+        assertEquals(0, loadView.getActiveWorkerCountForTask("task-1"));
+    }
+
+    @Test
     void finalDoesNotUnderflow() {
         InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
 

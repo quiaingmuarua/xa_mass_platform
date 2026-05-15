@@ -60,6 +60,20 @@ Progress:
   one stateless worker lease active, dispatches a second task to the same
   capacity-2 worker, and validates canonical JSONL with the
   `background-worker-sharing` analyzer.
+- 2026-05-15: Step 8A worker budget foundation was implemented without
+  changing default scheduling behavior. `WorkerBudgetPolicy` now feeds
+  `DefaultAssignmentAllocationPolicy`, `WorkerLoadView` exposes current active
+  worker count per task, and assignment trace can emit `workerBudget`,
+  `currentTaskWorkerCount`, and `budgetLimited`.
+- 2026-05-15: Step 8B bounded default budget was implemented. The default
+  `WorkerBudgetPolicy` now applies internal workload-class caps
+  (`INTERACTIVE=5`, `BULK=20`), `AssignmentAllocationPolicy` emits an explicit
+  `BUDGET_EXHAUSTED` decision when a task has no remaining worker budget, and
+  assignment trace records the cap through the existing budget fields.
+- 2026-05-15: Step 8C refill owner convergence was implemented.
+  `AssignmentRefillPolicy` now owns whether a released worker slot should
+  request another assignment attempt. `TaskResourceReleaseListener` remains the
+  resource release mechanism and consumes the refill decision.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -159,7 +173,8 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | `AssignmentAllocationPolicy` | Current internal seam | desired worker count, required start count, requested match count, dispatch candidate limit | matching, runtime claim, task state mutation |
 | Matching rules | Current fixed/rule-driven policy | eligibility of a candidate worker view | ranking, task terminal, runtime claim |
 | `WorkerCandidateRanker` | Current internal seam | preference order among rule-passed candidates | eligibility correctness, locking/reservation |
-| `WorkerBudgetPolicy` | Planned | per-task worker budget ceiling | task state mutation, runtime claim |
+| `WorkerBudgetPolicy` | Current internal seam | per-task worker budget ceiling | task state mutation, runtime claim |
+| `AssignmentRefillPolicy` | Current internal seam | post-release assignment refill decision | resource release, worker unlock, runtime claim |
 | Capacity/reservation policy | Partial internal foundation | default single-capacity reservation handoff; foreground/background capacity decision remains planned | attempt lifecycle finality |
 | Runtime profile resolver | Current fixed policy | workload class to lane/priority/profile mapping | queue mechanism, worker selection |
 
@@ -171,6 +186,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | `TaskWorkerAssignListener` | assignment orchestration, status transition, unlock/release, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy |
 | `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, load/reachability views |
 | `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output only |
+| `TaskResourceReleaseListener` | worker load finalization, WorkerContext release, worker unlock after attempt/terminal close | `AssignmentRefillPolicy` |
 | `WorkerLoadView` | push-updated load snapshot and process-local reservation accounting | runtime/attempt lifecycle events, matching reservation handoff |
 | `WorkerReachabilityView` | push-updated transport reachability snapshot | transport presence events |
 
@@ -247,7 +263,7 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
 | 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
-| 8 | Cross-task worker budget and fairness | High | Allocation policy/load view | Proposed |
+| 8 | Cross-task worker budget, fairness, and refill owner | High | Allocation/release policy/load view | Bounded default budget and refill policy implemented; fairness scenario proposed |
 | 9 | System-event worker management boundary | High | Worker management integration | Proposed |
 
 ## 8. Step 1: Retire Inert TaskScheduler SPI
@@ -723,6 +739,12 @@ and starving concurrent higher-value work.
 Budget applies inside `AssignmentAllocationPolicy`, not directly in
 `TaskWorkerAssignListener`.
 
+Status: bounded internal defaults implemented. `WorkerBudgetPolicy` now applies
+workload-class caps inside the engine (`INTERACTIVE=5`, `BULK=20`) and
+`AssignmentAllocationPolicy` produces an explicit `BUDGET_EXHAUSTED` decision
+when current active workers for a task consume the whole budget. Public
+task-level overrides remain proposed.
+
 ### Proposed model
 
 Candidate task field:
@@ -733,36 +755,58 @@ ExecutionSpec.maxConcurrentWorkers: int
 
 `0` means use policy defaults.
 
-Candidate policy:
+Implemented foundation:
 
 ```java
 interface WorkerBudgetPolicy {
-    int resolveMaxConcurrentWorkers(Task task, int desiredCount);
+    WorkerBudgetDecision resolve(Task task, int desiredDispatchWorkerCount, int currentTaskWorkerCount);
 }
 ```
 
-Default direction:
+The default implementation returns a finite workload-class budget. The formula
+stays inside policy ownership instead of being added to
+`TaskWorkerAssignListener`.
+
+Implemented bounded default direction:
 
 - INTERACTIVE: cap desired count to a small default.
 - BULK: cap desired count to a larger but bounded default.
+
+Proposed future override:
+
 - explicit `ExecutionSpec.maxConcurrentWorkers` overrides policy default.
 
 ### Integration point
 
-`DefaultAssignmentAllocationPolicy.plan(...)` should:
+`DefaultAssignmentAllocationPolicy.plan(...)` now:
 
 - compute raw desired worker count
-- read current active worker count for the task from `WorkerLoadView` or request
+- reads current active worker count for the task from request
   inputs
-- apply budget ceiling
+- applies the budget ceiling when the budget policy returns a finite budget
 - produce final `desiredDispatchWorkerCount`, `requestedMatchCount`, and
   `dispatchCandidateLimit`
+- produce `BUDGET_EXHAUSTED` when no worker budget remains for the task
 
-`TaskWorkerAssignListener` should only pass inputs and emit trace from the plan.
+`TaskWorkerAssignListener` only passes inputs and emits trace from the plan.
+
+### Refill owner
+
+`AssignmentRefillPolicy` now owns the post-release refill decision. The default
+policy preserves the existing behavior:
+
+```text
+RUNNING task + runtime-ready work -> request assignment dispatch
+otherwise -> skip refill
+```
+
+`TaskResourceReleaseListener` remains the mechanism owner for worker load
+finalization, WorkerContext release, and worker unlock. It supplies bounded
+runtime facts to the policy and consumes the returned decision.
 
 ### Trace
 
-Add assignment summary attrs if needed:
+Implemented assignment summary attrs:
 
 - `workerBudget`
 - `currentTaskWorkerCount`
@@ -770,11 +814,16 @@ Add assignment summary attrs if needed:
 
 ### Verification
 
-- Unit: budget policy caps large BULK desired worker count.
-- Unit: INTERACTIVE still dispatches while BULK is active.
-- Engine mixed workload contention test.
-- Server representative E2E.
-- Trace scenario: `cross-task-worker-fairness`.
+- Unit: default workload-class budgets cap large assignment plans.
+- Unit: exhausted budget produces explicit allocation decision and trace skip.
+- Unit: default refill policy preserves `RUNNING && ready-work` behavior and
+  skips without reading ready-work for non-running tasks.
+- Unit: injected refill policy can suppress refill without blocking resource
+  release.
+- Unit: `WorkerLoadView` tracks distinct active workers per task.
+- Engine: mixed workload contention test proves a large BULK task is capped and
+  leaves workers for an INTERACTIVE task.
+- Proposed next: trace scenario `cross-task-worker-fairness`.
 
 ## 16. Step 9: Worker Management/System Event Boundary
 
@@ -886,12 +935,11 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is a narrow cross-task worker budget
-foundation inside `AssignmentAllocationPolicy`: introduce the internal budget
-owner and trace fields, then prove default-compatible behavior before adding
-public `ExecutionSpec.maxConcurrentWorkers` or broader fairness behavior. Avoid
-broad WorkerContext deletion until trace analyzers and server routing E2E no
-longer need context-specific fields as proof.
+The next recommended implementation step is the resource binding owner
+convergence: inventory and narrow the duplicated foreground/exclusive-lock and
+WorkerContext prepare/release decisions across matching, listener, binder, and
+release. Avoid broad WorkerContext deletion until trace analyzers and server
+routing E2E no longer need context-specific fields as proof.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.

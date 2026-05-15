@@ -8,7 +8,9 @@ import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
@@ -188,6 +190,39 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
+    void injectedRefillPolicyCanSuppressRefillWithoutBlockingRelease() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskWorkAttemptClosedEvent closedAttempt =
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
+
+        listener = new TaskResourceReleaseListener(
+                maintenancePort,
+                workerManager,
+                TraceEventLogger.noop(),
+                request -> AssignmentRefillDecision.skip("refill suppressed by test policy")
+        );
+
+        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+
+        listener.onTaskWorkAttemptClosed(task, closedAttempt);
+
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
+        verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
+        verify(maintenancePort, never()).requestTaskDispatch(any());
+    }
+
+    @Test
     void repairedAttemptClosedStillReleasesWorkerForTerminalTask() {
         Task task = new Task();
         task.setTid("task-1");
@@ -208,6 +243,7 @@ public class TaskResourceReleaseListenerTest {
 
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
+        verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
     }
 

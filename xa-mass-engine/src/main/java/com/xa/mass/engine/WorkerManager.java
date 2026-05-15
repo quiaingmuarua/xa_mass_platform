@@ -196,6 +196,10 @@ public class WorkerManager implements WorkerLookupStore {
         return workerLoadView.snapshot(workerId);
     }
 
+    public int getActiveWorkerCountForTask(String taskId) {
+        return workerLoadView.getActiveWorkerCountForTask(taskId);
+    }
+
     public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
         syncWorkerCapacity(workerId);
         return workerLoadView.tryReserveCapacity(workerId, taskId);

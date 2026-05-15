@@ -72,6 +72,9 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals("BULK", summary.workloadClass());
         assertEquals("NORMAL", summary.dispatchPriority());
         assertEquals(true, summary.foreground());
+        assertEquals(4, summary.workerBudget());
+        assertEquals(1, summary.currentTaskWorkerCount());
+        assertEquals(true, summary.budgetLimited());
 
         var binding = response.events().stream()
                 .filter(row -> "DISPATCH_BINDING_SUMMARY".equals(row.eventType()))
@@ -376,6 +379,9 @@ class TraceOperatorServiceIntegrationTest {
                             "desiredDispatchWorkerCount", 1,
                             "requiredStartWorkerCount", 1,
                             "requestedMatchCount", 1,
+                            "workerBudget", 4,
+                            "currentTaskWorkerCount", 1,
+                            "budgetLimited", true,
                             "matchedWorkerCount", 1,
                             "dispatchCandidateCount", 1,
                             "dispatchedMessageCount", 2,

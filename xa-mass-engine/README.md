@@ -139,6 +139,13 @@ Keep these facts fixed unless the owning global baselines change:
   matching reserves one unit of worker-declared capacity before lock
   acquisition, and dispatch binding confirms or releases that reservation
   around runtime claim outcomes
+- `WorkerBudgetPolicy` is the internal owner for task-level worker budget
+  decisions consumed by `AssignmentAllocationPolicy`; the current default uses
+  conservative workload-class caps without exposing a public scheduling option,
+  and emits budget evidence in assignment trace
+- `AssignmentRefillPolicy` owns whether a released worker slot should trigger
+  another assignment attempt; `TaskResourceReleaseListener` releases resources
+  and consumes that decision instead of owning refill formulas
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived

@@ -7,9 +7,13 @@ public record AssignmentAllocationPlan(
         Task task,
         TaskStatus initialStatus,
         int readyWorkCount,
+        int rawDesiredDispatchWorkerCount,
         int desiredDispatchWorkerCount,
         int requiredStartWorkerCount,
         int requestedMatchCount,
-        int dispatchCandidateLimit
+        int dispatchCandidateLimit,
+        Integer workerBudget,
+        int currentTaskWorkerCount,
+        boolean budgetLimited
 ) {
 }

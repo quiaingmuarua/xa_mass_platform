@@ -147,6 +147,11 @@ their current context reservation/occupation lifecycle.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
+`WorkerLoadView` also exposes the current active worker count per task to
+allocation policy. `WorkerBudgetPolicy` applies conservative internal
+workload-class caps and assignment summaries emit `workerBudget`,
+`currentTaskWorkerCount`, and `budgetLimited` as policy evidence. These caps are
+not a public scheduling configuration surface yet.
 
 Legacy fields remain available:
 
@@ -239,9 +244,14 @@ lock acquisition using observed worker load and routing affinity. Reservation
 and stateless background sharing are implemented and covered by engine tests,
 trace analyzer tests, and one server trace-observed wiring proof.
 
-The next narrow cut should add task-level worker budgeting inside allocation
-policy. Do not move budget formulas into `TaskWorkerAssignListener`; the
-listener should remain orchestration and trace owner.
+The next narrow cut can add a trace scenario or mixed-workload acceptance proof
+for cross-task fairness. Do not move budget formulas into
+`TaskWorkerAssignListener`; the listener should remain orchestration and trace
+owner.
+Post-release refill is now owned by `AssignmentRefillPolicy`;
+`TaskResourceReleaseListener` releases resources and consumes that decision.
+Do not add cooldown, debounce, fairness, or budget-aware refill formulas back
+into the release listener.
 
 WorkerContext physical model/API deletion remains a later, larger phase after
 runtime binding and trace compatibility no longer need context-specific fields.

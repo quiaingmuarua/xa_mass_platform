@@ -17,6 +17,9 @@ import com.xa.mass.engine.assignment.AssignmentAllocationPolicy;
 import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -195,6 +198,33 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignSkipsBeforeMatchingWhenWorkerBudgetIsExhausted() {
+        Task task = createTask(100, 1, 1, TaskStatus.RUNNING);
+
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(100);
+        when(workerManager.findWorkerCandidates(task)).thenReturn(List.of(createWorker("worker-1")));
+        when(workerManager.getActiveWorkerCountForTask(task.getTid()))
+                .thenReturn(com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(listener.onTaskAssign(task));
+            capture.assertHasEvent("ASSIGNMENT_SUMMARY", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "SKIPPED".equals(mdc.get("result"))
+                            && "0".equals(mdc.get("desiredDispatchWorkerCount"))
+                            && "0".equals(mdc.get("requestedMatchCount"))
+                            && "20".equals(mdc.get("workerBudget"))
+                            && "20".equals(mdc.get("currentTaskWorkerCount"))
+                            && "true".equals(mdc.get("budgetLimited"))
+                            && mdc.get("reason").contains("worker budget exhausted"));
+        }
+
+        verifyNoInteractions(matchingStrategy);
+        verifyNoInteractions(dispatchBinder);
+        verify(assignmentRuntime, never()).updateTask(same(task));
+    }
+
+    @Test
     void onTaskAssignUnlocksDispatchCandidatesWhenNoBindingsAreProduced() {
         Task task = createTask(1, 1, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
@@ -336,6 +366,33 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void injectedResourcePolicyOwnsSurplusWorkerUnlockDecision() {
+        Task task = createTask(3, 1, 1, TaskStatus.READY);
+        WorkerSchedulingCandidate first = matched(createWorker("worker-1"), "ctx-1");
+        WorkerSchedulingCandidate second = matched(createWorker("worker-2"), "ctx-2");
+        AssignmentAllocationPolicy allocationPolicy = new FixedAllocationPolicy(2, 1);
+        listener = new TaskWorkerAssignListener(
+                matchingStrategy,
+                workerManager,
+                dispatchBinder,
+                assignmentRuntime,
+                assignmentEventSink,
+                TraceEventLogger.noop(),
+                allocationPolicy,
+                new NonExclusiveResourcePolicy()
+        );
+
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(3);
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(first, second));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(first)))).thenReturn(List.of(binding("m1", "worker-1")));
+
+        assertTrue(listener.onTaskAssign(task));
+
+        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
+        verify(workerManager, never()).unlockWorker("worker-2");
+    }
+
+    @Test
     void runningTaskCanBeReplenishedWithoutLeavingRunning() {
         Task task = createTask(5, 2, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
@@ -416,9 +473,13 @@ public class TaskWorkerAssignListenerTest {
                     request.initialStatus(),
                     request.readyWorkCount(),
                     request.readyWorkCount(),
+                    request.readyWorkCount(),
                     1,
                     requestedMatchCount,
-                    dispatchCandidateCount
+                    dispatchCandidateCount,
+                    null,
+                    request.currentTaskWorkerCount(),
+                    false
             );
         }
 
@@ -431,6 +492,25 @@ public class TaskWorkerAssignListenerTest {
                     matchedWorkers.subList(0, dispatchCandidateCount),
                     "fixed allocation dispatch"
             );
+        }
+    }
+
+    private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
+        private final WorkerDispatchResourcePolicy delegate = new DefaultWorkerDispatchResourcePolicy();
+
+        @Override
+        public WorkerDispatchResourceUsage usageForTask(Task task) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForTask(task).legacyWorkerContextResource());
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForCandidate(task, candidate).legacyWorkerContextResource());
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
         }
     }
 }

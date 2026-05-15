@@ -12,6 +12,8 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
     private final ConcurrentMap<String, AtomicInteger> activeLeaseCounts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, AtomicInteger> reservedCounts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Integer> declaredCapacities = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ConcurrentMap<String, AtomicInteger>> activeWorkerCountsByTask =
+            new ConcurrentHashMap<>();
 
     @Override
     public int getActiveLeaseCount(String workerId) {
@@ -41,6 +43,20 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
                 getReservedCount(workerId),
                 declaredCapacities.getOrDefault(workerId, 1)
         );
+    }
+
+    @Override
+    public int getActiveWorkerCountForTask(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            return 0;
+        }
+        ConcurrentMap<String, AtomicInteger> workerCounts = activeWorkerCountsByTask.get(taskId);
+        if (workerCounts == null || workerCounts.isEmpty()) {
+            return 0;
+        }
+        return (int) workerCounts.values().stream()
+                .filter(count -> count != null && count.get() > 0)
+                .count();
     }
 
     @Override
@@ -97,6 +113,12 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
             return;
         }
         activeLeaseCounts.computeIfAbsent(workerId, ignored -> new AtomicInteger()).incrementAndGet();
+        if (taskId != null && !taskId.isBlank()) {
+            activeWorkerCountsByTask
+                    .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
+                    .computeIfAbsent(workerId, ignored -> new AtomicInteger())
+                    .incrementAndGet();
+        }
     }
 
     @Override
@@ -108,5 +130,14 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
             current.updateAndGet(value -> Math.max(0, value - 1));
             return current;
         });
+        if (taskId != null && !taskId.isBlank()) {
+            activeWorkerCountsByTask.computeIfPresent(taskId, (ignoredTaskId, workerCounts) -> {
+                workerCounts.computeIfPresent(workerId, (ignoredWorkerId, current) -> {
+                    current.updateAndGet(value -> Math.max(0, value - 1));
+                    return current.get() <= 0 ? null : current;
+                });
+                return workerCounts.isEmpty() ? null : workerCounts;
+            });
+        }
     }
 }
