@@ -16,7 +16,9 @@ assignment cleanup, and release mechanisms. The legacy WorkerContext state
 mutation itself is owned by `LegacyWorkerContextResourceLifecycle`. Repeated
 dispatch cleanup of reservations, exclusive worker locks, and lock-release trace
 is owned by `WorkerDispatchResourceReleaser`, including release-listener
-attempt/terminal close lock-release paths.
+attempt/terminal close lock-release paths and dispatch-submit failure retry
+compensation. These owner boundaries are now guarded by
+`EngineSchedulingCoreArchitectureGuardTest`.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
@@ -83,6 +85,8 @@ WorkerContext is still live in these engine paths:
     bypassed reservation
   - asks `WorkerDispatchResourceReleaser` to release worker reservations and
     exclusive locks for skipped, no-message, or failed dispatch slots
+  - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
+    after dispatch-submit failure is compensated back to retry
 - `TaskResourceReleaseListener`
   - asks `LegacyWorkerContextResourceLifecycle` to release WorkerContext after
     final result, lease expiry, or cleanup paths when the dispatch resource
@@ -98,6 +102,15 @@ WorkerContext is still live in these engine paths:
   - owns assignment and binder compensation cleanup for worker reservations,
     conditional exclusive worker unlock, canonical lock-release trace, and
     release-listener attempt/terminal close lock-release paths
+  - releases foreground worker locks after dispatch-submit failure compensation
+    because that pre-transport failure path does not publish attempt close
+- `EngineSchedulingCoreArchitectureGuardTest`
+  - prevents listener/binder orchestration from directly calling dispatch
+    cleanup primitives that belong to `WorkerDispatchResourceReleaser`
+  - prevents WorkerContext state mutation and direct context state CRUD from
+    leaking outside `LegacyWorkerContextResourceLifecycle`
+  - prevents retired context-first matching handoff types from returning to
+    engine source or scheduling tests
 
 WorkerContext is therefore still both:
 
@@ -165,7 +178,8 @@ the existing long-lived worker lock. `foreground=false` still reserves capacity
 but skips that long-lived lock, so multiple background tasks may share a
 stateless worker until `active + reserved >= declaredCapacity`.
 WorkerContext-backed resources are not shared by this slice; they still follow
-their current context reservation/occupation lifecycle.
+their current context reservation/occupation lifecycle and still require the
+long-lived worker lock even when the task declares `foreground=false`.
 `WorkerDispatchResourcePolicy` is the single engine-internal owner for this
 resource usage classification. It keeps worker-level lock requirements separate
 from legacy WorkerContext lifecycle handling, which is necessary before
@@ -179,7 +193,15 @@ reservations and exclusive worker locks. Assignment orchestration and binder
 compensation use it instead of duplicating reservation release, unlock, and
 `WORKER_LOCK_RELEASED` trace decisions. Release listeners also use it for
 attempt/terminal close lock-release decisions after runtime load and
-WorkerContext release orchestration is complete.
+WorkerContext release orchestration is complete. Binder compensation also uses
+it after dispatch-submit failure is compensated back to retry, so the
+foreground worker lock is not left waiting for an attempt-close event that will
+not be published on that path.
+Candidate cleanup paths resolve lock release with the same
+`usageForCandidate(...)` policy used by matching acquisition. Attempt and
+terminal cleanup paths resolve lock release with `usageForAttempt(...)`. This
+keeps stateless background sharing separate from transitional context-backed
+exclusive resources.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
@@ -188,6 +210,10 @@ allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
 `currentTaskWorkerCount`, and `budgetLimited` as policy evidence. These caps are
 not a public scheduling configuration surface yet.
+The current guard for this transitional slice is intentionally source-level:
+future code may still enumerate legacy contexts to build
+`WorkerSchedulingCandidate`, but it must not reintroduce context-first handoff
+types, hidden WorkerContext state mutation, or listener-owned resource cleanup.
 
 Legacy fields remain available:
 
@@ -267,6 +293,8 @@ Focused proof for this step:
     analyzes canonical JSONL for the second task
 - `EngineSchedulingCoreSuite`
   - protects assignment behavior
+- `EngineSchedulingCoreArchitectureGuardTest`
+  - protects the scheduling-owner boundaries described above
 
 Server and trace suites remain useful because no public runtime model or trace
 schema changed in this slice.

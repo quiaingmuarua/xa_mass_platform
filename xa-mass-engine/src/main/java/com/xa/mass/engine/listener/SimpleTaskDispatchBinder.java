@@ -178,11 +178,11 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         worker.getWorkerId(),
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
-                resourceReleaser.releaseReservationAndLock(task, worker.getWorkerId(),
+                resourceReleaser.releaseReservationAndLock(task, matchedWorker,
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
                 continue;
             }
-            dispatchSlots.add(new DispatchSlot(worker, workerContext, resourceUsage));
+            dispatchSlots.add(new DispatchSlot(matchedWorker, resourceUsage));
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
@@ -225,7 +225,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             if (slot.assignedCount() == 0) {
                 workerContextLifecycle.releaseIfOwnedByTask(task, slot.workerContext(),
                         "RELEASE_WORKER_CONTEXT", "SimpleTaskDispatchBinder", "matched worker received no messages");
-                resourceReleaser.releaseReservationAndLock(task, slot.worker().getWorkerId(),
+                resourceReleaser.releaseReservationAndLock(task, slot.candidate,
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
             }
         }
@@ -309,24 +309,22 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     private static final class DispatchSlot {
-        private final Worker worker;
-        private final WorkerContext workerContext;
+        private final WorkerSchedulingCandidate candidate;
         private final WorkerDispatchResourceUsage resourceUsage;
         private final String batchId = java.util.UUID.randomUUID().toString();
         private int assignedCount;
 
-        private DispatchSlot(Worker worker, WorkerContext workerContext, WorkerDispatchResourceUsage resourceUsage) {
-            this.worker = worker;
-            this.workerContext = workerContext;
+        private DispatchSlot(WorkerSchedulingCandidate candidate, WorkerDispatchResourceUsage resourceUsage) {
+            this.candidate = candidate;
             this.resourceUsage = resourceUsage;
         }
 
         private Worker worker() {
-            return worker;
+            return candidate.getWorker();
         }
 
         private WorkerContext workerContext() {
-            return resourceUsage.legacyWorkerContextResource() ? workerContext : null;
+            return resourceUsage.legacyWorkerContextResource() ? candidate.getWorkerContext() : null;
         }
 
         private String workerContextId() {
@@ -424,18 +422,17 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {
-        dispatchSlots.stream()
+        List<WorkerSchedulingCandidate> assignedCandidates = dispatchSlots.stream()
                 .filter(slot -> slot.assignedCount() > 0)
-                .map(slot -> slot.worker().getWorkerId())
-                .filter(workerId -> workerId != null && !workerId.isBlank())
-                .distinct()
-                .forEach(workerId -> resourceReleaser.releaseLockIfExclusive(
-                        task,
-                        workerId,
-                        "UNLOCK_WORKER",
-                        "SimpleTaskDispatchBinder",
-                        reason
-                ));
+                .map(slot -> slot.candidate)
+                .toList();
+        resourceReleaser.releaseLocks(
+                task,
+                assignedCandidates,
+                "UNLOCK_WORKER",
+                "SimpleTaskDispatchBinder",
+                reason
+        );
     }
 
     private java.util.Set<String> supportedEventCodes(Worker worker) {

@@ -20,17 +20,19 @@ public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResour
 
     @Override
     public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
+        boolean legacyWorkerContextResource = candidate != null && candidate.getWorkerContext() != null;
         return new WorkerDispatchResourceUsage(
-                requiresExclusiveWorkerLock(task),
-                candidate != null && candidate.getWorkerContext() != null
+                requiresExclusiveWorkerLock(task) || legacyWorkerContextResource,
+                legacyWorkerContextResource
         );
     }
 
     @Override
     public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+        boolean legacyWorkerContextResource = workerContextId != null && !workerContextId.isBlank();
         return new WorkerDispatchResourceUsage(
-                requiresExclusiveWorkerLock(task),
-                workerContextId != null && !workerContextId.isBlank()
+                requiresExclusiveWorkerLock(task) || legacyWorkerContextResource,
+                legacyWorkerContextResource
         );
     }
 

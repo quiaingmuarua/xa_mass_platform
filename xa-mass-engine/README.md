@@ -151,7 +151,10 @@ Keep these facts fixed unless the owning global baselines change:
   whether a dispatch attempt carries the legacy WorkerContext lifecycle payload.
   Matching, assignment listener cleanup, binder compensation, and resource
   release consume this decision instead of each re-deriving foreground/context
-  behavior.
+  behavior. Legacy WorkerContext-backed candidates and attempts keep the
+  exclusive worker lock even when the task declares `foreground=false`; only
+  stateless background candidates may share worker capacity without the
+  long-lived lock.
 - `LegacyWorkerContextResourceLifecycle` owns transitional WorkerContext state
   mutation and trace while WorkerContext remains a runtime binding payload:
   dispatch binding asks it to prepare a context for dispatch, and release paths
@@ -159,8 +162,17 @@ Keep these facts fixed unless the owning global baselines change:
 - `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
   releasing worker reservations, conditionally unlocking exclusive worker
   locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
-  binder compensation paths, plus release-listener attempt/terminal close
-  lock-release paths.
+  binder compensation paths, dispatch-submit failure retry compensation, plus
+  release-listener attempt/terminal close lock-release paths. Candidate cleanup
+  paths resolve lock release through `usageForCandidate(...)`; attempt cleanup
+  paths resolve it through `usageForAttempt(...)`.
+- `EngineSchedulingCoreArchitectureGuardTest` is an executable owner-boundary
+  guard for the scheduling kernel. It keeps scheduling-core tests off
+  compatibility projection proof helpers, prevents listener/binder
+  orchestration from calling dispatch cleanup primitives directly, keeps
+  transitional WorkerContext state mutation behind
+  `LegacyWorkerContextResourceLifecycle`, and prevents the retired
+  context-first matching handoff types from returning.
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived
@@ -363,7 +375,11 @@ Current scheduling-matrix scenarios include:
 - paused waiting tasks staying out of competition until explicit resume
 - `BATCH` drain-to-terminal and `SESSION` queue-drain without auto-terminal
 - minimum-worker gate, target worker id, and targeted worker attributes under contention
-- an executable source guard that fails if scheduling-core mainline tests start using compatibility projection proof helpers again
+- executable source guards that fail if scheduling-core mainline tests use
+  compatibility projection proof helpers, listener/binder orchestration
+  bypasses dispatch resource cleanup owners, WorkerContext state mutation leaks
+  outside its transitional lifecycle owner, or retired context-first matching
+  handoff types return
 
 Explicit secondary residue/audit tests:
 
@@ -394,6 +410,9 @@ Engine-local owner docs:
   implemented baseline behavior
 - [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
   current transitional baseline for WorkerContext hot-path convergence
+- [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
+  proposed plan for retiring WorkerContext from the scheduling kernel; planning
+  material only, not implemented baseline behavior
 
 Global baselines:
 

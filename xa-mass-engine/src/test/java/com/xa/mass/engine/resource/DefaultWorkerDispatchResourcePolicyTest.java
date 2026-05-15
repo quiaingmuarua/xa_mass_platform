@@ -38,7 +38,7 @@ class DefaultWorkerDispatchResourcePolicyTest {
     }
 
     @Test
-    void candidateWithWorkerContextKeepsLegacyResourceLifecycleFlag() {
+    void candidateWithWorkerContextKeepsLegacyResourceExclusiveEvenForBackgroundTask() {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
         WorkerContext workerContext = new WorkerContext();
@@ -47,19 +47,19 @@ class DefaultWorkerDispatchResourcePolicyTest {
 
         WorkerDispatchResourceUsage usage = policy.usageForCandidate(task, candidate(workerContext));
 
-        assertFalse(usage.exclusiveWorkerLock());
+        assertTrue(usage.exclusiveWorkerLock());
         assertTrue(usage.legacyWorkerContextResource());
         assertFalse(usage.statelessWorkerResource());
     }
 
     @Test
-    void attemptUsageKeepsContextLifecycleAndTaskLockSemanticsSeparate() {
+    void attemptWithWorkerContextKeepsLegacyResourceExclusiveEvenForBackgroundTask() {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 
         WorkerDispatchResourceUsage usage = policy.usageForAttempt(task, "ctx-1");
 
-        assertFalse(usage.exclusiveWorkerLock());
+        assertTrue(usage.exclusiveWorkerLock());
         assertTrue(usage.legacyWorkerContextResource());
     }
 

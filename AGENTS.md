@@ -70,6 +70,12 @@ Then jump to the owning module README or owner contract. Use
 5. module README files
 6. refactor inventories and older notes only after re-verification
 
+Direction-doc rule:
+
+- target-direction or roadmap docs may be used as north-star constraints to keep new work from drifting across intended owner boundaries
+- they must not be cited as proof that the current implementation already behaves that way
+- when a direction doc and current code disagree, describe the gap explicitly and keep implementation claims tied to code and verified behavior
+
 ## 3. Fast Routing
 
 Start here based on the change:

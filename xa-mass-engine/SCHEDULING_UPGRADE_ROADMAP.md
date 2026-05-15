@@ -88,6 +88,18 @@ Progress:
   canonical `WORKER_LOCK_RELEASED` trace used by assignment cleanup, binder
   compensation, dispatch-submit failure retry compensation, and
   release-listener attempt/terminal close paths.
+- 2026-05-15: Step 8G scheduling owner architecture guards were implemented.
+  `EngineSchedulingCoreArchitectureGuardTest` now prevents listener/binder
+  orchestration from calling dispatch cleanup primitives directly, keeps
+  transitional WorkerContext state mutation behind
+  `LegacyWorkerContextResourceLifecycle`, and keeps retired context-first
+  matching handoff types removed from engine source and scheduling tests.
+- 2026-05-15: Step 8H dispatch resource policy consistency was implemented.
+  Legacy WorkerContext-backed candidates and attempts now keep the exclusive
+  worker lock even for `foreground=false` tasks, so only stateless background
+  candidates can share worker capacity. Candidate cleanup uses
+  `usageForCandidate(...)`, and attempt/terminal cleanup uses
+  `usageForAttempt(...)`, matching the acquisition path's policy granularity.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -280,7 +292,7 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
 | 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
-| 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, and legacy WorkerContext lifecycle owner implemented; fairness scenario proposed |
+| 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, legacy WorkerContext lifecycle owner, dispatch cleanup owner, and architecture guards implemented; fairness scenario proposed |
 | 9 | System-event worker management boundary | High | Worker management integration | Proposed |
 
 ## 8. Step 1: Retire Inert TaskScheduler SPI
@@ -846,6 +858,9 @@ Implemented assignment summary attrs:
 - Unit: `WorkerLoadView` tracks distinct active workers per task.
 - Engine: mixed workload contention test proves a large BULK task is capped and
   leaves workers for an INTERACTIVE task.
+- Source guard: listener/binder orchestration cannot bypass dispatch cleanup
+  owners, and WorkerContext state mutation cannot leak outside the transitional
+  lifecycle owner.
 - Proposed next: trace scenario `cross-task-worker-fairness`.
 
 ## 16. Step 9: Worker Management/System Event Boundary
@@ -958,11 +973,16 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is the resource binding owner
-convergence: inventory and narrow the duplicated foreground/exclusive-lock and
-WorkerContext prepare/release decisions across matching, listener, binder, and
-release. Avoid broad WorkerContext deletion until trace analyzers and server
-routing E2E no longer need context-specific fields as proof.
+The resource binding owner convergence is now implemented and guarded. The next
+recommended implementation step is a proof-oriented slice rather than another
+mechanism split: add the `cross-task-worker-fairness` trace scenario or a small
+trace-observed mixed-workload acceptance that proves bounded BULK allocation
+does not starve a concurrent INTERACTIVE task through canonical JSONL.
+
+If the next discussion turns back to WorkerContext retirement, start with a
+worker-management/system-event boundary inventory and proof plan. Avoid broad
+WorkerContext deletion until trace analyzers and server routing E2E no longer
+need context-specific fields as proof.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.

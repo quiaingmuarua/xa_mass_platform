@@ -6,7 +6,9 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.util.TraceEventLogger;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -43,8 +45,10 @@ public class WorkerDispatchResourceReleaser {
         if (task == null || candidates == null || candidates.isEmpty()) {
             return;
         }
-        for (String workerId : distinctWorkerIds(candidates)) {
-            releaseReservationAndLock(task, workerId, trigger, source, reason);
+        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
+            workerManager.releaseWorkerReservation(decision.workerId(), task.getTid());
+            releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
+                    trigger, source, reason);
         }
     }
 
@@ -56,34 +60,47 @@ public class WorkerDispatchResourceReleaser {
         if (task == null || candidates == null || candidates.isEmpty()) {
             return;
         }
-        for (String workerId : distinctWorkerIds(candidates)) {
-            releaseLockIfExclusive(task, workerId, trigger, source, reason);
+        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
+            releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
+                    trigger, source, reason);
         }
     }
 
     public void releaseReservationAndLock(Task task,
-                                          String workerId,
+                                          WorkerSchedulingCandidate candidate,
                                           String trigger,
                                           String source,
                                           String reason) {
-        if (task == null || workerId == null || workerId.isBlank()) {
+        if (task == null || candidate == null) {
+            return;
+        }
+        String workerId = candidate.getWorkerId();
+        if (workerId == null || workerId.isBlank()) {
             return;
         }
         workerManager.releaseWorkerReservation(workerId, task.getTid());
-        releaseLockIfExclusive(task, workerId, trigger, source, reason);
+        releaseLockIfExclusive(task, workerId,
+                resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock(),
+                trigger, source, reason);
     }
 
-    public void releaseLockIfExclusive(Task task,
-                                       String workerId,
-                                       String trigger,
-                                       String source,
-                                       String reason) {
-        if (task == null || workerId == null || workerId.isBlank()) {
+    private void releaseLockIfExclusive(Task task,
+                                        String workerId,
+                                        boolean exclusiveWorkerLock,
+                                        String trigger,
+                                        String source,
+                                        String reason) {
+        if (task == null || workerId == null || workerId.isBlank() || !exclusiveWorkerLock) {
             return;
         }
-        if (!resourcePolicy.usageForTask(task).exclusiveWorkerLock()) {
-            return;
-        }
+        unlockWorker(task, workerId, trigger, source, reason);
+    }
+
+    private void unlockWorker(Task task,
+                              String workerId,
+                              String trigger,
+                              String source,
+                              String reason) {
         workerManager.unlockWorker(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
     }
@@ -100,8 +117,7 @@ public class WorkerDispatchResourceReleaser {
         if (!resourcePolicy.usageForAttempt(task, workerContextId).exclusiveWorkerLock()) {
             return;
         }
-        workerManager.unlockWorker(workerId);
-        traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
+        unlockWorker(task, workerId, trigger, source, reason);
     }
 
     private List<String> distinctWorkerIds(Collection<WorkerSchedulingCandidate> candidates) {
@@ -111,5 +127,27 @@ public class WorkerDispatchResourceReleaser {
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    private List<WorkerCleanupDecision> cleanupDecisions(Task task,
+                                                         Collection<WorkerSchedulingCandidate> candidates) {
+        Map<String, Boolean> exclusiveLockByWorkerId = new LinkedHashMap<>();
+        candidates.stream()
+                .filter(Objects::nonNull)
+                .forEach(candidate -> {
+                    String workerId = candidate.getWorkerId();
+                    if (workerId == null || workerId.isBlank()) {
+                        return;
+                    }
+                    boolean exclusiveWorkerLock =
+                            resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
+                    exclusiveLockByWorkerId.merge(workerId, exclusiveWorkerLock, Boolean::logicalOr);
+                });
+        return exclusiveLockByWorkerId.entrySet().stream()
+                .map(entry -> new WorkerCleanupDecision(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private record WorkerCleanupDecision(String workerId, boolean exclusiveWorkerLock) {
     }
 }

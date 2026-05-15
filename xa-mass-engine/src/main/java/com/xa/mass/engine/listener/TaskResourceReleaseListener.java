@@ -16,9 +16,9 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * Releases runtime-only resource occupancy when a task reaches TERMINAL.
@@ -94,15 +94,17 @@ public class TaskResourceReleaseListener {
         }
 
         List<ActiveLeaseRecord> leases = maintenancePort.getActiveLeases(task.getTid());
-        Set<String> workerIds = new LinkedHashSet<>();
+        Map<String, String> exclusiveAttemptContextByWorkerId = new LinkedHashMap<>();
 
         for (ActiveLeaseRecord lease : leases) {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
-            workerIds.add(lease.workerId());
             workerManager.recordWorkFinal(lease.workerId(), task.getTid());
             WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, lease.workerContextId());
+            if (usage.exclusiveWorkerLock()) {
+                exclusiveAttemptContextByWorkerId.putIfAbsent(lease.workerId(), lease.workerContextId());
+            }
             if (usage.legacyWorkerContextResource()) {
                 workerContextLifecycle.releaseIfOwnedByTask(
                         task.getTid(),
@@ -116,8 +118,8 @@ public class TaskResourceReleaseListener {
             }
         }
 
-        for (String workerId : workerIds) {
-            resourceReleaser.releaseLockIfExclusive(task, workerId,
+        for (Map.Entry<String, String> workerLock : exclusiveAttemptContextByWorkerId.entrySet()) {
+            resourceReleaser.releaseAttemptLockIfExclusive(task, workerLock.getKey(), workerLock.getValue(),
                     "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
         }
     }

@@ -269,6 +269,30 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void backgroundContextDispatchSubmitFailureReleasesObservedLoadAndUnlocksWorker() {
+        Task task = createTask(1);
+        task.getExecutionSpec().setForeground(false);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                (t, bindings) -> {
+                    throw new IllegalStateException("handoff queue unavailable");
+                }
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), wc)));
+
+        assertTrue(dispatched.isEmpty());
+        verify(workerManager).recordWorkClaimed("d1", task.getTid());
+        verify(workerManager).recordWorkFinal("d1", task.getTid());
+        verify(workerManager).unlockWorker("d1");
+    }
+
+    @Test
     void interactiveWorkloadUsesSmallPerWorkerClaimWindow() {
         Task task = createTask(5);
         task.getExecutionSpec().setBatchSize(4);

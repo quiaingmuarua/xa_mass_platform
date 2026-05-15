@@ -689,6 +689,45 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
     }
 
+    @Test
+    void backgroundTaskWithWorkerContextStillAcquiresExclusiveWorkerLock() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE,
+                loadView
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Worker worker = worker("worker-context-backed", "pool-a");
+        worker.setMaxConcurrentWork(2);
+        workerManager.addWorker(worker);
+        workerManager.addWorkerContext(workerContext("worker-context-backed", "ctx-1", "shared", "us"));
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(backgroundTask("task-background-context"), 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("ctx-1", matched.get(0).getWorkerContextId());
+        assertTrue(workerManager.isLocked("worker-context-backed"));
+        assertEquals(1, loadView.getReservedCount("worker-context-backed"));
+
+        AssignmentRecord acceptedRecord = findRecord(recordService,
+                "task-background-context", "worker-context-backed");
+        assertEquals(AssignmentResult.SUCCESS, acceptedRecord.getResult());
+        assertTrue(acceptedRecord.getWorkerSnapshot().isWorkerLocked());
+        assertEquals("all rules matched and worker lock acquired after candidate ranking",
+                acceptedRecord.getReason());
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);

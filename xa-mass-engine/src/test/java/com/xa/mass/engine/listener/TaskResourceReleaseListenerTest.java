@@ -80,6 +80,27 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
+    void terminalBackgroundTaskWithWorkerContextStillUnlocksWorker() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.getExecutionSpec().setForeground(false);
+
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
+
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+
+        listener.onTaskTerminal(task);
+
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
+    }
+
+    @Test
     void terminalTaskEmitsReleaseTrace() {
         Task task = new Task();
         task.setTid("task-1");
