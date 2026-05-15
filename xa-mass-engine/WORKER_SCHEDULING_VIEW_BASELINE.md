@@ -82,6 +82,8 @@ WorkerContext is still live in these engine paths:
     subject
 - `WorkerMatchContext`
   - is constructed from `WorkerSchedulingCandidate`
+  - owns the rule-evaluation and diagnostic snapshot field map consumed by
+    matching prefilter records and QLExpress evaluation
   - exposes legacy `workerContext*` variables to QLExpress rules
   - exposes flattened `workerScheduling*` variables
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
@@ -127,6 +129,8 @@ WorkerContext is still live in these engine paths:
     storage reads isolated to `WorkerSchedulingCandidateEnumerator`
   - prevents production strategy code from unwrapping
     `candidate.getWorkerContext()` directly
+  - prevents `RuleBasedTaskWorkerMatchingStrategy` from owning a duplicate
+    rule/prefilter snapshot field builder
   - keeps strategy-level WorkerContext registration fixtures explicitly named
     as `legacyContext*` transitional coverage
 
@@ -263,6 +267,9 @@ Default routing rules and representative routing tests now read the
 consumes `WorkerSchedulingView` for resource allocatability, project, and
 routing decisions. The main matching handoff now passes
 `WorkerSchedulingCandidate` rather than a context-first matched resource.
+Prefilter diagnostics now use `WorkerMatchContext.contextSnapshot(...)`, so rule
+evaluation and rejected-candidate records share one scheduling read-model field
+owner.
 Representative engine and server routing proof now uses stateless worker
 registration attributes for the matched/mismatched routing candidates. Legacy
 WorkerContext-backed routing remains covered only as transitional lifecycle

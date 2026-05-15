@@ -102,6 +102,11 @@ Progress:
   `WorkerSchedulingCandidate`; matching strategy code no longer unwraps
   `candidate.getWorkerContext()` and leaves legacy payload extraction inside
   trace/diagnostic owners.
+- 2026-05-15: WorkerContext retirement WC-2E rule snapshot owner convergence
+  was implemented. `WorkerMatchContext` now owns the rule and diagnostic
+  snapshot field map, and `RuleBasedTaskWorkerMatchingStrategy` consumes that
+  read model for prefilter records instead of maintaining a duplicate
+  `workerScheduling*` / `workerContext*` snapshot builder.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
   `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path

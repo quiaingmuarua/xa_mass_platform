@@ -309,23 +309,20 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         Worker worker = candidate.getWorker();
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         WorkerReachabilityState reachability = schedulingView.reachability();
+        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task);
         if (!schedulingView.dispatchEnabled()) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker unavailable", Map.of(), false);
+                    "worker unavailable", contextSnapshot, false);
         }
         if (reachability != WorkerReachabilityState.ONLINE) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker transport unreachable", Map.of(
-                            "transportReachability", reachability.name(),
-                            "isTransportReachable", false
-                    ), false);
+                    "worker transport unreachable", contextSnapshot, false);
         }
         boolean workerLocked = schedulingView.workerLocked();
         if (workerLocked) {
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
-                    "worker locked", Map.of(), true);
+                    "worker locked", contextSnapshot, true);
         }
-        Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, schedulingView);
         String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
@@ -335,7 +332,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                     "target worker mismatch", contextSnapshot, false);
         }
         if (!targetWorkerAttributes.isEmpty()
-                && !workerAttributesMatch(schedulingView.workerAttributes(), targetWorkerAttributes)) {
+                && Boolean.FALSE.equals(contextSnapshot.get("matchesTargetWorkerAttributes"))) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker attributes mismatch", contextSnapshot, false);
         }
@@ -370,119 +367,6 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                     "routing code mismatch", contextSnapshot, false);
         }
         return PrefilterDecision.allow();
-    }
-
-    private Map<String, Object> buildPrefilterContextSnapshot(Task task,
-                                                              WorkerSchedulingView schedulingView) {
-        Map<String, Object> context = new LinkedHashMap<>();
-        String routingCode = TaskSharedConfig.routingCode(task);
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
-        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
-        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
-
-        context.put("workerId", schedulingView.workerId());
-        context.put("workerStatus", schedulingView.workerStatusName());
-        context.put("transportReachability", schedulingView.reachability().name());
-        context.put("isTransportReachable", schedulingView.isTransportReachable());
-        context.put("workerGroupId", schedulingView.workerGroupId());
-        context.put("workerAttributes", schedulingView.workerAttributes());
-        context.put("agentVersion", schedulingView.agentVersion());
-        context.put("supportedProjects", schedulingView.supportedProjects());
-        context.put("supportedEventCodes", schedulingView.supportedEventCodes());
-        context.put("isWorkerAvailable", schedulingView.dispatchEnabled() && schedulingView.isTransportReachable());
-        context.put("isWorkerLocked", schedulingView.workerLocked());
-        context.put("workerActiveLeaseCount", schedulingView.activeLeaseCount());
-        context.put("workerReservedCount", schedulingView.reservedCount());
-        context.put("workerDeclaredCapacity", schedulingView.declaredCapacity());
-        context.put("workerEstimatedLoadRatio", schedulingView.estimatedLoadRatio());
-        context.put("currentActiveLeaseCount", schedulingView.activeLeaseCount());
-        context.put("estimatedLoadRatio", schedulingView.estimatedLoadRatio());
-
-        context.put("taskId", task.getTid());
-        context.put("taskName", task.getTaskName());
-        context.put("taskProject", task.getProject());
-        context.put("taskEventCode", eventCode);
-        context.put("taskUsesEventCapability", sdkEventTask);
-        context.put("taskTargetWorkerId", targetWorkerId);
-        context.put("taskTargetWorkerAttributes", targetWorkerAttributes);
-        context.put("taskSharedConfig", task.getSharedConfig());
-        context.put("routingCode", routingCode);
-        context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
-        context.put("taskStatus", task.getStatus().name());
-        context.put("taskTargetNumber", task.getTaskTargetNumber());
-        context.put("batchSize", task.getExecutionSpec().getBatchSize());
-        context.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
-        context.put("appCount", schedulingView.supportedProjects().size());
-        context.put("supportsProject", schedulingView.supportsProject(task.getProject()));
-        context.put("supportsEvent", !sdkEventTask || schedulingView.supportsEvent(eventCode));
-        context.put("matchesTargetWorkerId", targetWorkerId == null || targetWorkerId.equals(schedulingView.workerId()));
-        context.put("matchesTargetWorkerAttributes",
-                targetWorkerAttributes.isEmpty() || workerAttributesMatch(schedulingView.workerAttributes(), targetWorkerAttributes));
-        context.put("workerSchedulingResourceId", schedulingView.schedulingResourceId());
-        context.put("workerSchedulingProject", schedulingView.schedulingProject());
-        context.put("workerSchedulingRoutingTags", schedulingView.schedulingRoutingTags());
-        context.put("workerSchedulingAttributes", schedulingView.schedulingAttributes());
-        context.put("hasWorkerSchedulingResource", schedulingView.hasWorkerContext());
-        context.put("isWorkerSchedulingResourceAllocatable", schedulingView.schedulingResourceAllocatable());
-        context.put("isWorkerSchedulingResourceAvailable", schedulingView.schedulingResourceAvailable());
-        context.put("isWorkerSchedulingResourceUsable", schedulingView.schedulingResourceUsable());
-        context.put("isWorkerSchedulingResourceReserved", schedulingView.schedulingResourceReserved());
-        context.put("isWorkerSchedulingResourceOccupied", schedulingView.schedulingResourceOccupied());
-        context.put("workerSchedulingProjectMatchesTaskProject",
-                schedulingView.schedulingProjectMatches(task.getProject()));
-        context.put("workerSchedulingMatchesRoutingCode",
-                taskHasRoutingRequirement && schedulingView.schedulingRoutingTagsContain(routingCode));
-
-        if (!schedulingView.hasWorkerContext()) {
-            context.put("hasWorkerContext", false);
-            context.put("workerContextId", null);
-            context.put("workerContextProject", null);
-            context.put("workerContextStatus", null);
-            context.put("workerContextRoutingTags", Set.of());
-            context.put("workerContextAttributes", Map.of());
-            context.put("isWorkerContextAllocatable", false);
-            context.put("isWorkerContextAvailable", false);
-            context.put("isWorkerContextUsable", false);
-            context.put("isWorkerContextReserved", false);
-            context.put("isWorkerContextOccupied", false);
-            context.put("workerContextProjectMatchesTaskProject", false);
-            context.put("workerContextMatchesRoutingCode", context.get("workerSchedulingMatchesRoutingCode"));
-            return context;
-        }
-
-        context.put("hasWorkerContext", true);
-        context.put("workerContextId", schedulingView.workerContextId());
-        context.put("workerContextProject", schedulingView.workerContextProject());
-        context.put("workerContextStatus", schedulingView.workerContextStatusName());
-        context.put("workerContextRoutingTags", schedulingView.workerContextRoutingTags());
-        context.put("workerContextAttributes", schedulingView.workerContextAttributes());
-        context.put("isWorkerContextAllocatable", schedulingView.workerContextAllocatable());
-        context.put("isWorkerContextAvailable", schedulingView.workerContextAvailable());
-        context.put("isWorkerContextUsable", schedulingView.workerContextUsable());
-        context.put("isWorkerContextReserved", schedulingView.workerContextReserved());
-        context.put("isWorkerContextOccupied", schedulingView.workerContextOccupied());
-        context.put("workerContextProjectMatchesTaskProject",
-                context.get("workerSchedulingProjectMatchesTaskProject"));
-        context.put("workerContextMatchesRoutingCode", context.get("workerSchedulingMatchesRoutingCode"));
-        return context;
-    }
-
-    private boolean workerAttributesMatch(Map<String, String> workerAttributes,
-                                          Map<String, String> requiredAttributes) {
-        if (requiredAttributes == null || requiredAttributes.isEmpty()) {
-            return true;
-        }
-        if (workerAttributes == null || workerAttributes.isEmpty()) {
-            return false;
-        }
-        for (Map.Entry<String, String> entry : requiredAttributes.entrySet()) {
-            if (!Objects.equals(workerAttributes.get(entry.getKey()), entry.getValue())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext, List<RuleDefinition> rules) {

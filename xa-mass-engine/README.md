@@ -297,6 +297,9 @@ Matching boundaries:
 - worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
   matching strategy code must not unwrap the nullable legacy WorkerContext
   payload directly
+- `WorkerMatchContext` owns the rule and diagnostic snapshot field map;
+  `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
+  records instead of maintaining a duplicate snapshot builder
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject

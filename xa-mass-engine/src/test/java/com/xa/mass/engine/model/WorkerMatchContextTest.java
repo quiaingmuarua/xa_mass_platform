@@ -143,6 +143,36 @@ public class WorkerMatchContextTest {
     }
 
     @Test
+    void contextSnapshotUsesSameSchedulingReadModelAsRuleContext() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-snapshot");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        worker.setAttributes(Map.of("routingTags", "shared,us", "country", "us"));
+
+        Task task = new Task();
+        task.setTid("task-snapshot");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of("_sdk", Map.of("eventCode", "demo.dispatch")));
+        task.setStatus(TaskStatus.READY);
+
+        WorkerSchedulingCandidate candidate = candidate(worker, null);
+        WorkerMatchContext context = new WorkerMatchContext(candidate, task);
+        Map<String, Object> snapshot = WorkerMatchContext.contextSnapshot(candidate, task);
+
+        assertEquals(context.getContext(), snapshot);
+        assertEquals(true, snapshot.get("taskUsesEventCapability"));
+        assertEquals("demo.dispatch", snapshot.get("taskEventCode"));
+        assertEquals(true, snapshot.get("supportsEvent"));
+        assertEquals("worker-snapshot", snapshot.get("workerSchedulingResourceId"));
+        assertEquals(Set.of("shared", "us"), snapshot.get("workerSchedulingRoutingTags"));
+        assertEquals(false, snapshot.get("hasWorkerContext"));
+        assertNull(snapshot.get("workerContextId"));
+    }
+
+    @Test
     void reservedWorkerContextIsUsableButNotAvailableForNewAssignment() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");

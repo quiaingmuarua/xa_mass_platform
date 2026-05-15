@@ -279,9 +279,12 @@ coverage. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
 `WorkerContext`; the strategy package's only direct production import/storage
 read is the transitional candidate enumerator. Worker-level assignment
 diagnostics now consume `WorkerSchedulingCandidate`, so matching strategy code
-does not unwrap `candidate.getWorkerContext()` directly. `WorkerSchedulingCandidate`
-still carries nullable legacy `WorkerContext` for runtime binding; full removal
-is not complete.
+does not unwrap `candidate.getWorkerContext()` directly. `WorkerMatchContext`
+now owns the rule and diagnostic snapshot field map used by both QLExpress
+evaluation and prefilter rejection records, so `RuleBasedTaskWorkerMatchingStrategy`
+no longer carries a duplicate `workerScheduling*` / `workerContext*` snapshot
+builder. `WorkerSchedulingCandidate` still carries nullable legacy
+`WorkerContext` for runtime binding; full removal is not complete.
 
 Goal: make engine matching fully worker-view based.
 

@@ -143,6 +143,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void ruleBasedMatchingStrategyDoesNotOwnRuleContextSnapshotFields() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bbuildPrefilterContextSnapshot\\b").matcher(source).find()) {
+            violations.add(strategyPath + " defines a prefilter snapshot field builder");
+        }
+        if (Pattern.compile("\\.put\\s*\\(\\s*\"(?:workerScheduling|workerContext|taskUsesEventCapability|matchesTargetWorker)")
+                .matcher(source)
+                .find()) {
+            violations.add(strategyPath + " manually writes rule/snapshot read-model fields");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "RuleBasedTaskWorkerMatchingStrategy must consume WorkerMatchContext for rule and "
+                        + "diagnostic snapshot fields instead of owning a duplicate field map:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void strategyPackageWorkerContextImportStaysIsolatedToCandidateEnumerator() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Path allowedEnumerator = strategyRoot.resolve("WorkerSchedulingCandidateEnumerator.java");
