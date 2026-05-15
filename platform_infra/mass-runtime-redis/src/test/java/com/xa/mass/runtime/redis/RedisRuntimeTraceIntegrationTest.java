@@ -9,7 +9,6 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -74,7 +73,7 @@ class RedisRuntimeTraceIntegrationTest {
         );
         taskStorage = new InMemoryTaskStorage();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, runtime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, runtime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         resultFacade = new TaskManagerResultIngestFacade(taskManager);
@@ -363,33 +362,6 @@ class RedisRuntimeTraceIntegrationTest {
                                       TaskDetailStore.TaskMessageProjection message,
                                       TaskDetailStore.TaskMessageAttemptProjection attempt,
                                       ClaimedTaskWork claimedWork) {
-    }
-
-    private static final class NoopTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
     }
 
     private static final class RecordingExecutionEventSink implements ExecutionEventSink {

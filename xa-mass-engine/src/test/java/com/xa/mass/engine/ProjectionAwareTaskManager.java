@@ -9,7 +9,6 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
-import com.xa.mass.engine.strategy.TaskScheduler;
 
 import java.util.List;
 
@@ -25,11 +24,10 @@ public class ProjectionAwareTaskManager extends TaskManager {
     private final TaskDetailStore taskDetailStore;
     private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
 
-    public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
-                                      TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskStorage taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime) {
-        super(taskScheduler, taskStorage, taskDetailStore, taskWorkRuntime);
+        super(taskStorage, taskDetailStore, taskWorkRuntime);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,
@@ -41,12 +39,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
         );
     }
 
-    public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
-                                      TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskStorage taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime,
                                       TaskResultRuntime taskResultRuntime) {
-        super(taskScheduler, taskStorage, taskDetailStore, taskWorkRuntime, taskResultRuntime, null);
+        super(taskStorage, taskDetailStore, taskWorkRuntime, taskResultRuntime, null);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,
@@ -58,12 +55,11 @@ public class ProjectionAwareTaskManager extends TaskManager {
         );
     }
 
-    public ProjectionAwareTaskManager(TaskScheduler taskScheduler,
-                                      TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskStorage taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskTerminalPolicy taskTerminalPolicy,
                                       TaskWorkRuntime taskWorkRuntime) {
-        super(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime);
+        super(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,

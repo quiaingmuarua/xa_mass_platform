@@ -15,8 +15,6 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
@@ -50,7 +48,6 @@ public class EngineConfig {
     private boolean enabled = true;
     private int workerThreads = 8;
 
-    private TaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager;
     private TaskCommandService taskCommandService;
     private TaskEventService taskEventService;
@@ -87,7 +84,6 @@ public class EngineConfig {
     public EngineConfig(EngineConfig source) {
         this.enabled = source.enabled;
         this.workerThreads = source.workerThreads;
-        this.scheduler = source.scheduler;
         this.taskManager = source.taskManager;
         this.taskCommandService = source.taskCommandService;
         this.taskEventService = source.taskEventService;
@@ -128,20 +124,6 @@ public class EngineConfig {
 
     public void setWorkerThreads(int workerThreads) {
         this.workerThreads = workerThreads;
-    }
-
-    public TaskScheduler getScheduler() {
-        return scheduler;
-    }
-
-    public void setScheduler(TaskScheduler scheduler) {
-        if (scheduler == null) {
-            throw new IllegalArgumentException("scheduler must not be null");
-        }
-        if (this.taskManager != null) {
-            throw new IllegalStateException("Cannot replace scheduler after engine assembly has been materialized");
-        }
-        this.scheduler = scheduler;
     }
 
     public TaskWorkerMatchingStrategy getMatchingStrategy() {
@@ -399,7 +381,6 @@ public class EngineConfig {
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
             taskManager = new TaskManager(
-                    scheduler,
                     getTaskStorage(),
                     getTaskDetailStore(),
                     getTaskWorkRuntime(),

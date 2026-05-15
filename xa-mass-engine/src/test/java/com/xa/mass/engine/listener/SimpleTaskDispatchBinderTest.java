@@ -16,7 +16,6 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReaso
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -52,7 +51,7 @@ public class SimpleTaskDispatchBinderTest {
         workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -221,7 +220,7 @@ public class SimpleTaskDispatchBinderTest {
     @Test
     void assignmentDoesNotReadLatestAttemptToAllocateDispatchAttemptNo() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
-        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -242,7 +241,7 @@ public class SimpleTaskDispatchBinderTest {
     @Test
     void dispatchPayloadUsesRuntimeClaimInsteadOfProjectionInput() {
         ProjectionPayloadScrubbingStorage scrubbingStorage = new ProjectionPayloadScrubbingStorage();
-        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(scrubbingStorage, scrubbingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -271,7 +270,7 @@ public class SimpleTaskDispatchBinderTest {
     @Test
     void dispatchDoesNotReadTaskMessageProjectionOnHotPath() {
         TrackingTaskMessageReadStorage trackingStorage = new TrackingTaskMessageReadStorage();
-        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -292,7 +291,7 @@ public class SimpleTaskDispatchBinderTest {
     void dispatchContinuesWhenCompatibilityAttemptProjectionWriteFails() {
         FailingAddAttemptStorage failingStorage = new FailingAddAttemptStorage();
         taskStorage = failingStorage;
-        taskManager = new ProjectionAwareTaskManager(new NoopTaskScheduler(), failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(failingStorage, failingStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         listener = newAssignmentListener(taskManager);
@@ -612,33 +611,6 @@ public class SimpleTaskDispatchBinderTest {
                 workerManager,
                 recordService
         );
-    }
-
-    private static class NoopTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
     }
 
     private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {

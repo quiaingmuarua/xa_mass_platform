@@ -8,6 +8,7 @@ import org.junit.platform.suite.api.Suite;
 @SelectClasses({
         ServerMainlineE2eArchitectureGuardTest.class,
         TaskApiMultiTaskAssignmentIntegrationTest.class,
+        TaskApiAssignmentTraceObservedIntegrationTest.class,
         TaskApiMinimumWorkerGateIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
         TaskApiSingleWorkerReuseIntegrationTest.class,

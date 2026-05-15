@@ -11,7 +11,6 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -51,14 +50,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskConcurrencyAcceptanceTest {
 
-    private RecordingTaskScheduler scheduler;
     private ProjectionAwareTaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        scheduler = new RecordingTaskScheduler();
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -279,11 +276,9 @@ class TaskConcurrencyAcceptanceTest {
 
     @Test
     void successCallbacksForDifferentMessagesDoNotSerializeAtTaskLevel() throws Exception {
-        RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(2);
         InMemoryTaskStorage concurrentTaskStorage = new InMemoryTaskStorage();
         ProjectionAwareTaskManager concurrentTaskManager = new ProjectionAwareTaskManager(
-                localScheduler,
                 concurrentTaskStorage,
                 concurrentTaskStorage,
                 new AllWorkFinalTaskTerminalPolicy(),
@@ -348,7 +343,6 @@ class TaskConcurrencyAcceptanceTest {
     @Test
     void duplicateSuccessCallbackDoesNotTriggerExtraTaskProgressRecompute() {
         CountingTaskManager countingTaskManager = new CountingTaskManager(
-                new RecordingTaskScheduler(),
                 new InMemoryTaskStorage()
         );
         Task task = createRunningTask(countingTaskManager, "duplicate-progress-recompute", 1, 3);
@@ -380,7 +374,6 @@ class TaskConcurrencyAcceptanceTest {
     void resultIngestRecoversCompatibilityProjectionFromRuntimeLeaseWhenMissing() {
         FirstLookupMissingTaskStorage taskStorage = new FirstLookupMissingTaskStorage();
         ProjectionAwareTaskManager recoveringTaskManager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime()
@@ -416,10 +409,8 @@ class TaskConcurrencyAcceptanceTest {
     @Test
     void concurrentSuccessBurstCoalescesTaskProgressRecompute() throws Exception {
         int messageCount = 8;
-        RecordingTaskScheduler localScheduler = new RecordingTaskScheduler();
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(messageCount);
         CoalescingCountingTaskManager coalescingTaskManager = new CoalescingCountingTaskManager(
-                localScheduler,
                 new InMemoryTaskStorage(),
                 blockingRuntime,
                 messageCount
@@ -682,33 +673,6 @@ class TaskConcurrencyAcceptanceTest {
         return CompatibilityProjectionAwait.awaitVisibleTaskMessageProjection(taskManager, taskId, messageId, expectedStatus);
     }
 
-    private static final class RecordingTaskScheduler implements TaskScheduler {
-        @Override
-        public TaskScheduler.SchedulingResult scheduleTask(Task task) {
-            return TaskScheduler.SchedulingResult.success();
-        }
-
-        @Override
-        public List<TaskScheduler.SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
-    }
-
     private static final class BlockingApplyResultRuntime implements TaskWorkRuntime {
         private final InMemoryTaskWorkRuntime delegate = new InMemoryTaskWorkRuntime();
         private final CountDownLatch enteredApplyResultLatch;
@@ -814,8 +778,8 @@ class TaskConcurrencyAcceptanceTest {
     private static final class CountingTaskManager extends ProjectionAwareTaskManager {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
-        private CountingTaskManager(TaskScheduler taskScheduler, InMemoryTaskStorage taskStorage) {
-            super(taskScheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        private CountingTaskManager(InMemoryTaskStorage taskStorage) {
+            super(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         }
 
         @Override
@@ -837,11 +801,10 @@ class TaskConcurrencyAcceptanceTest {
         private final CountDownLatch releaseFirstProgressResolve = new CountDownLatch(1);
         private final CountDownLatch allProgressRequestsReached;
 
-        private CoalescingCountingTaskManager(TaskScheduler taskScheduler,
-                                              InMemoryTaskStorage taskStorage,
+        private CoalescingCountingTaskManager(InMemoryTaskStorage taskStorage,
                                               TaskWorkRuntime taskWorkRuntime,
                                               int expectedProgressRequests) {
-            super(taskScheduler, taskStorage, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+            super(taskStorage, taskStorage, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
             this.allProgressRequestsReached = new CountDownLatch(expectedProgressRequests);
         }
 

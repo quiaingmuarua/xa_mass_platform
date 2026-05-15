@@ -17,7 +17,6 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReaso
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
@@ -44,8 +43,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeTaskResultIngestChannelTest {
-
-    private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
@@ -57,11 +54,10 @@ class RuntimeTaskResultIngestChannelTest {
 
     @BeforeEach
     void setUp() {
-        scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -139,12 +135,11 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void duplicateResponseDoesNotReadAttemptResidueOnlyForTrace() {
-        scheduler = new RecordingTaskScheduler();
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskStorage = trackingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -406,12 +401,11 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void missingAttemptResidueKeepsCompatibilityReinsertBoundedToSingleLatestAttemptProjection() {
-        scheduler = new RecordingTaskScheduler();
         AttemptWriteCountingStorage countingStorage = new AttemptWriteCountingStorage();
         taskStorage = countingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -435,12 +429,11 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void resultCorrelationDoesNotReadActiveAttemptResidue() {
-        scheduler = new RecordingTaskScheduler();
         ActiveAttemptTrackingStorage trackingStorage = new ActiveAttemptTrackingStorage();
         taskStorage = trackingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -461,12 +454,11 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void hiddenTaskMessageReadKeepsCompatibilityReinsertBounded() {
-        scheduler = new RecordingTaskScheduler();
         HiddenCompatibilityMessageReadStorage hiddenReadStorage = new HiddenCompatibilityMessageReadStorage();
         taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -490,12 +482,11 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void terminalLateResultDoesNotDependOnReadableCompatibilityMessage() {
-        scheduler = new RecordingTaskScheduler();
         HiddenCompatibilityMessageReadStorage hiddenReadStorage = new HiddenCompatibilityMessageReadStorage();
         taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -517,11 +508,10 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void resultConvergesWhenAttemptResidueUpdateFailsAfterRuntimeAcceptance() {
-        scheduler = new RecordingTaskScheduler();
         taskStorage = new FailingUpdateAttemptStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -809,33 +799,6 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private record RunningTaskFixture(String taskId, String messageId, String attemptId) {
-    }
-
-    private static class RecordingTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
     }
 
     private static final class RecordingExecutionEventSink implements ExecutionEventSink {

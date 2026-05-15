@@ -9,7 +9,6 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,15 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskKernelLifecycleTest {
 
-    private RecordingTaskScheduler scheduler;
     private InMemoryTaskStorage taskStorage;
     private TaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -87,11 +84,9 @@ class TaskKernelLifecycleTest {
 
         assertTrue(taskManager.pauseTask(task.getTid()));
         assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
 
         assertTrue(taskManager.resumeTask(task.getTid()));
         assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), scheduler.resumedTaskIds);
     }
 
     @Test
@@ -178,7 +173,6 @@ class TaskKernelLifecycleTest {
 
             InMemoryTaskStorage backpressureStorage = new InMemoryTaskStorage();
             TaskManager backpressureAwareManager = new TaskManager(
-                    new RecordingTaskScheduler(),
                     backpressureStorage,
                     backpressureStorage,
                     new InMemoryTaskWorkRuntime()
@@ -214,7 +208,6 @@ class TaskKernelLifecycleTest {
     void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
         InMemoryTaskStorage backlogStorage = new InMemoryTaskStorage();
         TaskManager backlogAwareManager = new TaskManager(
-                new RecordingTaskScheduler(),
                 backlogStorage,
                 backlogStorage,
                 new InMemoryTaskWorkRuntime(2)
@@ -332,35 +325,4 @@ class TaskKernelLifecycleTest {
         }
     }
 
-    private static final class RecordingTaskScheduler implements TaskScheduler {
-        private final List<String> pausedTaskIds = new java.util.ArrayList<>();
-        private final List<String> resumedTaskIds = new java.util.ArrayList<>();
-
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            pausedTaskIds.add(taskId);
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            resumedTaskIds.add(taskId);
-            return true;
-        }
-    }
 }

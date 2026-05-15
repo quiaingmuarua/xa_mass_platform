@@ -2,7 +2,6 @@ package com.xa.mass.starter.builder;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -565,11 +564,6 @@ public class MassApplicationBuilder {
 
         public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             config.setBootstrapDataProvider(bootstrapDataProvider);
-            return this;
-        }
-
-        public EngineBuilder scheduler(TaskScheduler scheduler) {
-            config.setScheduler(scheduler);
             return this;
         }
 

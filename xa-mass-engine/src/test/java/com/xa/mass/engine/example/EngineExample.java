@@ -14,7 +14,6 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +30,6 @@ public class EngineExample {
     public static void main(String[] args) {
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         TaskManager taskManager = new TaskManager(
-                new SimpleTaskScheduler(),
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime());

@@ -17,7 +17,6 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.BarrierMarkResult;
@@ -49,15 +48,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TaskManagerLifecycleTest {
 
-    private RecordingTaskScheduler scheduler;
     private InMemoryTaskStorage taskStorage;
     private ProjectionAwareTaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        scheduler = new RecordingTaskScheduler();
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -118,11 +115,9 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.pauseTask(task.getTid()));
         assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
 
         assertTrue(taskManager.resumeTask(task.getTid()));
         assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), scheduler.resumedTaskIds);
     }
 
     @Test
@@ -315,7 +310,6 @@ class TaskManagerLifecycleTest {
     void runtimeIngressStillConvergesWhenInitialMessageProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -379,7 +373,6 @@ class TaskManagerLifecycleTest {
     void legacyCreateTaskCompatibilityFlowStillConvergesWhenInitialMessageProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -429,7 +422,6 @@ class TaskManagerLifecycleTest {
     void runtimeExpiryStillConvergesWhenInitialMessageProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -493,7 +485,6 @@ class TaskManagerLifecycleTest {
     void runtimeLeaseOverlayExposesPayloadRefWhenMessageProjectionIsMissing() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -546,7 +537,6 @@ class TaskManagerLifecycleTest {
     void runtimeCompatibilitySingleMessageViewRetainsRetryBudgetWhenMessageProjectionIsMissing() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -645,7 +635,6 @@ class TaskManagerLifecycleTest {
 
             InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     managerStorage,
                     managerStorage,
                     new InMemoryTaskWorkRuntime());
@@ -684,7 +673,6 @@ class TaskManagerLifecycleTest {
     void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
         InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 managerStorage,
                 managerStorage,
                 new InMemoryTaskWorkRuntime(2)
@@ -818,7 +806,6 @@ class TaskManagerLifecycleTest {
     void runtimeSuccessStillConvergesWhenFinalMessageProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -921,7 +908,6 @@ class TaskManagerLifecycleTest {
             resultRuntime.blockRepairPumpScans();
             InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
             manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     repairStorage,
                     repairStorage,
                     new InMemoryTaskWorkRuntime(),
@@ -984,7 +970,6 @@ class TaskManagerLifecycleTest {
             resultRuntime.blockRepairPumpScans();
             InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
             manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     repairStorage,
                     repairStorage,
                     new InMemoryTaskWorkRuntime(),
@@ -1039,7 +1024,6 @@ class TaskManagerLifecycleTest {
             resultRuntime.blockRepairPumpScans();
             InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
             manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     repairStorage,
                     repairStorage,
                     new InMemoryTaskWorkRuntime(),
@@ -1229,7 +1213,6 @@ class TaskManagerLifecycleTest {
     void runtimeRetryStillConvergesWhenRetryResetProjectionWriteFails() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -1290,7 +1273,6 @@ class TaskManagerLifecycleTest {
 
         InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     managerStorage,
                     managerStorage,
                     new InMemoryTaskWorkRuntime());
@@ -1341,7 +1323,6 @@ class TaskManagerLifecycleTest {
 
             InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     managerStorage,
                     managerStorage,
                     new InMemoryTaskWorkRuntime());
@@ -1388,7 +1369,6 @@ class TaskManagerLifecycleTest {
 
         InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                    new RecordingTaskScheduler(),
                     managerStorage,
                     managerStorage,
                     new InMemoryTaskWorkRuntime());
@@ -1487,7 +1467,7 @@ class TaskManagerLifecycleTest {
     void callbackForInitProjectionWithoutRuntimeLeaseIsRejectedAndTraced() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-result-init-callback", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1533,7 +1513,7 @@ class TaskManagerLifecycleTest {
     void callbackDoesNotAcceptFinalProjectionWithoutRuntimeReceiptOrLease() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-result-final-projection-no-runtime-truth", List.of("alpha", "beta")));
         taskManager.approveTask(task.getTid());
@@ -1661,7 +1641,7 @@ class TaskManagerLifecycleTest {
     void callbackWithRuntimeLeaseDoesNotReadLatestAttemptAuditOnHotPath() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-result-runtime-attempt-no-audit-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1696,7 +1676,7 @@ class TaskManagerLifecycleTest {
     void callbackWithRuntimeLeaseDoesNotReadMessageProjectionOnHotPath() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-result-runtime-message-projection-no-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1731,7 +1711,7 @@ class TaskManagerLifecycleTest {
     void latestActiveAttemptCompatibilityViewDoesNotReadLatestAttemptAuditOnHotPath() {
         TrackingLatestAttemptStorage trackingStorage = new TrackingLatestAttemptStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-active-attempt-view-runtime-owned", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1763,7 +1743,7 @@ class TaskManagerLifecycleTest {
     void latestActiveAttemptCompatibilityViewDoesNotReadMessageProjectionOnHotPath() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-active-attempt-view-no-message-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1792,7 +1772,7 @@ class TaskManagerLifecycleTest {
     @Test
     void activeAttemptCompatibilityAuditViewRecoversRuntimeAttemptWhenAttemptProjectionIsMissing() {
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new ProjectionAwareTaskManager(scheduler, taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-attempt-audit-runtime-recovery", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1831,7 +1811,7 @@ class TaskManagerLifecycleTest {
     void activeAttemptCompatibilityAuditViewDoesNotReadMessageProjectionOnRecoveryPath() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-attempt-audit-no-message-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1862,7 +1842,7 @@ class TaskManagerLifecycleTest {
     void expiryWithRuntimeLeaseDoesNotReadMessageProjectionOnHotPath() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-expiry-runtime-message-projection-no-read", List.of("alpha"), 0));
         taskManager.approveTask(task.getTid());
@@ -1953,7 +1933,6 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "0");
             taskManager = new ProjectionAwareTaskManager(
-                    scheduler,
                     taskStorage,
                     taskStorage,
                     new InMemoryTaskWorkRuntime()
@@ -2067,8 +2046,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updatedMessage.status());
-        assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
-        assertTrue(scheduler.resumedTaskIds.isEmpty());
     }
 
     @Test
@@ -2136,7 +2113,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskResumeResult.Outcome.COMPLETED_TO_TERMINAL, result.getOutcome());
         assertEquals(TaskStatus.TERMINAL, result.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
-        assertTrue(scheduler.resumedTaskIds.isEmpty());
     }
 
     @Test
@@ -2316,7 +2292,7 @@ class TaskManagerLifecycleTest {
     void lateCallbackEmitsIgnoredLateTrace() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-late-trace", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -2391,7 +2367,7 @@ class TaskManagerLifecycleTest {
     void runningTaskDuplicateCallbackUsesRuntimeFinalReceiptWithoutProjectionRead() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-running-duplicate-runtime-final-receipt", List.of("alpha", "beta")));
         taskManager.approveTask(task.getTid());
@@ -2419,7 +2395,7 @@ class TaskManagerLifecycleTest {
     void terminalDuplicateCallbackDoesNotReadMessageProjectionResidue() {
         TrackingTaskMessageProjectionStorage trackingStorage = new TrackingTaskMessageProjectionStorage();
         taskStorage = trackingStorage;
-        taskManager = new ProjectionAwareTaskManager(scheduler, trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new ProjectionAwareTaskManager(trackingStorage, trackingStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-terminal-duplicate-no-projection-read", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -2694,7 +2670,7 @@ class TaskManagerLifecycleTest {
     @Test
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
+        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = createTask(pagingTaskManager, buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2717,7 +2693,7 @@ class TaskManagerLifecycleTest {
     @Test
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
         PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
-        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(scheduler, pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
+        ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = createTask(pagingTaskManager, buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -2789,7 +2765,6 @@ class TaskManagerLifecycleTest {
     void customTerminalPolicyCanKeepTaskRunningEvenWhenMessagesAreFinal() {
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
-                scheduler,
                 policyStorage,
                 policyStorage,
                 (task, stats) -> TaskTerminalPolicyDecision.keepRunning(),
@@ -2821,7 +2796,6 @@ class TaskManagerLifecycleTest {
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
-                scheduler,
                 policyStorage,
                 policyStorage,
                 runtimeLimitPolicy,
@@ -2850,7 +2824,6 @@ class TaskManagerLifecycleTest {
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
         InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
-                scheduler,
                 policyStorage,
                 policyStorage,
                 runtimeLimitPolicy,
@@ -3057,7 +3030,6 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "0");
             taskManager = new ProjectionAwareTaskManager(
-                    scheduler,
                     taskStorage,
                     taskStorage,
                     new InMemoryTaskWorkRuntime()
@@ -3276,7 +3248,6 @@ class TaskManagerLifecycleTest {
     void compatibilitySnapshotRemainsBoundedWhenRuntimeOverlayAddsMissingProjectionMessages() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -3320,7 +3291,6 @@ class TaskManagerLifecycleTest {
     void compatibilitySnapshotTruncationUsesRuntimeTotalWhenProjectionResidueIsMissing() {
         ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
-                new RecordingTaskScheduler(),
                 failingStorage,
                 failingStorage,
                 new InMemoryTaskWorkRuntime()
@@ -3769,39 +3739,6 @@ class TaskManagerLifecycleTest {
         @Override
         public void shutdown() {
             delegate.shutdown();
-        }
-    }
-
-    private static class RecordingTaskScheduler implements TaskScheduler {
-        private final List<String> pausedTaskIds = new java.util.ArrayList<>();
-        private final List<String> resumedTaskIds = new java.util.ArrayList<>();
-        private final List<String> cancelledTaskIds = new java.util.ArrayList<>();
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            cancelledTaskIds.add(taskId);
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            pausedTaskIds.add(taskId);
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            resumedTaskIds.add(taskId);
-            return true;
         }
     }
 

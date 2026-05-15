@@ -28,6 +28,7 @@ import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.storage.api.RuleStorage;
@@ -36,7 +37,6 @@ import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -1382,6 +1382,7 @@ class MassSdkTest {
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
         when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
         when(taskQueryService.getTask("task-001")).thenReturn(hydratedTask);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
@@ -1415,7 +1416,7 @@ class MassSdkTest {
         );
         Assertions.assertEquals(2, dto.getExecutionSpec().getBatchSize());
         Assertions.assertEquals(600, dto.getExecutionSpec().getMaxRuntimeSeconds());
-        verify(taskCommandService).appendTaskItems("task-001", List.of(
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-001", List.of(
                 Map.of("target", "target-a", "eventCode", "demo.dispatch"),
                 Map.of("target", "target-b", "eventCode", "demo.dispatch")
         ));
@@ -1605,17 +1606,6 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigRejectsSchedulerMismatchAfterEngineAssemblyIsMaterialized() {
-        EngineConfig config = new EngineConfig();
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        config.setScheduler(scheduler);
-        config.getTaskCommandService();
-
-        assertThrows(IllegalStateException.class,
-                () -> config.setScheduler(new SimpleTaskScheduler()));
-    }
-
-    @Test
     void engineConfigUsesInjectedTaskWorkRuntimeForDefaultTaskManagerAssembly() {
         EngineConfig config = new EngineConfig();
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
@@ -1720,6 +1710,7 @@ class MassSdkTest {
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
         when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
         when(taskQueryService.getTask("task-stream-001")).thenReturn(hydratedTask);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
@@ -1752,7 +1743,7 @@ class MassSdkTest {
                 ),
                 dto.getSharedConfig()
         );
-        verify(taskCommandService).appendTaskItems("task-stream-001", List.of(
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-stream-001", List.of(
                 Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
                 Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
         ));
@@ -1769,7 +1760,7 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(taskCommandService.appendTaskItems(any(), any())).thenReturn(2);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1781,7 +1772,7 @@ class MassSdkTest {
                 .build());
 
         assertEquals(2, added);
-        verify(taskCommandService).appendTaskItems("task-map-001", List.of(
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-map-001", List.of(
                 Map.of("target", "hello"),
                 Map.of("target", "world")
         ));
@@ -2971,7 +2962,7 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
-        when(taskCommandService.appendTaskItems(any(), any())).thenReturn(2);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -2987,11 +2978,11 @@ class MassSdkTest {
                 .items(List.of(Map.of("target", "https://example.test")))
                 .build());
 
-        verify(taskCommandService).appendTaskItems("task-map-002", List.of(
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-map-002", List.of(
                 Map.of("target", "hello", "eventCode", "demo.dispatch"),
                 Map.of("target", "world", "eventCode", "demo.dispatch")
         ));
-        verify(taskCommandService).appendTaskItems("task-json-002", List.of(
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-json-002", List.of(
                 Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
         ));
     }
@@ -3307,6 +3298,15 @@ class MassSdkTest {
             assertTrue(app.sealTask(taskId));
         }
         return app.getTaskDetail(taskId);
+    }
+
+    private static void stubAppendReceipts(TaskCommandService taskCommandService) {
+        when(taskCommandService.appendTaskItemsWithReceipt(any(), any()))
+                .thenAnswer(invocation -> {
+                    String taskId = invocation.getArgument(0, String.class);
+                    List<?> items = invocation.getArgument(1, List.class);
+                    return new TaskAppendReceipt(taskId, items.size(), List.of());
+                });
     }
 
     @FunctionalInterface

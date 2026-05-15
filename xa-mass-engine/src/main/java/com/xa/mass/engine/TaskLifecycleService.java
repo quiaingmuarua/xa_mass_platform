@@ -120,7 +120,6 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "BLOCK_TASK", "TaskManager", "task blocked");
                     taskManager.updateTask(task);
-                    taskManager.getScheduler().pauseTask(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task blocked", duration);
                 } else {
@@ -155,7 +154,6 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "PAUSE_TASK", "TaskManager", "task paused");
                     taskManager.updateTask(task);
-                    taskManager.getScheduler().pauseTask(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task paused", duration);
                 } else {
@@ -212,7 +210,6 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "RESUME_TASK", "TaskManager", "task resumed to ready");
                     taskManager.updateTask(task);
-                    taskManager.getScheduler().resumeTask(taskId);
                     taskManager.publishTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task resumed to READY", duration);
@@ -379,7 +376,6 @@ class TaskLifecycleService {
                     traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
-                    taskManager.getScheduler().cancelTask(taskId);
                     taskManager.publishTaskTerminal(task);
                     taskManager.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;
