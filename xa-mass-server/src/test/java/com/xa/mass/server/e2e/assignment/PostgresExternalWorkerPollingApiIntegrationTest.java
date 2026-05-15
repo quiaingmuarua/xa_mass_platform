@@ -76,7 +76,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2
 
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "polling-pg-worker",

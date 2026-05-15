@@ -225,7 +225,7 @@ final class TaskSchedulingTestHarness {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")
         ));

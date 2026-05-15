@@ -237,8 +237,9 @@ Matching boundaries:
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
-- `workerAttributes` and `workerContextAttributes` are auxiliary matching labels
-  only
+- `workerSchedulingAttributes` is the preferred matching label map for new or
+  migrated rules; legacy `workerContextAttributes` remains available during the
+  current WorkerContext convergence path
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, a missing `WorkerContext` must not satisfy that
@@ -331,6 +332,8 @@ Engine-local owner docs:
 - [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
   proposed long-range scheduling upgrade roadmap; planning material only, not
   implemented baseline behavior
+- [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
+  current transitional baseline for WorkerContext hot-path convergence
 
 Global baselines:
 

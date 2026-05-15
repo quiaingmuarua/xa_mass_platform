@@ -10,6 +10,7 @@ import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -315,6 +316,24 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("matchesTargetWorkerAttributes",
                 targetWorkerAttributes.isEmpty() || workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes));
 
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
+                worker,
+                workerContext,
+                reachability,
+                workerManager.isWorkerDispatchEnabled(worker),
+                workerLocked
+        );
+        context.put("workerSchedulingResourceId", schedulingView.schedulingResourceId());
+        context.put("workerSchedulingProject", schedulingView.schedulingProject());
+        context.put("workerSchedulingRoutingTags", schedulingView.schedulingRoutingTags());
+        context.put("workerSchedulingAttributes", schedulingView.schedulingAttributes());
+        context.put("hasWorkerSchedulingResource", schedulingView.hasWorkerContext());
+        context.put("workerSchedulingProjectMatchesTaskProject",
+                schedulingView.schedulingProject() != null
+                        && schedulingView.schedulingProject().equals(task.getProject()));
+        context.put("workerSchedulingMatchesRoutingCode",
+                taskHasRoutingRequirement && schedulingView.schedulingRoutingTags().contains(routingCode));
+
         if (workerContext == null) {
             context.put("hasWorkerContext", false);
             context.put("workerContextId", null);
@@ -328,7 +347,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             context.put("isWorkerContextReserved", false);
             context.put("isWorkerContextOccupied", false);
             context.put("workerContextProjectMatchesTaskProject", false);
-            context.put("workerContextMatchesRoutingCode", false);
+            context.put("workerContextMatchesRoutingCode", context.get("workerSchedulingMatchesRoutingCode"));
             return context;
         }
 
@@ -344,9 +363,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("isWorkerContextReserved", workerContext.isReserved());
         context.put("isWorkerContextOccupied", workerContext.isOccupied());
         context.put("workerContextProjectMatchesTaskProject",
-                workerContext.getProject() != null && workerContext.getProject().equals(task.getProject()));
-        context.put("workerContextMatchesRoutingCode",
-                taskHasRoutingRequirement && routingTags.contains(routingCode));
+                context.get("workerSchedulingProjectMatchesTaskProject"));
+        context.put("workerContextMatchesRoutingCode", context.get("workerSchedulingMatchesRoutingCode"));
         return context;
     }
 

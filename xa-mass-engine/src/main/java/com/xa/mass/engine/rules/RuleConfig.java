@@ -32,8 +32,8 @@ public class RuleConfig {
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
+                "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
 
         RuleDefinition capabilityRule = new RuleDefinition();
@@ -105,8 +105,8 @@ public class RuleConfig {
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
+                "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
 
         return rules;

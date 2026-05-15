@@ -122,7 +122,7 @@ public class RuleDebugExample {
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - workerContextMatchesRoutingCode: " + context.get("workerContextMatchesRoutingCode"));
+        System.out.println("  - workerSchedulingMatchesRoutingCode: " + context.get("workerSchedulingMatchesRoutingCode"));
 
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         System.out.println("\nRule evaluation:");

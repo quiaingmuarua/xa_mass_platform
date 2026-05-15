@@ -23,13 +23,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
-    void matchesWorkerUsingWorkerContextAttributesRule() {
+    void matchesWorkerUsingWorkerSchedulingAttributesRule() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -40,7 +41,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
+                rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
@@ -80,7 +81,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
+                rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
@@ -164,7 +165,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -208,6 +209,15 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("routing code mismatch", routingMismatchRecord.getReason());
         assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatchRecord.getResult());
         assertEquals(0, routingMismatchRecord.getRuleEvaluations().size());
+        assertEquals("ctx-routing-mismatch",
+                routingMismatchRecord.getContextSnapshot().get("workerSchedulingResourceId"));
+        assertEquals(Set.of("shared", "gb"),
+                routingMismatchRecord.getContextSnapshot().get("workerSchedulingRoutingTags"));
+        assertEquals("gb",
+                ((Map<?, ?>) routingMismatchRecord.getContextSnapshot()
+                        .get("workerSchedulingAttributes")).get("country"));
+        assertEquals(Boolean.FALSE,
+                routingMismatchRecord.getContextSnapshot().get("workerSchedulingMatchesRoutingCode"));
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-prefilter", "worker-us");
         assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
@@ -266,7 +276,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
+                rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
@@ -298,7 +308,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -329,7 +339,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -384,6 +394,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(AssignmentResult.RULE_NOT_MATCH, record.getResult());
         assertEquals(0, record.getRuleEvaluations().size());
         assertNotNull(record.getContextSnapshot());
+        assertEquals(Boolean.FALSE,
+                record.getContextSnapshot().get("workerSchedulingProjectMatchesTaskProject"));
     }
 
     @Test

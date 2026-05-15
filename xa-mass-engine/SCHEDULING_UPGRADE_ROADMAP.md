@@ -11,6 +11,12 @@ Progress:
 - 2026-05-15: Step 1 was implemented. The inert `TaskScheduler` /
   `SimpleTaskScheduler` SPI and no-op scheduler builder/config wiring were
   removed from in-repo production and test code.
+- 2026-05-15: Step 2 started. A transitional `WorkerSchedulingView` was added
+  and `WorkerMatchContext` now exposes worker-level `workerScheduling*` fields
+  beside legacy `workerContext*` rule variables.
+- 2026-05-15: Step 2 continued. Default routing rules and representative
+  routing tests now read `workerScheduling*` fields while legacy
+  `workerContext*` variables remain available.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -188,7 +194,7 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | --- | --- | --- | --- | --- |
 | 0 | Roadmap and guardrails | None | Docs | Proposed |
 | 1 | Retire inert `TaskScheduler` SPI | Low to medium | Engine/SDK wiring | Implemented 2026-05-15 |
-| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Proposed |
+| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | In progress |
 | 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
 | 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Proposed |
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Proposed |
@@ -246,6 +252,9 @@ was to remove the dead path directly and update in-repo callers, rather than
 preserve a no-op compatibility track.
 
 ## 9. Step 2: Worker Scheduling View Convergence
+
+Status: in progress. The first slice introduced `WorkerSchedulingView` and
+documented the current baseline in `WORKER_SCHEDULING_VIEW_BASELINE.md`.
 
 ### Goal
 
