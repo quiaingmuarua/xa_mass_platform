@@ -54,6 +54,12 @@ Progress:
   exclusive worker lock; `foreground=false` skips the long-lived worker lock and
   relies on `WorkerLoadView` capacity reservation. Legacy WorkerContext-backed
   resources remain context-exclusive until WorkerContext retirement.
+- 2026-05-15: Step 7F server trace-observed wiring proof was implemented.
+  `TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest` creates
+  `foreground=false` tasks through the real Boot/API/SDK/transport path, keeps
+  one stateless worker lease active, dispatches a second task to the same
+  capacity-2 worker, and validates canonical JSONL with the
+  `background-worker-sharing` analyzer.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -604,8 +610,9 @@ be a fallback, not the main owner.
 ## 14. Step 7: Capacity Reservation And Foreground/Background
 
 Status: reservation foundation, trace-observed analyzer, worker-declared
-capacity read model, foreground scheduling mode read surface, and initial
-foreground/background lock behavior implemented on 2026-05-15.
+capacity read model, foreground scheduling mode read surface, initial
+foreground/background lock behavior, and server trace-observed wiring proof
+implemented on 2026-05-15.
 `Worker.maxConcurrentWork` is available as a declaration consumed by
 `WorkerLoadView`, and `ExecutionSpec.foreground` controls whether matching
 requires the long-lived worker lock. `foreground=true` remains the compatible
@@ -830,6 +837,7 @@ WorkerContext retirement.
 | `priority-lane-ordering` | Step 5 | HIGH priority is processed before NORMAL in the same lane |
 | `load-aware-worker-selection` | Step 6 | Lower-load equivalent worker is selected first |
 | `capacity-reservation-under-concurrency` | Step 7 | Process-local capacity reservation is visible and accepted matches are not over committed |
+| `background-worker-sharing` | Step 7 | A background task reserves shared stateless worker capacity without long-lived worker lock evidence |
 | `cross-task-worker-fairness` | Step 8 | Large BULK work does not starve concurrent INTERACTIVE work |
 | `account-switch-failure` | Step 9 | Account execution failure converges through result handling and trace |
 
@@ -878,12 +886,12 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is a trace-observed foreground/
-background proof slice: add a narrow canonical-trace scenario for background
-stateless worker sharing and, if needed, a server E2E fixture that proves real
-Boot/SDK wiring can create `foreground=false` tasks. Avoid broad WorkerContext
-deletion until trace analyzers and server routing E2E no longer need
-context-specific fields as proof.
+The next recommended implementation step is a narrow cross-task worker budget
+foundation inside `AssignmentAllocationPolicy`: introduce the internal budget
+owner and trace fields, then prove default-compatible behavior before adding
+public `ExecutionSpec.maxConcurrentWorkers` or broader fairness behavior. Avoid
+broad WorkerContext deletion until trace analyzers and server routing E2E no
+longer need context-specific fields as proof.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.

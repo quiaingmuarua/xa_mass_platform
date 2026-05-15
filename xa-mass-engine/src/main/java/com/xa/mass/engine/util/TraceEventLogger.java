@@ -257,7 +257,7 @@ public final class TraceEventLogger {
         if (worker == null) {
             return;
         }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, taskId, worker, workerContext,
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, null, taskId, worker, workerContext,
                 reason, "SUCCESS", null);
     }
 
@@ -275,10 +275,30 @@ public final class TraceEventLogger {
                                     Integer candidateRank,
                                     Double candidateScore,
                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchAccepted(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchAccepted(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
         if (candidate == null) {
             return;
         }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, taskId,
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "SUCCESS",
                 workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
@@ -287,7 +307,7 @@ public final class TraceEventLogger {
         if (worker == null) {
             return;
         }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, taskId, worker, workerContext,
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, null, taskId, worker, workerContext,
                 reason, "REJECTED", null);
     }
 
@@ -305,15 +325,36 @@ public final class TraceEventLogger {
                                     Integer candidateRank,
                                     Double candidateScore,
                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchRejected(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchRejected(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
         if (candidate == null) {
             return;
         }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, taskId,
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "REJECTED",
                 workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     private void emitWorkerMatchEvent(ExecutionEventType eventType,
+                                      Task task,
                                       String taskId,
                                       Worker worker,
                                       WorkerContext workerContext,
@@ -328,6 +369,7 @@ public final class TraceEventLogger {
                 "reason", reason,
                 "result", result
         );
+        putTaskRuntimeProfile(values, task);
         if (extraAttrs != null) {
             values.putAll(extraAttrs);
         }

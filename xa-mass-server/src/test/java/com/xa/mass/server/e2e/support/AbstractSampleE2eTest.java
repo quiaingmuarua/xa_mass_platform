@@ -603,16 +603,28 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
+        registerSdkStatelessWorker(workerId, project, 1);
+    }
+
+    protected void registerSdkStatelessWorker(String workerId, String project, int maxConcurrentWork) {
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project, maxConcurrentWork));
     }
 
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
+        return createWorkerRegistration(workerId, workerGroupId, project, 1);
+    }
+
+    private WorkerRegistration createWorkerRegistration(String workerId,
+                                                        String workerGroupId,
+                                                        String project,
+                                                        int maxConcurrentWork) {
         return WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
                 .eventBindings(defaultEventBindings(project))
                 .adapterId("websocket")
                 .transportHint("realtime")
+                .maxConcurrentWork(maxConcurrentWork)
                 .build();
     }
 

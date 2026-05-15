@@ -276,6 +276,11 @@ The `capacity-reservation-under-concurrency` analyzer interprets these fields
 only as process-local reservation evidence: accepted worker matches must not
 show `active + reserved > declaredCapacity`, and capacity rejections must show
 `active + reserved >= declaredCapacity`.
+The `background-worker-sharing` analyzer uses the same assignment rows for a
+single background task: accepted worker match evidence must show
+`foreground=false`, existing active worker load, a new reservation within
+declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
+evidence for that task.
 
 ## 5. Minimum Required Paths
 

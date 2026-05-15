@@ -89,6 +89,7 @@ Current built-in scenario analyzers:
 - `assignment-retry-redispatch`
 - `load-aware-worker-selection`
 - `capacity-reservation-under-concurrency`
+- `background-worker-sharing`
 
 ## Test Pairing Workflow
 

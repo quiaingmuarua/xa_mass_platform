@@ -175,6 +175,19 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsBackgroundWorkerSharingScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeBackgroundWorkerSharingTrace(tempDir, "task-background-sharing");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "background-worker-sharing", "task-background-sharing"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("background-worker-sharing", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -231,6 +244,19 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void backgroundWorkerSharingScenarioFailsWhenWorkerLockIsObserved() throws Exception {
+        writeBackgroundWorkerSharingTraceWithLock(tempDir, "task-background-lock");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "background-worker-sharing", "task-background-lock"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "BACKGROUND_WORKER_LOCK_ACQUIRED".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
@@ -239,6 +265,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
         assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
         assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
+        assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -465,6 +492,127 @@ class TraceOperatorServiceIntegrationTest {
                             "workerReservedCount", 1,
                             "workerDeclaredCapacity", 1,
                             "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+        }
+    }
+
+    private void writeBackgroundWorkerSharingTrace(Path outputDir, String taskId) throws Exception {
+        writeBackgroundWorkerSharingTrace(outputDir, taskId, false);
+    }
+
+    private void writeBackgroundWorkerSharingTraceWithLock(Path outputDir, String taskId) throws Exception {
+        writeBackgroundWorkerSharingTrace(outputDir, taskId, true);
+    }
+
+    private void writeBackgroundWorkerSharingTrace(Path outputDir, String taskId, boolean includeLock) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            if (includeLock) {
+                sink.emit(ExecutionEvent.builder()
+                        .eventType(ExecutionEventType.WORKER_LOCK_ACQUIRED)
+                        .identity(identity -> identity.taskId(taskId).workerId("worker-shared"))
+                        .attrs(attrs(
+                                "trigger", "TRY_LOCK_WORKER",
+                                "source", "RuleBasedTaskWorkerMatchingStrategy",
+                                "reason", "unexpected lock for background worker",
+                                "result", "SUCCESS"))
+                        .build());
+            }
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-shared"))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 1,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 2,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "pendingMessageCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "uniqueWorkerContextCount", 0,
+                            "perWorkerBatchLimit", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_REQUESTED)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched candidates produced dispatchable work",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("READY", "RUNNING", "matched workers dispatched")
+                    .attrs(attrs(
+                            "trigger", "ASSIGNMENT_SUCCEEDED",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 1,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-shared"))
+                    .transition("CREATED", "LEASED", "attempt leased for dispatch")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt leased for dispatch", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-shared"))
+                    .transition("LEASED", "DISPATCHED", "attempt dispatched")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
                     .build());
         }
     }

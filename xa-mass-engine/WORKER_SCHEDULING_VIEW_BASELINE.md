@@ -216,6 +216,13 @@ Focused proof for this step:
   - protects current matching behavior
 - `capacity-reservation-under-concurrency`
   - proves process-local reservation evidence through `xa-mass-trace`
+- `background-worker-sharing`
+  - proves a background stateless assignment can reserve worker capacity with
+    existing active load and without long-lived worker lock evidence
+  - is also covered by `TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest`,
+    which creates two `foreground=false` tasks through the real
+    Boot/API/SDK/transport path against one capacity-2 stateless worker and
+    analyzes canonical JSONL for the second task
 - `EngineSchedulingCoreSuite`
   - protects assignment behavior
 
@@ -229,7 +236,12 @@ are ordered by resolved `DispatchPriority` inside each lane, and same-priority
 signals retain FIFO order. Load-aware candidate ranking is implemented:
 rule-passed `WorkerMatchContext` candidates are ranked before reservation and
 lock acquisition using observed worker load and routing affinity. Reservation
-foundation is also implemented for the current default exclusive worker model.
+and stateless background sharing are implemented and covered by engine tests,
+trace analyzer tests, and one server trace-observed wiring proof.
+
+The next narrow cut should add task-level worker budgeting inside allocation
+policy. Do not move budget formulas into `TaskWorkerAssignListener`; the
+listener should remain orchestration and trace owner.
 
 WorkerContext physical model/API deletion remains a later, larger phase after
 runtime binding and trace compatibility no longer need context-specific fields.
