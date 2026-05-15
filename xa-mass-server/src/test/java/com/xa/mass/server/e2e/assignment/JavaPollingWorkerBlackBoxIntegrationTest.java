@@ -61,7 +61,7 @@ class JavaPollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         registerSubmitters();
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
 
         String baseUrl = "http://127.0.0.1:" + port;

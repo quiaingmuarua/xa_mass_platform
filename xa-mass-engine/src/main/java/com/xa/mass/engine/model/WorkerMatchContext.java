@@ -4,8 +4,6 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,23 +20,15 @@ public class WorkerMatchContext {
     private final Worker worker;
     private final WorkerContext workerContext;
     private final Task task;
-    private final WorkerManager workerManager;
     private final WorkerSchedulingView schedulingView;
     private final Map<String, Object> context;
 
-    public WorkerMatchContext(Worker worker, WorkerContext workerContext, Task task, WorkerManager workerManager) {
-        this.worker = worker;
-        this.workerContext = workerContext;
+    public WorkerMatchContext(WorkerSchedulingCandidate candidate, Task task) {
+        Objects.requireNonNull(candidate, "candidate");
+        this.worker = candidate.getWorker();
+        this.workerContext = candidate.getWorkerContext();
         this.task = task;
-        this.workerManager = workerManager;
-        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
-        this.schedulingView = WorkerSchedulingView.from(
-                worker,
-                workerContext,
-                reachability,
-                workerManager.isWorkerDispatchEnabled(worker),
-                workerManager.isLocked(worker.getWorkerId())
-        );
+        this.schedulingView = candidate.getSchedulingView();
         this.context = buildContext();
     }
 
@@ -74,8 +64,8 @@ public class WorkerMatchContext {
         ctx.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
 
         ctx.put("appCount", schedulingView.supportedProjects().size());
-        ctx.put("supportsProject", worker.supportsProject(task.getProject()));
-        ctx.put("supportsEvent", taskEventCode == null || worker.supportsEvent(taskEventCode));
+        ctx.put("supportsProject", schedulingView.supportsProject(task.getProject()));
+        ctx.put("supportsEvent", taskEventCode == null || schedulingView.supportsEvent(taskEventCode));
         ctx.put("matchesTargetWorkerId", targetWorkerId == null || Objects.equals(schedulingView.workerId(), targetWorkerId));
         ctx.put("matchesTargetWorkerAttributes", targetWorkerAttributes.isEmpty()
                 || workerAttributesMatch(schedulingView.workerAttributes(), targetWorkerAttributes));
@@ -98,10 +88,6 @@ public class WorkerMatchContext {
 
     public Task getTask() {
         return task;
-    }
-
-    public WorkerManager getWorkerManager() {
-        return workerManager;
     }
 
     public WorkerSchedulingView getSchedulingView() {
@@ -140,12 +126,23 @@ public class WorkerMatchContext {
         ctx.put("supportedEventCodes", schedulingView.supportedEventCodes());
         ctx.put("isWorkerAvailable", schedulingView.dispatchEnabled() && schedulingView.isTransportReachable());
         ctx.put("isWorkerLocked", schedulingView.workerLocked());
+        ctx.put("workerActiveLeaseCount", schedulingView.activeLeaseCount());
+        ctx.put("workerReservedCount", schedulingView.reservedCount());
+        ctx.put("workerDeclaredCapacity", schedulingView.declaredCapacity());
+        ctx.put("workerEstimatedLoadRatio", schedulingView.estimatedLoadRatio());
+        ctx.put("currentActiveLeaseCount", schedulingView.activeLeaseCount());
+        ctx.put("estimatedLoadRatio", schedulingView.estimatedLoadRatio());
 
         ctx.put("workerSchedulingResourceId", schedulingView.schedulingResourceId());
         ctx.put("workerSchedulingProject", schedulingView.schedulingProject());
         ctx.put("workerSchedulingRoutingTags", schedulingView.schedulingRoutingTags());
         ctx.put("workerSchedulingAttributes", schedulingView.schedulingAttributes());
         ctx.put("hasWorkerSchedulingResource", schedulingView.hasWorkerContext());
+        ctx.put("isWorkerSchedulingResourceAllocatable", schedulingView.schedulingResourceAllocatable());
+        ctx.put("isWorkerSchedulingResourceAvailable", schedulingView.schedulingResourceAvailable());
+        ctx.put("isWorkerSchedulingResourceUsable", schedulingView.schedulingResourceUsable());
+        ctx.put("isWorkerSchedulingResourceReserved", schedulingView.schedulingResourceReserved());
+        ctx.put("isWorkerSchedulingResourceOccupied", schedulingView.schedulingResourceOccupied());
 
         ctx.put("hasWorkerContext", schedulingView.hasWorkerContext());
         ctx.put("workerContextId", schedulingView.workerContextId());

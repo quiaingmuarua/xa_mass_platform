@@ -52,6 +52,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
@@ -121,6 +122,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
+        verify(workerManager).recordWorkFinal("worker-1", "task-1");
         verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));

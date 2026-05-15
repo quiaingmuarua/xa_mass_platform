@@ -8,6 +8,8 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.WorkerMatchContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
@@ -94,7 +96,17 @@ public class RuleDebugExample {
         System.out.println("\n=== Debugging worker: " + worker.getWorkerId() + " ===");
 
         WorkerContext workerContext = workerManager.getWorkerContexts(worker.getWorkerId()).stream().findFirst().orElse(null);
-        WorkerMatchContext matchContext = new WorkerMatchContext(worker, workerContext, task, workerManager);
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
+                worker,
+                workerContext,
+                workerManager.getWorkerReachability(worker.getWorkerId()),
+                workerManager.isWorkerDispatchEnabled(worker),
+                workerManager.isLocked(worker.getWorkerId())
+        );
+        WorkerMatchContext matchContext = new WorkerMatchContext(
+                new WorkerSchedulingCandidate(worker, workerContext, schedulingView),
+                task
+        );
 
         System.out.println("Worker:");
         System.out.println("  - id: " + worker.getWorkerId());

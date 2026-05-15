@@ -58,7 +58,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
     void externalNodePollingWorkerQuickstartScriptRegistersCapabilityAndCompletesTask() throws Exception {
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalNodeWorkerProcess workerProcess =

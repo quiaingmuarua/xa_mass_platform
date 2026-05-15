@@ -8,7 +8,9 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.ProjectionAwareTaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -163,6 +165,47 @@ public class SimpleTaskDispatchBinderTest {
         long upperBound = Duration.between(afterAssign, leaseExpireTime).getSeconds();
         assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
         assertTrue(upperBound <= 2, "lease should stay close to configured 2-second window");
+    }
+
+    @Test
+    void successfulRuntimeClaimRecordsObservedWorkerLoad() {
+        Task task = createTask(3);
+        task.getExecutionSpec().setBatchSize(10);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(
+                task,
+                List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2))
+        );
+
+        assertEquals(3, dispatched.size());
+        verify(workerManager, times(2)).recordWorkClaimed("d1", task.getTid());
+        verify(workerManager, times(1)).recordWorkClaimed("d2", task.getTid());
+    }
+
+    @Test
+    void dispatchSubmitFailureReleasesObservedWorkerLoadAfterCompensation() {
+        Task task = createTask(2);
+        task.getExecutionSpec().setBatchSize(2);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                (t, bindings) -> {
+                    throw new IllegalStateException("handoff queue unavailable");
+                }
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), wc)));
+
+        assertTrue(dispatched.isEmpty());
+        verify(workerManager, times(2)).recordWorkClaimed("d1", task.getTid());
+        verify(workerManager, times(2)).recordWorkFinal("d1", task.getTid());
     }
 
     @Test
@@ -499,7 +542,7 @@ public class SimpleTaskDispatchBinderTest {
     void nullWorkerContextIsHandledGracefully() {
         Task task = createTask(2);
         task.getExecutionSpec().setBatchSize(10);
-        assertDoesNotThrow(() -> listener.bindDispatches(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
+        assertDoesNotThrow(() -> listener.bindDispatches(task, List.of(matched(worker("d1"), null))));
 
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
@@ -597,12 +640,16 @@ public class SimpleTaskDispatchBinderTest {
         return wc;
     }
 
-    private MatchedWorkerContext matched(String workerId, String workerContextId) {
+    private WorkerSchedulingCandidate matched(String workerId, String workerContextId) {
         return matched(worker(workerId), workerContext(workerContextId, workerId));
     }
 
-    private MatchedWorkerContext matched(Worker worker, WorkerContext workerContext) {
-        return new MatchedWorkerContext(worker, workerContext);
+    private WorkerSchedulingCandidate matched(Worker worker, WorkerContext workerContext) {
+        return new WorkerSchedulingCandidate(
+                worker,
+                workerContext,
+                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+        );
     }
 
     private SimpleTaskDispatchBinder newAssignmentListener(ProjectionAwareTaskManager manager) {

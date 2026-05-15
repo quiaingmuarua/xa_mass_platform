@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ public final class WorkerSchedulingView {
     private final WorkerReachabilityState reachability;
     private final boolean dispatchEnabled;
     private final boolean workerLocked;
+    private final WorkerLoadSnapshot workerLoad;
 
     private final boolean hasWorkerContext;
     private final String workerContextId;
@@ -53,7 +55,8 @@ public final class WorkerSchedulingView {
                                  WorkerContext workerContext,
                                  WorkerReachabilityState reachability,
                                  boolean dispatchEnabled,
-                                 boolean workerLocked) {
+                                 boolean workerLocked,
+                                 WorkerLoadSnapshot workerLoad) {
         this.workerId = worker.getWorkerId();
         this.workerStatus = worker.getStatus();
         this.workerGroupId = worker.getWorkerGroupId();
@@ -68,6 +71,7 @@ public final class WorkerSchedulingView {
         this.reachability = reachability == null ? WorkerReachabilityState.UNKNOWN : reachability;
         this.dispatchEnabled = dispatchEnabled;
         this.workerLocked = workerLocked;
+        this.workerLoad = workerLoad != null ? workerLoad : WorkerLoadSnapshot.empty(worker.getWorkerId());
 
         this.hasWorkerContext = workerContext != null;
         this.workerContextId = workerContext != null ? workerContext.getWorkerContextId() : null;
@@ -97,7 +101,20 @@ public final class WorkerSchedulingView {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        return new WorkerSchedulingView(worker, workerContext, reachability, dispatchEnabled, workerLocked);
+        return new WorkerSchedulingView(worker, workerContext, reachability, dispatchEnabled, workerLocked,
+                WorkerLoadSnapshot.empty(worker.getWorkerId()));
+    }
+
+    public static WorkerSchedulingView from(Worker worker,
+                                            WorkerContext workerContext,
+                                            WorkerReachabilityState reachability,
+                                            boolean dispatchEnabled,
+                                            boolean workerLocked,
+                                            WorkerLoadSnapshot workerLoad) {
+        if (worker == null) {
+            throw new IllegalArgumentException("worker must not be null");
+        }
+        return new WorkerSchedulingView(worker, workerContext, reachability, dispatchEnabled, workerLocked, workerLoad);
     }
 
     public String workerId() {
@@ -128,6 +145,14 @@ public final class WorkerSchedulingView {
         return supportedEventCodes;
     }
 
+    public boolean supportsProject(String project) {
+        return project != null && supportedProjects.contains(project);
+    }
+
+    public boolean supportsEvent(String eventCode) {
+        return eventCode != null && supportedEventCodes.contains(eventCode);
+    }
+
     public Map<String, String> workerAttributes() {
         return workerAttributes;
     }
@@ -146,6 +171,22 @@ public final class WorkerSchedulingView {
 
     public boolean workerLocked() {
         return workerLocked;
+    }
+
+    public int activeLeaseCount() {
+        return workerLoad.activeLeaseCount();
+    }
+
+    public int reservedCount() {
+        return workerLoad.reservedCount();
+    }
+
+    public int declaredCapacity() {
+        return workerLoad.declaredCapacity();
+    }
+
+    public double estimatedLoadRatio() {
+        return workerLoad.estimatedLoadRatio();
     }
 
     public boolean hasWorkerContext() {
@@ -196,6 +237,26 @@ public final class WorkerSchedulingView {
         return workerContextOccupied;
     }
 
+    public boolean schedulingResourceAllocatable() {
+        return !hasWorkerContext || workerContextAllocatable;
+    }
+
+    public boolean schedulingResourceAvailable() {
+        return !hasWorkerContext || workerContextAvailable;
+    }
+
+    public boolean schedulingResourceUsable() {
+        return !hasWorkerContext || workerContextUsable;
+    }
+
+    public boolean schedulingResourceReserved() {
+        return hasWorkerContext && workerContextReserved;
+    }
+
+    public boolean schedulingResourceOccupied() {
+        return hasWorkerContext && workerContextOccupied;
+    }
+
     public String schedulingResourceId() {
         return schedulingResourceId;
     }
@@ -210,6 +271,14 @@ public final class WorkerSchedulingView {
 
     public Map<String, String> schedulingAttributes() {
         return schedulingAttributes;
+    }
+
+    public boolean schedulingProjectMatches(String project) {
+        return schedulingProject != null && schedulingProject.equals(project);
+    }
+
+    public boolean schedulingRoutingTagsContain(String routingCode) {
+        return routingCode != null && schedulingRoutingTags.contains(routingCode);
     }
 
     private static Map<String, String> copyMap(Map<String, String> source) {

@@ -2,7 +2,7 @@ package com.xa.mass.engine.assignment;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 
 import java.util.List;
 
@@ -38,13 +38,13 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
     @Override
     public AssignmentAllocationDecision decide(AssignmentAllocationPlan plan,
                                                TaskStatus currentStatus,
-                                               List<MatchedWorkerContext> matchedWorkers) {
-        List<MatchedWorkerContext> matched = matchedWorkers == null ? List.of() : matchedWorkers;
+                                               List<WorkerSchedulingCandidate> matchedWorkers) {
+        List<WorkerSchedulingCandidate> matched = matchedWorkers == null ? List.of() : matchedWorkers;
         if (matched.isEmpty()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.NO_MATCH,
                     List.of(),
-                    "no matched worker-context candidates"
+                    "no matched worker scheduling candidates"
             );
         }
         if (plan.initialStatus() == TaskStatus.READY && matched.size() < plan.requiredStartWorkerCount()) {
@@ -63,7 +63,7 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         }
 
         int dispatchCandidateCount = Math.min(matched.size(), plan.dispatchCandidateLimit());
-        List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, dispatchCandidateCount);
+        List<WorkerSchedulingCandidate> dispatchCandidates = matched.subList(0, dispatchCandidateCount);
         if (dispatchCandidates.isEmpty()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.NO_DISPATCH_CANDIDATES,

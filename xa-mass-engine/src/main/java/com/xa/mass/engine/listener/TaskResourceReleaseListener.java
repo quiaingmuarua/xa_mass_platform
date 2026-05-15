@@ -53,6 +53,7 @@ public class TaskResourceReleaseListener {
                 continue;
             }
             workerIds.add(lease.workerId());
+            workerManager.recordWorkFinal(lease.workerId(), task.getTid());
             releaseWorkerContextIfOwnedByTask(
                     task.getTid(),
                     lease.workerId(),
@@ -75,6 +76,7 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
+        workerManager.recordWorkFinal(workerId, task.getTid());
         if (hasOtherActiveAttempts(task.getTid(), workerId)) {
             return;
         }

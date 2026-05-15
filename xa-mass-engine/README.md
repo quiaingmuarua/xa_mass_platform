@@ -216,23 +216,35 @@ Infra ownership:
 
 ## Rule-Matching Surface
 
-Matching evaluates `WorkerMatchContext` through QLExpress rules.
+Matching enumerates `WorkerSchedulingCandidate` values and evaluates their
+`WorkerSchedulingView` through `WorkerMatchContext` and QLExpress rules.
 
 Current owner types:
 
+- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingCandidate.java`
+- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
+- `src/main/java/com/xa/mass/engine/load/WorkerLoadView.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:
 
 - `basic_worker_check`
-- `worker_context_status_check`
+- `worker_scheduling_resource_check`
 - `routing_code_match`
 - `worker_capability_check`
 - `worker_load_check`
 
 Matching boundaries:
 
+- `WorkerSchedulingCandidate` is the engine-internal handoff between matching,
+  allocation, listener orchestration, and dispatch binding
+- `WorkerSchedulingView` is the scheduling read surface; new matching code
+  should read the view rather than treating `WorkerContext` as the matching
+  subject
+- `WorkerLoadView` is a push-updated observational read view sourced from
+  runtime claim/final lifecycle callbacks; current default matching does not
+  use load to gate, rank, reserve, or allocate workers
 - `Worker.status` and worker lock state are typed truth, not attributes
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from
@@ -240,6 +252,12 @@ Matching boundaries:
 - `workerSchedulingAttributes` is the preferred matching label map for new or
   migrated rules; legacy `workerContextAttributes` remains available during the
   current WorkerContext convergence path
+- default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
+  legacy `workerContext*` variables are compatibility data only
+- worker load variables such as `workerActiveLeaseCount` and
+  `workerEstimatedLoadRatio` are available for observation and future ranking,
+  but must not be treated as capacity correctness until a capacity phase owns
+  that behavior
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, a missing `WorkerContext` must not satisfy that

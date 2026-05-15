@@ -11,6 +11,8 @@ import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.WorkerReachabilityView;
+import com.xa.mass.engine.load.InMemoryWorkerLoadView;
+import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -63,6 +65,7 @@ public class EngineConfig {
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
+    private WorkerLoadView workerLoadView = new InMemoryWorkerLoadView();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
@@ -97,6 +100,8 @@ public class EngineConfig {
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
+        this.workerReachabilityView = source.workerReachabilityView;
+        this.workerLoadView = source.workerLoadView;
         this.workerStorage = source.workerStorage;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
@@ -254,7 +259,7 @@ public class EngineConfig {
     }
 
     public WorkerManager getWorkerManager() {
-        return new WorkerManager(getWorkerStorage(), workerReachabilityView);
+        return new WorkerManager(getWorkerStorage(), workerReachabilityView, workerLoadView);
     }
 
     public WorkerReachabilityView getWorkerReachabilityView() {
@@ -265,6 +270,17 @@ public class EngineConfig {
         this.workerReachabilityView = workerReachabilityView != null
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
+    }
+
+    public WorkerLoadView getWorkerLoadView() {
+        return workerLoadView;
+    }
+
+    public void setWorkerLoadView(WorkerLoadView workerLoadView) {
+        if (workerLoadView == null) {
+            throw new IllegalArgumentException("workerLoadView must not be null");
+        }
+        this.workerLoadView = workerLoadView;
     }
 
     public WorkerStorage getWorkerStorage() {

@@ -103,7 +103,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         String submitterCredential = "crawler-submitter-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);

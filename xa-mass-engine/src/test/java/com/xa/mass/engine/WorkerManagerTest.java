@@ -43,6 +43,19 @@ class WorkerManagerTest {
     }
 
     @Test
+    void exposesObservedWorkerLoadView() {
+        manager.recordWorkClaimed("worker-load", "task-1");
+        manager.recordWorkClaimed("worker-load", "task-1");
+
+        assertEquals(2, manager.getWorkerLoad("worker-load").activeLeaseCount());
+        assertEquals(2.0, manager.getWorkerLoad("worker-load").estimatedLoadRatio());
+
+        manager.recordWorkFinal("worker-load", "task-1");
+
+        assertEquals(1, manager.getWorkerLoad("worker-load").activeLeaseCount());
+    }
+
+    @Test
     void getAllWorkersReturnsAllAdded() {
         manager.addWorker(worker("a", "us"));
         manager.addWorker(worker("b", "gb"));

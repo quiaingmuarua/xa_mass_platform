@@ -9,6 +9,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.load.InMemoryWorkerLoadView;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
@@ -28,14 +31,22 @@ public class WorkerManager implements WorkerLookupStore {
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
+    private final WorkerLoadView workerLoadView;
 
     public WorkerManager(WorkerStorage workerStorage) {
-        this(workerStorage, WorkerReachabilityView.permissive());
+        this(workerStorage, WorkerReachabilityView.permissive(), new InMemoryWorkerLoadView());
     }
 
     public WorkerManager(WorkerStorage workerStorage, WorkerReachabilityView reachabilityView) {
+        this(workerStorage, reachabilityView, new InMemoryWorkerLoadView());
+    }
+
+    public WorkerManager(WorkerStorage workerStorage,
+                         WorkerReachabilityView reachabilityView,
+                         WorkerLoadView workerLoadView) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
+        this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
     }
 
     public void addWorker(Worker worker) {
@@ -173,6 +184,18 @@ public class WorkerManager implements WorkerLookupStore {
             return false;
         }
         return worker.getStatus() != WorkerStatus.EXPIRED;
+    }
+
+    public WorkerLoadSnapshot getWorkerLoad(String workerId) {
+        return workerLoadView.snapshot(workerId);
+    }
+
+    public void recordWorkClaimed(String workerId, String taskId) {
+        workerLoadView.recordWorkClaimed(workerId, taskId);
+    }
+
+    public void recordWorkFinal(String workerId, String taskId) {
+        workerLoadView.recordWorkFinal(workerId, taskId);
     }
 
     /**

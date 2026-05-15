@@ -12,7 +12,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -66,9 +66,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     @Override
-    public List<TaskDispatchBinding> bindDispatches(Task task, List<MatchedWorkerContext> matchedWorkers) {
+    public List<TaskDispatchBinding> bindDispatches(Task task, List<WorkerSchedulingCandidate> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
-            log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
+            log.info("[MsgAssign] Skip task {} because no matched worker scheduling candidates were provided", task.getTid());
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -80,7 +80,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     Math.max(task.getExecutionSpec().getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
                     "SimpleTaskDispatchBinder",
-                    "no matched worker-context candidates were provided",
+                    "no matched worker scheduling candidates were provided",
                     "SKIPPED"
             );
             return List.of();
@@ -120,7 +120,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 task.getTid(), matchedWorkers.size(), readyWorkCount, perWorkerBatchLimit);
 
         for (int i = 0; i < matchedWorkers.size(); i++) {
-            MatchedWorkerContext matchedWorker = matchedWorkers.get(i);
+            WorkerSchedulingCandidate matchedWorker = matchedWorkers.get(i);
             Worker worker = matchedWorker.getWorker();
             WorkerContext workerContext = matchedWorker.getWorkerContext();
             if (!prepareWorkerContextForDispatch(task, workerContext)) {
@@ -160,6 +160,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
             dispatchBindings.add(dispatchBinding);
+            workerManager.recordWorkClaimed(work.workerId(), task.getTid());
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
@@ -224,6 +225,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 if (!compensated) {
                     throw new IllegalStateException("dispatch submit compensation failed for task " + task.getTid(), e);
                 }
+                releaseObservedWorkerLoad(immutableDispatchBindings);
                 traceEventLogger.dispatchBindingSummary(
                         task,
                         readyWorkCount,
@@ -242,6 +244,15 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
         }
         return List.copyOf(dispatchBindings);
+    }
+
+    private void releaseObservedWorkerLoad(List<TaskDispatchBinding> dispatchBindings) {
+        if (dispatchBindings == null || dispatchBindings.isEmpty()) {
+            return;
+        }
+        for (TaskDispatchBinding binding : dispatchBindings) {
+            workerManager.recordWorkFinal(binding.workerId(), binding.taskId());
+        }
     }
 
     private static final class DispatchSlot {

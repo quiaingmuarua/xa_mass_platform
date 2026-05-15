@@ -13,7 +13,7 @@ import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
 import com.xa.mass.engine.assignment.AssignmentAllocationPolicy;
 import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
 import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicy;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
@@ -125,8 +125,8 @@ public class TaskWorkerAssignListener {
                 workerManager.findWorkerCandidates(task).size(),
                 usesTaskLevelEventCapability(task)
         ));
-        List<MatchedWorkerContext> matched = matchingStrategy.matchWorkers(task, allocationPlan.requestedMatchCount());
-        log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
+        List<WorkerSchedulingCandidate> matched = matchingStrategy.matchWorkers(task, allocationPlan.requestedMatchCount());
+        log.info("[WorkerAssign] Strategy {} matched {} worker scheduling candidates for task {}",
                 matchingStrategy.getClass().getSimpleName(), matched.size(), task.getTid());
         AssignmentAllocationDecision allocationDecision = allocationPolicy.decide(allocationPlan, task.getStatus(), matched);
         if (allocationDecision.outcome() == AssignmentAllocationOutcome.NO_MATCH) {
@@ -161,7 +161,7 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        List<MatchedWorkerContext> dispatchCandidates = allocationDecision.dispatchCandidates();
+        List<WorkerSchedulingCandidate> dispatchCandidates = allocationDecision.dispatchCandidates();
         if (allocationDecision.outcome() == AssignmentAllocationOutcome.NO_DISPATCH_CANDIDATES) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
@@ -224,9 +224,9 @@ public class TaskWorkerAssignListener {
         return eventCode != null && !eventCode.isBlank();
     }
 
-    private void unlockWorkers(List<MatchedWorkerContext> workers) {
+    private void unlockWorkers(List<WorkerSchedulingCandidate> workers) {
         for (String workerId : workers.stream()
-                .map(MatchedWorkerContext::getWorkerId)
+                .map(WorkerSchedulingCandidate::getWorkerId)
                 .distinct()
                 .collect(Collectors.toList())) {
             workerManager.unlockWorker(workerId);

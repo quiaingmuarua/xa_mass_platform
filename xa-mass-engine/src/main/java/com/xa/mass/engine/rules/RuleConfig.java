@@ -21,12 +21,12 @@ public class RuleConfig {
         basicRule.setDescription("Worker must be available and unlocked");
         rules.add(basicRule);
 
-        RuleDefinition workerContextRule = new RuleDefinition();
-        workerContextRule.setId("worker_context_status_check");
-        workerContextRule.setType(RuleType.QL_EXPRESS);
-        workerContextRule.setContent("hasWorkerContext == false || isWorkerContextAllocatable == true");
-        workerContextRule.setDescription("Worker without context is allowed; otherwise worker context must be allocatable");
-        rules.add(workerContextRule);
+        RuleDefinition schedulingResourceRule = new RuleDefinition();
+        schedulingResourceRule.setId("worker_scheduling_resource_check");
+        schedulingResourceRule.setType(RuleType.QL_EXPRESS);
+        schedulingResourceRule.setContent("isWorkerSchedulingResourceAllocatable == true");
+        schedulingResourceRule.setDescription("Worker scheduling resource must be allocatable");
+        rules.add(schedulingResourceRule);
 
         RuleDefinition routingRule = new RuleDefinition();
         routingRule.setId("routing_code_match");

@@ -17,6 +17,20 @@ Progress:
 - 2026-05-15: Step 2 continued. Default routing rules and representative
   routing tests now read `workerScheduling*` fields while legacy
   `workerContext*` variables remain available.
+- 2026-05-15: Step 2 continued. Matching prefilter decisions and diagnostic
+  snapshots now consume `WorkerSchedulingView` for context allocatability,
+  project, and routing checks while preserving legacy trace/record fields.
+- 2026-05-15: Step 2 candidate handoff convergence was implemented. Matching,
+  allocation, listener orchestration, and dispatch binding now exchange
+  `WorkerSchedulingCandidate` instead of a context-first matched resource type.
+- 2026-05-15: Step 2 rule surface convergence was implemented. Default and
+  derived rule sets now use `workerScheduling*` / `isWorkerScheduling*`
+  variables, while legacy `workerContext*` variables remain available for
+  transition compatibility.
+- 2026-05-15: Step 4 observational foundation was implemented early. A
+  process-local `WorkerLoadView` now tracks runtime claim/final callbacks and
+  exposes load fields through `WorkerSchedulingView` / `WorkerMatchContext`,
+  but does not influence matching, allocation, locking, or capacity.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -194,9 +208,9 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | --- | --- | --- | --- | --- |
 | 0 | Roadmap and guardrails | None | Docs | Proposed |
 | 1 | Retire inert `TaskScheduler` SPI | Low to medium | Engine/SDK wiring | Implemented 2026-05-15 |
-| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | In progress |
+| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented through default rule surface and candidate handoff; API cleanup proposed |
 | 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
-| 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Proposed |
+| 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented observational mode 2026-05-15 |
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Proposed |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Proposed |
 | 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Proposed |
@@ -253,8 +267,12 @@ preserve a no-op compatibility track.
 
 ## 9. Step 2: Worker Scheduling View Convergence
 
-Status: in progress. The first slice introduced `WorkerSchedulingView` and
-documented the current baseline in `WORKER_SCHEDULING_VIEW_BASELINE.md`.
+Status: implemented through default rule surface and candidate handoff.
+`WorkerSchedulingView` is the matching read model, default rules consume
+`workerScheduling*` / `isWorkerScheduling*` variables, and
+`WorkerSchedulingCandidate` is the internal handoff between matching,
+allocation, listener orchestration, and dispatch binding. Remaining cleanup is
+eventual public/storage WorkerContext retirement, not a parallel matching path.
 
 ### Goal
 
@@ -266,7 +284,7 @@ treating `WorkerContext` as a schedulable engine resource.
 Introduce or converge on a read model concept such as `WorkerSchedulingView`
 without necessarily adding a new public type immediately.
 
-The view should contain only scheduling-read data:
+The view contains scheduling-read data:
 
 - `workerId`
 - project and event capabilities
@@ -276,8 +294,9 @@ The view should contain only scheduling-read data:
 - later: load snapshot
 - later: declared capacity
 
-`WorkerContext` may still exist as a storage/API input during this step, but the
-engine matching hot path should consume flattened worker scheduling attributes.
+`WorkerContext` still exists as a storage/API input during this step, but the
+engine matching hot path consumes flattened worker scheduling attributes and
+hands off `WorkerSchedulingCandidate`.
 
 ### Scope
 
@@ -287,6 +306,9 @@ engine matching hot path should consume flattened worker scheduling attributes.
   without context-specific variables.
 - Add tests proving worker-level attributes can express current routing and
   attribute matching scenarios.
+- Replace the internal matching handoff with `WorkerSchedulingCandidate` while
+  preserving runtime binding behavior and trace `workerContextId`.
+- Migrate default and derived rule sets to worker scheduling variables.
 - Keep current behavior until the view is proven.
 
 ### Out of scope
@@ -299,6 +321,8 @@ engine matching hot path should consume flattened worker scheduling attributes.
 ### Verification
 
 - Focused `WorkerMatchContext` tests.
+- Focused `WorkerSchedulingCandidate` tests.
+- Focused `RuleConfig` tests guarding default rule surface.
 - `RuleBasedTaskWorkerMatchingStrategyTest`.
 - Existing routing E2E tests.
 - `assignment-success-binding` trace scenario remains valid.
@@ -351,30 +375,34 @@ crosses too many modules at once.
 
 ## 11. Step 4: WorkerLoadView Foundation
 
+Status: implemented in observational mode. Capacity enforcement, reservation,
+foreground/background semantics, and load-aware ranking remain future phases.
+
 ### Goal
 
 Create a push-updated worker load snapshot that matching can read in O(1) per
 worker without runtime queries in the hot path.
 
-### Proposed API
+### Implemented API
 
 The API should include `taskId` from the beginning so later task budgets do not
 require another rewrite.
 
 ```java
 interface WorkerLoadView {
-    int getActiveCount(String workerId);
+    int getActiveLeaseCount(String workerId);
     int getReservedCount(String workerId);
-    int getActiveWorkerCountForTask(String taskId);
-    double getLoadRatio(String workerId);
-    boolean isAtCapacity(String workerId);
+    double getEstimatedLoadRatio(String workerId);
+    WorkerLoadSnapshot snapshot(String workerId);
 
-    void recordWorkClaimed(String taskId, String workerId, boolean foreground, int capacityUnits);
-    void recordWorkReleased(String taskId, String workerId, String reason);
+    void recordWorkClaimed(String workerId, String taskId);
+    void recordWorkFinal(String workerId, String taskId);
 }
 ```
 
-The default implementation can be in-memory and process-local.
+The default implementation is in-memory and process-local. The API includes
+`taskId` in lifecycle updates so later task-budget accounting can extend the
+same owner without moving claim/final hooks again.
 
 ### Owner rule
 
@@ -395,7 +423,10 @@ success paths. Release must happen for:
 - Add `InMemoryWorkerLoadView`.
 - Wire default implementation through engine config/builders.
 - Expose load values in `WorkerMatchContext`.
-- Keep behavior unchanged unless only observing load.
+- Record successful runtime claims in `SimpleTaskDispatchBinder`.
+- Release observed load from attempt-closed and terminal cleanup in
+  `TaskResourceReleaseListener`.
+- Keep behavior unchanged; load is only observed.
 
 ### Out of scope
 
@@ -408,6 +439,7 @@ success paths. Release must happen for:
 
 - Unit: concurrent claim/release accounting.
 - Unit: release path coverage.
+- Focused dispatch binder claim/compensation coverage.
 - Engine scheduling suite.
 - Existing trace scenarios unchanged.
 
@@ -763,7 +795,10 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is a focused WorkerContext hot-path
-inventory and worker scheduling view convergence test plan. That is still much
-smaller than introducing foreground/background capacity semantics and reduces
-ambiguity before load-aware scheduling begins.
+The next recommended implementation step is either dispatch priority within
+lanes or a default `WorkerCandidateRanker` that consumes the already-observed
+load fields. The ranker step should still keep eligibility rules as the
+correctness gate and should not introduce capacity reservation.
+
+Full WorkerContext deletion should wait until runtime binding, trace analyzers,
+and server routing E2E no longer need context-specific fields as proof.
