@@ -89,6 +89,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
         if (readyWorkCount == 0) {
             log.info("[MsgAssign] Skip task {} because there is no runtime-ready work to dispatch", task.getTid());
+            releaseReservedWorkerCapacity(task, matchedWorkers);
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -128,6 +129,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         worker.getWorkerId(),
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
+                workerManager.releaseWorkerReservation(worker.getWorkerId(), task.getTid());
                 workerManager.unlockWorker(worker.getWorkerId());
                 traceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
@@ -160,7 +162,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
             dispatchBindings.add(dispatchBinding);
-            workerManager.recordWorkClaimed(work.workerId(), task.getTid());
+            if (!workerManager.confirmWorkerReservation(work.workerId(), task.getTid())) {
+                workerManager.recordWorkClaimed(work.workerId(), task.getTid());
+            }
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
@@ -173,6 +177,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
                 releaseWorkerContextIfIdleForTask(task, slot.workerContext(), "matched worker received no messages");
+                workerManager.releaseWorkerReservation(slot.worker().getWorkerId(), task.getTid());
                 workerManager.unlockWorker(slot.worker().getWorkerId());
                 traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
@@ -244,6 +249,19 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
         }
         return List.copyOf(dispatchBindings);
+    }
+
+    private void releaseReservedWorkerCapacity(Task task, List<WorkerSchedulingCandidate> candidates) {
+        if (task == null || candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        for (String workerId : candidates.stream()
+                .map(WorkerSchedulingCandidate::getWorkerId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList())) {
+            workerManager.releaseWorkerReservation(workerId, task.getTid());
+        }
     }
 
     private void releaseObservedWorkerLoad(List<TaskDispatchBinding> dispatchBindings) {

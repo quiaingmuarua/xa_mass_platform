@@ -21,6 +21,7 @@ public class Worker {
     private String workerGroupId;
     private String adapterId;
     private String onlineStrategy;
+    private int maxConcurrentWork = 1;
     private Map<String, String> attributes = Collections.emptyMap();
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -131,6 +132,14 @@ public class Worker {
         this.onlineStrategy = onlineStrategy;
     }
 
+    public int getMaxConcurrentWork() {
+        return Math.max(1, maxConcurrentWork);
+    }
+
+    public void setMaxConcurrentWork(int maxConcurrentWork) {
+        this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
+    }
+
     public Map<String, String> getAttributes() {
         return attributes;
     }
@@ -220,6 +229,7 @@ public class Worker {
                 ", workerGroupId='" + workerGroupId + '\'' +
                 ", adapterId='" + adapterId + '\'' +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
+                ", maxConcurrentWork=" + getMaxConcurrentWork() +
                 ", attributes=" + attributes +
                 ", createTime=" + createTime +
                 ", updateTime=" + updateTime +

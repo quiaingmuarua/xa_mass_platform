@@ -135,6 +135,12 @@ Keep these facts fixed unless the owning global baselines change:
 - `WorkerCandidateRanker` orders rule-passed scheduling candidates before lock
   acquisition; rules remain the eligibility gate, and the default ranker uses
   observed load plus routing affinity as preference signals
+- `WorkerLoadView` owns process-local load and reservation accounting:
+  matching reserves one unit of worker-declared capacity before lock
+  acquisition, and dispatch binding confirms or releases that reservation
+  around runtime claim outcomes
+- worker match trace rows include reservation-time load snapshots so canonical
+  assignment trace can prove the current process-local capacity guard
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
 - `TaskResultRuntime` owns stable-final public result rows, task-local result
@@ -248,9 +254,9 @@ Matching boundaries:
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject
-- `WorkerLoadView` is a push-updated observational read view sourced from
-  runtime claim/final lifecycle callbacks; current default matching does not
-  use load to gate, rank, reserve, or allocate workers
+- `WorkerLoadView` is a push-updated read view and process-local reservation
+  owner sourced from runtime claim/final lifecycle callbacks plus matching
+  reservation handoff
 - `Worker.status` and worker lock state are typed truth, not attributes
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from
@@ -260,10 +266,11 @@ Matching boundaries:
   current WorkerContext convergence path
 - default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
   legacy `workerContext*` variables are compatibility data only
-- worker load variables such as `workerActiveLeaseCount` and
-  `workerEstimatedLoadRatio` are available for observation and future ranking,
-  but must not be treated as capacity correctness until a capacity phase owns
-  that behavior
+- worker load variables such as `workerActiveLeaseCount`,
+  `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
+  evidence; current capacity semantics are worker-declared process-local
+  reservation plus the existing worker lock, not distributed capacity
+  correctness or shared background execution
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, a missing `WorkerContext` must not satisfy that
@@ -345,6 +352,9 @@ Explicit secondary residue/audit tests:
 
 Engine-local owner docs:
 
+- [`SCHEDULING_KERNEL_GUARDRAILS.md`](./SCHEDULING_KERNEL_GUARDRAILS.md):
+  short kernel guardrails for policy-vs-mechanism separation and future
+  scheduling evolution
 - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md):
   current policy ownership and precedence
 - [`RUNTIME_BOUNDARY_BASELINE.md`](./RUNTIME_BOUNDARY_BASELINE.md):

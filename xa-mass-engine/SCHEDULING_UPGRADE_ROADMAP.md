@@ -29,13 +29,30 @@ Progress:
   transition compatibility.
 - 2026-05-15: Step 4 observational foundation was implemented early. A
   process-local `WorkerLoadView` now tracks runtime claim/final callbacks and
-  exposes load fields through `WorkerSchedulingView` / `WorkerMatchContext`,
-  but does not influence matching, allocation, locking, or capacity.
+  exposes load fields through `WorkerSchedulingView` / `WorkerMatchContext`.
+  It started as observational and was later extended by Step 7A reservation.
+- 2026-05-15: Step 7A reservation foundation was implemented without adding
+  foreground/background or worker-declared public capacity fields. Matching
+  now reserves default worker capacity before lock acquisition; dispatch
+  binding confirms or releases that reservation around runtime claim outcomes.
+- 2026-05-15: Step 7B trace-observed reservation proof was implemented.
+  Worker match trace now records reservation-time load snapshots, and
+  `xa-mass-trace` includes the `capacity-reservation-under-concurrency`
+  scenario analyzer over canonical assignment rows.
+- 2026-05-15: Step 7C worker-declared capacity read model was implemented.
+  `Worker.maxConcurrentWork` now defaults to `1`, SDK worker registration can
+  declare it, and `WorkerManager` synchronizes the declaration into
+  `WorkerLoadView` snapshots. Shared/background execution is still not enabled;
+  the existing worker lock remains the dispatch guard.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
 steps because this module is the kernel for assignment, runtime dispatch, and
 result convergence.
+
+Read this roadmap with [`SCHEDULING_KERNEL_GUARDRAILS.md`](./SCHEDULING_KERNEL_GUARDRAILS.md).
+The roadmap describes upgrade order and future slices; the guardrails define the
+current rule that mechanism owners must stay stable while policy quality evolves.
 
 ## 1. Goal
 
@@ -127,7 +144,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | Matching rules | Current fixed/rule-driven policy | eligibility of a candidate worker view | ranking, task terminal, runtime claim |
 | `WorkerCandidateRanker` | Current internal seam | preference order among rule-passed candidates | eligibility correctness, locking/reservation |
 | `WorkerBudgetPolicy` | Planned | per-task worker budget ceiling | task state mutation, runtime claim |
-| Capacity/reservation policy | Planned | capacity units and foreground/background capacity decision | attempt lifecycle finality |
+| Capacity/reservation policy | Partial internal foundation | default single-capacity reservation handoff; foreground/background capacity decision remains planned | attempt lifecycle finality |
 | Runtime profile resolver | Current fixed policy | workload class to lane/priority/profile mapping | queue mechanism, worker selection |
 
 ### Current and planned mechanisms
@@ -138,7 +155,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | `TaskWorkerAssignListener` | assignment orchestration, status transition, unlock/release, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy |
 | `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, load/reachability views |
 | `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output only |
-| `WorkerLoadView` | push-updated load snapshot | runtime/attempt lifecycle events |
+| `WorkerLoadView` | push-updated load snapshot and process-local reservation accounting | runtime/attempt lifecycle events, matching reservation handoff |
 | `WorkerReachabilityView` | push-updated transport reachability snapshot | transport presence events |
 
 ### Acceptance check
@@ -210,10 +227,10 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | 1 | Retire inert `TaskScheduler` SPI | Low to medium | Engine/SDK wiring | Implemented 2026-05-15 |
 | 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented through default rule surface and candidate handoff; API cleanup proposed |
 | 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
-| 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented observational mode 2026-05-15 |
+| 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented; extended by Step 7A reservation |
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
-| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Proposed |
+| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
 | 8 | Cross-task worker budget and fairness | High | Allocation policy/load view | Proposed |
 | 9 | System-event worker management boundary | High | Worker management integration | Proposed |
 
@@ -375,8 +392,8 @@ crosses too many modules at once.
 
 ## 11. Step 4: WorkerLoadView Foundation
 
-Status: implemented in observational mode. Capacity enforcement, reservation,
-foreground/background semantics, and load-aware ranking remain future phases.
+Status: implemented as a load snapshot plus worker-declared capacity
+reservation foundation. Foreground/background semantics remain future phases.
 
 ### Goal
 
@@ -394,6 +411,10 @@ interface WorkerLoadView {
     int getReservedCount(String workerId);
     double getEstimatedLoadRatio(String workerId);
     WorkerLoadSnapshot snapshot(String workerId);
+
+    boolean tryReserveCapacity(String workerId, String taskId);
+    boolean confirmReservation(String workerId, String taskId);
+    void releaseReservation(String workerId, String taskId);
 
     void recordWorkClaimed(String workerId, String taskId);
     void recordWorkFinal(String workerId, String taskId);
@@ -426,13 +447,15 @@ success paths. Release must happen for:
 - Record successful runtime claims in `SimpleTaskDispatchBinder`.
 - Release observed load from attempt-closed and terminal cleanup in
   `TaskResourceReleaseListener`.
-- Keep behavior unchanged; load is only observed.
+- Keep task/dispatch semantics unchanged; reservation only closes the gap
+  between ranked match selection and runtime claim confirmation for the current
+  default exclusive worker model.
 
 ### Out of scope
 
 - No candidate ranking yet.
-- No capacity reservation yet.
 - No foreground/background behavior yet unless separately approved.
+- No public worker capacity or foreground/background model yet.
 - No Redis/distributed load view.
 
 ### Verification
@@ -570,6 +593,13 @@ be a fallback, not the main owner.
 
 ## 14. Step 7: Capacity Reservation And Foreground/Background
 
+Status: reservation foundation, trace-observed analyzer, and worker-declared
+capacity read model implemented on 2026-05-15. The implemented slices keep
+`ExecutionSpec.foreground` out of scope and keep the existing long-lived worker
+lock as the current exclusive dispatch guard. `Worker.maxConcurrentWork` is now
+available as a declaration consumed by `WorkerLoadView`; it is not shared
+background execution yet.
+
 ### Goal
 
 Prevent over-commitment across concurrent assignment waves and define exclusive
@@ -586,13 +616,16 @@ Candidate task field:
 ExecutionSpec.foreground: boolean
 ```
 
-Candidate worker field:
+Implemented worker field:
 
 ```text
 Worker.maxConcurrentWork: int
 ```
 
-These are model/API/storage changes and must be treated as such.
+The field defaults to `1` and invalid values are normalized to `1`. SDK worker
+registration and worker snapshots expose it as a capability declaration. The
+current engine uses it for process-local reservation/load snapshots only; the
+long-lived worker lock still prevents shared foreground dispatch.
 
 ### Proposed semantics
 
@@ -607,10 +640,21 @@ These are model/API/storage changes and must be treated as such.
 ### Proposed WorkerLoadView additions
 
 ```java
-boolean tryReserveCapacity(String taskId, String workerId, boolean foreground, int capacityUnits);
-void confirmReservation(String taskId, String workerId, int capacityUnits);
-void releaseReservation(String taskId, String workerId, String reason);
+boolean tryReserveCapacity(String workerId, String taskId);
+boolean confirmReservation(String workerId, String taskId);
+void releaseReservation(String workerId, String taskId);
 ```
+
+The current implemented API is intentionally smaller than the eventual
+foreground/background shape. It reserves one capacity unit against the worker's
+declared capacity and lets `SimpleTaskDispatchBinder` fall back to
+`recordWorkClaimed(...)` when tests or custom matching strategies bypass
+reservation.
+
+Worker match accepted/rejected trace rows read the current load snapshot at the
+reservation decision point. This makes `workerReservedCount`,
+`workerDeclaredCapacity`, and `workerEstimatedLoadRatio` usable as canonical
+evidence for the current process-local reservation behavior.
 
 ### Scope
 
@@ -618,7 +662,10 @@ void releaseReservation(String taskId, String workerId, String reason);
 - Integrate reservation with matching acceptance.
 - Integrate confirmation with runtime claim.
 - Integrate release with all dispatch failure and task-status failure paths.
-- Update trace attrs for reservation, confirmation, and release evidence.
+- Keep existing rank/load trace attrs (`workerReservedCount`,
+  `workerEstimatedLoadRatio`) queryable and register the
+  `capacity-reservation-under-concurrency` analyzer. Explicit reservation
+  lifecycle event types remain future work.
 
 ### Out of scope
 
@@ -764,7 +811,7 @@ WorkerContext retirement.
 | `worker-scheduling-view-routing` | Step 2 or 3 | Worker-level scheduling attributes preserve current routing behavior |
 | `priority-lane-ordering` | Step 5 | HIGH priority is processed before NORMAL in the same lane |
 | `load-aware-worker-selection` | Step 6 | Lower-load equivalent worker is selected first |
-| `capacity-reservation-under-concurrency` | Step 7 | Capacity is not over-committed across concurrent assignment waves |
+| `capacity-reservation-under-concurrency` | Step 7 | Process-local capacity reservation is visible and accepted matches are not over committed |
 | `cross-task-worker-fairness` | Step 8 | Large BULK work does not starve concurrent INTERACTIVE work |
 | `account-switch-failure` | Step 9 | Account execution failure converges through result handling and trace |
 
@@ -812,10 +859,10 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The next recommended implementation step is capacity reservation and the
-foreground/background model decision. That step should not begin until the
-team is ready to make a behavior-level capacity commitment; the current ranker
-still uses the existing worker lock as the dispatch guard.
+The next recommended implementation step is the foreground/background model
+decision. The current ranker now uses reservation plus the existing worker lock
+as the dispatch guard, and trace can observe that foundation; worker-declared
+capacity is modeled, but shared background execution is still not implemented.
 
 Full WorkerContext deletion should wait until runtime binding, trace analyzers,
 and server routing E2E no longer need context-specific fields as proof.

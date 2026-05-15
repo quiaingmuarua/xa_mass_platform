@@ -10,6 +10,7 @@ import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
@@ -265,12 +266,21 @@ public final class TraceEventLogger {
                                     String reason,
                                     Integer candidateRank,
                                     Double candidateScore) {
+        workerMatchAccepted(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchAccepted(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
         if (candidate == null) {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "SUCCESS",
-                workerSchedulingRankAttrs(candidate.getSchedulingView(), candidateRank, candidateScore));
+                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     public void workerMatchRejected(String taskId, Worker worker, WorkerContext workerContext, String reason) {
@@ -286,12 +296,21 @@ public final class TraceEventLogger {
                                     String reason,
                                     Integer candidateRank,
                                     Double candidateScore) {
+        workerMatchRejected(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchRejected(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
         if (candidate == null) {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, taskId,
                 candidate.getWorker(), candidate.getWorkerContext(), reason, "REJECTED",
-                workerSchedulingRankAttrs(candidate.getSchedulingView(), candidateRank, candidateScore));
+                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     private void emitWorkerMatchEvent(ExecutionEventType eventType,
@@ -857,11 +876,23 @@ public final class TraceEventLogger {
     private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
                                                                  Integer candidateRank,
                                                                  Double candidateScore) {
+        return workerSchedulingRankAttrs(view, null, candidateRank, candidateScore);
+    }
+
+    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
+                                                                 WorkerLoadSnapshot workerLoadSnapshot,
+                                                                 Integer candidateRank,
+                                                                 Double candidateScore) {
         Map<String, Object> values = attrs(
                 "candidateRank", candidateRank,
                 "candidateScore", candidateScore != null ? formatDouble(candidateScore) : null
         );
-        if (view != null) {
+        if (workerLoadSnapshot != null) {
+            values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
+            values.put("workerReservedCount", workerLoadSnapshot.reservedCount());
+            values.put("workerDeclaredCapacity", workerLoadSnapshot.declaredCapacity());
+            values.put("workerEstimatedLoadRatio", formatDouble(workerLoadSnapshot.estimatedLoadRatio()));
+        } else if (view != null) {
             values.put("workerActiveLeaseCount", view.activeLeaseCount());
             values.put("workerReservedCount", view.reservedCount());
             values.put("workerDeclaredCapacity", view.declaredCapacity());

@@ -125,6 +125,7 @@ public class CatalogController {
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
                     item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
+                    item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
                             worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));

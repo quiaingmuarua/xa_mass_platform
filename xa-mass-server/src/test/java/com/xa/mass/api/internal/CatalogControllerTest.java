@@ -121,6 +121,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].eventCode=='crawler.fetch-page')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].projectCodes[0]=='crawlerApp')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].projectCodes[1]=='demoApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.maxConcurrentWork==1)]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].endpointId=='ws-crawler-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].routeKey=='route-crawler-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].adapterId=='ws-public')]").exists())
@@ -158,6 +159,7 @@ class CatalogControllerTest {
                 null,
                 adapterId,
                 transportHint,
+                1,
                 java.util.Map.of(),
                 null,
                 null

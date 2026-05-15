@@ -364,6 +364,7 @@ class MockRuntimeDataLoaderTest {
                     request.getWorkerGroupId(),
                     request.getAdapterId(),
                     request.getTransportHint(),
+                    request.getMaxConcurrentWork(),
                     request.getAttributes(),
                     null,
                     null

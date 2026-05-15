@@ -261,6 +261,15 @@ not read MDC logs, compatibility message/attempt projection, task-detail DB
 tables, or runtime queues. Schedule trace explains why the scheduler made or
 skipped a decision; it does not participate in runtime correctness, lease
 acceptance, retry budgeting, dispatch ownership, or terminal convergence.
+`workerReservedCount` is the canonical read-side evidence of the current
+process-local reservation foundation. It is not a distributed capacity lock and
+does not prove shared worker execution. `workerDeclaredCapacity` reflects the
+current worker declaration observed by the engine-local `WorkerLoadView`; the
+default is `1`.
+The `capacity-reservation-under-concurrency` analyzer interprets these fields
+only as process-local reservation evidence: accepted worker matches must not
+show `active + reserved > declaredCapacity`, and capacity rejections must show
+`active + reserved >= declaredCapacity`.
 
 ## 5. Minimum Required Paths
 

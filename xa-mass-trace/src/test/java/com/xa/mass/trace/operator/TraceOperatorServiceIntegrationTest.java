@@ -161,6 +161,19 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsCapacityReservationScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeCapacityReservationTrace(tempDir, "task-capacity");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "capacity-reservation-under-concurrency", "task-capacity"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("capacity-reservation-under-concurrency", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_REJECTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -202,6 +215,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void capacityReservationScenarioFailsWithoutCapacityRejection() throws Exception {
+        writeLoadAwareWorkerSelectionTrace(tempDir, "task-missing-capacity-rejection");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "capacity-reservation-under-concurrency",
+                        "task-missing-capacity-rejection"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_CAPACITY_REJECTION".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
@@ -209,6 +237,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
         assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
+        assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -398,6 +427,41 @@ class TraceOperatorServiceIntegrationTest {
                             "workerReservedCount", 0,
                             "workerDeclaredCapacity", 4,
                             "workerEstimatedLoadRatio", "0.8"))
+                    .build());
+        }
+    }
+
+    private void writeCapacityReservationTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_REJECTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
+                    .outcome(false, null, "worker capacity unavailable after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "worker capacity unavailable after candidate ranking",
+                            "result", "REJECTED",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
                     .build());
         }
     }

@@ -3,13 +3,15 @@
 Last updated: 2026-05-15
 
 Status: current transitional baseline for the WorkerContext convergence path,
-including scheduling-candidate handoff, default rule surface convergence, and
-observational worker load view wiring.
+including scheduling-candidate handoff, default rule surface convergence,
+worker load view wiring, load-aware ranking, and default-capacity reservation.
+Worker-declared capacity is now present as a read-model input to reservation
+and trace; shared foreground/background execution is still not enabled.
 
 This document records the current engine scheduling read model after the first
-WorkerContext convergence slice. It is intentionally narrow: this step does not
-delete WorkerContext, change assignment behavior, introduce capacity scheduling,
-rank candidates by load, or change trace contracts.
+WorkerContext convergence slices. It is intentionally narrow: this path does
+not delete WorkerContext, add foreground/background semantics, or remove legacy
+trace fields.
 
 ## Goal
 
@@ -25,6 +27,11 @@ The immediate convergence target is:
 - default rules use the worker scheduling surface rather than `workerContext*`
 - matching can observe process-local worker load without runtime hot-path
   queries
+- matching ranks rule-passed candidates with worker load and routing affinity
+- matching reserves default worker capacity before lock acquisition, and binder
+  confirms or releases that reservation around runtime claim
+- worker match accepted/rejected trace rows include reservation-time load
+  snapshots for canonical schedule analysis
 - later phases can remove legacy `workerContext*` rule variables
   without a single destructive rewrite
 
@@ -53,11 +60,15 @@ WorkerContext is still live in these engine paths:
   - exposes legacy `workerContext*` variables to QLExpress rules
   - exposes flattened `workerScheduling*` variables
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
-  - exposes observational worker load fields from `WorkerLoadView`
+  - exposes worker load and reservation fields from `WorkerLoadView`
 - `SimpleTaskDispatchBinder`
   - reserves/occupies WorkerContext during runtime claim and dispatch binding
   - records `workerContextId` on runtime attempts and dispatch trace
-  - records successful runtime claims in `WorkerLoadView`
+  - confirms worker reservations to active load when runtime claim succeeds
+  - falls back to recording successful runtime claims when a custom strategy
+    bypassed reservation
+  - releases worker reservations for skipped, no-message, or failed dispatch
+    slots
 - `TaskResourceReleaseListener`
   - releases WorkerContext after final result, lease expiry, or cleanup paths
   - releases observed worker load on attempt-closed and terminal cleanup paths
@@ -116,9 +127,16 @@ It exposes worker-level scheduling fields:
 - `currentActiveLeaseCount`
 - `estimatedLoadRatio`
 
-The load fields are observational in this baseline. They are available to rule
-contexts and diagnostic snapshots, but default matching behavior does not use
-them for eligibility, ordering, or capacity decisions.
+The load fields are scheduling evidence in this baseline. Rule contexts and
+diagnostic snapshots can read them, the default ranker uses load ratio for
+preference ordering, and matching uses the reservation count as a process-local
+capacity guard. This is still not a shared capacity execution model: default
+declared capacity is `1`, `Worker.maxConcurrentWork` can raise the
+process-local reservation ceiling, and foreground/background shared execution
+is not implemented.
+Accepted and rejected worker-match trace events read the current load snapshot
+at the reservation decision point, so `workerReservedCount` can prove pending
+reservation evidence in canonical JSONL.
 
 Legacy fields remain available:
 
@@ -164,8 +182,7 @@ engine as system-event-updated worker scheduling attributes.
 - no WorkerContext model deletion
 - no WorkerContext storage/API deletion
 - no foreground/background task semantics
-- no worker capacity enforcement or capacity reservation
-- no load-aware worker ranking
+- no shared background execution
 - no account-switch dispatch protocol
 - no trace field removal
 
@@ -184,22 +201,26 @@ Focused proof for this step:
   - proves the handoff keeps worker, nullable legacy context, scheduling view,
     and `workerContextId`
 - `InMemoryWorkerLoadViewTest`
-  - proves claim/final accounting and concurrent update safety
+  - proves claim/final accounting, reservation accounting, and concurrent
+    update safety
 - `RuleBasedTaskWorkerMatchingStrategyTest`
   - protects current matching behavior
+- `capacity-reservation-under-concurrency`
+  - proves process-local reservation evidence through `xa-mass-trace`
 - `EngineSchedulingCoreSuite`
   - protects assignment behavior
 
-Server and trace suites remain useful because no runtime behavior or trace schema
-changed in this slice.
+Server and trace suites remain useful because no public runtime model or trace
+schema changed in this slice.
 
 ## Next Cut
 
 Lane-local dispatch priority is now implemented in `TaskAssignWorker`: signals
 are ordered by resolved `DispatchPriority` inside each lane, and same-priority
-signals retain FIFO order. Load-aware candidate ranking is also implemented:
-rule-passed `WorkerMatchContext` candidates are ranked before lock acquisition
-using observed worker load and routing affinity.
+signals retain FIFO order. Load-aware candidate ranking is implemented:
+rule-passed `WorkerMatchContext` candidates are ranked before reservation and
+lock acquisition using observed worker load and routing affinity. Reservation
+foundation is also implemented for the current default exclusive worker model.
 
 WorkerContext physical model/API deletion remains a later, larger phase after
 runtime binding and trace compatibility no longer need context-specific fields.

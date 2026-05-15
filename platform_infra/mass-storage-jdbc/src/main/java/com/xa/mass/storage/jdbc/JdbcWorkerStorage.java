@@ -281,6 +281,7 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         worker.setWorkerGroupId(source.getWorkerGroupId());
         worker.setAdapterId(source.getAdapterId());
         worker.setOnlineStrategy(source.getOnlineStrategy());
+        worker.setMaxConcurrentWork(source.getMaxConcurrentWork());
         worker.setAttributes(source.getAttributes());
         worker.setCreateTime(source.getCreateTime());
         worker.setUpdateTime(source.getCreateTime());

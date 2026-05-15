@@ -186,6 +186,39 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void successfulRuntimeClaimConfirmsReservationBeforeFallbackLoadClaim() {
+        Task task = createTask(2);
+        task.getExecutionSpec().setBatchSize(2);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.confirmWorkerReservation("d1", task.getTid())).thenReturn(true, false);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), wc)));
+
+        assertEquals(2, dispatched.size());
+        verify(workerManager, times(2)).confirmWorkerReservation("d1", task.getTid());
+        verify(workerManager, times(1)).recordWorkClaimed("d1", task.getTid());
+    }
+
+    @Test
+    void workerWithNoClaimedMessagesReleasesReservationAndUnlocks() {
+        Task task = createTask(1);
+        task.getExecutionSpec().setBatchSize(1);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(
+                task,
+                List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2))
+        );
+
+        assertEquals(1, dispatched.size());
+        verify(workerManager).releaseWorkerReservation("d2", task.getTid());
+        verify(workerManager).unlockWorker("d2");
+    }
+
+    @Test
     void dispatchSubmitFailureReleasesObservedWorkerLoadAfterCompensation() {
         Task task = createTask(2);
         task.getExecutionSpec().setBatchSize(2);
@@ -562,6 +595,7 @@ public class SimpleTaskDispatchBinderTest {
 
         List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
         assertEquals(TaskMessageProjectionStatus.INIT, stored.get(0).status());
+        verify(workerManager).releaseWorkerReservation("d1", task.getTid());
         verify(workerManager).unlockWorker("d1");
         verify(recordService, never()).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()

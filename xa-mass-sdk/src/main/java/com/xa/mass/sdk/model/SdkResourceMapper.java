@@ -31,6 +31,7 @@ public final class SdkResourceMapper {
         worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
         worker.setAdapterId(adapterId);
         worker.setOnlineStrategy(transportHint);
+        worker.setMaxConcurrentWork(request.getMaxConcurrentWork());
         worker.setAttributes(normalizedAttributes(request.getAttributes()));
         return worker;
     }

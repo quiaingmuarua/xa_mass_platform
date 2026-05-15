@@ -107,6 +107,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                             && "worker-us".equals(mdc.get("workerId"))
                             && "ctx-us".equals(mdc.get("workerContextId"))
                             && "1".equals(mdc.get("candidateRank"))
+                            && "1".equals(mdc.get("workerReservedCount"))
                             && mdc.get("workerEstimatedLoadRatio") != null);
             capture.assertHasEvent("WORKER_MATCH_REJECTED", mdc ->
                     "task-trace".equals(mdc.get("taskId"))
@@ -565,6 +566,81 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-load-aware", "worker-low-load");
         assertEquals(0, acceptedRecord.getContextSnapshot().get("workerActiveLeaseCount"));
+    }
+
+    @Test
+    void rejectsRankedCandidateWhenWorkerCapacityCannotBeReserved() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+        loadView.recordWorkClaimed("worker-at-capacity", "existing-task");
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE,
+                loadView
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-capacity");
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+
+        workerManager.addWorker(worker("worker-at-capacity", "pool-a"));
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
+
+        assertTrue(matched.isEmpty());
+        assertFalse(workerManager.isLocked("worker-at-capacity"));
+        assertEquals(0, loadView.getReservedCount("worker-at-capacity"));
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-capacity", "worker-at-capacity");
+        assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
+        assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
+    }
+
+    @Test
+    void releasesReservationWhenLockConflictHappensAfterRanking() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE,
+                loadView
+        ) {
+            @Override
+            public boolean tryLockWorker(String workerId) {
+                return false;
+            }
+        };
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-lock-conflict");
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+
+        workerManager.addWorker(worker("worker-conflict", "pool-a"));
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
+
+        assertTrue(matched.isEmpty());
+        assertEquals(0, loadView.getReservedCount("worker-conflict"));
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-lock-conflict", "worker-conflict");
+        assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
+        assertEquals("worker lock conflict after candidate ranking", rejectedRecord.getReason());
     }
 
     private RuleDefinition rule(String id, String content) {

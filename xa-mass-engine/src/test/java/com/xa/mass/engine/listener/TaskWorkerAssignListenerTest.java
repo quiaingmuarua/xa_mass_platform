@@ -170,6 +170,9 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(assignmentRuntime).updateTask(same(task));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matched1)));
+        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
+        verify(workerManager).releaseWorkerReservation("worker-3", task.getTid());
+        verify(workerManager).releaseWorkerReservation("worker-4", task.getTid());
         verify(workerManager).unlockWorker("worker-2");
         verify(workerManager).unlockWorker("worker-3");
         verify(workerManager).unlockWorker("worker-4");
@@ -224,6 +227,7 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.PAUSED, task.getStatus());
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
+        verify(workerManager).releaseWorkerReservation("worker-1", task.getTid());
         verify(workerManager).unlockWorker("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
         verifyNoInteractions(dispatchBinder);

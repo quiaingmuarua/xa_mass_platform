@@ -201,12 +201,26 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             Worker worker = candidate.getWorker();
             WorkerContext workerContext = candidate.getWorkerContext();
             double candidateScore = rankScore(rankedContext, task);
+            if (!workerManager.tryReserveWorkerCapacity(worker.getWorkerId(), task.getTid())) {
+                traceEventLogger.workerMatchRejected(task.getTid(), candidate,
+                        "worker capacity unavailable after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, worker, workerContext, AssignmentResult.QUOTA_EXCEEDED,
+                        "worker capacity unavailable after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
+                continue;
+            }
             if (workerManager.tryLockWorker(worker.getWorkerId())) {
                 traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
                         "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
                         "all rules matched after candidate ranking");
                 traceEventLogger.workerMatchAccepted(task.getTid(), candidate,
-                        "all rules matched and worker lock acquired after candidate ranking", rank, candidateScore);
+                        "all rules matched and worker lock acquired after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
                 recordService.recordWorkerAssignment(
                         task, worker, workerContext, AssignmentResult.SUCCESS,
                         "all rules matched and worker lock acquired after candidate ranking",
@@ -219,8 +233,10 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         task.getTid(),
                         rank);
             } else {
+                workerManager.releaseWorkerReservation(worker.getWorkerId(), task.getTid());
                 traceEventLogger.workerMatchRejected(task.getTid(), candidate,
-                        "worker lock conflict after candidate ranking", rank, candidateScore);
+                        "worker lock conflict after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
                 recordService.recordWorkerAssignment(
                         task, worker, workerContext, AssignmentResult.CONFLICT,
                         "worker lock conflict after candidate ranking",

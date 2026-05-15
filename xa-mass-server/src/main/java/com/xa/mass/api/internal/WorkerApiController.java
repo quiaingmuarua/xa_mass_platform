@@ -68,6 +68,7 @@ public class WorkerApiController {
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", worker.getSupportedProjects());
                     item.put("supportedEventCodes", worker.getSupportedEventCodes());
+                    item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
                             worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));

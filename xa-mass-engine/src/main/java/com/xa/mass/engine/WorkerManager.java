@@ -51,6 +51,7 @@ public class WorkerManager implements WorkerLookupStore {
 
     public void addWorker(Worker worker) {
         workerStorage.addWorker(worker);
+        syncWorkerCapacity(worker);
     }
 
     public Worker getWorker(String workerId) {
@@ -63,7 +64,11 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public boolean updateWorker(Worker worker) {
-        return workerStorage.updateWorker(worker);
+        boolean updated = workerStorage.updateWorker(worker);
+        if (updated) {
+            syncWorkerCapacity(worker);
+        }
+        return updated;
     }
 
     public boolean deleteWorker(String workerId) {
@@ -187,7 +192,21 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
+        syncWorkerCapacity(workerId);
         return workerLoadView.snapshot(workerId);
+    }
+
+    public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+        syncWorkerCapacity(workerId);
+        return workerLoadView.tryReserveCapacity(workerId, taskId);
+    }
+
+    public boolean confirmWorkerReservation(String workerId, String taskId) {
+        return workerLoadView.confirmReservation(workerId, taskId);
+    }
+
+    public void releaseWorkerReservation(String workerId, String taskId) {
+        workerLoadView.releaseReservation(workerId, taskId);
     }
 
     public void recordWorkClaimed(String workerId, String taskId) {
@@ -196,6 +215,20 @@ public class WorkerManager implements WorkerLookupStore {
 
     public void recordWorkFinal(String workerId, String taskId) {
         workerLoadView.recordWorkFinal(workerId, taskId);
+    }
+
+    private void syncWorkerCapacity(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return;
+        }
+        syncWorkerCapacity(getWorker(workerId));
+    }
+
+    private void syncWorkerCapacity(Worker worker) {
+        if (worker == null) {
+            return;
+        }
+        workerLoadView.recordDeclaredCapacity(worker.getWorkerId(), worker.getMaxConcurrentWork());
     }
 
     /**

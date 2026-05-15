@@ -142,7 +142,7 @@ public class TaskWorkerAssignListener {
                     task.getTid(), matched.size(), allocationPlan.requiredStartWorkerCount());
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
-            unlockWorkers(matched);
+            releaseReservedAndUnlockWorkers(task, matched);
             emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
                     allocationDecision.reason(), "SKIPPED");
@@ -154,7 +154,7 @@ public class TaskWorkerAssignListener {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     allocationDecision.reason(),
                     allocationPlan.requiredStartWorkerCount());
-            unlockWorkers(matched);
+            releaseReservedAndUnlockWorkers(task, matched);
             emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
                     allocationDecision.reason(), "SKIPPED");
@@ -165,13 +165,13 @@ public class TaskWorkerAssignListener {
         if (allocationDecision.outcome() == AssignmentAllocationOutcome.NO_DISPATCH_CANDIDATES) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
-            unlockWorkers(matched);
+            releaseReservedAndUnlockWorkers(task, matched);
             emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
                     allocationDecision.reason(), "SKIPPED");
             return false;
         }
-        unlockWorkers(matched.subList(dispatchCandidates.size(), matched.size()));
+        releaseReservedAndUnlockWorkers(task, matched.subList(dispatchCandidates.size(), matched.size()));
 
         List<TaskDispatchBinding> dispatchedBindings = dispatchBinder.bindDispatches(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedBindings.stream()
@@ -231,6 +231,18 @@ public class TaskWorkerAssignListener {
                 .collect(Collectors.toList())) {
             workerManager.unlockWorker(workerId);
             traceEventLogger.workerLockReleased(null, workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
+                    "surplus or skipped dispatch candidate");
+        }
+    }
+
+    private void releaseReservedAndUnlockWorkers(Task task, List<WorkerSchedulingCandidate> workers) {
+        for (String workerId : workers.stream()
+                .map(WorkerSchedulingCandidate::getWorkerId)
+                .distinct()
+                .collect(Collectors.toList())) {
+            workerManager.releaseWorkerReservation(workerId, task.getTid());
+            workerManager.unlockWorker(workerId);
+            traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
                     "surplus or skipped dispatch candidate");
         }
     }

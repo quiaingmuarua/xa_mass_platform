@@ -87,6 +87,8 @@ Current built-in scenario analyzers:
 - `assignment-success-binding`
 - `assignment-min-worker-gate`
 - `assignment-retry-redispatch`
+- `load-aware-worker-selection`
+- `capacity-reservation-under-concurrency`
 
 ## Test Pairing Workflow
 
