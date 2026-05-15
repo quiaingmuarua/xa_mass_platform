@@ -134,6 +134,11 @@ Progress:
   candidates can share worker capacity. Candidate cleanup uses
   `usageForCandidate(...)`, and attempt/terminal cleanup uses
   `usageForAttempt(...)`, matching the acquisition path's policy granularity.
+- 2026-05-15: Step 8I cross-task fairness trace proof was implemented.
+  `xa-mass-trace` now includes the `cross-task-worker-fairness` analyzer. The
+  scenario reads canonical assignment rows for `<bulkTaskId>,<interactiveTaskId>`
+  and proves that budget-limited BULK backlog pressure still leaves distinct
+  worker capacity for successful INTERACTIVE dispatch.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -897,7 +902,8 @@ Implemented assignment summary attrs:
 - Source guard: listener/binder orchestration cannot bypass dispatch cleanup
   owners, and WorkerContext state mutation cannot leak outside the transitional
   lifecycle owner.
-- Proposed next: trace scenario `cross-task-worker-fairness`.
+- Trace: `cross-task-worker-fairness` proves the mixed workload budget behavior
+  from canonical assignment rows.
 
 ## 16. Step 9: Worker Management/System Event Boundary
 
@@ -1010,11 +1016,12 @@ A step is not done until:
 
 Do not start with full WorkerContext deletion.
 
-The resource binding owner convergence is now implemented and guarded. The next
-recommended implementation step is a proof-oriented slice rather than another
-mechanism split: add the `cross-task-worker-fairness` trace scenario or a small
-trace-observed mixed-workload acceptance that proves bounded BULK allocation
-does not starve a concurrent INTERACTIVE task through canonical JSONL.
+The resource binding owner convergence is now implemented and guarded, and the
+`cross-task-worker-fairness` trace analyzer now covers the canonical proof
+surface for bounded BULK pressure plus INTERACTIVE progress. The next step can
+either add a small server trace-observed mixed-workload acceptance using that
+analyzer or return to WorkerContext retirement with a worker-management /
+system-event boundary inventory and proof plan.
 
 If the next discussion turns back to WorkerContext retirement, start with a
 worker-management/system-event boundary inventory and proof plan. Avoid broad

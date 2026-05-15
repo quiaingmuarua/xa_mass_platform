@@ -91,6 +91,7 @@ Current built-in scenario analyzers:
 - `capacity-reservation-under-concurrency`
 - `background-worker-sharing`
 - `worker-attribute-routing-without-context`
+- `cross-task-worker-fairness`
 
 ## Test Pairing Workflow
 

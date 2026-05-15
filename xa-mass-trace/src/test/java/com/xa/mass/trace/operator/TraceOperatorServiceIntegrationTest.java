@@ -206,6 +206,25 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsCrossTaskWorkerFairnessScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeCrossTaskWorkerFairnessTrace(tempDir,
+                "task-bulk-pressure",
+                "task-interactive-progress",
+                true,
+                false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "cross-task-worker-fairness",
+                        "task-bulk-pressure,task-interactive-progress"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("cross-task-worker-fairness", response.scenarioId());
+        assertEquals(2L, response.eventTypeCounts().get("ASSIGNMENT_SUMMARY"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -290,6 +309,44 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void crossTaskWorkerFairnessScenarioFailsWhenBulkIsNotBudgetLimited() throws Exception {
+        writeCrossTaskWorkerFairnessTrace(tempDir,
+                "task-bulk-unbounded",
+                "task-interactive-after-unbounded-bulk",
+                false,
+                false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "cross-task-worker-fairness",
+                        "task-bulk-unbounded,task-interactive-after-unbounded-bulk"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_BULK_BUDGET_LIMIT".equals(issue.code())));
+    }
+
+    @Test
+    void crossTaskWorkerFairnessScenarioFailsWhenInteractiveReusesBulkWorker() throws Exception {
+        writeCrossTaskWorkerFairnessTrace(tempDir,
+                "task-bulk-overlap",
+                "task-interactive-overlap",
+                true,
+                true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "cross-task-worker-fairness",
+                        "task-bulk-overlap,task-interactive-overlap"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "INTERACTIVE_REUSED_BULK_WORKER".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
@@ -300,6 +357,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
         assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
         assertTrue(operatorService.scenarioIds().contains("worker-attribute-routing-without-context"));
+        assertTrue(operatorService.scenarioIds().contains("cross-task-worker-fairness"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -728,6 +786,164 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
+                    .build());
+        }
+    }
+
+    private void writeCrossTaskWorkerFairnessTrace(Path outputDir,
+                                                   String bulkTaskId,
+                                                   String interactiveTaskId,
+                                                   boolean bulkBudgetLimited,
+                                                   boolean interactiveReusesBulkWorker) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(bulkTaskId).workerId("worker-bulk-01"))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(bulkTaskId).workerId("worker-bulk-02"))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 2,
+                            "candidateScore", "0.2",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(bulkTaskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "pendingMessageCount", 100,
+                            "matchedWorkerCount", 2,
+                            "dispatchSlotCount", 2,
+                            "dispatchedMessageCount", 20,
+                            "unassignedMessageCount", 80,
+                            "uniqueWorkerCount", 2,
+                            "uniqueWorkerContextCount", 0,
+                            "perWorkerBatchLimit", 10))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(bulkTaskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 100,
+                            "desiredDispatchWorkerCount", 20,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 20,
+                            "workerBudget", 20,
+                            "currentTaskWorkerCount", 0,
+                            "budgetLimited", bulkBudgetLimited,
+                            "matchedWorkerCount", 20,
+                            "dispatchCandidateCount", 20,
+                            "dispatchedMessageCount", 20,
+                            "usedWorkerCount", 20,
+                            "peakAssignedWorkerCount", 20,
+                            "workloadClass", "BULK",
+                            "foreground", true,
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+
+            String interactiveWorkerId = interactiveReusesBulkWorker ? "worker-bulk-01" : "worker-interactive-01";
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(interactiveTaskId).workerId(interactiveWorkerId))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(interactiveTaskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "pendingMessageCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "uniqueWorkerContextCount", 0,
+                            "perWorkerBatchLimit", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(interactiveTaskId))
+                    .transition("READY", "RUNNING", "matched workers dispatched")
+                    .attrs(attrs(
+                            "trigger", "ASSIGNMENT_SUCCEEDED",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(interactiveTaskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 1,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "workerBudget", 5,
+                            "currentTaskWorkerCount", 0,
+                            "budgetLimited", false,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "INTERACTIVE",
+                            "foreground", true,
+                            "dispatchLane", "INTERACTIVE",
+                            "dispatchPriority", "HIGH",
+                            "batchPolicy", "SMALL",
+                            "leaseProfile", "SHORT"))
                     .build());
         }
     }

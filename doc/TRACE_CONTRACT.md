@@ -296,6 +296,11 @@ The `worker-attribute-routing-without-context` analyzer uses worker scheduling
 evidence instead of `workerContextId`: accepted worker matches must have no
 `workerContextId`, must carry worker-level scheduling attributes or routing
 tags, and must show `workerSchedulingMatchesRoutingCode=true`.
+The `cross-task-worker-fairness` analyzer is intentionally a two-task scenario:
+its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
+assignment rows for both tasks and proves that a budget-limited BULK assignment
+under backlog pressure still leaves distinct worker capacity for a successful
+INTERACTIVE assignment.
 
 ## 5. Minimum Required Paths
 

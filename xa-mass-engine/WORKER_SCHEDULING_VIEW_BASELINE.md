@@ -354,8 +354,10 @@ lock acquisition using observed worker load and routing affinity. Reservation
 and stateless background sharing are implemented and covered by engine tests,
 trace analyzer tests, and one server trace-observed wiring proof.
 
-The next narrow cut can add a trace scenario or mixed-workload acceptance proof
-for cross-task fairness. Do not move budget formulas into
+The cross-task fairness trace scenario is now available as
+`cross-task-worker-fairness`; it analyzes `<bulkTaskId>,<interactiveTaskId>`
+against canonical assignment rows. A later cut can add a server trace-observed
+mixed-workload acceptance using that analyzer. Do not move budget formulas into
 `TaskWorkerAssignListener`; the listener should remain orchestration and trace
 owner.
 Post-release refill is now owned by `AssignmentRefillPolicy`;
