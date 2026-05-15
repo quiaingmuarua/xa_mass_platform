@@ -119,6 +119,30 @@ public class WorkerMatchContextTest {
     }
 
     @Test
+    void statelessWorkerRoutingTagsComeFromWorkerAttributes() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-worker-attrs");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setAttributes(Map.of("routingTags", "shared,us", "country", "us"));
+
+        Task task = new Task();
+        task.setTid("task-worker-attrs");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setStatus(TaskStatus.READY);
+
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
+
+        assertEquals("worker-worker-attrs", context.getContext().get("workerSchedulingResourceId"));
+        assertEquals(Set.of("shared", "us"), context.getContext().get("workerSchedulingRoutingTags"));
+        assertEquals("us", ((Map<?, ?>) context.getContext().get("workerSchedulingAttributes")).get("country"));
+        assertEquals(true, context.getContext().get("workerSchedulingMatchesRoutingCode"));
+        assertEquals(false, context.getContext().get("hasWorkerContext"));
+    }
+
+    @Test
     void reservedWorkerContextIsUsableButNotAvailableForNewAssignment() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");

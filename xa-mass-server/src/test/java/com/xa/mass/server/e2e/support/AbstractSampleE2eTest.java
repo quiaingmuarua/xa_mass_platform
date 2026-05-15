@@ -610,6 +610,13 @@ public abstract class AbstractSampleE2eTest {
         requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project, maxConcurrentWork));
     }
 
+    protected void registerSdkStatelessWorkerWithAttributes(String workerId,
+                                                            String workerGroupId,
+                                                            String project,
+                                                            Map<String, String> attributes) {
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project, 1, attributes));
+    }
+
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
         return createWorkerRegistration(workerId, workerGroupId, project, 1);
     }
@@ -618,6 +625,14 @@ public abstract class AbstractSampleE2eTest {
                                                         String workerGroupId,
                                                         String project,
                                                         int maxConcurrentWork) {
+        return createWorkerRegistration(workerId, workerGroupId, project, maxConcurrentWork, Map.of());
+    }
+
+    private WorkerRegistration createWorkerRegistration(String workerId,
+                                                        String workerGroupId,
+                                                        String project,
+                                                        int maxConcurrentWork,
+                                                        Map<String, String> attributes) {
         return WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
@@ -625,6 +640,7 @@ public abstract class AbstractSampleE2eTest {
                 .adapterId("websocket")
                 .transportHint("realtime")
                 .maxConcurrentWork(maxConcurrentWork)
+                .attributes(attributes == null ? Map.of() : attributes)
                 .build();
     }
 

@@ -13,7 +13,7 @@ import org.junit.platform.suite.api.Suite;
         TaskApiMinimumWorkerGateIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
         TaskApiSingleWorkerReuseIntegrationTest.class,
-        TaskApiWorkerContextAttributeRoutingIntegrationTest.class,
+        TaskApiWorkerAttributeRoutingIntegrationTest.class,
         TaskApiWorkerWithoutContextIntegrationTest.class,
         PollingWorkerTaskFlowIntegrationTest.class,
         ExternalWorkerPollingApiIntegrationTest.class,

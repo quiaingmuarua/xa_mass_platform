@@ -2,7 +2,8 @@
 
 Last updated: 2026-05-15
 
-Status: proposed plan. This is not implemented baseline behavior.
+Status: active phased plan. WC-0/WC-1 have begun; later phases are not
+implemented baseline behavior.
 
 ## Position
 
@@ -193,6 +194,8 @@ Do not recreate account slot leasing inside engine assignment.
 
 ### Phase WC-0: Freeze And Inventory
 
+Status: started.
+
 Goal: prevent new dependencies before deletion starts.
 
 Scope:
@@ -227,6 +230,10 @@ Acceptance:
 
 ### Phase WC-1: Move Remaining Routing Fixtures To Worker Attributes
 
+Status: partially implemented. Representative engine and server routing proof
+now uses stateless worker attributes instead of WorkerContext registration
+attributes. Broader legacy fixture retirement remains future work.
+
 Goal: prove current routing behavior without `WorkerContext` as the source of
 matching attributes.
 
@@ -252,7 +259,7 @@ Verification:
 ```
 
 ```powershell
-.\mvnw.cmd -pl xa-mass-server -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,ServerSchedulingE2eSuite" test
+.\mvnw.cmd -pl xa-mass-server -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=TaskApiWorkerAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,ServerSchedulingE2eSuite" test
 ```
 
 Acceptance:
@@ -262,6 +269,15 @@ Acceptance:
 
 ### Phase WC-2: Remove WorkerContext From Matching Handoff
 
+Status: started. The remaining WorkerContext storage read was moved out of
+`RuleBasedTaskWorkerMatchingStrategy` into `WorkerSchedulingCandidateEnumerator`.
+The strategy now consumes candidates instead of owning context enumeration.
+Representative strategy tests now prove normal routing and trace behavior with
+stateless worker scheduling attributes; the remaining context-backed strategy
+fixtures are explicitly named `legacyContext*` and guarded as transitional
+coverage. `WorkerSchedulingCandidate` still carries nullable legacy
+`WorkerContext` for runtime binding; full removal is not complete.
+
 Goal: make engine matching fully worker-view based.
 
 Scope:
@@ -269,7 +285,9 @@ Scope:
 - remove `WorkerContext` from `WorkerSchedulingCandidate`
 - update `RuleBasedTaskWorkerMatchingStrategy.enumerateSchedulingCandidates(...)`
   to create one candidate per worker
-- remove `WorkerManager.getWorkerContextsByWorkerIds(...)` from matching
+- remove `WorkerManager.getWorkerContextsByWorkerIds(...)` from
+  `RuleBasedTaskWorkerMatchingStrategy` first, then from the transitional
+  candidate enumerator after context-backed matching is retired
 - update `WorkerSchedulingView.from(...)` so it no longer accepts a
   `WorkerContext`
 - remove context allocatability/project/routing prefilter branches
@@ -286,6 +304,12 @@ Verification:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-engine -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=WorkerSchedulingCandidateTest,WorkerMatchContextTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreSuite" test
+```
+
+Focused transitional verification:
+
+```powershell
+.\mvnw.cmd -pl xa-mass-engine -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=WorkerSchedulingCandidateEnumeratorTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
 ```
 
 Acceptance:

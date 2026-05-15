@@ -89,7 +89,9 @@ public final class WorkerSchedulingView {
 
         this.schedulingResourceId = workerContextId != null ? workerContextId : workerId;
         this.schedulingProject = workerContextProject;
-        this.schedulingRoutingTags = workerContextRoutingTags;
+        this.schedulingRoutingTags = hasWorkerContext
+                ? workerContextRoutingTags
+                : workerRoutingTags(workerAttributes);
         this.schedulingAttributes = mergeAttributes(workerAttributes, workerContextAttributes);
     }
 
@@ -302,5 +304,30 @@ public final class WorkerSchedulingView {
             merged.putAll(workerContextAttributes);
         }
         return Collections.unmodifiableMap(merged);
+    }
+
+    private static Set<String> workerRoutingTags(Map<String, String> workerAttributes) {
+        if (workerAttributes == null || workerAttributes.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> tags = new LinkedHashSet<>();
+        addRoutingTags(tags, workerAttributes.get("routingTag"));
+        addRoutingTags(tags, workerAttributes.get("routingTags"));
+        if (tags.isEmpty()) {
+            return Set.of();
+        }
+        return Collections.unmodifiableSet(tags);
+    }
+
+    private static void addRoutingTags(Set<String> tags, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        for (String tag : value.split(",")) {
+            String normalized = tag.trim();
+            if (!normalized.isEmpty()) {
+                tags.add(normalized);
+            }
+        }
     }
 }

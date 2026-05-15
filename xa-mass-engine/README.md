@@ -274,6 +274,7 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingCandidate.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
+- `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
 - `src/main/java/com/xa/mass/engine/load/WorkerLoadView.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
@@ -289,6 +290,10 @@ Matching boundaries:
 
 - `WorkerSchedulingCandidate` is the engine-internal handoff between matching,
   allocation, listener orchestration, and dispatch binding
+- `WorkerSchedulingCandidateEnumerator` is the transitional owner for expanding
+  workers plus optional legacy WorkerContext resources into scheduling
+  candidates; `RuleBasedTaskWorkerMatchingStrategy` must not read WorkerContext
+  storage directly
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject
@@ -311,8 +316,10 @@ Matching boundaries:
   correctness or shared background execution
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
-- once a task requires routing, a missing `WorkerContext` must not satisfy that
-  rule by accident
+- once a task requires routing, the candidate must expose matching
+  `workerSchedulingRoutingTags`; during WorkerContext retirement those tags may
+  come from legacy `WorkerContext.routingTags` or from worker attributes such as
+  `routingTag` / `routingTags`
 
 If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the
 relevant routing/integration coverage together.

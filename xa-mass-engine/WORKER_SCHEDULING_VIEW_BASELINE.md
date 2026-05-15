@@ -52,12 +52,15 @@ The immediate convergence target is:
 
 WorkerContext is still live in these engine paths:
 
-- `RuleBasedTaskWorkerMatchingStrategy`
-  - loads contexts with `WorkerManager.getWorkerContextsByWorkerIds(...)`
-  - enumerates each worker plus optional legacy context as a
+- `WorkerSchedulingCandidateEnumerator`
+  - is the only matching-side owner that still reads
+    `WorkerManager.getWorkerContextsByWorkerIds(...)`
+  - expands each worker plus optional legacy context into
     `WorkerSchedulingCandidate`
   - builds `WorkerSchedulingView` for prefilter decisions, rule context, and
     diagnostic snapshots
+- `RuleBasedTaskWorkerMatchingStrategy`
+  - consumes already-enumerated `WorkerSchedulingCandidate` objects
   - prefilters context allocatability, project, and routing tags through the
     scheduling view while preserving legacy reasons
   - emits match accepted/rejected trace with `workerContextId`
@@ -111,6 +114,8 @@ WorkerContext is still live in these engine paths:
     leaking outside `LegacyWorkerContextResourceLifecycle`
   - prevents retired context-first matching handoff types from returning to
     engine source or scheduling tests
+  - keeps strategy-level WorkerContext registration fixtures explicitly named
+    as `legacyContext*` transitional coverage
 
 WorkerContext is therefore still both:
 
@@ -142,6 +147,7 @@ It exposes worker-level scheduling fields:
   - current context project, if any
 - `workerSchedulingRoutingTags`
   - current context routing tags, if any
+  - otherwise worker attribute `routingTag` or comma-separated `routingTags`
 - `workerSchedulingAttributes`
   - worker attributes merged with current context attributes
   - context attributes win on key conflict during the transition
@@ -244,6 +250,13 @@ Default routing rules and representative routing tests now read the
 consumes `WorkerSchedulingView` for resource allocatability, project, and
 routing decisions. The main matching handoff now passes
 `WorkerSchedulingCandidate` rather than a context-first matched resource.
+Representative engine and server routing proof now uses stateless worker
+registration attributes for the matched/mismatched routing candidates. Legacy
+WorkerContext-backed routing remains covered only as transitional lifecycle
+coverage until the retirement phases remove it.
+`RuleBasedTaskWorkerMatchingStrategyTest` now treats context-backed fixtures as
+explicit legacy coverage; normal matching, trace, prefilter, and routing proof
+uses stateless workers plus worker scheduling attributes.
 Existing rules may continue using `workerContext*` variables until their owning
 fixtures are migrated.
 

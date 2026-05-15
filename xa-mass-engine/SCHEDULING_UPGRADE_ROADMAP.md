@@ -78,6 +78,21 @@ Progress:
   `WorkerDispatchResourcePolicy` now owns worker-level exclusive lock semantics
   and legacy WorkerContext lifecycle classification across matching, assignment
   cleanup, dispatch binding, and resource release.
+- 2026-05-15: WorkerContext retirement WC-1 started. Representative engine and
+  server routing proof now uses stateless worker attributes (`routingTag` /
+  `routingTags`, `country`) instead of `WorkerContextRegistration` attributes.
+  `WorkerContext` storage/API/runtime lifecycle remains in place for later
+  retirement phases.
+- 2026-05-15: WorkerContext retirement WC-2 started. Legacy WorkerContext
+  candidate expansion moved behind `WorkerSchedulingCandidateEnumerator`, and
+  `RuleBasedTaskWorkerMatchingStrategy` now consumes scheduling candidates
+  without directly reading WorkerContext storage. Runtime binding still carries
+  nullable legacy WorkerContext until later retirement phases.
+- 2026-05-15: WorkerContext retirement WC-2B test proof convergence was
+  implemented. Strategy-level matching, trace, and prefilter proof now uses
+  stateless worker scheduling attributes by default; remaining context-backed
+  strategy fixtures are explicitly named `legacyContext*` and guarded as
+  transitional coverage.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
   `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path
@@ -402,7 +417,8 @@ hands off `WorkerSchedulingCandidate`.
 - Focused `WorkerSchedulingCandidate` tests.
 - Focused `RuleConfig` tests guarding default rule surface.
 - `RuleBasedTaskWorkerMatchingStrategyTest`.
-- Existing routing E2E tests.
+- Existing routing E2E tests, with representative routing proof using worker
+  registration attributes rather than WorkerContext registration attributes.
 - `assignment-success-binding` trace scenario remains valid.
 
 ### Trace

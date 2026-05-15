@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSampleE2eTest {
+class TaskApiWorkerAttributeRoutingIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -67,14 +67,14 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
 
-            String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
+            String taskId = createTaskId("worker-attribute-routing", "attribute routing integration", "target-a");
             Map<String, Object> auditResponse = approveTask(taskId);
             assertApiOk(auditResponse);
 
             JsonObject matchedDispatch = matchedClient.awaitTask(3, TimeUnit.SECONDS);
             JsonObject rejectedDispatch = otherClient.awaitTask(300, TimeUnit.MILLISECONDS);
             assertNotNull(matchedDispatch, "matched worker should receive the routed task");
-            assertNull(rejectedDispatch, "worker with mismatched context attributes must not receive the task");
+            assertNull(rejectedDispatch, "worker with mismatched attributes must not receive the task");
             matchedClient.sendSuccess(matchedDispatch, "attribute-routing-ok");
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
@@ -96,12 +96,11 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
     }
 
     private void addCandidate(String workerId, String workerGroupId, String routingTag, String countryAttribute) {
-        registerSdkWorkerWithContext(
+        registerSdkStatelessWorkerWithAttributes(
                 workerId,
                 workerGroupId,
-                routingTag,
                 "demoApp",
-                Map.of("country", countryAttribute)
+                Map.of("routingTag", routingTag, "country", countryAttribute)
         );
     }
 

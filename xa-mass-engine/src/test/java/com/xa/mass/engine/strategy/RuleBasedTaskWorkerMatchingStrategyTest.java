@@ -51,24 +51,23 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        Worker matchingWorker = worker("worker-us", "pool-east");
-        Worker nonMatchingWorker = worker("worker-gb", "pool-west");
+        Worker matchingWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
+        Worker nonMatchingWorker = worker("worker-gb", "pool-west", Map.of("routingTags", "shared,gb", "country", "gb"));
         workerManager.addWorker(matchingWorker);
         workerManager.addWorker(nonMatchingWorker);
-
-        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
-        workerManager.addWorkerContext(workerContext("worker-gb", "ctx-gb", "shared", "gb"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
         assertEquals(1, matched.size());
         assertEquals("worker-us", matched.get(0).getWorkerId());
-        assertEquals("ctx-us", matched.get(0).getWorkerContextId());
+        assertNull(matched.get(0).getWorkerContextId());
         AssignmentRecord record = recordService.getRecordsByTaskId("task-1").stream()
                 .filter(item -> "worker-us".equals(item.getWorkerId()))
                 .findFirst()
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
+        assertEquals("us", ((Map<?, ?>) record.getContextSnapshot()
+                .get("workerSchedulingAttributes")).get("country"));
     }
 
     @Test
@@ -91,12 +90,10 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        Worker acceptedWorker = worker("worker-us", "pool-east");
-        Worker rejectedWorker = worker("worker-gb", "pool-west");
+        Worker acceptedWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
+        Worker rejectedWorker = worker("worker-gb", "pool-west", Map.of("routingTags", "shared,gb", "country", "gb"));
         workerManager.addWorker(acceptedWorker);
         workerManager.addWorker(rejectedWorker);
-        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
-        workerManager.addWorkerContext(workerContext("worker-gb", "ctx-gb", "shared", "gb"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
@@ -105,14 +102,14 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
             capture.assertHasEvent("WORKER_MATCH_ACCEPTED", mdc ->
                     "task-trace".equals(mdc.get("taskId"))
                             && "worker-us".equals(mdc.get("workerId"))
-                            && "ctx-us".equals(mdc.get("workerContextId"))
+                            && mdc.get("workerContextId") == null
                             && "1".equals(mdc.get("candidateRank"))
                             && "1".equals(mdc.get("workerReservedCount"))
                             && mdc.get("workerEstimatedLoadRatio") != null);
             capture.assertHasEvent("WORKER_MATCH_REJECTED", mdc ->
                     "task-trace".equals(mdc.get("taskId"))
                             && "worker-gb".equals(mdc.get("workerId"))
-                            && "ctx-gb".equals(mdc.get("workerContextId"))
+                            && mdc.get("workerContextId") == null
                             && "routing code mismatch".equals(mdc.get("reason")));
         }
     }
@@ -138,7 +135,6 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker w = worker("worker-locked", "pool-east");
         workerManager.addWorker(w);
-        workerManager.addWorkerContext(workerContext("worker-locked", "ctx-locked", "shared", "us"));
         assertTrue(workerManager.tryLockWorker(w.getWorkerId()));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
@@ -179,23 +175,21 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        Worker offlineWorker = worker("worker-offline", "pool-a");
+        Worker offlineWorker = worker("worker-offline", "pool-a", Map.of("routingTags", "shared,us", "country", "us"));
         offlineWorker.setStatus(WorkerStatus.OFFLINE);
         workerManager.addWorker(offlineWorker);
-        workerManager.addWorkerContext(workerContext("worker-offline", "ctx-offline", "shared", "us"));
 
-        Worker unsupportedProjectWorker = worker("worker-unsupported", "pool-b");
+        Worker unsupportedProjectWorker = worker("worker-unsupported", "pool-b",
+                Map.of("routingTags", "shared,us", "country", "us"));
         unsupportedProjectWorker.setSupportedProjects(List.of("otherApp"));
         workerManager.addWorker(unsupportedProjectWorker);
-        workerManager.addWorkerContext(workerContext("worker-unsupported", "ctx-unsupported", "shared", "us"));
 
-        Worker routingMismatchWorker = worker("worker-routing-mismatch", "pool-c");
+        Worker routingMismatchWorker = worker("worker-routing-mismatch", "pool-c",
+                Map.of("routingTags", "shared,gb", "country", "gb"));
         workerManager.addWorker(routingMismatchWorker);
-        workerManager.addWorkerContext(workerContext("worker-routing-mismatch", "ctx-routing-mismatch", "shared", "gb"));
 
-        Worker acceptedWorker = worker("worker-us", "pool-d");
+        Worker acceptedWorker = worker("worker-us", "pool-d", Map.of("routingTags", "shared,us", "country", "us"));
         workerManager.addWorker(acceptedWorker);
-        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -213,7 +207,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("routing code mismatch", routingMismatchRecord.getReason());
         assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatchRecord.getResult());
         assertEquals(0, routingMismatchRecord.getRuleEvaluations().size());
-        assertEquals("ctx-routing-mismatch",
+        assertEquals("worker-routing-mismatch",
                 routingMismatchRecord.getContextSnapshot().get("workerSchedulingResourceId"));
         assertEquals(Set.of("shared", "gb"),
                 routingMismatchRecord.getContextSnapshot().get("workerSchedulingRoutingTags"));
@@ -270,7 +264,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void choosesMatchingContextWhenWorkerHasMultipleContexts() {
+    void legacyContextMatchingChoosesMatchingContextWhenWorkerHasMultipleContexts() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -302,7 +296,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void matchesWorkerWithoutWorkerContextWhenTaskDoesNotRequireRoutingContext() {
+    void matchesStatelessWorkerWhenTaskHasNoRoutingRequirement() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -333,7 +327,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void routingRequirementStillRejectsWorkerWithoutWorkerContext() {
+    void routingRequirementRejectsStatelessWorkerWithoutSchedulingRoutingTags() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -366,7 +360,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void workerContextProjectMismatchIsRejectedBeforeRuleEvaluation() {
+    void legacyContextProjectMismatchIsRejectedBeforeRuleEvaluation() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -690,7 +684,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void backgroundTaskWithWorkerContextStillAcquiresExclusiveWorkerLock() {
+    void legacyContextBackedBackgroundTaskStillAcquiresExclusiveWorkerLock() {
         InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
@@ -737,12 +731,17 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     private Worker worker(String workerId, String workerGroupId) {
+        return worker(workerId, workerGroupId, Map.of());
+    }
+
+    private Worker worker(String workerId, String workerGroupId, Map<String, String> attributes) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(workerGroupId);
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        worker.setAttributes(attributes);
         return worker;
     }
 

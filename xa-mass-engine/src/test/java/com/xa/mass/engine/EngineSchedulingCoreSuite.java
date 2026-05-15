@@ -5,6 +5,7 @@ import com.xa.mass.engine.listener.TaskResourceReleaseListenerTest;
 import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
 import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
+import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -25,6 +26,7 @@ import org.junit.platform.suite.api.Suite;
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
         TaskWorkerAssignListenerTest.class,
+        WorkerSchedulingCandidateEnumeratorTest.class,
         RuleBasedTaskWorkerMatchingStrategyTest.class,
         WorkerMatchContextTest.class
 })

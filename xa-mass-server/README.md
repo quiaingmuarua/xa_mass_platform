@@ -413,7 +413,7 @@ High-signal classes:
   - `TaskApiMultiTaskAssignmentIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
-  - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+  - `TaskApiWorkerAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
   - `TransportChannelWiringIntegrationTest`

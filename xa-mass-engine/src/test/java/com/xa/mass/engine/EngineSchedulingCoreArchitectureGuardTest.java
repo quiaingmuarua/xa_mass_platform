@@ -54,6 +54,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void schedulingCoreRuleFixturesDoNotGrowWorkerContextRuleSurface() throws IOException {
+        Pattern legacyRuleSurface = Pattern.compile(
+                "\\brule\\s*\\([^;]*\\b(?:workerContext|isWorkerContext)[A-Za-z0-9_]*",
+                Pattern.DOTALL
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : selectedSuiteSourceFiles()) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (legacyRuleSurface.matcher(source).find()) {
+                violations.add(path + " adds a rule fixture using legacy workerContext rule variables");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "New scheduling-core rule fixtures must use workerScheduling* / isWorkerScheduling* variables. "
+                        + "Keep workerContext* only as transitional read-model assertions until retirement:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void listenerOrchestrationDoesNotCallDispatchCleanupPrimitivesDirectly() throws IOException {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("releaseWorkerReservation", Pattern.compile("\\breleaseWorkerReservation\\s*\\(")),
@@ -107,6 +128,34 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "WorkerContext state mutation must stay in LegacyWorkerContextResourceLifecycle "
                         + "while WorkerManager remains the underlying storage facade:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void ruleBasedMatchingStrategyDoesNotReadWorkerContextStorageDirectly() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        assertTrue(!Pattern.compile("\\bgetWorkerContextsByWorkerIds\\s*\\(").matcher(source).find(),
+                "RuleBasedTaskWorkerMatchingStrategy must consume WorkerSchedulingCandidateEnumerator "
+                        + "instead of directly reading WorkerContext storage");
+    }
+
+    @Test
+    void ruleBasedMatchingStrategyContextFixturesStayExplicitlyLegacy() throws IOException {
+        Path strategyTestPath = TEST_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java");
+        List<String> violations = testMethodsCalling(strategyTestPath, "addWorkerContext(").stream()
+                .distinct()
+                .filter(methodName -> !methodName.startsWith("legacyContext"))
+                .map(methodName -> strategyTestPath + " registers WorkerContext in non-legacy test: " + methodName)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "RuleBasedTaskWorkerMatchingStrategyTest should prove normal matching with stateless "
+                        + "worker scheduling attributes. Context-backed fixtures must be explicitly named "
+                        + "legacyContext* until WorkerContext retirement removes them:\n"
                         + String.join("\n", violations));
     }
 
@@ -167,6 +216,33 @@ class EngineSchedulingCoreArchitectureGuardTest {
                     .sorted()
                     .toList();
         }
+    }
+
+    private static List<String> testMethodsCalling(Path sourcePath, String token) throws IOException {
+        List<String> methods = new ArrayList<>();
+        String currentTestMethod = null;
+        boolean pendingTestMethod = false;
+        Pattern testMethodPattern = Pattern.compile("\\s*void\\s+([A-Za-z0-9_]+)\\s*\\(");
+
+        for (String line : Files.readAllLines(sourcePath, StandardCharsets.UTF_8)) {
+            if (line.trim().equals("@Test")) {
+                pendingTestMethod = true;
+                currentTestMethod = null;
+                continue;
+            }
+            if (pendingTestMethod) {
+                java.util.regex.Matcher matcher = testMethodPattern.matcher(line);
+                if (matcher.find()) {
+                    currentTestMethod = matcher.group(1);
+                    pendingTestMethod = false;
+                }
+            }
+            if (line.contains(token) && currentTestMethod != null) {
+                methods.add(currentTestMethod);
+            }
+        }
+
+        return methods;
     }
 
     private static boolean isWorkerManager(Path path) {

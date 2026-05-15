@@ -36,6 +36,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private final TraceEventLogger traceEventLogger;
     private final WorkerCandidateRanker candidateRanker;
     private final WorkerDispatchResourcePolicy resourcePolicy;
+    private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
@@ -65,12 +66,26 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                                TraceEventLogger traceEventLogger,
                                                WorkerCandidateRanker candidateRanker,
                                                WorkerDispatchResourcePolicy resourcePolicy) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
+                resourcePolicy, null);
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy,
+                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.traceEventLogger = traceEventLogger;
         this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.candidateEnumerator = candidateEnumerator == null
+                ? new WorkerSchedulingCandidateEnumerator(workerManager)
+                : candidateEnumerator;
     }
 
     @Override
@@ -92,7 +107,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
         }
 
-        List<WorkerSchedulingCandidate> schedulingCandidates = enumerateSchedulingCandidates(candidates);
+        List<WorkerSchedulingCandidate> schedulingCandidates = candidateEnumerator.enumerate(candidates);
         Set<String> completedWorkerIds = new HashSet<>();
 
         for (WorkerSchedulingCandidate candidate : schedulingCandidates) {
@@ -291,42 +306,6 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         return Double.NaN;
     }
 
-    private List<WorkerSchedulingCandidate> enumerateSchedulingCandidates(List<Worker> candidates) {
-        List<String> candidateIds = candidates.stream().map(Worker::getWorkerId).toList();
-        Map<String, List<WorkerContext>> contextsByWorkerId = workerManager.getWorkerContextsByWorkerIds(candidateIds).stream()
-                .collect(Collectors.groupingBy(WorkerContext::getWorkerId));
-        List<WorkerSchedulingCandidate> schedulingCandidates = new ArrayList<>();
-        for (Worker worker : candidates) {
-            List<WorkerContext> workerContexts = contextsByWorkerId.getOrDefault(worker.getWorkerId(), List.of());
-            if (workerContexts.isEmpty()) {
-                schedulingCandidates.add(toSchedulingCandidate(worker, null));
-                continue;
-            }
-            for (WorkerContext workerContext : workerContexts) {
-                schedulingCandidates.add(toSchedulingCandidate(worker, workerContext));
-            }
-        }
-        return schedulingCandidates;
-    }
-
-    private WorkerSchedulingCandidate toSchedulingCandidate(Worker worker, WorkerContext workerContext) {
-        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
-        boolean dispatchEnabled = workerManager.isWorkerDispatchEnabled(worker);
-        boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
-        return new WorkerSchedulingCandidate(
-                worker,
-                workerContext,
-                WorkerSchedulingView.from(
-                        worker,
-                        workerContext,
-                        reachability,
-                        dispatchEnabled,
-                        workerLocked,
-                        workerManager.getWorkerLoad(worker.getWorkerId())
-                )
-        );
-    }
-
     private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {
         Worker worker = candidate.getWorker();
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
@@ -373,7 +352,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         if (!schedulingView.hasWorkerContext()) {
-            if (taskHasRoutingRequirement) {
+            if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
                 return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                         "routing code mismatch", contextSnapshot, false);
             }
