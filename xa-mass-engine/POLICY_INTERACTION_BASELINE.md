@@ -18,7 +18,7 @@ Use with:
 | Layer | Owns | May decide | Must not decide |
 | --- | --- | --- | --- |
 | Matching policy | worker and worker-context eligibility | whether a candidate can match | task terminal state, retry, resource release |
-| Assignment policy | current dispatch shape | how many workers/items to dispatch this round | result interpretation, task terminal state |
+| Assignment policy | current dispatch shape | requested match count, minimum-worker start gate, dispatch candidate selection | result interpretation, task terminal state, runtime claim/bind |
 | Attempt policy | attempt lifecycle | create, close, expire, revoke, retry reset eligibility | task-level terminal reason except by reporting attempt outcome |
 | Resource-release policy | runtime slot release | when a worker/context slot can be released | logical message finality |
 | Refill policy | continued dispatch | whether pending `INIT` messages should re-enter assignment | worker matching semantics |
@@ -29,6 +29,12 @@ Use with:
 Rule:
 
 - a policy returns a decision; orchestration owns cross-aggregate mutation and trace
+- `AssignmentAllocationPolicy` returns only an allocation plan and decision; it
+  must not mutate task status, unlock workers, claim runtime work, bind attempts,
+  publish events, or decide terminal/result policy
+- `TaskWorkerAssignListener` owns assignment orchestration around allocation
+  decisions, while `SimpleTaskDispatchBinder` owns runtime claim and dispatch
+  binding after candidates are selected
 
 ## 2. Global Precedence
 

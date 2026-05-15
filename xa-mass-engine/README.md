@@ -20,6 +20,17 @@ covers engine-owned assets and when to use them.
 - engine-local policy ownership across matching, assignment, attempt, release,
   refill, intake, and terminal decisions
 
+Assignment allocation is engine-internal policy ownership:
+
+- `AssignmentAllocationPolicy` owns this round's allocation decision: requested
+  match count, minimum-worker start gate, and the matched worker-contexts that
+  may enter dispatch.
+- `TaskWorkerAssignListener` owns orchestration around that decision: invoking
+  matching, unlocking skipped/surplus workers, task status transition, assignment
+  trace, task update, and assignment event publication.
+- `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding only; it is
+  not the assignment allocation policy owner.
+
 ## Scheduling Core Test Intent
 
 Read this before interpreting engine tests.
@@ -97,6 +108,9 @@ Keep these facts fixed unless the owning global baselines change:
   semantics must not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
+- `AssignmentAllocationPolicy` owns allocation shape for a task-level assignment
+  attempt; `TaskWorkerAssignListener` keeps cross-aggregate orchestration and
+  trace ownership around that policy decision
 - `TaskManager` is the engine orchestration entry, not the place to keep raw
   lock bookkeeping or compatibility CRUD owner behavior
 - `TaskManager` remains the engine-internal orchestration facade and

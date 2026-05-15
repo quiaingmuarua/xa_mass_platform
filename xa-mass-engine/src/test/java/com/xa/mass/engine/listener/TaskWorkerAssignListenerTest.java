@@ -9,9 +9,15 @@ import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
+import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
+import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
+import com.xa.mass.engine.assignment.AssignmentAllocationPolicy;
+import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -295,6 +301,35 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignUsesInjectedAllocationPolicyForMatchRequestAndDispatchCandidates() {
+        Task task = createTask(3, 1, 1, TaskStatus.READY);
+        MatchedWorkerContext first = matched(createWorker("worker-1"), "ctx-1");
+        MatchedWorkerContext second = matched(createWorker("worker-2"), "ctx-2");
+        MatchedWorkerContext third = matched(createWorker("worker-3"), "ctx-3");
+        AssignmentAllocationPolicy allocationPolicy = new FixedAllocationPolicy(3, 1);
+        listener = new TaskWorkerAssignListener(
+                matchingStrategy,
+                workerManager,
+                dispatchBinder,
+                assignmentRuntime,
+                assignmentEventSink,
+                TraceEventLogger.noop(),
+                allocationPolicy
+        );
+
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(3);
+        when(matchingStrategy.matchWorkers(same(task), eq(3))).thenReturn(List.of(first, second, third));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(first)))).thenReturn(List.of(binding("m1", "worker-1")));
+
+        assertTrue(listener.onTaskAssign(task));
+
+        verify(matchingStrategy).matchWorkers(same(task), eq(3));
+        verify(dispatchBinder).bindDispatches(same(task), eq(List.of(first)));
+        verify(workerManager).unlockWorker("worker-2");
+        verify(workerManager).unlockWorker("worker-3");
+    }
+
+    @Test
     void runningTaskCanBeReplenishedWithoutLeavingRunning() {
         Task task = createTask(5, 2, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
@@ -353,6 +388,40 @@ public class TaskWorkerAssignListenerTest {
         workerContext.setWorkerId(worker.getWorkerId());
         workerContext.setWorkerContextId(workerContextId);
         return new MatchedWorkerContext(worker, workerContext);
+    }
+
+    private static final class FixedAllocationPolicy implements AssignmentAllocationPolicy {
+        private final int requestedMatchCount;
+        private final int dispatchCandidateCount;
+
+        private FixedAllocationPolicy(int requestedMatchCount, int dispatchCandidateCount) {
+            this.requestedMatchCount = requestedMatchCount;
+            this.dispatchCandidateCount = dispatchCandidateCount;
+        }
+
+        @Override
+        public AssignmentAllocationPlan plan(AssignmentAllocationRequest request) {
+            return new AssignmentAllocationPlan(
+                    request.task(),
+                    request.initialStatus(),
+                    request.readyWorkCount(),
+                    request.readyWorkCount(),
+                    1,
+                    requestedMatchCount,
+                    dispatchCandidateCount
+            );
+        }
+
+        @Override
+        public AssignmentAllocationDecision decide(AssignmentAllocationPlan plan,
+                                                   TaskStatus currentStatus,
+                                                   List<MatchedWorkerContext> matchedWorkers) {
+            return new AssignmentAllocationDecision(
+                    AssignmentAllocationOutcome.DISPATCH,
+                    matchedWorkers.subList(0, dispatchCandidateCount),
+                    "fixed allocation dispatch"
+            );
+        }
     }
 }
 
