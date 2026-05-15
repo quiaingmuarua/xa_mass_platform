@@ -14,7 +14,10 @@ public final class TraceScenarioRegistry {
                 new DuplicateCallbackReplayScenarioAnalyzer(),
                 new AssignmentSuccessBindingScenarioAnalyzer(),
                 new AssignmentMinWorkerGateScenarioAnalyzer(),
-                new AssignmentRetryRedispatchScenarioAnalyzer()
+                new AssignmentRetryRedispatchScenarioAnalyzer(),
+                new LoadAwareWorkerSelectionScenarioAnalyzer(),
+                new CapacityReservationUnderConcurrencyScenarioAnalyzer(),
+                new BackgroundWorkerSharingScenarioAnalyzer()
         ));
     }
 

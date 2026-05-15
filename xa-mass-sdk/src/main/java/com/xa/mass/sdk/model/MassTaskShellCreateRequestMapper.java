@@ -32,6 +32,7 @@ public final class MassTaskShellCreateRequestMapper {
         spec.setBatchSize(requestSpec.getBatchSize());
         spec.setMaxRuntimeSeconds(requestSpec.getMaxRuntimeSeconds());
         spec.setDefaultMaxRetryCount(requestSpec.getDefaultMaxRetryCount());
+        spec.setForeground(requestSpec.isForeground());
         return spec;
     }
 

@@ -43,6 +43,75 @@ class WorkerManagerTest {
     }
 
     @Test
+    void exposesObservedWorkerLoadView() {
+        manager.recordWorkClaimed("worker-load", "task-1");
+        manager.recordWorkClaimed("worker-load", "task-1");
+
+        assertEquals(2, manager.getWorkerLoad("worker-load").activeLeaseCount());
+        assertEquals(2.0, manager.getWorkerLoad("worker-load").estimatedLoadRatio());
+
+        manager.recordWorkFinal("worker-load", "task-1");
+
+        assertEquals(1, manager.getWorkerLoad("worker-load").activeLeaseCount());
+    }
+
+    @Test
+    void exposesWorkerLoadReservationLifecycle() {
+        assertTrue(manager.tryReserveWorkerCapacity("worker-reserve", "task-1"));
+        assertFalse(manager.tryReserveWorkerCapacity("worker-reserve", "task-2"));
+        assertEquals(1, manager.getWorkerLoad("worker-reserve").reservedCount());
+
+        assertTrue(manager.confirmWorkerReservation("worker-reserve", "task-1"));
+
+        assertEquals(0, manager.getWorkerLoad("worker-reserve").reservedCount());
+        assertEquals(1, manager.getWorkerLoad("worker-reserve").activeLeaseCount());
+
+        manager.recordWorkFinal("worker-reserve", "task-1");
+        assertEquals(0, manager.getWorkerLoad("worker-reserve").activeLeaseCount());
+    }
+
+    @Test
+    void addWorkerPublishesDeclaredCapacityToLoadView() {
+        Worker worker = worker("worker-capacity", "us");
+        worker.setMaxConcurrentWork(3);
+
+        manager.addWorker(worker);
+
+        assertEquals(3, manager.getWorkerLoad("worker-capacity").declaredCapacity());
+        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-1"));
+        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-2"));
+        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-3"));
+        assertFalse(manager.tryReserveWorkerCapacity("worker-capacity", "task-4"));
+    }
+
+    @Test
+    void updateWorkerRefreshesDeclaredCapacityInLoadView() {
+        Worker worker = worker("worker-capacity-update", "us");
+        worker.setMaxConcurrentWork(2);
+        manager.addWorker(worker);
+
+        Worker updated = worker("worker-capacity-update", "us");
+        updated.setMaxConcurrentWork(4);
+        assertTrue(manager.updateWorker(updated));
+
+        assertEquals(4, manager.getWorkerLoad("worker-capacity-update").declaredCapacity());
+    }
+
+    @Test
+    void loadReadSynchronizesCapacityFromStorageRegisteredWorker() {
+        InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
+        Worker worker = worker("worker-storage-direct", "us");
+        worker.setMaxConcurrentWork(2);
+        storage.addWorker(worker);
+        WorkerManager storageBackedManager = new WorkerManager(storage);
+
+        assertEquals(2, storageBackedManager.getWorkerLoad("worker-storage-direct").declaredCapacity());
+        assertTrue(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-1"));
+        assertTrue(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-2"));
+        assertFalse(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-3"));
+    }
+
+    @Test
     void getAllWorkersReturnsAllAdded() {
         manager.addWorker(worker("a", "us"));
         manager.addWorker(worker("b", "gb"));

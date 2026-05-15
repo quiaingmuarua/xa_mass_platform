@@ -19,6 +19,7 @@ public final class WorkerRegistration {
     private final List<WorkerEventBinding> eventBindings;
     private final String adapterId;
     private final String transportHint;
+    private final int maxConcurrentWork;
     private final Map<String, String> attributes;
 
     private WorkerRegistration(Builder builder) {
@@ -29,6 +30,7 @@ public final class WorkerRegistration {
         this.eventBindings = immutableBindingCopy(builder.eventBindings);
         this.adapterId = builder.adapterId;
         this.transportHint = builder.transportHint;
+        this.maxConcurrentWork = Math.max(1, builder.maxConcurrentWork);
         this.attributes = immutableMapCopy(builder.attributes);
     }
 
@@ -74,6 +76,10 @@ public final class WorkerRegistration {
         return transportHint;
     }
 
+    public int getMaxConcurrentWork() {
+        return maxConcurrentWork;
+    }
+
     public Map<String, String> getAttributes() {
         return attributes;
     }
@@ -89,6 +95,7 @@ public final class WorkerRegistration {
                 && Objects.equals(eventBindings, that.eventBindings)
                 && Objects.equals(adapterId, that.adapterId)
                 && Objects.equals(transportHint, that.transportHint)
+                && maxConcurrentWork == that.maxConcurrentWork
                 && Objects.equals(attributes, that.attributes);
     }
 
@@ -102,6 +109,7 @@ public final class WorkerRegistration {
                 eventBindings,
                 adapterId,
                 transportHint,
+                maxConcurrentWork,
                 attributes
         );
     }
@@ -116,6 +124,7 @@ public final class WorkerRegistration {
                 ", eventBindings=" + eventBindings +
                 ", adapterId='" + adapterId + '\'' +
                 ", transportHint='" + transportHint + '\'' +
+                ", maxConcurrentWork=" + maxConcurrentWork +
                 ", attributes=" + attributes +
                 '}';
     }
@@ -149,6 +158,7 @@ public final class WorkerRegistration {
         private List<WorkerEventBinding> eventBindings = Collections.emptyList();
         private String adapterId;
         private String transportHint;
+        private int maxConcurrentWork = 1;
         private Map<String, String> attributes = Collections.emptyMap();
 
         private Builder() {
@@ -198,6 +208,11 @@ public final class WorkerRegistration {
 
         public Builder transportHint(String transportHint) {
             this.transportHint = transportHint;
+            return this;
+        }
+
+        public Builder maxConcurrentWork(int maxConcurrentWork) {
+            this.maxConcurrentWork = maxConcurrentWork;
             return this;
         }
 

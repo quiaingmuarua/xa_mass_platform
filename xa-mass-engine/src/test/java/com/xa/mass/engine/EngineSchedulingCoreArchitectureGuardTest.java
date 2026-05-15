@@ -13,11 +13,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EngineSchedulingCoreArchitectureGuardTest {
+
+    private static final Path MAIN_SOURCE_ROOT = Path.of("src/main/java");
+    private static final Path TEST_SOURCE_ROOT = Path.of("src/test/java");
 
     private static final Map<String, Pattern> FORBIDDEN_MAINLINE_PATTERNS = Map.ofEntries(
             Map.entry("TaskMessageProjection", Pattern.compile("\\bTaskMessageProjection\\b")),
@@ -49,6 +53,92 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void listenerOrchestrationDoesNotCallDispatchCleanupPrimitivesDirectly() throws IOException {
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("releaseWorkerReservation", Pattern.compile("\\breleaseWorkerReservation\\s*\\(")),
+                Map.entry("unlockWorker", Pattern.compile("\\bunlockWorker\\s*\\(")),
+                Map.entry("workerLockReleased", Pattern.compile("\\bworkerLockReleased\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        Path listenerRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener");
+        for (Path path : javaSourceFiles(listenerRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                if (forbiddenPattern.getValue().matcher(source).find()) {
+                    violations.add(path + " calls dispatch cleanup primitive directly: "
+                            + forbiddenPattern.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Listener/binder orchestration must consume WorkerDispatchResourceReleaser "
+                        + "instead of duplicating reservation release, worker unlock, or lock-release trace:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerContextStateMutationStaysBehindLegacyLifecycleOwner() throws IOException {
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("getWorkerContextById", Pattern.compile("\\bgetWorkerContextById\\s*\\(")),
+                Map.entry("updateWorkerContextById", Pattern.compile("\\bupdateWorkerContextById\\s*\\(")),
+                Map.entry("deleteWorkerContextById", Pattern.compile("\\bdeleteWorkerContextById\\s*\\(")),
+                Map.entry("addWorkerContext", Pattern.compile("\\baddWorkerContext\\s*\\(")),
+                Map.entry("bindToTask", Pattern.compile("\\.bindToTask\\s*\\(")),
+                Map.entry("startOccupying", Pattern.compile("\\.startOccupying\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            if (isWorkerManager(path) || isLegacyWorkerContextLifecycle(path)) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                if (forbiddenPattern.getValue().matcher(source).find()) {
+                    violations.add(path + " reaches WorkerContext state owner directly: "
+                            + forbiddenPattern.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerContext state mutation must stay in LegacyWorkerContextResourceLifecycle "
+                        + "while WorkerManager remains the underlying storage facade:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void retiredContextFirstSchedulingTypesStayRemoved() throws IOException {
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("MatchedWorkerContext", Pattern.compile("\\bMatchedWorkerContext\\b")),
+                Map.entry("WorkerContextAllocator", Pattern.compile("\\bWorkerContextAllocator\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : List.of(MAIN_SOURCE_ROOT, TEST_SOURCE_ROOT)) {
+            for (Path path : javaSourceFiles(root.resolve("com/xa/mass/engine"))) {
+                if (path.endsWith(Path.of("EngineSchedulingCoreArchitectureGuardTest.java"))) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                    if (forbiddenPattern.getValue().matcher(source).find()) {
+                        violations.add(path + " references retired scheduling handoff type: "
+                                + forbiddenPattern.getKey());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine scheduling must stay on WorkerSchedulingCandidate handoff; "
+                        + "do not reintroduce the retired context-first types:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedSuiteSourceFiles() {
         SelectClasses selectedClasses = EngineSchedulingCoreSuite.class.getAnnotation(SelectClasses.class);
         assertNotNull(selectedClasses, "EngineSchedulingCoreSuite must declare @SelectClasses");
@@ -63,6 +153,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     private static Path sourcePathFor(Class<?> testClass) {
         String relativeSourcePath = testClass.getName().replace('.', '/') + ".java";
-        return Path.of("src/test/java").resolve(relativeSourcePath);
+        return TEST_SOURCE_ROOT.resolve(relativeSourcePath);
+    }
+
+    private static List<Path> javaSourceFiles(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(root)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    private static boolean isWorkerManager(Path path) {
+        return path.endsWith(Path.of("com/xa/mass/engine/WorkerManager.java"));
+    }
+
+    private static boolean isLegacyWorkerContextLifecycle(Path path) {
+        return path.endsWith(Path.of("com/xa/mass/engine/resource/LegacyWorkerContextResourceLifecycle.java"));
     }
 }

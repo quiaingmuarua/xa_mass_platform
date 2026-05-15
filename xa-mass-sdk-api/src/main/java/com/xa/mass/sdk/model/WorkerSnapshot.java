@@ -17,6 +17,7 @@ public final class WorkerSnapshot {
     private final String workerGroupId;
     private final String adapterId;
     private final String onlineStrategy;
+    private final int maxConcurrentWork;
     private final Map<String, String> attributes;
     private final LocalDateTime createTime;
     private final LocalDateTime updateTime;
@@ -30,6 +31,7 @@ public final class WorkerSnapshot {
                           String workerGroupId,
                           String adapterId,
                           String onlineStrategy,
+                          int maxConcurrentWork,
                           Map<String, String> attributes,
                           LocalDateTime createTime,
                           LocalDateTime updateTime) {
@@ -42,6 +44,7 @@ public final class WorkerSnapshot {
         this.workerGroupId = workerGroupId;
         this.adapterId = adapterId;
         this.onlineStrategy = onlineStrategy;
+        this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
         this.attributes = copyMap(attributes);
         this.createTime = createTime;
         this.updateTime = updateTime;
@@ -81,6 +84,10 @@ public final class WorkerSnapshot {
 
     public String getOnlineStrategy() {
         return onlineStrategy;
+    }
+
+    public int getMaxConcurrentWork() {
+        return maxConcurrentWork;
     }
 
     public Map<String, String> getAttributes() {

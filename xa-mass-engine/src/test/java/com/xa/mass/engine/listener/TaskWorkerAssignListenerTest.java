@@ -9,12 +9,17 @@ import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
 import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
 import com.xa.mass.engine.assignment.AssignmentAllocationPolicy;
 import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -63,7 +68,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignTransitionsReadyTaskToRunningAndDispatches() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
@@ -82,7 +87,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignEmitsReadyToRunningTrace() {
         Task task = createTask(2, 2, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
@@ -102,7 +107,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignEmitsDispatchRequestedTrace() {
         Task task = createTask(2, 2, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
@@ -121,7 +126,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignEmitsAssignmentSummary() {
         Task task = createTask(2, 2, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
@@ -152,10 +157,10 @@ public class TaskWorkerAssignListenerTest {
         Worker worker2 = createWorker("worker-2");
         Worker worker3 = createWorker("worker-3");
         Worker worker4 = createWorker("worker-4");
-        MatchedWorkerContext matched1 = matched(worker1, "ctx-1");
-        MatchedWorkerContext matched2 = matched(worker2, "ctx-2");
-        MatchedWorkerContext matched3 = matched(worker3, "ctx-3");
-        MatchedWorkerContext matched4 = matched(worker4, "ctx-4");
+        WorkerSchedulingCandidate matched1 = matched(worker1, "ctx-1");
+        WorkerSchedulingCandidate matched2 = matched(worker2, "ctx-2");
+        WorkerSchedulingCandidate matched3 = matched(worker3, "ctx-3");
+        WorkerSchedulingCandidate matched4 = matched(worker4, "ctx-4");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(3);
         when(matchingStrategy.matchWorkers(same(task), eq(4))).thenReturn(List.of(matched1, matched2, matched3, matched4));
@@ -168,6 +173,9 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(assignmentRuntime).updateTask(same(task));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matched1)));
+        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
+        verify(workerManager).releaseWorkerReservation("worker-3", task.getTid());
+        verify(workerManager).releaseWorkerReservation("worker-4", task.getTid());
         verify(workerManager).unlockWorker("worker-2");
         verify(workerManager).unlockWorker("worker-3");
         verify(workerManager).unlockWorker("worker-4");
@@ -190,10 +198,37 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignSkipsBeforeMatchingWhenWorkerBudgetIsExhausted() {
+        Task task = createTask(100, 1, 1, TaskStatus.RUNNING);
+
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(100);
+        when(workerManager.findWorkerCandidates(task)).thenReturn(List.of(createWorker("worker-1")));
+        when(workerManager.getActiveWorkerCountForTask(task.getTid()))
+                .thenReturn(com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(listener.onTaskAssign(task));
+            capture.assertHasEvent("ASSIGNMENT_SUMMARY", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "SKIPPED".equals(mdc.get("result"))
+                            && "0".equals(mdc.get("desiredDispatchWorkerCount"))
+                            && "0".equals(mdc.get("requestedMatchCount"))
+                            && "20".equals(mdc.get("workerBudget"))
+                            && "20".equals(mdc.get("currentTaskWorkerCount"))
+                            && "true".equals(mdc.get("budgetLimited"))
+                            && mdc.get("reason").contains("worker budget exhausted"));
+        }
+
+        verifyNoInteractions(matchingStrategy);
+        verifyNoInteractions(dispatchBinder);
+        verify(assignmentRuntime, never()).updateTask(same(task));
+    }
+
+    @Test
     void onTaskAssignUnlocksDispatchCandidatesWhenNoBindingsAreProduced() {
         Task task = createTask(1, 1, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(1);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
@@ -209,7 +244,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignSkipsDispatchIfTaskLeavesReadyDuringMatching() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenAnswer(invocation -> {
@@ -222,6 +257,7 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.PAUSED, task.getStatus());
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
+        verify(workerManager).releaseWorkerReservation("worker-1", task.getTid());
         verify(workerManager).unlockWorker("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
         verifyNoInteractions(dispatchBinder);
@@ -231,7 +267,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignEmitsDispatchSkippedTraceWhenTaskLeavesReadyDuringMatching() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenAnswer(invocation -> {
@@ -253,7 +289,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignKeepsTaskReadyUntilMinimumWorkerCountIsMet() {
         Task task = createTask(1, 1, 2, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(1);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
@@ -272,7 +308,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignEmitsDispatchSkippedTraceWhenBelowMinimumWorkerCount() {
         Task task = createTask(1, 1, 2, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(1);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
@@ -290,7 +326,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignDelegatesWorkerSelectionToInjectedStrategy() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
@@ -303,9 +339,9 @@ public class TaskWorkerAssignListenerTest {
     @Test
     void onTaskAssignUsesInjectedAllocationPolicyForMatchRequestAndDispatchCandidates() {
         Task task = createTask(3, 1, 1, TaskStatus.READY);
-        MatchedWorkerContext first = matched(createWorker("worker-1"), "ctx-1");
-        MatchedWorkerContext second = matched(createWorker("worker-2"), "ctx-2");
-        MatchedWorkerContext third = matched(createWorker("worker-3"), "ctx-3");
+        WorkerSchedulingCandidate first = matched(createWorker("worker-1"), "ctx-1");
+        WorkerSchedulingCandidate second = matched(createWorker("worker-2"), "ctx-2");
+        WorkerSchedulingCandidate third = matched(createWorker("worker-3"), "ctx-3");
         AssignmentAllocationPolicy allocationPolicy = new FixedAllocationPolicy(3, 1);
         listener = new TaskWorkerAssignListener(
                 matchingStrategy,
@@ -330,10 +366,37 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void injectedResourcePolicyOwnsSurplusWorkerUnlockDecision() {
+        Task task = createTask(3, 1, 1, TaskStatus.READY);
+        WorkerSchedulingCandidate first = matched(createWorker("worker-1"), "ctx-1");
+        WorkerSchedulingCandidate second = matched(createWorker("worker-2"), "ctx-2");
+        AssignmentAllocationPolicy allocationPolicy = new FixedAllocationPolicy(2, 1);
+        listener = new TaskWorkerAssignListener(
+                matchingStrategy,
+                workerManager,
+                dispatchBinder,
+                assignmentRuntime,
+                assignmentEventSink,
+                TraceEventLogger.noop(),
+                allocationPolicy,
+                new NonExclusiveResourcePolicy()
+        );
+
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(3);
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(first, second));
+        when(dispatchBinder.bindDispatches(same(task), eq(List.of(first)))).thenReturn(List.of(binding("m1", "worker-1")));
+
+        assertTrue(listener.onTaskAssign(task));
+
+        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
+        verify(workerManager, never()).unlockWorker("worker-2");
+    }
+
+    @Test
     void runningTaskCanBeReplenishedWithoutLeavingRunning() {
         Task task = createTask(5, 2, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
-        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+        WorkerSchedulingCandidate matchedWorker = matched(worker, "ctx-1");
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(2);
         when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
@@ -383,11 +446,15 @@ public class TaskWorkerAssignListenerTest {
         );
     }
 
-    private MatchedWorkerContext matched(Worker worker, String workerContextId) {
+    private WorkerSchedulingCandidate matched(Worker worker, String workerContextId) {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerId(worker.getWorkerId());
         workerContext.setWorkerContextId(workerContextId);
-        return new MatchedWorkerContext(worker, workerContext);
+        return new WorkerSchedulingCandidate(
+                worker,
+                workerContext,
+                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+        );
     }
 
     private static final class FixedAllocationPolicy implements AssignmentAllocationPolicy {
@@ -406,21 +473,44 @@ public class TaskWorkerAssignListenerTest {
                     request.initialStatus(),
                     request.readyWorkCount(),
                     request.readyWorkCount(),
+                    request.readyWorkCount(),
                     1,
                     requestedMatchCount,
-                    dispatchCandidateCount
+                    dispatchCandidateCount,
+                    null,
+                    request.currentTaskWorkerCount(),
+                    false
             );
         }
 
         @Override
         public AssignmentAllocationDecision decide(AssignmentAllocationPlan plan,
                                                    TaskStatus currentStatus,
-                                                   List<MatchedWorkerContext> matchedWorkers) {
+                                                   List<WorkerSchedulingCandidate> matchedWorkers) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.DISPATCH,
                     matchedWorkers.subList(0, dispatchCandidateCount),
                     "fixed allocation dispatch"
             );
+        }
+    }
+
+    private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
+        private final WorkerDispatchResourcePolicy delegate = new DefaultWorkerDispatchResourcePolicy();
+
+        @Override
+        public WorkerDispatchResourceUsage usageForTask(Task task) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForTask(task).legacyWorkerContextResource());
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForCandidate(task, candidate).legacyWorkerContextResource());
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+            return new WorkerDispatchResourceUsage(false, delegate.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
         }
     }
 }

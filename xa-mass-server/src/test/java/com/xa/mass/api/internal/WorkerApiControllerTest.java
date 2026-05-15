@@ -74,6 +74,7 @@ class WorkerApiControllerTest {
                 "group-a",
                 "websocket",
                 "realtime",
+                3,
                 Map.of("region", "us"),
                 null,
                 LocalDateTime.of(2026, 4, 21, 10, 16)
@@ -98,6 +99,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"))
                 .andExpect(jsonPath("$.data.items[0].supportedEventCodes[0]").value("demo.dispatch"))
+                .andExpect(jsonPath("$.data.items[0].maxConcurrentWork").value(3))
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].eventCode").value("demo.dispatch"))
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].projectCodes[0]").value("demoApp"))
                 .andExpect(jsonPath("$.data.items[0].adapterId").value("websocket"))

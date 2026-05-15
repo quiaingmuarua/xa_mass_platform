@@ -18,11 +18,13 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -401,8 +403,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         @Override
-        public List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount) {
-            List<MatchedWorkerContext> matched = new ArrayList<>();
+        public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
@@ -430,7 +432,11 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     workerManager.unlockWorker(worker.getWorkerId());
                     continue;
                 }
-                matched.add(new MatchedWorkerContext(worker, selectedContext));
+                matched.add(new WorkerSchedulingCandidate(
+                        worker,
+                        selectedContext,
+                        WorkerSchedulingView.from(worker, selectedContext, WorkerReachabilityState.ONLINE, true, true)
+                ));
             }
             return matched;
         }

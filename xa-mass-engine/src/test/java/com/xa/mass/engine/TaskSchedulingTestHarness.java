@@ -158,6 +158,13 @@ final class TaskSchedulingTestHarness {
         return addWorkerWithContext(workerId, contextId, routingCode, Map.of());
     }
 
+    Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
+        Worker worker = worker(workerId);
+        worker.setMaxConcurrentWork(maxConcurrentWork);
+        workerManager.addWorker(worker);
+        return worker;
+    }
+
     Worker addWorkerWithContext(String workerId,
                                 String contextId,
                                 String routingCode,
@@ -224,8 +231,8 @@ final class TaskSchedulingTestHarness {
     private void installDefaultSchedulingRules() {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")
         ));

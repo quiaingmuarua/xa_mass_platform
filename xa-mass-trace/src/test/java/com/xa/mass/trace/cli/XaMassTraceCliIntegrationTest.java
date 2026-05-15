@@ -92,7 +92,12 @@ class XaMassTraceCliIntegrationTest {
         assertTrue(root.get("count").asInt() >= 3);
         JsonNode summary = findEvent(root, "ASSIGNMENT_SUMMARY");
         assertEquals("SUCCESS", summary.get("result").asText());
+        assertEquals("NORMAL", summary.get("dispatchPriority").asText());
+        assertTrue(summary.get("foreground").asBoolean());
         assertEquals(1, summary.get("usedWorkerCount").asInt());
+        assertEquals(4, summary.get("workerBudget").asInt());
+        assertEquals(1, summary.get("currentTaskWorkerCount").asInt());
+        assertTrue(summary.get("budgetLimited").asBoolean());
         JsonNode binding = findEvent(root, "DISPATCH_BINDING_SUMMARY");
         assertEquals(2, binding.get("dispatchedMessageCount").asInt());
         assertEquals(2, binding.get("perWorkerBatchLimit").asInt());
@@ -108,8 +113,12 @@ class XaMassTraceCliIntegrationTest {
         assertEquals(0, result.exitCode, "stderr=" + result.stderr + System.lineSeparator() + "stdout=" + result.stdout);
         assertTrue(result.stdout.contains("ASSIGNMENT_SUMMARY"));
         assertTrue(result.stdout.contains("result=SUCCESS"));
+        assertTrue(result.stdout.contains("priority=NORMAL"));
+        assertTrue(result.stdout.contains("foreground=true"));
         assertTrue(result.stdout.contains("reason=matched workers dispatched"));
         assertTrue(result.stdout.contains("dispatched=2"));
+        assertTrue(result.stdout.contains("budget=4"));
+        assertTrue(result.stdout.contains("taskWorkers=1"));
     }
 
     @Test
@@ -312,11 +321,20 @@ class XaMassTraceCliIntegrationTest {
                             "desiredDispatchWorkerCount", 1,
                             "requiredStartWorkerCount", 1,
                             "requestedMatchCount", 1,
+                            "workerBudget", 4,
+                            "currentTaskWorkerCount", 1,
+                            "budgetLimited", true,
                             "matchedWorkerCount", 1,
                             "dispatchCandidateCount", 1,
                             "dispatchedMessageCount", 2,
                             "usedWorkerCount", 1,
-                            "peakAssignedWorkerCount", 1))
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "BULK",
+                            "foreground", true,
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)

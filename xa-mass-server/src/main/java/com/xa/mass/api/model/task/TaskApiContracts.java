@@ -97,7 +97,9 @@ public final class TaskApiContracts {
             @Schema(description = "Maximum runtime seconds. 0 means no explicit limit.", example = "0")
             int maxRuntimeSeconds,
             @Schema(description = "Default retry count for newly ingested work items", example = "3")
-            int defaultMaxRetryCount
+            int defaultMaxRetryCount,
+            @Schema(description = "Whether the task currently requires exclusive foreground worker scheduling", example = "true")
+            boolean foreground
     ) {
     }
 

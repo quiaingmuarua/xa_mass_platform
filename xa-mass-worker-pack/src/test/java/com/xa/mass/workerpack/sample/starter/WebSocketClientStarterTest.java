@@ -98,6 +98,7 @@ class WebSocketClientStarterTest {
                 null,
                 adapterId,
                 onlineStrategy,
+                1,
                 java.util.Map.of(),
                 null,
                 null

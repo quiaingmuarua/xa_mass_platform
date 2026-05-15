@@ -6,8 +6,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,7 +33,7 @@ public class WorkerMatchContextTest {
         workerContext.setProject("demoApp");
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerContext.setRoutingTags(Set.of("us"));
-        workerContext.setAttributes(Map.of("pool", "primary"));
+        workerContext.setAttributes(Map.of("pool", "primary", "country", "us"));
 
         Task task = new Task();
         task.setTid("task-1");
@@ -41,17 +41,34 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
-
-        WorkerMatchContext context = new WorkerMatchContext(worker, workerContext, task, workerManager);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, workerContext), task);
 
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("workerAttributes"));
-        assertEquals(Map.of("pool", "primary"), context.getContext().get("workerContextAttributes"));
+        assertEquals(Map.of("pool", "primary", "country", "us"), context.getContext().get("workerContextAttributes"));
+        assertEquals("ctx-1", context.getContext().get("workerSchedulingResourceId"));
+        assertEquals("demoApp", context.getContext().get("workerSchedulingProject"));
+        assertEquals(Set.of("us"), context.getContext().get("workerSchedulingRoutingTags"));
+        assertEquals(Map.of("pool", "primary", "country", "us"), context.getContext().get("workerSchedulingAttributes"));
+        assertEquals(true, context.getContext().get("hasWorkerSchedulingResource"));
+        assertEquals(true, context.getContext().get("isWorkerSchedulingResourceAllocatable"));
+        assertEquals(true, context.getContext().get("isWorkerSchedulingResourceAvailable"));
+        assertEquals(true, context.getContext().get("isWorkerSchedulingResourceUsable"));
+        assertEquals(false, context.getContext().get("isWorkerSchedulingResourceReserved"));
+        assertEquals(false, context.getContext().get("isWorkerSchedulingResourceOccupied"));
+        assertEquals(0, context.getContext().get("workerActiveLeaseCount"));
+        assertEquals(0, context.getContext().get("workerReservedCount"));
+        assertEquals(1, context.getContext().get("workerDeclaredCapacity"));
+        assertEquals(0.0, context.getContext().get("workerEstimatedLoadRatio"));
+        assertEquals(0, context.getContext().get("currentActiveLeaseCount"));
+        assertEquals(0.0, context.getContext().get("estimatedLoadRatio"));
+        assertEquals("ctx-1", context.getSchedulingView().schedulingResourceId());
         assertEquals(true, context.getContext().get("hasWorkerContext"));
         assertEquals("demoApp", context.getContext().get("workerContextProject"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("routingCode"));
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
+        assertEquals(true, context.getContext().get("workerSchedulingProjectMatchesTaskProject"));
+        assertEquals(true, context.getContext().get("workerSchedulingMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("workerContextProjectMatchesTaskProject"));
         assertEquals(true, context.getContext().get("workerContextMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("isWorkerContextAvailable"));
@@ -70,6 +87,7 @@ public class WorkerMatchContextTest {
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setWorkerGroupId("us");
         worker.setSupportedProjects(List.of("demoApp"));
+        worker.setAttributes(Map.of("pool", "worker-only"));
 
         Task task = new Task();
         task.setTid("task-2");
@@ -77,13 +95,23 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
-
-        WorkerMatchContext context = new WorkerMatchContext(worker, null, task, workerManager);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
 
         assertEquals(Map.of(), context.getContext().get("workerContextAttributes"));
+        assertEquals("worker-2", context.getContext().get("workerSchedulingResourceId"));
+        assertEquals(null, context.getContext().get("workerSchedulingProject"));
+        assertEquals(Set.of(), context.getContext().get("workerSchedulingRoutingTags"));
+        assertEquals(Map.of("pool", "worker-only"), context.getContext().get("workerSchedulingAttributes"));
+        assertEquals(false, context.getContext().get("hasWorkerSchedulingResource"));
+        assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAllocatable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAvailable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceUsable"));
+        assertFalse((Boolean) context.getContext().get("isWorkerSchedulingResourceReserved"));
+        assertFalse((Boolean) context.getContext().get("isWorkerSchedulingResourceOccupied"));
         assertFalse((Boolean) context.getContext().get("hasWorkerContext"));
         assertEquals(null, context.getContext().get("workerContextProject"));
+        assertFalse((Boolean) context.getContext().get("workerSchedulingProjectMatchesTaskProject"));
+        assertFalse((Boolean) context.getContext().get("workerSchedulingMatchesRoutingCode"));
         assertFalse((Boolean) context.getContext().get("workerContextProjectMatchesTaskProject"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAllocatable"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAvailable"));
@@ -110,10 +138,13 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, workerContext), task);
 
-        WorkerMatchContext context = new WorkerMatchContext(worker, workerContext, task, workerManager);
-
+        assertFalse((Boolean) context.getContext().get("isWorkerSchedulingResourceAllocatable"));
+        assertFalse((Boolean) context.getContext().get("isWorkerSchedulingResourceAvailable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceUsable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceReserved"));
+        assertFalse((Boolean) context.getContext().get("isWorkerSchedulingResourceOccupied"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAllocatable"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAvailable"));
         assertTrue((Boolean) context.getContext().get("isWorkerContextUsable"));
@@ -135,14 +166,54 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
-
-        WorkerMatchContext context = new WorkerMatchContext(worker, null, task, workerManager);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
 
         assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(false, context.getContext().get("workerContextMatchesRoutingCode"));
         assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
         assertFalse(context.getContext().containsKey("workerContextChannelMatchesRoutingCode"));
         assertFalse(context.getContext().containsKey("workerContextAttributeCountryMatchesRoutingCode"));
+    }
+
+    @Test
+    void contextIncludesObservedWorkerLoadFields() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-5");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setSupportedProjects(List.of("demoApp"));
+
+        Task task = new Task();
+        task.setTid("task-5");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of());
+        task.setStatus(TaskStatus.READY);
+
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
+                worker,
+                null,
+                WorkerReachabilityState.ONLINE,
+                true,
+                false,
+                new WorkerLoadSnapshot("worker-5", 3, 1, 2)
+        );
+        WorkerMatchContext context = new WorkerMatchContext(
+                new WorkerSchedulingCandidate(worker, null, schedulingView),
+                task
+        );
+
+        assertEquals(3, context.getContext().get("workerActiveLeaseCount"));
+        assertEquals(1, context.getContext().get("workerReservedCount"));
+        assertEquals(2, context.getContext().get("workerDeclaredCapacity"));
+        assertEquals(2.0, context.getContext().get("workerEstimatedLoadRatio"));
+        assertEquals(3, context.getContext().get("currentActiveLeaseCount"));
+        assertEquals(2.0, context.getContext().get("estimatedLoadRatio"));
+    }
+
+    private WorkerSchedulingCandidate candidate(Worker worker, WorkerContext workerContext) {
+        return new WorkerSchedulingCandidate(
+                worker,
+                workerContext,
+                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+        );
     }
 }

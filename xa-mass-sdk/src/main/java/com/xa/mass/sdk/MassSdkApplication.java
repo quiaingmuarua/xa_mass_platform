@@ -872,6 +872,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .eventBindings(readWorkerEventBindings(payload.get("eventBindings")))
                 .adapterId(readString(payload, "adapterId", null))
                 .transportHint(readString(payload, "transportHint", null))
+                .maxConcurrentWork(readInt(readString(payload, "maxConcurrentWork", null), 1))
                 .attributes(readStringMap(payload.get("attributes")))
                 .build());
     }
@@ -1108,6 +1109,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .eventBindings(bindings)
                 .adapterId(resolvedAdapterId)
                 .transportHint(normalizedTransportHint)
+                .maxConcurrentWork(registration.getMaxConcurrentWork())
                 .attributes(registration.getAttributes())
                 .build();
     }
@@ -1476,6 +1478,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getWorkerGroupId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
                 worker.getAttributes(),
                 worker.getCreateTime(),
                 worker.getUpdateTime()
@@ -1644,6 +1647,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         view.setBatchSize(spec.getBatchSize());
         view.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
         view.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
+        view.setForeground(spec.isForeground());
         return view;
     }
 

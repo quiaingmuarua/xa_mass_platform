@@ -1447,6 +1447,7 @@ class MassSdkTest {
                                 .build()
                 ))
                 .transportHint("polling")
+                .maxConcurrentWork(4)
                 .attributes(Map.of("type", "crawler"))
                 .build());
 
@@ -1458,6 +1459,7 @@ class MassSdkTest {
         Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
         Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
+        Assertions.assertEquals(4, worker.getMaxConcurrentWork());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
         Assertions.assertEquals(WorkerStatus.OFFLINE, worker.getStatus());
     }

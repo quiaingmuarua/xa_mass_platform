@@ -1,7 +1,6 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -12,7 +11,12 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
+import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -39,6 +43,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final AssignmentDiagnosticRecorder recordService;
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
+    private final WorkerDispatchResourcePolicy resourcePolicy;
+    private final LegacyWorkerContextResourceLifecycle workerContextLifecycle;
+    private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerManager workerManager,
@@ -58,17 +65,57 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
+        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+                new DefaultWorkerDispatchResourcePolicy());
+    }
+
+    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                             WorkerManager workerManager,
+                             AssignmentDiagnosticRecorder recordService,
+                             TaskDispatchBatchListener dispatchListener,
+                             TraceEventLogger traceEventLogger,
+                             WorkerDispatchResourcePolicy resourcePolicy) {
+        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+                resourcePolicy, null);
+    }
+
+    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                             WorkerManager workerManager,
+                             AssignmentDiagnosticRecorder recordService,
+                             TaskDispatchBatchListener dispatchListener,
+                             TraceEventLogger traceEventLogger,
+                             WorkerDispatchResourcePolicy resourcePolicy,
+                             LegacyWorkerContextResourceLifecycle workerContextLifecycle) {
+        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+                resourcePolicy, workerContextLifecycle, null);
+    }
+
+    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                             WorkerManager workerManager,
+                             AssignmentDiagnosticRecorder recordService,
+                             TaskDispatchBatchListener dispatchListener,
+                             TraceEventLogger traceEventLogger,
+                             WorkerDispatchResourcePolicy resourcePolicy,
+                             LegacyWorkerContextResourceLifecycle workerContextLifecycle,
+                             WorkerDispatchResourceReleaser resourceReleaser) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.workerContextLifecycle = workerContextLifecycle == null
+                ? new LegacyWorkerContextResourceLifecycle(workerManager, traceEventLogger)
+                : workerContextLifecycle;
+        this.resourceReleaser = resourceReleaser == null
+                ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
+                : resourceReleaser;
     }
 
     @Override
-    public List<TaskDispatchBinding> bindDispatches(Task task, List<MatchedWorkerContext> matchedWorkers) {
+    public List<TaskDispatchBinding> bindDispatches(Task task, List<WorkerSchedulingCandidate> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
-            log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
+            log.info("[MsgAssign] Skip task {} because no matched worker scheduling candidates were provided", task.getTid());
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -80,7 +127,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     Math.max(task.getExecutionSpec().getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
                     "SimpleTaskDispatchBinder",
-                    "no matched worker-context candidates were provided",
+                    "no matched worker scheduling candidates were provided",
                     "SKIPPED"
             );
             return List.of();
@@ -89,6 +136,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
         if (readyWorkCount == 0) {
             log.info("[MsgAssign] Skip task {} because there is no runtime-ready work to dispatch", task.getTid());
+            resourceReleaser.releaseReservations(task, matchedWorkers);
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -120,20 +168,21 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 task.getTid(), matchedWorkers.size(), readyWorkCount, perWorkerBatchLimit);
 
         for (int i = 0; i < matchedWorkers.size(); i++) {
-            MatchedWorkerContext matchedWorker = matchedWorkers.get(i);
+            WorkerSchedulingCandidate matchedWorker = matchedWorkers.get(i);
             Worker worker = matchedWorker.getWorker();
             WorkerContext workerContext = matchedWorker.getWorkerContext();
-            if (!prepareWorkerContextForDispatch(task, workerContext)) {
+            WorkerDispatchResourceUsage resourceUsage = resourcePolicy.usageForCandidate(task, matchedWorker);
+            if (resourceUsage.legacyWorkerContextResource()
+                    && !workerContextLifecycle.prepareForDispatch(task, workerContext, "SimpleTaskDispatchBinder")) {
                 log.warn("[MsgAssign] Skip worker {} context {} for task {} because workerContext state is not dispatchable",
                         worker.getWorkerId(),
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
-                workerManager.unlockWorker(worker.getWorkerId());
-                traceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
+                resourceReleaser.releaseReservationAndLock(task, matchedWorker,
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
                 continue;
             }
-            dispatchSlots.add(new DispatchSlot(worker, workerContext));
+            dispatchSlots.add(new DispatchSlot(matchedWorker, resourceUsage));
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
@@ -160,6 +209,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
             dispatchBindings.add(dispatchBinding);
+            if (!workerManager.confirmWorkerReservation(work.workerId(), task.getTid())) {
+                workerManager.recordWorkClaimed(work.workerId(), task.getTid());
+            }
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
@@ -171,9 +223,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
-                releaseWorkerContextIfIdleForTask(task, slot.workerContext(), "matched worker received no messages");
-                workerManager.unlockWorker(slot.worker().getWorkerId());
-                traceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
+                workerContextLifecycle.releaseIfOwnedByTask(task, slot.workerContext(),
+                        "RELEASE_WORKER_CONTEXT", "SimpleTaskDispatchBinder", "matched worker received no messages");
+                resourceReleaser.releaseReservationAndLock(task, slot.candidate,
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
             }
         }
@@ -224,6 +276,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 if (!compensated) {
                     throw new IllegalStateException("dispatch submit compensation failed for task " + task.getTid(), e);
                 }
+                releaseObservedWorkerLoad(immutableDispatchBindings);
+                releaseAssignedWorkerLocks(task, dispatchSlots,
+                        "dispatch submit failed before transport delivery");
                 traceEventLogger.dispatchBindingSummary(
                         task,
                         readyWorkCount,
@@ -244,27 +299,37 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         return List.copyOf(dispatchBindings);
     }
 
+    private void releaseObservedWorkerLoad(List<TaskDispatchBinding> dispatchBindings) {
+        if (dispatchBindings == null || dispatchBindings.isEmpty()) {
+            return;
+        }
+        for (TaskDispatchBinding binding : dispatchBindings) {
+            workerManager.recordWorkFinal(binding.workerId(), binding.taskId());
+        }
+    }
+
     private static final class DispatchSlot {
-        private final Worker worker;
-        private final WorkerContext workerContext;
+        private final WorkerSchedulingCandidate candidate;
+        private final WorkerDispatchResourceUsage resourceUsage;
         private final String batchId = java.util.UUID.randomUUID().toString();
         private int assignedCount;
 
-        private DispatchSlot(Worker worker, WorkerContext workerContext) {
-            this.worker = worker;
-            this.workerContext = workerContext;
+        private DispatchSlot(WorkerSchedulingCandidate candidate, WorkerDispatchResourceUsage resourceUsage) {
+            this.candidate = candidate;
+            this.resourceUsage = resourceUsage;
         }
 
         private Worker worker() {
-            return worker;
+            return candidate.getWorker();
         }
 
         private WorkerContext workerContext() {
-            return workerContext;
+            return resourceUsage.legacyWorkerContextResource() ? candidate.getWorkerContext() : null;
         }
 
         private String workerContextId() {
-            return workerContext != null ? workerContext.getWorkerContextId() : null;
+            WorkerContext context = workerContext();
+            return context != null ? context.getWorkerContextId() : null;
         }
 
         private String batchId() {
@@ -344,93 +409,27 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         );
     }
 
-    private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {
-        if (workerContext == null) {
-            return true;
-        }
-
-        boolean changed = false;
-        String taskId = task.getTid();
-        if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
-            WorkerContextStatus fromStatus = workerContext.getStatus();
-            if (!workerContext.bindToTask(taskId)) {
-                return false;
-            }
-            traceEventLogger.workerContextStatusTransition(
-                    taskId,
-                    workerContext,
-                    fromStatus,
-                    workerContext.getStatus(),
-                    "PREPARE_FOR_DISPATCH",
-                    "SimpleTaskDispatchBinder",
-                    "workerContext reserved for task"
-            );
-            changed = true;
-        }
-        if (workerContext.getStatus() == WorkerContextStatus.RESERVED
-                && taskId.equals(workerContext.getLastBindTaskId())) {
-            WorkerContextStatus fromStatus = workerContext.getStatus();
-            if (!workerContext.startOccupying()) {
-                return false;
-            }
-            traceEventLogger.workerContextStatusTransition(
-                    taskId,
-                    workerContext,
-                    fromStatus,
-                    workerContext.getStatus(),
-                    "PREPARE_FOR_DISPATCH",
-                    "SimpleTaskDispatchBinder",
-                    "workerContext advanced to occupied"
-            );
-            changed = true;
-        }
-
-        boolean alreadySendingForTask = workerContext.getStatus() == WorkerContextStatus.OCCUPIED
-                && taskId.equals(workerContext.getLastBindTaskId());
-        if (!alreadySendingForTask && workerContext.getStatus() != WorkerContextStatus.OCCUPIED) {
-            return false;
-        }
-
-        return !changed || workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
-    }
-
     private void releaseAssignedWorkerContexts(Task task, List<DispatchSlot> dispatchSlots) {
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() <= 0) {
                 continue;
             }
-            releaseWorkerContextIfIdleForTask(task, slot.workerContext(),
+            workerContextLifecycle.releaseIfOwnedByTask(task, slot.workerContext(),
+                    "RELEASE_WORKER_CONTEXT",
+                    "SimpleTaskDispatchBinder",
                     "workerContext released after dispatch submit failure");
         }
     }
 
-    private void releaseWorkerContextIfIdleForTask(Task task, WorkerContext workerContext, String reason) {
-        if (task == null || workerContext == null) {
-            return;
-        }
-        if (workerContext.getLastBindTaskId() != null && !task.getTid().equals(workerContext.getLastBindTaskId())) {
-            return;
-        }
-        if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
-            return;
-        }
-        WorkerContextStatus fromStatus = workerContext.getStatus();
-        if (!workerContext.release()) {
-            log.warn("[MsgAssign] WorkerContext {} could not be released for task {} from status {} ({})",
-                    workerContext.getWorkerContextId(), task.getTid(), workerContext.getStatus(), reason);
-            return;
-        }
-        boolean stored = workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
-        if (!stored) {
-            log.warn("[MsgAssign] Failed to persist workerContext {} release for task {} ({})",
-                    workerContext.getWorkerContextId(), task.getTid(), reason);
-        }
-        traceEventLogger.workerContextStatusTransition(
-                task.getTid(),
-                workerContext,
-                fromStatus,
-                workerContext.getStatus(),
-                "RELEASE_WORKER_CONTEXT",
+    private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {
+        List<WorkerSchedulingCandidate> assignedCandidates = dispatchSlots.stream()
+                .filter(slot -> slot.assignedCount() > 0)
+                .map(slot -> slot.candidate)
+                .toList();
+        resourceReleaser.releaseLocks(
+                task,
+                assignedCandidates,
+                "UNLOCK_WORKER",
                 "SimpleTaskDispatchBinder",
                 reason
         );

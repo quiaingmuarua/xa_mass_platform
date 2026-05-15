@@ -49,12 +49,12 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractSample
     }
 
     @Test
-    void routesTaskUsingWorkerContextAttributesCountryLabel() throws Exception {
+    void routesTaskUsingWorkerSchedulingAttributesCountryLabel() throws Exception {
         app.replaceDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_context_status_check", "isWorkerContextAllocatable == true"),
+                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("worker_context_attribute_country", "workerContextAttributes['country'] == routingCode")
+                rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
 
         addCandidate("matched-worker", "pool-east", "us", "us");

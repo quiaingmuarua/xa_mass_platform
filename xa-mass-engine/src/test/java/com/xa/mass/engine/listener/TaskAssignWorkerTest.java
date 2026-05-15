@@ -3,14 +3,17 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -384,6 +387,103 @@ public class TaskAssignWorkerTest {
         } finally {
             releaseBulk.countDown();
         }
+    }
+
+    @Test
+    void higherPrioritySignalRunsBeforeEarlierNormalSignalInSameLane() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch blockerStarted = new CountDownLatch(1);
+        CountDownLatch releaseBlocker = new CountDownLatch(1);
+        CountDownLatch processed = new CountDownLatch(3);
+        List<String> processedOrder = Collections.synchronizedList(new ArrayList<>());
+
+        TaskWorkerAssignListener priorityAwareListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            processedOrder.add(task.getTid());
+            if ("lane-blocker".equals(task.getTid())) {
+                blockerStarted.countDown();
+                assertTrue(releaseBlocker.await(3, TimeUnit.SECONDS));
+            }
+            task.transitionTo(TaskStatus.RUNNING);
+            processed.countDown();
+            return true;
+        }).when(priorityAwareListener).onTaskAssign(any());
+
+        TaskRuntimeProfileResolver sameLanePriorityResolver = new TaskRuntimeProfileResolver() {
+            @Override
+            public TaskRuntimeProfile resolve(Task task) {
+                TaskRuntimeProfile.DispatchPriority priority = task != null
+                        && "lane-high".equals(task.getTid())
+                        ? TaskRuntimeProfile.DispatchPriority.HIGH
+                        : TaskRuntimeProfile.DispatchPriority.NORMAL;
+                return new TaskRuntimeProfile(
+                        TaskWorkloadClass.BULK,
+                        TaskRuntimeProfile.DispatchLane.BULK,
+                        priority,
+                        TaskRuntimeProfile.BatchPolicy.LARGE,
+                        TaskRuntimeProfile.LeaseProfile.NORMAL,
+                        TaskRuntimeProfile.BackpressureClass.BULK
+                );
+            }
+        };
+
+        worker = new TaskAssignWorker(
+                priorityAwareListener,
+                50L,
+                10,
+                new TaskRuntimeRetryPolicyResolver(),
+                sameLanePriorityResolver,
+                TraceEventLogger.noop()
+        );
+        worker.start();
+
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-blocker")));
+        assertTrue(blockerStarted.await(3, TimeUnit.SECONDS), "blocker should occupy the lane worker");
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-normal")));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-high")));
+
+        releaseBlocker.countDown();
+
+        assertTrue(processed.await(3, TimeUnit.SECONDS), "all lane signals should be processed");
+        assertEquals(List.of("lane-blocker", "lane-high", "lane-normal"), processedOrder);
+    }
+
+    @Test
+    void samePrioritySignalsRemainFifoWithinLane() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch blockerStarted = new CountDownLatch(1);
+        CountDownLatch releaseBlocker = new CountDownLatch(1);
+        CountDownLatch processed = new CountDownLatch(3);
+        List<String> processedOrder = Collections.synchronizedList(new ArrayList<>());
+
+        TaskWorkerAssignListener listener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            processedOrder.add(task.getTid());
+            if ("fifo-blocker".equals(task.getTid())) {
+                blockerStarted.countDown();
+                assertTrue(releaseBlocker.await(3, TimeUnit.SECONDS));
+            }
+            task.transitionTo(TaskStatus.RUNNING);
+            processed.countDown();
+            return true;
+        }).when(listener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(listener, 50L, 10);
+        worker.start();
+
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-blocker")));
+        assertTrue(blockerStarted.await(3, TimeUnit.SECONDS), "blocker should occupy the lane worker");
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-first")));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-second")));
+
+        releaseBlocker.countDown();
+
+        assertTrue(processed.await(3, TimeUnit.SECONDS), "all lane signals should be processed");
+        assertEquals(List.of("fifo-blocker", "fifo-first", "fifo-second"), processedOrder);
     }
 
     @Test

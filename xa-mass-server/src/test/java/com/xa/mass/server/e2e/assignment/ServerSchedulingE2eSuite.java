@@ -9,6 +9,7 @@ import org.junit.platform.suite.api.Suite;
         ServerMainlineE2eArchitectureGuardTest.class,
         TaskApiMultiTaskAssignmentIntegrationTest.class,
         TaskApiAssignmentTraceObservedIntegrationTest.class,
+        TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest.class,
         TaskApiMinimumWorkerGateIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
         TaskApiSingleWorkerReuseIntegrationTest.class,

@@ -10,6 +10,9 @@ import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -254,35 +257,129 @@ public final class TraceEventLogger {
         if (worker == null) {
             return;
         }
-        emit(event(ExecutionEventType.WORKER_MATCH_ACCEPTED)
-                .identity(identity -> identity
-                        .taskId(taskId)
-                        .workerId(worker.getWorkerId())
-                        .workerContextId(workerContext != null ? workerContext.getWorkerContextId() : null))
-                .outcome(true, null, reason)
-                .attrs(attrs(
-                        "source", "RuleBasedTaskWorkerMatchingStrategy",
-                        "reason", reason,
-                        "result", "SUCCESS"
-                ))
-                .build());
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, null, taskId, worker, workerContext,
+                reason, "SUCCESS", null);
+    }
+
+    public void workerMatchAccepted(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore) {
+        workerMatchAccepted(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchAccepted(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchAccepted(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchAccepted(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        if (candidate == null) {
+            return;
+        }
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
+                candidate.getWorker(), candidate.getWorkerContext(), reason, "SUCCESS",
+                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     public void workerMatchRejected(String taskId, Worker worker, WorkerContext workerContext, String reason) {
         if (worker == null) {
             return;
         }
-        emit(event(ExecutionEventType.WORKER_MATCH_REJECTED)
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, null, taskId, worker, workerContext,
+                reason, "REJECTED", null);
+    }
+
+    public void workerMatchRejected(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore) {
+        workerMatchRejected(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchRejected(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchRejected(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchRejected(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        if (candidate == null) {
+            return;
+        }
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
+                candidate.getWorker(), candidate.getWorkerContext(), reason, "REJECTED",
+                workerSchedulingRankAttrs(candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
+    }
+
+    private void emitWorkerMatchEvent(ExecutionEventType eventType,
+                                      Task task,
+                                      String taskId,
+                                      Worker worker,
+                                      WorkerContext workerContext,
+                                      String reason,
+                                      String result,
+                                      Map<String, Object> extraAttrs) {
+        if (worker == null) {
+            return;
+        }
+        Map<String, Object> values = attrs(
+                "source", "RuleBasedTaskWorkerMatchingStrategy",
+                "reason", reason,
+                "result", result
+        );
+        putTaskRuntimeProfile(values, task);
+        if (extraAttrs != null) {
+            values.putAll(extraAttrs);
+        }
+        emit(event(eventType)
                 .identity(identity -> identity
                         .taskId(taskId)
                         .workerId(worker.getWorkerId())
                         .workerContextId(workerContext != null ? workerContext.getWorkerContextId() : null))
-                .outcome(false, null, reason)
-                .attrs(attrs(
-                        "source", "RuleBasedTaskWorkerMatchingStrategy",
-                        "reason", reason,
-                        "result", "REJECTED"
-                ))
+                .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
+                .attrs(values)
                 .build());
     }
 
@@ -612,6 +709,9 @@ public final class TraceEventLogger {
                                   Integer desiredDispatchWorkerCount,
                                   Integer requiredStartWorkerCount,
                                   Integer requestedMatchCount,
+                                  Integer workerBudget,
+                                  Integer currentTaskWorkerCount,
+                                  Boolean budgetLimited,
                                   Integer matchedWorkerCount,
                                   Integer dispatchCandidateCount,
                                   Integer dispatchedMessageCount,
@@ -635,6 +735,9 @@ public final class TraceEventLogger {
                 "desiredDispatchWorkerCount", desiredDispatchWorkerCount,
                 "requiredStartWorkerCount", requiredStartWorkerCount,
                 "requestedMatchCount", requestedMatchCount,
+                "workerBudget", workerBudget,
+                "currentTaskWorkerCount", currentTaskWorkerCount,
+                "budgetLimited", budgetLimited,
                 "matchedWorkerCount", matchedWorkerCount,
                 "dispatchCandidateCount", dispatchCandidateCount,
                 "dispatchedMessageCount", dispatchedMessageCount,
@@ -818,6 +921,34 @@ public final class TraceEventLogger {
         return values;
     }
 
+    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
+                                                                 Integer candidateRank,
+                                                                 Double candidateScore) {
+        return workerSchedulingRankAttrs(view, null, candidateRank, candidateScore);
+    }
+
+    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
+                                                                 WorkerLoadSnapshot workerLoadSnapshot,
+                                                                 Integer candidateRank,
+                                                                 Double candidateScore) {
+        Map<String, Object> values = attrs(
+                "candidateRank", candidateRank,
+                "candidateScore", candidateScore != null ? formatDouble(candidateScore) : null
+        );
+        if (workerLoadSnapshot != null) {
+            values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
+            values.put("workerReservedCount", workerLoadSnapshot.reservedCount());
+            values.put("workerDeclaredCapacity", workerLoadSnapshot.declaredCapacity());
+            values.put("workerEstimatedLoadRatio", formatDouble(workerLoadSnapshot.estimatedLoadRatio()));
+        } else if (view != null) {
+            values.put("workerActiveLeaseCount", view.activeLeaseCount());
+            values.put("workerReservedCount", view.reservedCount());
+            values.put("workerDeclaredCapacity", view.declaredCapacity());
+            values.put("workerEstimatedLoadRatio", formatDouble(view.estimatedLoadRatio()));
+        }
+        return values;
+    }
+
     private static String enumName(Enum<?> value) {
         return value != null ? value.name() : null;
     }
@@ -832,6 +963,7 @@ public final class TraceEventLogger {
         }
         TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
         attrs.put("workloadClass", enumName(task.getExecutionSpec().getWorkloadClass()));
+        attrs.put("foreground", task.getExecutionSpec().isForeground());
         attrs.put("dispatchLane", enumName(profile.dispatchLane()));
         attrs.put("dispatchPriority", enumName(profile.dispatchPriority()));
         attrs.put("batchPolicy", enumName(profile.batchPolicy()));

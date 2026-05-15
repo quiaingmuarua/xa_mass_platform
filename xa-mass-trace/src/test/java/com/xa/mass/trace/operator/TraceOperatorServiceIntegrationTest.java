@@ -70,6 +70,11 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals(2, summary.pendingDispatchCount());
         assertEquals(1, summary.usedWorkerCount());
         assertEquals("BULK", summary.workloadClass());
+        assertEquals("NORMAL", summary.dispatchPriority());
+        assertEquals(true, summary.foreground());
+        assertEquals(4, summary.workerBudget());
+        assertEquals(1, summary.currentTaskWorkerCount());
+        assertEquals(true, summary.budgetLimited());
 
         var binding = response.events().stream()
                 .filter(row -> "DISPATCH_BINDING_SUMMARY".equals(row.eventType()))
@@ -147,6 +152,45 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsLoadAwareWorkerSelectionScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeLoadAwareWorkerSelectionTrace(tempDir, "task-load-aware");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "load-aware-worker-selection", "task-load-aware"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("load-aware-worker-selection", response.scenarioId());
+        assertEquals(2L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
+    void analyzeRunsCapacityReservationScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeCapacityReservationTrace(tempDir, "task-capacity");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "capacity-reservation-under-concurrency", "task-capacity"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("capacity-reservation-under-concurrency", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_REJECTED"));
+    }
+
+    @Test
+    void analyzeRunsBackgroundWorkerSharingScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeBackgroundWorkerSharingTrace(tempDir, "task-background-sharing");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "background-worker-sharing", "task-background-sharing"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("background-worker-sharing", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -188,12 +232,43 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void capacityReservationScenarioFailsWithoutCapacityRejection() throws Exception {
+        writeLoadAwareWorkerSelectionTrace(tempDir, "task-missing-capacity-rejection");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "capacity-reservation-under-concurrency",
+                        "task-missing-capacity-rejection"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_CAPACITY_REJECTION".equals(issue.code())));
+    }
+
+    @Test
+    void backgroundWorkerSharingScenarioFailsWhenWorkerLockIsObserved() throws Exception {
+        writeBackgroundWorkerSharingTraceWithLock(tempDir, "task-background-lock");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "background-worker-sharing", "task-background-lock"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "BACKGROUND_WORKER_LOCK_ACQUIRED".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
         assertTrue(operatorService.scenarioIds().contains("assignment-success-binding"));
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
+        assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
+        assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
+        assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -273,7 +348,9 @@ class TraceOperatorServiceIntegrationTest {
                             "reason", "matched candidates produced dispatchable work",
                             "result", "SUCCESS",
                             "workloadClass", "BULK",
+                            "foreground", true,
                             "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
                     .build());
@@ -302,13 +379,18 @@ class TraceOperatorServiceIntegrationTest {
                             "desiredDispatchWorkerCount", 1,
                             "requiredStartWorkerCount", 1,
                             "requestedMatchCount", 1,
+                            "workerBudget", 4,
+                            "currentTaskWorkerCount", 1,
+                            "budgetLimited", true,
                             "matchedWorkerCount", 1,
                             "dispatchCandidateCount", 1,
                             "dispatchedMessageCount", 2,
                             "usedWorkerCount", 1,
                             "peakAssignedWorkerCount", 1,
                             "workloadClass", "BULK",
+                            "foreground", true,
                             "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
                     .build());
@@ -344,6 +426,197 @@ class TraceOperatorServiceIntegrationTest {
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .transition("LEASED", "DISPATCHED", "attempt dispatched")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+        }
+    }
+
+    private void writeLoadAwareWorkerSelectionTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-low"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 0,
+                            "workerDeclaredCapacity", 4,
+                            "workerEstimatedLoadRatio", "0.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-high"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 2,
+                            "candidateScore", "0.6",
+                            "workerActiveLeaseCount", 3,
+                            "workerReservedCount", 0,
+                            "workerDeclaredCapacity", 4,
+                            "workerEstimatedLoadRatio", "0.8"))
+                    .build());
+        }
+    }
+
+    private void writeCapacityReservationTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
+                    .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker lock acquired after candidate ranking",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_REJECTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
+                    .outcome(false, null, "worker capacity unavailable after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "worker capacity unavailable after candidate ranking",
+                            "result", "REJECTED",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 0,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+        }
+    }
+
+    private void writeBackgroundWorkerSharingTrace(Path outputDir, String taskId) throws Exception {
+        writeBackgroundWorkerSharingTrace(outputDir, taskId, false);
+    }
+
+    private void writeBackgroundWorkerSharingTraceWithLock(Path outputDir, String taskId) throws Exception {
+        writeBackgroundWorkerSharingTrace(outputDir, taskId, true);
+    }
+
+    private void writeBackgroundWorkerSharingTrace(Path outputDir, String taskId, boolean includeLock) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            if (includeLock) {
+                sink.emit(ExecutionEvent.builder()
+                        .eventType(ExecutionEventType.WORKER_LOCK_ACQUIRED)
+                        .identity(identity -> identity.taskId(taskId).workerId("worker-shared"))
+                        .attrs(attrs(
+                                "trigger", "TRY_LOCK_WORKER",
+                                "source", "RuleBasedTaskWorkerMatchingStrategy",
+                                "reason", "unexpected lock for background worker",
+                                "result", "SUCCESS"))
+                        .build());
+            }
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-shared"))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerActiveLeaseCount", 1,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 2,
+                            "workerEstimatedLoadRatio", "1.0"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "pendingMessageCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "uniqueWorkerContextCount", 0,
+                            "perWorkerBatchLimit", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_REQUESTED)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched candidates produced dispatchable work",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("READY", "RUNNING", "matched workers dispatched")
+                    .attrs(attrs(
+                            "trigger", "ASSIGNMENT_SUCCEEDED",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "foreground", false,
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 1,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-shared"))
+                    .transition("CREATED", "LEASED", "attempt leased for dispatch")
+                    .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt leased for dispatch", "result", "SUCCESS", "attemptNo", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-shared"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
                     .build());

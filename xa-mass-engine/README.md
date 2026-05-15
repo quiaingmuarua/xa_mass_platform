@@ -129,6 +129,56 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskAssignWorker` owns session/interactive assignment-signal admission;
   queue-full pressure must converge through internal retry/defer behavior
   instead of silently dropping `READY` / redispatch signals
+- `TaskAssignWorker` orders assignment signals by `DispatchPriority` inside
+  each existing lane; `DispatchLane` remains the primary isolation boundary and
+  same-priority signals remain FIFO
+- `WorkerCandidateRanker` orders rule-passed scheduling candidates before lock
+  acquisition; rules remain the eligibility gate, and the default ranker uses
+  observed load plus routing affinity as preference signals
+- `WorkerLoadView` owns process-local load and reservation accounting:
+  matching reserves one unit of worker-declared capacity before lock
+  acquisition, and dispatch binding confirms or releases that reservation
+  around runtime claim outcomes
+- `WorkerBudgetPolicy` is the internal owner for task-level worker budget
+  decisions consumed by `AssignmentAllocationPolicy`; the current default uses
+  conservative workload-class caps without exposing a public scheduling option,
+  and emits budget evidence in assignment trace
+- `AssignmentRefillPolicy` owns whether a released worker slot should trigger
+  another assignment attempt; `TaskResourceReleaseListener` releases resources
+  and consumes that decision instead of owning refill formulas
+- `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
+  whether a task/candidate uses the long-lived worker-level exclusive lock and
+  whether a dispatch attempt carries the legacy WorkerContext lifecycle payload.
+  Matching, assignment listener cleanup, binder compensation, and resource
+  release consume this decision instead of each re-deriving foreground/context
+  behavior. Legacy WorkerContext-backed candidates and attempts keep the
+  exclusive worker lock even when the task declares `foreground=false`; only
+  stateless background candidates may share worker capacity without the
+  long-lived lock.
+- `LegacyWorkerContextResourceLifecycle` owns transitional WorkerContext state
+  mutation and trace while WorkerContext remains a runtime binding payload:
+  dispatch binding asks it to prepare a context for dispatch, and release paths
+  ask it to release a context owned by the task.
+- `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
+  releasing worker reservations, conditionally unlocking exclusive worker
+  locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
+  binder compensation paths, dispatch-submit failure retry compensation, plus
+  release-listener attempt/terminal close lock-release paths. Candidate cleanup
+  paths resolve lock release through `usageForCandidate(...)`; attempt cleanup
+  paths resolve it through `usageForAttempt(...)`.
+- `EngineSchedulingCoreArchitectureGuardTest` is an executable owner-boundary
+  guard for the scheduling kernel. It keeps scheduling-core tests off
+  compatibility projection proof helpers, prevents listener/binder
+  orchestration from calling dispatch cleanup primitives directly, keeps
+  transitional WorkerContext state mutation behind
+  `LegacyWorkerContextResourceLifecycle`, and prevents the retired
+  context-first matching handoff types from returning.
+- `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
+  through task model/API/trace surfaces; `foreground=true` is the default
+  exclusive worker-lock path, while `foreground=false` skips the long-lived
+  worker lock and relies on capacity reservation for stateless workers
+- worker match trace rows include reservation-time load snapshots so canonical
+  assignment trace can prove the current process-local capacity guard
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
   queue/backpressure truth
 - `TaskResultRuntime` owns stable-final public result rows, task-local result
@@ -216,29 +266,49 @@ Infra ownership:
 
 ## Rule-Matching Surface
 
-Matching evaluates `WorkerMatchContext` through QLExpress rules.
+Matching enumerates `WorkerSchedulingCandidate` values and evaluates their
+`WorkerSchedulingView` through `WorkerMatchContext` and QLExpress rules.
 
 Current owner types:
 
+- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingCandidate.java`
+- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
+- `src/main/java/com/xa/mass/engine/load/WorkerLoadView.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:
 
 - `basic_worker_check`
-- `worker_context_status_check`
+- `worker_scheduling_resource_check`
 - `routing_code_match`
 - `worker_capability_check`
 - `worker_load_check`
 
 Matching boundaries:
 
+- `WorkerSchedulingCandidate` is the engine-internal handoff between matching,
+  allocation, listener orchestration, and dispatch binding
+- `WorkerSchedulingView` is the scheduling read surface; new matching code
+  should read the view rather than treating `WorkerContext` as the matching
+  subject
+- `WorkerLoadView` is a push-updated read view and process-local reservation
+  owner sourced from runtime claim/final lifecycle callbacks plus matching
+  reservation handoff
 - `Worker.status` and worker lock state are typed truth, not attributes
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
-- `workerAttributes` and `workerContextAttributes` are auxiliary matching labels
-  only
+- `workerSchedulingAttributes` is the preferred matching label map for new or
+  migrated rules; legacy `workerContextAttributes` remains available during the
+  current WorkerContext convergence path
+- default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
+  legacy `workerContext*` variables are compatibility data only
+- worker load variables such as `workerActiveLeaseCount`,
+  `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
+  evidence; current capacity semantics are worker-declared process-local
+  reservation plus the existing worker lock, not distributed capacity
+  correctness or shared background execution
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, a missing `WorkerContext` must not satisfy that
@@ -305,7 +375,11 @@ Current scheduling-matrix scenarios include:
 - paused waiting tasks staying out of competition until explicit resume
 - `BATCH` drain-to-terminal and `SESSION` queue-drain without auto-terminal
 - minimum-worker gate, target worker id, and targeted worker attributes under contention
-- an executable source guard that fails if scheduling-core mainline tests start using compatibility projection proof helpers again
+- executable source guards that fail if scheduling-core mainline tests use
+  compatibility projection proof helpers, listener/binder orchestration
+  bypasses dispatch resource cleanup owners, WorkerContext state mutation leaks
+  outside its transitional lifecycle owner, or retired context-first matching
+  handoff types return
 
 Explicit secondary residue/audit tests:
 
@@ -320,6 +394,9 @@ Explicit secondary residue/audit tests:
 
 Engine-local owner docs:
 
+- [`SCHEDULING_KERNEL_GUARDRAILS.md`](./SCHEDULING_KERNEL_GUARDRAILS.md):
+  short kernel guardrails for policy-vs-mechanism separation and future
+  scheduling evolution
 - [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md):
   current policy ownership and precedence
 - [`RUNTIME_BOUNDARY_BASELINE.md`](./RUNTIME_BOUNDARY_BASELINE.md):
@@ -331,6 +408,11 @@ Engine-local owner docs:
 - [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
   proposed long-range scheduling upgrade roadmap; planning material only, not
   implemented baseline behavior
+- [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
+  current transitional baseline for WorkerContext hot-path convergence
+- [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
+  proposed plan for retiring WorkerContext from the scheduling kernel; planning
+  material only, not implemented baseline behavior
 
 Global baselines:
 

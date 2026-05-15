@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -52,6 +54,38 @@ class TaskSchedulingContentionTest {
         assertEquals(0, harness.successfulMessageAssignments(secondTask.getTid(), "worker-single"));
         assertEquals(WorkerContextStatus.OCCUPIED,
                 harness.workerManager.getWorkerContextById("ctx-single").getStatus());
+    }
+
+    @Test
+    void backgroundTasksShareStatelessWorkerUpToDeclaredCapacity() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addStatelessWorker("worker-background", 2);
+        Task firstTask = createReadyBackgroundTask(harness, "background-first", "first");
+        Task secondTask = createReadyBackgroundTask(harness, "background-second", "second");
+        Task thirdTask = createReadyBackgroundTask(harness, "background-third", "third");
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
+
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-background"));
+        assertEquals(2, harness.workerManager.getWorkerLoad("worker-background").activeLeaseCount());
+
+        List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        assertEquals(1, firstLeases.size());
+        assertEquals(1, secondLeases.size());
+        assertEquals("worker-background", firstLeases.getFirst().workerId());
+        assertEquals("worker-background", secondLeases.getFirst().workerId());
+        assertEquals(null, firstLeases.getFirst().workerContextId());
+        assertEquals(null, secondLeases.getFirst().workerContextId());
+
+        AssignmentRecord rejectedRecord = harness.record(thirdTask.getTid(), "worker-background");
+        assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
+        assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
     }
 
     @Test
@@ -114,6 +148,43 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(0, harness.stats(thirdTask.getTid()).readyCount());
         assertEquals(1, harness.stats(thirdTask.getTid()).inflightCount());
+    }
+
+    @Test
+    void largeBulkTaskIsCappedAndLeavesWorkersForInteractiveTask() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        for (int i = 0; i < 25; i++) {
+            harness.addWorkerWithContext("worker-budget-" + i, "ctx-budget-" + i, "us");
+        }
+        List<java.util.Map<String, Object>> bulkItems = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            bulkItems.add(harness.item("bulk-" + i));
+        }
+        Task bulkTask = harness.createReadyBatchTask("bulk-budget-cap", bulkItems);
+        Task interactiveTask = harness.createSessionTask(
+                "interactive-after-bulk-budget",
+                List.of(harness.item("interactive")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(interactiveTask.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(bulkTask.getTid())));
+        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, harness.activeLeases(bulkTask.getTid()).size());
+        assertEquals(80, harness.stats(bulkTask.getTid()).readyCount());
+        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, harness.stats(bulkTask.getTid()).inflightCount());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(interactiveTask.getTid())));
+
+        List<ActiveLeaseRecord> interactiveLeases = harness.activeLeases(interactiveTask.getTid());
+        Set<String> bulkWorkers = harness.activeLeases(bulkTask.getTid()).stream()
+                .map(ActiveLeaseRecord::workerId)
+                .collect(Collectors.toSet());
+        assertEquals(1, interactiveLeases.size());
+        assertFalse(bulkWorkers.contains(interactiveLeases.getFirst().workerId()));
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(interactiveTask.getTid()).getStatus());
+        assertEquals(0, harness.stats(interactiveTask.getTid()).readyCount());
+        assertEquals(1, harness.stats(interactiveTask.getTid()).inflightCount());
     }
 
     @Test
@@ -224,5 +295,20 @@ class TaskSchedulingContentionTest {
         assertEquals(1, harness.stats(nextReadyTask.getTid()).inflightCount());
         assertEquals(WorkerContextStatus.OCCUPIED,
                 harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+    }
+
+    private Task createReadyBackgroundTask(TaskSchedulingTestHarness harness, String sourceRef, String target) {
+        Task task = harness.createBatchTask(
+                sourceRef,
+                List.of(harness.item(target)),
+                0,
+                1,
+                java.util.Map.of(TaskSharedConfig.ROUTING_CODE, ""),
+                0
+        );
+        task.getExecutionSpec().setForeground(false);
+        assertTrue(harness.taskManager.updateTask(task));
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        return harness.taskManager.getTask(task.getTid());
     }
 }

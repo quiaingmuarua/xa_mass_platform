@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-05-14
+Last updated: 2026-05-15
 
 Status: current global trace contract.
 
@@ -197,6 +197,7 @@ Standardized `attrs` fields currently include:
 - `currentStatus`
 - `requiredMinWorkerCount`
 - `workloadClass`
+- `foreground`
 - `dispatchLane`
 - `dispatchPriority`
 - `batchPolicy`
@@ -239,11 +240,16 @@ Schedule analysis currently reads these event types from canonical sink output:
 Stable assignment-oriented fields are:
 
 - common fields: `trigger`, `source`, `reason`, `result`
+- ranked worker candidate fields: `candidateRank`, `candidateScore`,
+  `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
+  `workerEstimatedLoadRatio`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
-  `dispatchLane`, `workloadClass`, `batchPolicy`, `leaseProfile`
+  `dispatchLane`, `dispatchPriority`, `workloadClass`, `foreground`,
+  `batchPolicy`, `leaseProfile`
 - assignment summary counts: `pendingDispatchCount`,
   `desiredDispatchWorkerCount`, `requiredStartWorkerCount`,
-  `requestedMatchCount`, `matchedWorkerCount`, `dispatchCandidateCount`,
+  `requestedMatchCount`, `workerBudget`, `currentTaskWorkerCount`,
+  `budgetLimited`, `matchedWorkerCount`, `dispatchCandidateCount`,
   `dispatchedMessageCount`, `usedWorkerCount`, `peakAssignedWorkerCount`
 - dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
   `unassignedMessageCount`, `uniqueWorkerCount`,
@@ -257,6 +263,32 @@ not read MDC logs, compatibility message/attempt projection, task-detail DB
 tables, or runtime queues. Schedule trace explains why the scheduler made or
 skipped a decision; it does not participate in runtime correctness, lease
 acceptance, retry budgeting, dispatch ownership, or terminal convergence.
+`workerReservedCount` is the canonical read-side evidence of the current
+process-local reservation foundation. It is not a distributed capacity lock and
+does not prove shared worker execution. `workerDeclaredCapacity` reflects the
+current worker declaration observed by the engine-local `WorkerLoadView`; the
+default is `1`.
+`foreground` is the canonical read-side declaration of the task's current
+scheduling mode. It defaults to `true`. When `false`, current engine behavior
+skips the long-lived worker lock and relies on process-local capacity
+reservation for stateless worker sharing; WorkerContext-backed resources still
+follow their legacy context lifecycle and are not shared by this field alone.
+`workerBudget`, `currentTaskWorkerCount`, and `budgetLimited` are the
+assignment policy budget evidence fields. A missing `workerBudget` means no
+allocation plan reached budget policy for that event, for example an early
+non-dispatchable task or no-ready-work skip; it must not be interpreted as zero
+capacity. `budgetLimited=true` means the policy reduced this assignment round's
+desired or requested worker count, including the explicit
+`worker budget exhausted for task` skip case.
+The `capacity-reservation-under-concurrency` analyzer interprets these fields
+only as process-local reservation evidence: accepted worker matches must not
+show `active + reserved > declaredCapacity`, and capacity rejections must show
+`active + reserved >= declaredCapacity`.
+The `background-worker-sharing` analyzer uses the same assignment rows for a
+single background task: accepted worker match evidence must show
+`foreground=false`, existing active worker load, a new reservation within
+declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
+evidence for that task.
 
 ## 5. Minimum Required Paths
 

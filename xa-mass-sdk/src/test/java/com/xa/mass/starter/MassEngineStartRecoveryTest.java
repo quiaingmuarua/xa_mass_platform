@@ -10,7 +10,9 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
@@ -48,9 +50,16 @@ class MassEngineStartRecoveryTest {
             if (!workerManager.tryLockWorker("worker-1")) {
                 return List.of();
             }
-            return List.of(new MatchedWorkerContext(
+            return List.of(new WorkerSchedulingCandidate(
                     workerManager.getWorker("worker-1"),
-                    workerManager.getWorkerContextById("wctx-1")
+                    workerManager.getWorkerContextById("wctx-1"),
+                    WorkerSchedulingView.from(
+                            workerManager.getWorker("worker-1"),
+                            workerManager.getWorkerContextById("wctx-1"),
+                            WorkerReachabilityState.ONLINE,
+                            true,
+                            true
+                    )
             ));
         });
 
@@ -125,9 +134,16 @@ class MassEngineStartRecoveryTest {
                 if (!workerManager.tryLockWorker("worker-1")) {
                     return List.of();
                 }
-                return List.of(new MatchedWorkerContext(
+                return List.of(new WorkerSchedulingCandidate(
                         workerManager.getWorker("worker-1"),
-                        workerManager.getWorkerContextById("wctx-1")
+                        workerManager.getWorkerContextById("wctx-1"),
+                        WorkerSchedulingView.from(
+                                workerManager.getWorker("worker-1"),
+                                workerManager.getWorkerContextById("wctx-1"),
+                                WorkerReachabilityState.ONLINE,
+                                true,
+                                true
+                        )
                 ));
             });
             config.setRuntimeReadyDispatchIntervalMillis(50L);

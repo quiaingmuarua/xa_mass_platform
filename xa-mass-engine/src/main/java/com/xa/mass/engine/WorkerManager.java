@@ -9,6 +9,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.load.InMemoryWorkerLoadView;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
@@ -28,18 +31,27 @@ public class WorkerManager implements WorkerLookupStore {
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
+    private final WorkerLoadView workerLoadView;
 
     public WorkerManager(WorkerStorage workerStorage) {
-        this(workerStorage, WorkerReachabilityView.permissive());
+        this(workerStorage, WorkerReachabilityView.permissive(), new InMemoryWorkerLoadView());
     }
 
     public WorkerManager(WorkerStorage workerStorage, WorkerReachabilityView reachabilityView) {
+        this(workerStorage, reachabilityView, new InMemoryWorkerLoadView());
+    }
+
+    public WorkerManager(WorkerStorage workerStorage,
+                         WorkerReachabilityView reachabilityView,
+                         WorkerLoadView workerLoadView) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
+        this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
     }
 
     public void addWorker(Worker worker) {
         workerStorage.addWorker(worker);
+        syncWorkerCapacity(worker);
     }
 
     public Worker getWorker(String workerId) {
@@ -52,7 +64,11 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public boolean updateWorker(Worker worker) {
-        return workerStorage.updateWorker(worker);
+        boolean updated = workerStorage.updateWorker(worker);
+        if (updated) {
+            syncWorkerCapacity(worker);
+        }
+        return updated;
     }
 
     public boolean deleteWorker(String workerId) {
@@ -173,6 +189,50 @@ public class WorkerManager implements WorkerLookupStore {
             return false;
         }
         return worker.getStatus() != WorkerStatus.EXPIRED;
+    }
+
+    public WorkerLoadSnapshot getWorkerLoad(String workerId) {
+        syncWorkerCapacity(workerId);
+        return workerLoadView.snapshot(workerId);
+    }
+
+    public int getActiveWorkerCountForTask(String taskId) {
+        return workerLoadView.getActiveWorkerCountForTask(taskId);
+    }
+
+    public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+        syncWorkerCapacity(workerId);
+        return workerLoadView.tryReserveCapacity(workerId, taskId);
+    }
+
+    public boolean confirmWorkerReservation(String workerId, String taskId) {
+        return workerLoadView.confirmReservation(workerId, taskId);
+    }
+
+    public void releaseWorkerReservation(String workerId, String taskId) {
+        workerLoadView.releaseReservation(workerId, taskId);
+    }
+
+    public void recordWorkClaimed(String workerId, String taskId) {
+        workerLoadView.recordWorkClaimed(workerId, taskId);
+    }
+
+    public void recordWorkFinal(String workerId, String taskId) {
+        workerLoadView.recordWorkFinal(workerId, taskId);
+    }
+
+    private void syncWorkerCapacity(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return;
+        }
+        syncWorkerCapacity(getWorker(workerId));
+    }
+
+    private void syncWorkerCapacity(Worker worker) {
+        if (worker == null) {
+            return;
+        }
+        workerLoadView.recordDeclaredCapacity(worker.getWorkerId(), worker.getMaxConcurrentWork());
     }
 
     /**
