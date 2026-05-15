@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
@@ -30,10 +29,9 @@ class TaskRuntimeRecoveryPortTest {
 
     @Test
     void runtimeRecoveryOnlyReturnsTasksAdvertisedByRuntimeReadySet() {
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(scheduler, storage, storage, runtime);
+        TaskManager manager = new TaskManager(storage, storage, runtime);
 
         Task first = createTask(manager, buildRequest("runtime-ready-first"));
         Task second = createTask(manager, buildRequest("runtime-ready-second"));
@@ -49,10 +47,9 @@ class TaskRuntimeRecoveryPortTest {
 
     @Test
     void runtimeRecoveryDropsRuntimeResidueThatNoLongerHasTaskShellTruth() {
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(scheduler, storage, storage, runtime);
+        TaskManager manager = new TaskManager(storage, storage, runtime);
 
         Task task = createTask(manager, buildRequest("runtime-ready-live"));
         manager.approveTask(task.getTid());

@@ -328,6 +328,9 @@ Engine-local owner docs:
   current engine-facing storage/runtime boundary
 - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md):
   design/refactor note for the remaining workload-profile evolution only
+- [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
+  proposed long-range scheduling upgrade roadmap; planning material only, not
+  implemented baseline behavior
 
 Global baselines:
 

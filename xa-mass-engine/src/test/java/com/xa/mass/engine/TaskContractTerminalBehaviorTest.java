@@ -7,7 +7,6 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -30,7 +29,7 @@ class TaskContractTerminalBehaviorTest {
     @BeforeEach
     void setUp() {
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(new RecordingTaskScheduler(), taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
     }
 
     @Test
@@ -217,31 +216,4 @@ class TaskContractTerminalBehaviorTest {
         }
     }
 
-    private static final class RecordingTaskScheduler implements TaskScheduler {
-
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
-    }
 }

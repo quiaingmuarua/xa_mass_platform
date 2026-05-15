@@ -27,7 +27,6 @@ import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
@@ -238,7 +237,6 @@ public final class TaskWorkloadMixSmokeRunner {
         private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
                                                       InMemoryTaskWorkRuntime taskWorkRuntime) {
             EngineConfig engineConfig = new EngineConfig();
-            engineConfig.setScheduler(new NoOpTaskScheduler());
             engineConfig.setTaskStorage(taskStorage);
             engineConfig.setTaskDetailStore(taskStorage);
             engineConfig.setTaskWorkRuntime(taskWorkRuntime);
@@ -625,33 +623,6 @@ public final class TaskWorkloadMixSmokeRunner {
                     observation.interactiveDispatchedBeforeBulkTerminal(),
                     observation.bulkCallbacksInFlightAtInteractiveFirstDispatch(),
                     reportPath);
-        }
-    }
-
-    private static final class NoOpTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
         }
     }
 

@@ -14,8 +14,6 @@ import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.monkey.MonkeyGenerator.TaskFixture;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -55,8 +53,7 @@ public class StorageExample {
         RuleStorage ruleStorage = new InMemoryRuleStorage();
 
         WorkerManager workerManager = new WorkerManager(workerStorage);
-        TaskScheduler taskScheduler = new SimpleTaskScheduler();
-        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage, taskDetailStore, new InMemoryTaskWorkRuntime());
+        TaskManager taskManager = new TaskManager(taskStorage, taskDetailStore, new InMemoryTaskWorkRuntime());
 
         Worker worker1 = new Worker();
         worker1.setWorkerId("worker-001");
@@ -134,7 +131,6 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         var taskManager = new TaskManager(
-                new SimpleTaskScheduler(),
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
@@ -257,7 +253,6 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         var taskManager = new TaskManager(
-                new SimpleTaskScheduler(),
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime());

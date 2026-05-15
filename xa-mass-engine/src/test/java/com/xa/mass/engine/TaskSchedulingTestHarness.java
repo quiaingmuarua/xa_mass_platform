@@ -18,7 +18,6 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -52,7 +51,6 @@ final class TaskSchedulingTestHarness {
     TaskSchedulingTestHarness(WorkerReachabilityView reachabilityView) {
         this.taskStorage = new InMemoryTaskStorage();
         this.taskManager = new TaskManager(
-                new RecordingTaskScheduler(),
                 taskStorage,
                 taskStorage,
                 new InMemoryTaskWorkRuntime()
@@ -264,31 +262,4 @@ final class TaskSchedulingTestHarness {
         return context;
     }
 
-    private static final class RecordingTaskScheduler implements TaskScheduler {
-
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success();
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
-        }
-    }
 }

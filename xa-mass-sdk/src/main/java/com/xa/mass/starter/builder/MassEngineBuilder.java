@@ -1,7 +1,6 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
@@ -19,7 +18,6 @@ import com.xa.mass.starter.config.EngineConfig;
 public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
 
-    private TaskScheduler scheduler;
     private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
@@ -80,11 +78,6 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder scheduler(TaskScheduler scheduler) {
-        this.scheduler = scheduler;
-        return this;
-    }
-
     public MassEngineBuilder matchingStrategy(TaskWorkerMatchingStrategy matchingStrategy) {
         this.matchingStrategy = matchingStrategy;
         return this;
@@ -113,7 +106,6 @@ public class MassEngineBuilder {
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
-        if (scheduler != null) config.setScheduler(scheduler);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskStorage != null) config.setTaskStorage(taskStorage);
         if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);

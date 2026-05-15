@@ -1,7 +1,6 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -392,11 +391,6 @@ public final class MassSdk {
 
         public EngineOptions bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             delegate.bootstrapDataProvider(bootstrapDataProvider);
-            return this;
-        }
-
-        public EngineOptions scheduler(TaskScheduler scheduler) {
-            delegate.scheduler(scheduler);
             return this;
         }
 

@@ -23,7 +23,6 @@ import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
@@ -70,7 +69,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     private final TaskStorage taskStorage;
     private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
-    private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
@@ -95,60 +93,53 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long workLeaseSeconds = 300L;
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
                 new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskScheduler, taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 taskResultRuntime, executionEventSink);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskScheduler, taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
                 new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
-        this.taskScheduler = Objects.requireNonNull(taskScheduler, "taskScheduler");
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
         TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
@@ -563,10 +554,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {
         return withTaskLock(taskId, () -> projectionStateAuditor.auditTaskProjectionState(taskId));
-    }
-
-    TaskScheduler getScheduler() {
-        return this.taskScheduler;
     }
 
     /**
