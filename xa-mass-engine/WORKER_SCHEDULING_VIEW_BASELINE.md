@@ -9,7 +9,14 @@ Worker-declared capacity is now present as a read-model input to reservation
 and trace. `ExecutionSpec.foreground` is now present as a task scheduling-mode
 declaration in model/API/trace surfaces and controls long-lived worker lock
 usage. Stateless background tasks can share workers up to declared capacity;
-legacy WorkerContext-backed resources remain context-exclusive.
+legacy WorkerContext-backed resources remain context-exclusive. The
+foreground/context resource decision is now owned by
+`WorkerDispatchResourcePolicy` and consumed by matching, dispatch binding,
+assignment cleanup, and release mechanisms. The legacy WorkerContext state
+mutation itself is owned by `LegacyWorkerContextResourceLifecycle`. Repeated
+dispatch cleanup of reservations, exclusive worker locks, and lock-release trace
+is owned by `WorkerDispatchResourceReleaser`, including release-listener
+attempt/terminal close lock-release paths.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
@@ -66,16 +73,31 @@ WorkerContext is still live in these engine paths:
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
   - exposes worker load and reservation fields from `WorkerLoadView`
 - `SimpleTaskDispatchBinder`
-  - reserves/occupies WorkerContext during runtime claim and dispatch binding
+  - asks `LegacyWorkerContextResourceLifecycle` to reserve/occupy WorkerContext
+    during runtime claim and dispatch binding when
+    `WorkerDispatchResourcePolicy` classifies the candidate as a legacy
+    WorkerContext resource
   - records `workerContextId` on runtime attempts and dispatch trace
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
-  - releases worker reservations for skipped, no-message, or failed dispatch
-    slots
+  - asks `WorkerDispatchResourceReleaser` to release worker reservations and
+    exclusive locks for skipped, no-message, or failed dispatch slots
 - `TaskResourceReleaseListener`
-  - releases WorkerContext after final result, lease expiry, or cleanup paths
+  - asks `LegacyWorkerContextResourceLifecycle` to release WorkerContext after
+    final result, lease expiry, or cleanup paths when the dispatch resource
+    policy classifies the attempt as a legacy WorkerContext resource
   - releases observed worker load on attempt-closed and terminal cleanup paths
+  - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
+    after attempt or terminal close
+- `LegacyWorkerContextResourceLifecycle`
+  - owns the transitional WorkerContext `IDLE -> RESERVED -> OCCUPIED -> IDLE`
+    mutation and trace path while WorkerContext remains a runtime binding
+    payload
+- `WorkerDispatchResourceReleaser`
+  - owns assignment and binder compensation cleanup for worker reservations,
+    conditional exclusive worker unlock, canonical lock-release trace, and
+    release-listener attempt/terminal close lock-release paths
 
 WorkerContext is therefore still both:
 
@@ -144,6 +166,20 @@ but skips that long-lived lock, so multiple background tasks may share a
 stateless worker until `active + reserved >= declaredCapacity`.
 WorkerContext-backed resources are not shared by this slice; they still follow
 their current context reservation/occupation lifecycle.
+`WorkerDispatchResourcePolicy` is the single engine-internal owner for this
+resource usage classification. It keeps worker-level lock requirements separate
+from legacy WorkerContext lifecycle handling, which is necessary before
+WorkerContext can be retired without touching every scheduling mechanism again.
+`LegacyWorkerContextResourceLifecycle` is the single owner for the remaining
+legacy WorkerContext state mutation. This keeps binder and release listeners
+focused on runtime claim/bind and release orchestration rather than duplicating
+the context state machine.
+`WorkerDispatchResourceReleaser` owns repeated dispatch cleanup for worker
+reservations and exclusive worker locks. Assignment orchestration and binder
+compensation use it instead of duplicating reservation release, unlock, and
+`WORKER_LOCK_RELEASED` trace decisions. Release listeners also use it for
+attempt/terminal close lock-release decisions after runtime load and
+WorkerContext release orchestration is complete.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
@@ -199,6 +235,7 @@ engine as system-event-updated worker scheduling attributes.
 - no shared WorkerContext-backed dispatch behavior
 - no account-switch dispatch protocol
 - no trace field removal
+- no public resource policy configuration
 
 ## Verification
 

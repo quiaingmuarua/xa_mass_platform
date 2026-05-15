@@ -11,6 +11,9 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -19,6 +22,7 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
@@ -239,6 +243,29 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(dispatched.isEmpty());
         verify(workerManager, times(2)).recordWorkClaimed("d1", task.getTid());
         verify(workerManager, times(2)).recordWorkFinal("d1", task.getTid());
+        verify(workerManager).unlockWorker("d1");
+    }
+
+    @Test
+    void backgroundDispatchSubmitFailureReleasesObservedLoadWithoutUnlockingWorker() {
+        Task task = createTask(1);
+        task.getExecutionSpec().setForeground(false);
+
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                (t, bindings) -> {
+                    throw new IllegalStateException("handoff queue unavailable");
+                }
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), null)));
+
+        assertTrue(dispatched.isEmpty());
+        verify(workerManager).recordWorkClaimed("d1", task.getTid());
+        verify(workerManager).recordWorkFinal("d1", task.getTid());
+        verify(workerManager, never()).unlockWorker("d1");
     }
 
     @Test
@@ -427,6 +454,7 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
         verify(workerManager, times(2)).updateWorkerContextById(eq("tk1"), same(wc));
+        verify(workerManager).unlockWorker("d1");
         assertEquals(2, taskManager.countDispatchReadyWork(task.getTid()));
 
         AtomicReference<List<TaskDispatchBinding>> recoveredDispatch = new AtomicReference<>();
@@ -603,6 +631,53 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void injectedResourcePolicyOwnsBinderContextAndUnlockDecision() {
+        Task task = createTask(1);
+        WorkerContext blocked = workerContext("tk-blocked", "d1");
+        blocked.block();
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                null,
+                TraceEventLogger.noop(),
+                new NonExclusiveResourcePolicy()
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), blocked)));
+
+        assertEquals(1, dispatched.size());
+        assertNull(dispatched.get(0).workerContextId());
+        verify(workerManager, never()).updateWorkerContextById(eq("tk-blocked"), same(blocked));
+        verify(workerManager, never()).unlockWorker("d1");
+    }
+
+    @Test
+    void injectedWorkerContextLifecycleOwnsBinderPrepareDecision() {
+        Task task = createTask(1);
+        WorkerContext workerContext = workerContext("tk1", "d1");
+        LegacyWorkerContextResourceLifecycle lifecycle = mock(LegacyWorkerContextResourceLifecycle.class);
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                null,
+                TraceEventLogger.noop(),
+                null,
+                lifecycle
+        );
+
+        when(lifecycle.prepareForDispatch(same(task), same(workerContext), eq("SimpleTaskDispatchBinder")))
+                .thenReturn(false);
+
+        assertTrue(listener.bindDispatches(task, List.of(matched(worker("d1"), workerContext))).isEmpty());
+
+        verify(lifecycle).prepareForDispatch(same(task), same(workerContext), eq("SimpleTaskDispatchBinder"));
+        verify(workerManager).releaseWorkerReservation("d1", task.getTid());
+        verify(workerManager).unlockWorker("d1");
+    }
+
+    @Test
     void emptyWorkerListSkipsWithoutMutation() {
         Task task = createTask(2);
         List<String> before = storedMessages(task.getTid()).stream()
@@ -750,6 +825,23 @@ public class SimpleTaskDispatchBinderTest {
                                                           String messageId,
                                                           TaskDetailStore.TaskMessageAttemptProjection projection) {
             throw new IllegalStateException("compatibility attempt projection unavailable");
+        }
+    }
+
+    private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
+        @Override
+        public WorkerDispatchResourceUsage usageForTask(Task task) {
+            return new WorkerDispatchResourceUsage(false, false);
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
+            return new WorkerDispatchResourceUsage(false, false);
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+            return new WorkerDispatchResourceUsage(false, false);
         }
     }
 }

@@ -74,6 +74,20 @@ Progress:
   `AssignmentRefillPolicy` now owns whether a released worker slot should
   request another assignment attempt. `TaskResourceReleaseListener` remains the
   resource release mechanism and consumes the refill decision.
+- 2026-05-15: Step 8D dispatch resource owner convergence was implemented.
+  `WorkerDispatchResourcePolicy` now owns worker-level exclusive lock semantics
+  and legacy WorkerContext lifecycle classification across matching, assignment
+  cleanup, dispatch binding, and resource release.
+- 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
+  implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
+  `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path
+  consumed by dispatch binding and resource release mechanisms.
+- 2026-05-15: Step 8F dispatch resource cleanup owner convergence was
+  implemented. `WorkerDispatchResourceReleaser` now owns the repeated
+  reservation release plus conditional exclusive worker unlock mechanism and
+  canonical `WORKER_LOCK_RELEASED` trace used by assignment cleanup, binder
+  compensation, dispatch-submit failure retry compensation, and
+  release-listener attempt/terminal close paths.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -175,6 +189,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | `WorkerCandidateRanker` | Current internal seam | preference order among rule-passed candidates | eligibility correctness, locking/reservation |
 | `WorkerBudgetPolicy` | Current internal seam | per-task worker budget ceiling | task state mutation, runtime claim |
 | `AssignmentRefillPolicy` | Current internal seam | post-release assignment refill decision | resource release, worker unlock, runtime claim |
+| `WorkerDispatchResourcePolicy` | Current internal seam | worker-level exclusive lock requirement and legacy WorkerContext resource classification | matching eligibility, runtime claim, task state mutation |
 | Capacity/reservation policy | Partial internal foundation | default single-capacity reservation handoff; foreground/background capacity decision remains planned | attempt lifecycle finality |
 | Runtime profile resolver | Current fixed policy | workload class to lane/priority/profile mapping | queue mechanism, worker selection |
 
@@ -183,10 +198,12 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | Mechanism | Owns | Consumes policy from |
 | --- | --- | --- |
 | `TaskAssignWorker` | assignment signal queueing, lane workers, retry/defer, queue snapshots | runtime profile / dispatch priority |
-| `TaskWorkerAssignListener` | assignment orchestration, status transition, unlock/release, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy |
-| `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, load/reachability views |
-| `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output only |
-| `TaskResourceReleaseListener` | worker load finalization, WorkerContext release, worker unlock after attempt/terminal close | `AssignmentRefillPolicy` |
+| `TaskWorkerAssignListener` | assignment orchestration, status transition, dispatch resource cleanup, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
+| `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views |
+| `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
+| `TaskResourceReleaseListener` | worker load finalization, WorkerContext release orchestration, worker lock release orchestration after attempt/terminal close | `AssignmentRefillPolicy`, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
+| `LegacyWorkerContextResourceLifecycle` | transitional WorkerContext prepare/release state mutation and trace while WorkerContext remains a runtime payload | dispatch/release mechanisms |
+| `WorkerDispatchResourceReleaser` | release worker reservations, conditionally unlock exclusive worker locks, emit lock-release trace for assignment cleanup, binder compensation, dispatch-submit failure compensation, and attempt/terminal close paths | `WorkerDispatchResourcePolicy` |
 | `WorkerLoadView` | push-updated load snapshot and process-local reservation accounting | runtime/attempt lifecycle events, matching reservation handoff |
 | `WorkerReachabilityView` | push-updated transport reachability snapshot | transport presence events |
 
@@ -263,7 +280,7 @@ items can be reordered, but each step must preserve the owner boundaries above.
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
 | 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
-| 8 | Cross-task worker budget, fairness, and refill owner | High | Allocation/release policy/load view | Bounded default budget and refill policy implemented; fairness scenario proposed |
+| 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, and legacy WorkerContext lifecycle owner implemented; fairness scenario proposed |
 | 9 | System-event worker management boundary | High | Worker management integration | Proposed |
 
 ## 8. Step 1: Retire Inert TaskScheduler SPI
@@ -801,8 +818,14 @@ otherwise -> skip refill
 ```
 
 `TaskResourceReleaseListener` remains the mechanism owner for worker load
-finalization, WorkerContext release, and worker unlock. It supplies bounded
-runtime facts to the policy and consumes the returned decision.
+finalization and WorkerContext release orchestration. Assignment cleanup, binder
+compensation, and attempt/terminal close paths use
+`WorkerDispatchResourceReleaser` for reservation release where applicable plus
+conditional exclusive lock release. Dispatch-submit failure compensation also
+uses the releaser after runtime retry compensation and observed-load release,
+because no attempt-closed event is emitted for that pre-transport handoff
+failure path. The listener supplies bounded runtime facts to the refill policy
+and consumes the returned decision.
 
 ### Trace
 

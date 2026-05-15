@@ -15,6 +15,7 @@ import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
 import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicy;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -26,7 +27,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Listens for task assignment events and delegates worker matching to a pluggable strategy.
@@ -42,6 +42,7 @@ public class TaskWorkerAssignListener {
     private final TraceEventLogger traceEventLogger;
     private final AssignmentAllocationPolicy allocationPolicy;
     private final WorkerDispatchResourcePolicy resourcePolicy;
+    private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
@@ -100,6 +101,19 @@ public class TaskWorkerAssignListener {
                              TraceEventLogger traceEventLogger,
                              AssignmentAllocationPolicy allocationPolicy,
                              WorkerDispatchResourcePolicy resourcePolicy) {
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+                traceEventLogger, allocationPolicy, resourcePolicy, null);
+    }
+
+    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                             WorkerManager workerManager,
+                             TaskDispatchBinder dispatchBinder,
+                             TaskAssignmentRuntimePort assignmentRuntime,
+                             TaskAssignmentEventSink assignmentEventSink,
+                             TraceEventLogger traceEventLogger,
+                             AssignmentAllocationPolicy allocationPolicy,
+                             WorkerDispatchResourcePolicy resourcePolicy,
+                             WorkerDispatchResourceReleaser resourceReleaser) {
         this.matchingStrategy = matchingStrategy;
         this.workerManager = workerManager;
         this.dispatchBinder = dispatchBinder;
@@ -108,6 +122,9 @@ public class TaskWorkerAssignListener {
         this.traceEventLogger = traceEventLogger;
         this.allocationPolicy = allocationPolicy == null ? new DefaultAssignmentAllocationPolicy() : allocationPolicy;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.resourceReleaser = resourceReleaser == null
+                ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
+                : resourceReleaser;
     }
 
     /**
@@ -261,31 +278,13 @@ public class TaskWorkerAssignListener {
     }
 
     private void releaseLocksIfExclusive(Task task, List<WorkerSchedulingCandidate> workers) {
-        if (!resourcePolicy.usageForTask(task).exclusiveWorkerLock()) {
-            return;
-        }
-        for (String workerId : workers.stream()
-                .map(WorkerSchedulingCandidate::getWorkerId)
-                .distinct()
-                .collect(Collectors.toList())) {
-            workerManager.unlockWorker(workerId);
-            traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
-                    "surplus or skipped dispatch candidate");
-        }
+        resourceReleaser.releaseLocks(task, workers,
+                "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
     }
 
     private void releaseReservedAndUnlockWorkers(Task task, List<WorkerSchedulingCandidate> workers) {
-        for (String workerId : workers.stream()
-                .map(WorkerSchedulingCandidate::getWorkerId)
-                .distinct()
-                .collect(Collectors.toList())) {
-            workerManager.releaseWorkerReservation(workerId, task.getTid());
-            if (resourcePolicy.usageForTask(task).exclusiveWorkerLock()) {
-                workerManager.unlockWorker(workerId);
-                traceEventLogger.workerLockReleased(task.getTid(), workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
-                        "surplus or skipped dispatch candidate");
-            }
-        }
+        resourceReleaser.releaseReservationsAndLocks(task, workers,
+                "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
     }
 
     private void emitAssignmentSummary(Task task,

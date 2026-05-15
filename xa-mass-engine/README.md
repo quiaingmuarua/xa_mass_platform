@@ -146,6 +146,21 @@ Keep these facts fixed unless the owning global baselines change:
 - `AssignmentRefillPolicy` owns whether a released worker slot should trigger
   another assignment attempt; `TaskResourceReleaseListener` releases resources
   and consumes that decision instead of owning refill formulas
+- `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
+  whether a task/candidate uses the long-lived worker-level exclusive lock and
+  whether a dispatch attempt carries the legacy WorkerContext lifecycle payload.
+  Matching, assignment listener cleanup, binder compensation, and resource
+  release consume this decision instead of each re-deriving foreground/context
+  behavior.
+- `LegacyWorkerContextResourceLifecycle` owns transitional WorkerContext state
+  mutation and trace while WorkerContext remains a runtime binding payload:
+  dispatch binding asks it to prepare a context for dispatch, and release paths
+  ask it to release a context owned by the task.
+- `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
+  releasing worker reservations, conditionally unlocking exclusive worker
+  locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
+  binder compensation paths, plus release-listener attempt/terminal close
+  lock-release paths.
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived
