@@ -26,24 +26,7 @@ export interface WorkerConnectionItem {
     transport: string | null
 }
 
-export interface WorkerContextListItem {
-    workerContextId: string
-    workerId: string
-    project: string | null
-    status: string
-    routingTags: string[]
-    attributes: Record<string, string>
-    lastBindTaskId: string | null
-    lastUsedTime: string
-    updateTime: string
-}
-
 export interface WorkerListResponse {
     items: WorkerListItem[]
-    total: number
-}
-
-export interface WorkerContextListResponse {
-    items: WorkerContextListItem[]
     total: number
 }

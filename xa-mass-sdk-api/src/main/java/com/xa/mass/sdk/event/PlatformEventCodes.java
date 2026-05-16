@@ -20,7 +20,6 @@ public final class PlatformEventCodes {
     public static final String TASK_SEAL = "platform.task.seal";
 
     public static final String WORKER_REGISTER = "platform.worker.register";
-    public static final String WORKER_CONTEXT_REGISTER = "platform.worker-context.register";
 
     public static final String META_PROJECTS_LIST = "platform.meta.projects.list";
     public static final String META_PROJECT_GET = "platform.meta.project.get";

@@ -6,8 +6,6 @@ interface JdbcDialect {
 
     String workerUpsertSql();
 
-    String workerContextUpsertSql();
-
     String ruleUpsertSql();
 
     String principalUpsertSql();

@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -26,7 +25,7 @@ class TaskDelayedAvailabilitySchedulingTest {
         assertEquals(1, harness.stats(task.getTid()).readyCount());
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        harness.addWorkerWithContext("worker-delayed", "ctx-delayed", "us");
+        harness.addWorker("worker-delayed", "us");
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -40,25 +39,20 @@ class TaskDelayedAvailabilitySchedulingTest {
     }
 
     @Test
-    void legacyBlockedWorkerContextDoesNotGateWorkerLevelScheduling() {
+    void workerLevelSchedulingDoesNotRequireContextRegistration() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext(
-                "worker-blocked-context",
-                "ctx-blocked-context",
-                "us",
-                WorkerContextStatus.BLOCKED
-        );
+        harness.addWorker("worker-stateless", "us");
         Task task = harness.createReadyBatchTask("delayed-context-unblock", List.of(harness.item("delayed")));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
-        assertEquals("worker-blocked-context", activeLeases.getFirst().workerId());
+        assertEquals("worker-stateless", activeLeases.getFirst().workerId());
         assertEquals(null, activeLeases.getFirst().workerContextId());
-        assertTrue(harness.workerManager.isLocked("worker-blocked-context"));
+        assertTrue(harness.workerManager.isLocked("worker-stateless"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
-        AssignmentRecord record = harness.record(task.getTid(), "worker-blocked-context");
+        AssignmentRecord record = harness.record(task.getTid(), "worker-stateless");
         assertEquals(AssignmentResult.SUCCESS, record.getResult());
     }
 }

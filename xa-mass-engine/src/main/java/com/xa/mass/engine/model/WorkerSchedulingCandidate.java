@@ -7,9 +7,10 @@ import java.util.Objects;
 /**
  * Scheduling candidate chosen by the matching layer.
  *
- * <p>The candidate handoff is worker-level. Legacy context identity can still
- * appear on {@link WorkerSchedulingView} while compatibility evidence is being
- * retired, but the handoff no longer carries a WorkerContext payload.</p>
+ * <p>The candidate handoff is worker-level and does not carry WorkerContext
+ * identity. The temporary {@link #getWorkerContextId()} accessor exists only
+ * for lower-level runtime/trace call sites that still carry the field; it
+ * always returns {@code null} for scheduling candidates.</p>
  */
 public final class WorkerSchedulingCandidate {
 
@@ -31,7 +32,7 @@ public final class WorkerSchedulingCandidate {
     }
 
     public String getWorkerContextId() {
-        return schedulingView.workerContextId();
+        return null;
     }
 
     public WorkerSchedulingView getSchedulingView() {

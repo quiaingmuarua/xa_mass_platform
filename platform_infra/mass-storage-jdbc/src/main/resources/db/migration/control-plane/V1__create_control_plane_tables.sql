@@ -19,14 +19,6 @@ CREATE TABLE IF NOT EXISTS xa_worker (
 
 CREATE INDEX IF NOT EXISTS idx_xa_worker_group ON xa_worker(worker_group_id);
 
-CREATE TABLE IF NOT EXISTS xa_worker_context (
-  worker_context_id VARCHAR(128) PRIMARY KEY,
-  worker_id VARCHAR(128) NOT NULL,
-  json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_xa_worker_context_worker ON xa_worker_context(worker_id);
-
 CREATE TABLE IF NOT EXISTS xa_rule (
   rule_id VARCHAR(128) PRIMARY KEY,
   rule_type VARCHAR(64),

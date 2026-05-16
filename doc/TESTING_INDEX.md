@@ -85,7 +85,7 @@ Objects:
 
 - task/worker matching
 - schedulable set membership
-- worker/context eligibility
+- worker scheduling eligibility
 - contention and redispatch
 - contract-aware convergence
 
@@ -142,7 +142,7 @@ Objects:
 - `project`
 - `submitter`
 - `worker`
-- `workerContext`
+- worker capability and scheduling-view boundaries
 
 Purpose:
 
@@ -305,7 +305,7 @@ must not re-take ownership of runtime correctness.
 Primary groups:
 
 - assignment and routing
-- worker/context availability and reuse
+- worker scheduling availability and resource reuse
 - polling/external-worker wiring
 - representative lifecycle/result shell flows
 
@@ -460,7 +460,7 @@ Use first when:
 | Change type | Minimum verification | Add when needed |
 | --- | --- | --- |
 | task/worker matching, competition, routing, gating | engine scheduling acceptance/concurrency + representative server scheduling E2E | cross-language black-box when adapter/process parity is at risk |
-| `project / submitter / worker / workerContext` boundary | Boot-shell E2E | controller/API contract tests |
+| `project / submitter / worker capability and scheduling-view` boundary | Boot-shell E2E | controller/API contract tests |
 | task lifecycle / contract / intake | engine acceptance/concurrency + representative Boot-shell E2E | chaos for degraded edge behavior |
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |

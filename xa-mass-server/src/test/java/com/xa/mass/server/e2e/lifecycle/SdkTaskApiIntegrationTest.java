@@ -30,7 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.register-dev-catalog=true",
                 "mass.mock.bootstrap.register-dev-submitters=false",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "sample.client.retry-attempts=1",

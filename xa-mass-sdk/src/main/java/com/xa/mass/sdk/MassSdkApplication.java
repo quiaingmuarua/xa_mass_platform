@@ -5,7 +5,6 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
@@ -53,7 +52,7 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
         WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
-        WorkerClientOperations, WorkerContextCompatibilityOperations, WorkerAdminOperations,
+        WorkerClientOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
@@ -388,14 +387,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public void registerWorkerContext(WorkerContextRegistration request) {
-        requireStartedEngine();
-        requireStartedWorkerStorage().addWorkerContext(SdkResourceMapper.toWorkerContext(
-                Objects.requireNonNull(request, "request")
-        ));
-    }
-
-    @Override
     public String getWorkerAdapterId(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
         Worker worker = loadWorker(normalizedWorkerId);
@@ -436,20 +427,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public List<WorkerSnapshot> getAllWorkers() {
         return requireStartedWorkerStorage().getAllWorkers().stream()
                 .map(this::toWorkerSnapshot)
-                .toList();
-    }
-
-    @Override
-    public List<WorkerContextSnapshot> getAllWorkerContexts() {
-        return requireStartedWorkerStorage().getAllWorkerContexts().stream()
-                .map(this::toWorkerContextSnapshot)
-                .toList();
-    }
-
-    @Override
-    public List<WorkerContextSnapshot> getWorkerContexts(String workerId) {
-        return requireStartedWorkerStorage().getWorkerContexts(workerId).stream()
-                .map(this::toWorkerContextSnapshot)
                 .toList();
     }
 
@@ -503,14 +480,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 report.getErrorCode(),
                 report.getOutput()
         );
-    }
-
-    @Override
-    public WorkerContextSnapshot getWorkerContextById(String workerContextId) {
-        WorkerContext workerContext = requireStartedWorkerStorage()
-                .getWorkerContextById(workerContextId)
-                .orElse(null);
-        return toWorkerContextSnapshot(workerContext);
     }
 
     @Override
@@ -879,21 +848,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .maxConcurrentWork(readInt(readString(payload, "maxConcurrentWork", null), 1))
                 .attributes(readStringMap(payload.get("attributes")))
                 .build());
-    }
-
-    private WorkerContextRegistration resolveWorkerContextRegistration(CoreEventRequest request) {
-        Object embedded = request.getPayload().get("request");
-        if (embedded instanceof WorkerContextRegistration registration) {
-            return registration;
-        }
-        Map<String, Object> payload = request.getPayload();
-        return WorkerContextRegistration.builder()
-                .workerContextId(readRequiredString(payload, "workerContextId"))
-                .workerId(readRequiredString(payload, "workerId"))
-                .project(readString(payload, "project", null))
-                .routingTags(Set.copyOf(readStringList(payload.get("routingTags"))))
-                .attributes(readStringMap(payload.get("attributes")))
-                .build();
     }
 
     private String resolveProjectCodeForMeta(CoreEventRequest request) {
@@ -1487,25 +1441,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getAttributes(),
                 worker.getCreateTime(),
                 worker.getUpdateTime()
-        );
-    }
-
-    private WorkerContextSnapshot toWorkerContextSnapshot(WorkerContext workerContext) {
-        if (workerContext == null) {
-            return null;
-        }
-        return new WorkerContextSnapshot(
-                workerContext.getWorkerContextId(),
-                workerContext.getWorkerId(),
-                workerContext.getProject(),
-                enumName(workerContext.getStatus()),
-                workerContext.getRoutingTags(),
-                workerContext.getLastBindTaskId(),
-                workerContext.getExpireTime(),
-                workerContext.getCreateTime(),
-                workerContext.getUpdateTime(),
-                workerContext.getLastUsedTime(),
-                workerContext.getAttributes()
         );
     }
 

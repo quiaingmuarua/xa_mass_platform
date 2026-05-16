@@ -10,7 +10,6 @@ import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.WorkerSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -596,7 +595,6 @@ public abstract class AbstractSampleE2eTest {
                 1,
                 schedulingAttributes(routingTag, Map.of())
         ));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag));
     }
 
     protected void registerSdkWorkerWithContext(String workerId,
@@ -611,7 +609,6 @@ public abstract class AbstractSampleE2eTest {
                 1,
                 schedulingAttributes(routingTag, contextAttributes)
         ));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag, contextAttributes));
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
@@ -682,30 +679,6 @@ public abstract class AbstractSampleE2eTest {
                 .filter(available::contains)
                 .toList();
         return resolved.isEmpty() ? List.of(available.getFirst()) : resolved;
-    }
-
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {
-        return createWorkerContextRegistration(workerId, routingTag, Map.of());
-    }
-
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId,
-                                                                     String routingTag,
-                                                                     Map<String, Object> contextAttributes) {
-        Map<String, String> normalizedAttributes = contextAttributes == null || contextAttributes.isEmpty()
-                ? Map.of()
-                : contextAttributes.entrySet().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> String.valueOf(entry.getValue()),
-                        (left, right) -> right,
-                        java.util.LinkedHashMap::new
-                ));
-        return WorkerContextRegistration.builder()
-                .workerContextId("worker-context-" + workerId)
-                .workerId(workerId)
-                .routingTags(java.util.Set.of(routingTag))
-                .attributes(normalizedAttributes)
-                .build();
     }
 
     private Map<String, String> schedulingAttributes(String routingTag, Map<String, Object> contextAttributes) {

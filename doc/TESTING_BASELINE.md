@@ -56,7 +56,7 @@ Use with:
 | `cross-language black-box` | `xa-mass-server` | adapter/language parity proof for external workers across Java / Node and multiple adapters |
 | `transport boundary` | `transport/*`, `xa-mass-testing`, `xa-mass-server` | adapter routing, result ingress, and transport/engine decoupling proof |
 | `perf / chaos / distributed-readiness` | `xa-mass-testing` | scale, recovery, disconnect, replay, and degraded-condition proof around the scheduling mainline |
-| `mainline boundary` | `xa-mass-server` | `project / submitter / worker / workerContext` boundary proof on real host surfaces |
+| `mainline boundary` | `xa-mass-server` | `project / submitter / worker / worker scheduling capability` boundary proof on real host surfaces |
 | `local invariant / module` | owning module tests | support coverage only when it adds kernel or boundary debugging value |
 
 ## 3. Command Ownership
@@ -75,8 +75,7 @@ Use with:
   contention, gating, retry, and contract differences
 - current engine-first scheduling matrix includes explicit tests for:
   `TaskContractSchedulingBehaviorTest`, `TaskSchedulingContentionTest`,
-  `TaskWorkerEligibilityTest`,
-  `TaskWorkerContextContentionTest`, `TaskRedispatchCompetitionTest`, and
+  `TaskWorkerEligibilityTest`, `TaskRedispatchCompetitionTest`, and
   `TaskSchedulingGateAndTargetingTest`
 - that matrix now includes active degraded-presence competition:
   a worker can lose transport reachability while holding a lease, and later
@@ -88,11 +87,12 @@ Use with:
   a task with a fixed target worker must not drift to an idle backup worker while
   the target is locked, and it must dispatch to the target after release
 - retry-exhausted batch expiry is covered as a competition scenario:
-  final convergence must release the worker/context so a waiting READY task can
-  acquire the resource
+  final convergence must release the worker lock/capacity/resource binding so a
+  waiting READY task can acquire the resource
 - delayed availability is covered in engine-first form:
-  READY work remains queued when no worker/context is eligible, then dispatches
-  when an eligible worker registers or a blocked context becomes allocatable
+  READY work remains queued when no worker scheduling candidate is eligible,
+  then dispatches when an eligible worker registers, becomes reachable, or has
+  available capacity
 - schedulable membership is covered under contention:
   a waiting task paused before resource release must not acquire the released
   worker until it is resumed

@@ -1,16 +1,7 @@
 import {getAppConfig} from '@/app/config'
-import {
-    listWorkerContextsMock,
-    listWorkersMock,
-} from '@/api/workers.mock'
-import {
-    listWorkerContextsReal,
-    listWorkersReal,
-} from '@/api/workers.real'
-import type {
-    WorkerContextListResponse,
-    WorkerListResponse,
-} from '@/types/workers'
+import {listWorkersMock} from '@/api/workers.mock'
+import {listWorkersReal} from '@/api/workers.real'
+import type {WorkerListResponse} from '@/types/workers'
 
 export async function listWorkers(): Promise<WorkerListResponse> {
     if (getAppConfig().useMockApi) {
@@ -18,12 +9,4 @@ export async function listWorkers(): Promise<WorkerListResponse> {
     }
 
     return listWorkersReal()
-}
-
-export async function listWorkerContexts(): Promise<WorkerContextListResponse> {
-    if (getAppConfig().useMockApi) {
-        return listWorkerContextsMock()
-    }
-
-    return listWorkerContextsReal()
 }

@@ -2,16 +2,17 @@
 
 Last updated: 2026-05-16
 
-Status: current transitional baseline for the WorkerContext convergence path,
+Status: current baseline for the WorkerContext convergence path,
 including scheduling-candidate handoff, default rule surface convergence,
 worker load view wiring, load-aware ranking, and default-capacity reservation.
+WorkerContext physical model/storage/API surfaces have been deleted; remaining
+`workerContextId` references are runtime/transport/trace payload residue.
 Worker-declared capacity is now present as a read-model input to reservation
 and trace. `ExecutionSpec.foreground` is now present as a task scheduling-mode
 declaration in model/API/trace surfaces and controls long-lived worker lock
-usage. Stateless background tasks can share workers up to declared capacity;
-legacy WorkerContext-backed resources remain context-exclusive. The
-foreground/context resource decision is now owned by
-`WorkerDispatchResourcePolicy` and consumed by matching, dispatch binding,
+usage. Background tasks can share workers up to declared capacity without
+consulting WorkerContext identity in the scheduling read model. The foreground
+resource decision is now owned by `WorkerDispatchResourcePolicy` and consumed by matching, dispatch binding,
 assignment cleanup, and release mechanisms. The legacy WorkerContext runtime
 state machine has been removed from the engine mainline: binder and release
 paths no longer mutate `WorkerContextStatus` or emit
@@ -23,13 +24,36 @@ compensation. These owner boundaries are now guarded by
 `EngineSchedulingCoreArchitectureGuardTest`. Matching candidate enumeration now
 creates one worker-level candidate per worker and no longer reads or expands
 WorkerContext storage. `WorkerSchedulingView` and `WorkerMatchContext` no
-longer flatten context status/project/routing/attributes into scheduling facts;
-the remaining context-facing engine identity is `workerContextId` compatibility
-evidence for runtime/trace surfaces.
+longer flatten context status/project/routing/attributes into scheduling facts.
+`WorkerSchedulingView` no longer accepts or exposes WorkerContext identity;
+`workerContextId` remains only on lower-level runtime/trace compatibility
+records while those contracts are still present.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
 not delete WorkerContext or remove legacy trace fields.
+
+## Fixed Mainline Relationship
+
+This document covers only the worker scheduling read model. It must be read
+inside the fixed scheduling mainlines from
+[`SCHEDULING_KERNEL_GUARDRAILS.md`](./SCHEDULING_KERNEL_GUARDRAILS.md):
+
+```text
+WorkerSchedulingCandidateEnumerator
+  -> WorkerSchedulingView
+  -> WorkerMatchContext
+  -> prefilter + QLExpress rules
+  -> WorkerCandidateRanker
+  -> capacity reservation + optional worker lock
+```
+
+The last step is intentionally described as acquisition, not pure matching.
+Current code performs reservation and optional exclusive worker-lock acquisition
+inside `RuleBasedTaskWorkerMatchingStrategy`. This is an acceptable transitional
+shape while the engine is still converging WorkerContext and worker-management
+boundaries. It must not be used as permission to hide unrelated lifecycle
+mechanisms inside matching code.
 
 ## Goal
 
@@ -58,7 +82,7 @@ The immediate convergence target is:
 
 ## Current Hot-Path Inventory
 
-WorkerContext is still live in these engine paths:
+WorkerContext compatibility is still visible around these engine paths:
 
 - `WorkerSchedulingCandidateEnumerator`
   - creates one worker-level `WorkerSchedulingCandidate` per worker
@@ -73,21 +97,23 @@ WorkerContext is still live in these engine paths:
     payload directly
   - prefilters worker reachability, worker availability, target-worker
     constraints, and worker-level routing through the scheduling view
-  - emits match accepted/rejected trace with `workerContextId`
+  - currently ranks rule-passed candidates and attempts capacity reservation
+    plus optional exclusive worker-lock acquisition in ranked order
+  - emits match accepted/rejected trace with `workerContextId=null` on the
+    default scheduling path
 - `AssignmentDiagnosticRecorder`
   - records worker-level matching diagnostics from
     `WorkerSchedulingCandidate`
   - snapshots `WorkerSchedulingView` evidence through
     `WorkerSchedulingSnapshot`
-  - keeps legacy `workerContextId` only as payload identity while runtime
-    attempts still carry that field
+  - records no legacy context identity on worker scheduling snapshots while
+    runtime attempts still carry the lower-level field
 - `WorkerSchedulingCandidate`
   - is the internal handoff type between matching, allocation, listener
     orchestration, and dispatch binding
   - carries `Worker` and `WorkerSchedulingView`
-  - does not carry a nullable `WorkerContext` payload; legacy context identity,
-    when present, is read from the scheduling view only as compatibility
-    evidence
+  - does not carry a nullable `WorkerContext` payload; its temporary
+    `getWorkerContextId()` compatibility accessor always returns `null`
 - `WorkerMatchContext`
   - is constructed from `WorkerSchedulingCandidate`
   - owns the rule-evaluation and diagnostic snapshot field map consumed by
@@ -96,9 +122,8 @@ WorkerContext is still live in these engine paths:
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
   - exposes worker load and reservation fields from `WorkerLoadView`
 - `SimpleTaskDispatchBinder`
-  - records `workerContextId` on runtime attempts and dispatch trace when
-    `WorkerDispatchResourcePolicy` classifies the candidate as a legacy
-    `workerContextId` compatibility resource
+  - does not pass legacy candidate `workerContextId` into runtime claim targets
+    on the default scheduling path
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
@@ -128,21 +153,20 @@ WorkerContext is still live in these engine paths:
   - prevents `RuleBasedTaskWorkerMatchingStrategy` from owning a duplicate
     rule/prefilter snapshot field builder
   - prevents strategy-level tests from registering WorkerContext fixtures
-  - prevents `WorkerSchedulingView` from flattening WorkerContext scheduling
-    facts and prevents `WorkerMatchContext` from exposing `workerContext*`
-    rule fields
+  - prevents `WorkerSchedulingView` from reading WorkerContext identity or
+    lifecycle facts and prevents `WorkerMatchContext` from exposing
+    `workerContext*` rule fields
 
 WorkerContext is therefore still:
 
-- a legacy compatibility identity that can still appear in attempts and
-  trace/runtime compatibility fields
+- a legacy compatibility identity that can still appear in trace/runtime
+  compatibility fields produced by historical or lower-level runtime paths
 
 The production matching hot path no longer uses WorkerContext as a scheduling
 attribute source, and `WorkerSchedulingCandidate` no longer carries a
-`WorkerContext` object. `WorkerSchedulingView` no longer flattens context
-project/routing/status/attributes into scheduling evidence, and
-`WorkerMatchContext` no longer exposes `workerContext*` rule variables.
-Physical model/API deletion is a later phase.
+`WorkerContext` object. `WorkerSchedulingView` no longer imports or accepts the
+WorkerContext model, and `WorkerMatchContext` no longer exposes
+`workerContext*` rule variables. Physical model/API deletion is a later phase.
 
 ## Transitional View
 
@@ -197,13 +221,10 @@ reservation ceiling for stateless background workers.
 SDK/server read models plus canonical assignment trace. `foreground=true` keeps
 the existing long-lived worker lock. `foreground=false` still reserves capacity
 but skips that long-lived lock, so multiple background tasks may share a
-stateless worker until `active + reserved >= declaredCapacity`.
-WorkerContext-backed resources are not shared by this slice; they still follow
-the worker-level exclusive lock even when the task declares `foreground=false`.
+worker until `active + reserved >= declaredCapacity`.
 `WorkerDispatchResourcePolicy` is the single engine-internal owner for this
-resource usage classification. It keeps worker-level lock requirements separate
-from legacy `workerContextId` compatibility identity, which is necessary before
-WorkerContext can be retired without touching every scheduling mechanism again.
+resource usage classification. It is now worker/load based: `workerContextId`
+does not affect exclusive-lock decisions or runtime claim targets.
 `WorkerDispatchResourceReleaser` owns repeated dispatch cleanup for worker
 reservations and exclusive worker locks. Assignment orchestration and binder
 compensation use it instead of duplicating reservation release, unlock, and
@@ -216,9 +237,9 @@ foreground worker lock is not left waiting for an attempt-close event that will
 not be published on that path.
 Candidate cleanup paths resolve lock release with the same
 `usageForCandidate(...)` policy used by matching acquisition. Attempt and
-terminal cleanup paths resolve lock release with `usageForAttempt(...)`. This
-keeps stateless background sharing separate from transitional context-backed
-exclusive resources.
+terminal cleanup paths resolve lock release with `usageForAttempt(...)`. These
+paths are governed by task foreground/background semantics, not context
+identity.
 Accepted and rejected worker-match trace events read the current load snapshot
 at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
@@ -226,8 +247,8 @@ Worker-match trace also carries worker scheduling evidence:
 `workerSchedulingResourceId`, `workerSchedulingRoutingTags`,
 `workerSchedulingAttributes`, and `workerSchedulingMatchesRoutingCode`. New
 scheduling proof must prefer these fields over `workerContextId`;
-`workerContextId` remains legacy runtime payload evidence while the binding and
-release compatibility path still exists.
+`workerContextId` remains legacy compatibility evidence while historical trace
+and runtime read models still carry that field.
 `WorkerLoadView` also exposes the current active worker count per task to
 allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
@@ -315,8 +336,8 @@ Focused proof for this step:
   - proves default and derived rule sets do not use the legacy
     `workerContext*` rule surface
 - `WorkerSchedulingCandidateTest`
-  - proves the handoff keeps worker plus scheduling view and reads legacy
-    `workerContextId` compatibility identity from the view
+  - proves the handoff keeps worker plus scheduling view without WorkerContext
+    identity
 - `InMemoryWorkerLoadViewTest`
   - proves claim/final accounting, reservation accounting, and concurrent
     update safety

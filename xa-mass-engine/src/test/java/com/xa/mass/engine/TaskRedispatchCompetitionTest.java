@@ -21,7 +21,7 @@ class TaskRedispatchCompetitionTest {
     @Test
     void leaseExpiryReentersBatchTaskIntoCompetitionPoolAndRedispatchesSameWorkOnce() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-retry", "ctx-retry", "us");
+        harness.addWorker("worker-retry", "us");
         Task task = harness.createBatchTask("redispatch-after-expiry", List.of(harness.item("retry")), 1, 1);
         assertTrue(harness.taskManager.approveTask(task.getTid()));
 
@@ -57,7 +57,7 @@ class TaskRedispatchCompetitionTest {
     @Test
     void staleResultFromExpiredLeaseDoesNotStealRedispatchedWork() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-retry", "ctx-retry", "us");
+        harness.addWorker("worker-retry", "us");
         Task task = harness.createBatchTask("stale-result-after-redispatch", List.of(harness.item("retry")), 1, 1);
         assertTrue(harness.taskManager.approveTask(task.getTid()));
 
@@ -101,7 +101,7 @@ class TaskRedispatchCompetitionTest {
     @Test
     void leaseExpiryReleasesWorkerForWaitingTaskCompetition() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task firstTask = harness.createBatchTask(
                 "competition-expiry-first",
                 List.of(harness.item("first")),
@@ -141,7 +141,7 @@ class TaskRedispatchCompetitionTest {
     @Test
     void expiredWorkWaitsUnderCompetitionAndRedispatchesAfterWorkerRelease() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task retryingTask = harness.createBatchTask(
                 "competition-expiry-retry",
                 List.of(harness.item("retry")),
@@ -200,7 +200,7 @@ class TaskRedispatchCompetitionTest {
     @Test
     void retryExhaustedBatchFailureReleasesWorkerForWaitingTaskCompetition() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task exhaustedTask = harness.createBatchTask(
                 "retry-exhausted-first",
                 List.of(harness.item("first")),

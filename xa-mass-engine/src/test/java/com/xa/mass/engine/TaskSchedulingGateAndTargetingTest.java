@@ -23,8 +23,8 @@ class TaskSchedulingGateAndTargetingTest {
     @Test
     void minimumWorkerGateKeepsTaskReadyUntilEnoughEligibleWorkersExist() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-us-1", "ctx-us-1", "us");
-        harness.addWorkerWithContext("worker-gb", "ctx-gb", "gb");
+        harness.addWorker("worker-us-1", "us");
+        harness.addWorker("worker-gb", "gb");
         Task task = harness.createBatchTask(
                 "minimum-worker-gate",
                 List.of(harness.item("alpha"), harness.item("beta")),
@@ -47,7 +47,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatch.getResult());
         assertEquals("routing code mismatch", routingMismatch.getReason());
 
-        harness.addWorkerWithContext("worker-us-2", "ctx-us-2", "us");
+        harness.addWorker("worker-us-2", "us");
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -65,8 +65,8 @@ class TaskSchedulingGateAndTargetingTest {
     @Test
     void minimumWorkerGateReleasesMatchedWorkerSoAnotherReadyTaskCanCompete() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-us", "ctx-us", "us");
-        harness.addWorkerWithContext("worker-gb", "ctx-gb", "gb");
+        harness.addWorker("worker-us", "us");
+        harness.addWorker("worker-gb", "gb");
         Task gatedTask = harness.createBatchTask(
                 "minimum-worker-gate-release",
                 List.of(harness.item("alpha"), harness.item("beta")),
@@ -111,21 +111,18 @@ class TaskSchedulingGateAndTargetingTest {
     @Test
     void targetWorkerAttributesRemainStableUnderContention() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext(
+        harness.addWorker(
                 "worker-gold",
-                "ctx-gold",
                 "us",
                 Map.of("region", "us", "tier", "gold")
         );
-        harness.addWorkerWithContext(
+        harness.addWorker(
                 "worker-silver",
-                "ctx-silver",
                 "us",
                 Map.of("region", "us", "tier", "silver")
         );
-        harness.addWorkerWithContext(
+        harness.addWorker(
                 "worker-gold-locked",
-                "ctx-gold-locked",
                 "us",
                 Map.of("region", "us", "tier", "gold")
         );
@@ -162,8 +159,8 @@ class TaskSchedulingGateAndTargetingTest {
     @Test
     void targetWorkerIdWaitingTaskDoesNotDriftToBackupWorkerAfterContentionClears() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-target", "ctx-target", "us");
-        harness.addWorkerWithContext("worker-backup", "ctx-backup", "us");
+        harness.addWorker("worker-target", "us");
+        harness.addWorker("worker-backup", "us");
         Task runningTask = harness.createReadyBatchTask(
                 "target-worker-id-running",
                 List.of(harness.item("running"))

@@ -2,11 +2,9 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.sdk.WorkerClientOperations;
-import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.WorkerRegistryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -40,9 +38,6 @@ class ExternalWorkerApiControllerTest {
     private WorkerClientOperations workerClient;
 
     @Mock
-    private WorkerContextCompatibilityOperations workerContextCompatibility;
-
-    @Mock
     private AuthProvider authProvider;
 
     private MockMvc mockMvc;
@@ -68,7 +63,6 @@ class ExternalWorkerApiControllerTest {
                 .standaloneSetup(new ExternalWorkerApiController(
                         workerRegistry,
                         workerClient,
-                        workerContextCompatibility,
                         new ApiAuthorizationService(authProvider, null)))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
@@ -109,35 +103,6 @@ class ExternalWorkerApiControllerTest {
                         .eventCode("crawler.fetch-page")
                         .projectCodes(List.of("crawlerApp"))
                         .build()).equals(request.getEventBindings())
-        ));
-    }
-
-    @Test
-    void registerWorkerContextUsesCompatibilitySurface() throws Exception {
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}/contexts", "node-worker-1")
-                        .contentType("application/json")
-                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
-                        .content("""
-                                {
-                                  "workerContextId": "ctx-node-worker-1",
-                                  "project": "crawlerApp",
-                                  "routingTags": ["us"],
-                                  "attributes": {
-                                    "lane": "us"
-                                  }
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.workerContextId").value("ctx-node-worker-1"))
-                .andExpect(jsonPath("$.data.workerId").value("node-worker-1"));
-
-        verify(workerContextCompatibility).registerWorkerContext(argThat((WorkerContextRegistration request) ->
-                "ctx-node-worker-1".equals(request.getWorkerContextId())
-                        && "node-worker-1".equals(request.getWorkerId())
-                        && "crawlerApp".equals(request.getProject())
-                        && request.getRoutingTags().contains("us")
-                        && "us".equals(request.getAttributes().get("lane"))
         ));
     }
 

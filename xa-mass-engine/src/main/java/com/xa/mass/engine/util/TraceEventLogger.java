@@ -5,7 +5,6 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
@@ -228,14 +227,6 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void workerMatchAccepted(String taskId, Worker worker, WorkerContext workerContext, String reason) {
-        if (worker == null) {
-            return;
-        }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, null, taskId, worker, workerContext,
-                reason, "SUCCESS", null);
-    }
-
     public void workerMatchAccepted(String taskId,
                                     WorkerSchedulingCandidate candidate,
                                     String reason,
@@ -278,14 +269,6 @@ public final class TraceEventLogger {
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
-    public void workerMatchRejected(String taskId, Worker worker, WorkerContext workerContext, String reason) {
-        if (worker == null) {
-            return;
-        }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, null, taskId, worker, workerContext,
-                reason, "REJECTED", null);
-    }
-
     public void workerMatchRejected(String taskId,
                                     WorkerSchedulingCandidate candidate,
                                     String reason,
@@ -326,19 +309,6 @@ public final class TraceEventLogger {
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
                 candidate.getWorker(), candidate.getWorkerContextId(), reason, "REJECTED",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
-    }
-
-    private void emitWorkerMatchEvent(ExecutionEventType eventType,
-                                      Task task,
-                                      String taskId,
-                                      Worker worker,
-                                      WorkerContext workerContext,
-                                      String reason,
-                                      String result,
-                                      Map<String, Object> extraAttrs) {
-        emitWorkerMatchEvent(eventType, task, taskId, worker,
-                workerContext != null ? workerContext.getWorkerContextId() : null,
-                reason, result, extraAttrs);
     }
 
     private void emitWorkerMatchEvent(ExecutionEventType eventType,

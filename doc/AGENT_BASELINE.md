@@ -64,11 +64,16 @@ Current owner vocabulary:
   intentionally not part of the active public/kernel vocabulary
 - `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
   storage-edge compatibility residue shapes
+- `WorkerContext` is legacy compatibility residue where it still appears in
+  SDK/server/storage/trace surfaces. It is not an engine scheduling truth and
+  must not be reintroduced as the worker capability or resource-lifecycle
+  owner.
 
 Stable kernel slots:
 
 - worker: `Worker`
-- optional worker context: `WorkerContext`
+- worker scheduling view: worker registration, event bindings, scheduling
+  attributes, reachability, and runtime load/capacity facts
 - task contract boundary: `Task.contract`
 - task intake boundary: `Task.intakeStatus`
 - task-level workload boundary: `Task.workloadClass`
@@ -194,8 +199,12 @@ Lifecycle and trace detail live in:
 - `Task.sharedConfig` plus runtime item payload / `payloadRef` are the main
   payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
-- `WorkerContext.workerId` is the single owner truth
-- `WorkerMatchContext` plus rule evaluation is the matching truth
+- worker capability truth is `Worker` registration plus `eventBindings`; worker
+  scheduling decisions consume worker scheduling facts and runtime load/capacity
+  facts, not `WorkerContext`
+- `WorkerMatchContext` plus rule evaluation is current matching input, but it
+  must stay a scheduling-context object and must not become a replacement
+  worker-resource owner
 - UI pages, mock runtime, and demo APIs must not redefine the kernel
 - do not add full-table, full-task, or full-attempt scans to hot paths
 - new or changed policy seams must keep ownership explicit across matching, assignment, attempt, release, refill, intake, control, and terminal decisions

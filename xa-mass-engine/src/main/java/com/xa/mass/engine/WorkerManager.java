@@ -8,7 +8,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.engine.load.WorkerLoadView;
@@ -20,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Worker and workerContext access facade for the active engine runtime.
+ * Worker access facade for the active engine runtime.
  *
  * <p>Transport reachability is read through {@link WorkerReachabilityView},
  * while the worker model remains the engine-owned control-plane record.
@@ -79,26 +78,6 @@ public class WorkerManager implements WorkerLookupStore {
         return workerStorage.getWorkersByGroupId(workerGroupId);
     }
 
-    public void addWorkerContext(WorkerContext workerContext) {
-        workerStorage.addWorkerContext(workerContext);
-    }
-
-    public List<WorkerContext> getWorkerContexts(String workerId) {
-        return workerStorage.getWorkerContexts(workerId);
-    }
-
-    public WorkerContext getWorkerContextById(String workerContextId) {
-        return workerStorage.getWorkerContextById(workerContextId).orElse(null);
-    }
-
-    public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
-        return workerStorage.updateWorkerContextById(workerContextId, workerContext);
-    }
-
-    public boolean deleteWorkerContextById(String workerContextId) {
-        return workerStorage.deleteWorkerContextById(workerContextId);
-    }
-
     public boolean tryLockWorker(String workerId) {
         return workerStorage.tryLockWorker(workerId);
     }
@@ -130,14 +109,6 @@ public class WorkerManager implements WorkerLookupStore {
             return workerStorage.getWorkersBySupportedProject(project);
         }
         return workerStorage.getAllWorkers();
-    }
-
-    public List<WorkerContext> getAllWorkerContexts() {
-        return workerStorage.getAllWorkerContexts();
-    }
-
-    public List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
-        return workerStorage.getWorkerContextsByWorkerIds(workerIds);
     }
 
     public List<String> getLockedWorkers() {

@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -59,7 +58,6 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, readySnapshot.stats().readyCount());
         assertEquals(0, readySnapshot.activeLeases().size());
-        assertEquals("IDLE", app.getWorkerContexts(firstWorkerId).get(0).getStatus());
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);

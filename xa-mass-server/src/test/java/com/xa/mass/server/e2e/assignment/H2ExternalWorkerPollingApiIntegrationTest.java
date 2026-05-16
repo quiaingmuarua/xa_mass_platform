@@ -36,7 +36,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -261,19 +260,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
                     assertTrue(rs.next(), "worker row should exist");
                     assertJsonContains(rs.getString("json"), "\"status\":\"OFFLINE\"");
                     assertFalse(rs.next(), "worker_id should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT json
-                    FROM xa_worker_context
-                    WHERE worker_context_id = ?
-                    """)) {
-                ps.setString(1, "ctx-" + workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "worker context row should exist");
-                    assertJsonContains(rs.getString("json"), "\"status\":\"IDLE\"");
-                    assertFalse(rs.next(), "worker_context_id should remain unique");
                 }
             }
 

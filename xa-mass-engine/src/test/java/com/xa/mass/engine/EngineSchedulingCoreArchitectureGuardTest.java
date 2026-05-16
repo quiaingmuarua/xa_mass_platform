@@ -114,9 +114,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
-            if (isWorkerManager(path)) {
-                continue;
-            }
             String source = Files.readString(path, StandardCharsets.UTF_8);
             for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
                 if (forbiddenPattern.getValue().matcher(source).find()) {
@@ -128,7 +125,31 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerContext runtime state mutation is retired from the engine mainline. "
-                        + "WorkerManager remains a transitional storage facade only:\n"
+                        + "WorkerManager must stay worker-level and must not expose context CRUD:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineMainlineDoesNotImportWorkerContextModel() throws IOException {
+        Pattern workerContextImport = Pattern.compile(
+                "\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;");
+        Pattern workerContextStatusImport = Pattern.compile(
+                "\\bimport\\s+com\\.xa\\.mass\\.base\\.enums\\.worker\\.WorkerContextStatus\\s*;");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (workerContextImport.matcher(source).find()) {
+                violations.add(path + " imports WorkerContext");
+            }
+            if (workerContextStatusImport.matcher(source).find()) {
+                violations.add(path + " imports WorkerContextStatus");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine production code must not depend on WorkerContext model classes. "
+                        + "Context compatibility belongs outside the scheduling kernel:\n"
                         + String.join("\n", violations));
     }
 
@@ -214,17 +235,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerSchedulingCandidate is a worker-level scheduling handoff. "
-                        + "Legacy context identity may remain on WorkerSchedulingView, but the candidate "
-                        + "must not carry a WorkerContext object:\n"
+                        + "It must not carry a WorkerContext object:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerSchedulingViewDoesNotFlattenWorkerContextSchedulingFacts() throws IOException {
+    void workerSchedulingViewDoesNotReadWorkerContextModel() throws IOException {
         Path viewPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java");
         String source = Files.readString(viewPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("WorkerContext import",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;")),
+                Map.entry("WorkerContext parameter", Pattern.compile("\\bWorkerContext\\s+workerContext\\b")),
+                Map.entry("hasWorkerContext", Pattern.compile("\\bhasWorkerContext\\b")),
+                Map.entry("workerContextId accessor", Pattern.compile("\\bworkerContextId\\s*\\(")),
                 Map.entry("WorkerContextStatus", Pattern.compile("\\bWorkerContextStatus\\b")),
                 Map.entry("workerContextProject", Pattern.compile("\\bworkerContextProject\\b")),
                 Map.entry("workerContextRoutingTags", Pattern.compile("\\bworkerContextRoutingTags\\b")),
@@ -239,14 +264,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
             if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(viewPath + " flattens retired WorkerContext scheduling fact: "
+                violations.add(viewPath + " reads retired WorkerContext scheduling fact: "
                         + forbiddenPattern.getKey());
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerSchedulingView may retain legacy workerContextId compatibility identity, "
-                        + "but scheduling facts must come from worker-level state and attributes:\n"
+                "WorkerSchedulingView is a worker-level scheduling read model. Runtime/trace "
+                        + "compatibility may still carry workerContextId, but the scheduling view "
+                        + "must not read WorkerContext identity or lifecycle state:\n"
                         + String.join("\n", violations));
     }
 
@@ -289,6 +315,35 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(!contextBackedSchedulingResourceFlag.matcher(source).find(),
                 "hasWorkerSchedulingResource must describe the worker-level scheduling resource, "
                         + "not legacy WorkerContext presence.");
+    }
+
+    @Test
+    void dispatchResourcePolicyDoesNotModelWorkerContextAsResourceUsage() throws IOException {
+        Path usagePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource/WorkerDispatchResourceUsage.java");
+        Path policyPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource/DefaultWorkerDispatchResourcePolicy.java");
+        Path binderPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
+        String usageSource = Files.readString(usagePath, StandardCharsets.UTF_8);
+        String policySource = Files.readString(policyPath, StandardCharsets.UTF_8);
+        String binderSource = Files.readString(binderPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\blegacyWorkerContextResource\\b|\\bstatelessWorkerResource\\b")
+                .matcher(usageSource).find()) {
+            violations.add(usagePath + " models WorkerContext as dispatch resource usage");
+        }
+        if (Pattern.compile("\\.hasWorkerContext\\s*\\(|\\.getWorkerContextId\\s*\\(")
+                .matcher(policySource).find()) {
+            violations.add(policyPath + " derives resource usage from WorkerContext identity");
+        }
+        if (Pattern.compile("new\\s+WorkerClaimTarget\\s*\\([^;]*getWorkerContextId\\s*\\(",
+                Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " passes candidate WorkerContext identity into runtime claim target");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Dispatch resource policy is worker/load based. WorkerContext identity may remain in "
+                        + "runtime/trace compatibility records, but it must not define resource usage:\n"
+                        + String.join("\n", violations));
     }
 
     @Test
@@ -417,10 +472,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         return methods;
-    }
-
-    private static boolean isWorkerManager(Path path) {
-        return path.endsWith(Path.of("com/xa/mass/engine/WorkerManager.java"));
     }
 
 }

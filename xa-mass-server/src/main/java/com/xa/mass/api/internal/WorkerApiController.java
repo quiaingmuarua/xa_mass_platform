@@ -2,11 +2,10 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
-import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,37 +23,31 @@ public class WorkerApiController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final WorkerQueryOperations workerQueries;
-    private final WorkerContextCompatibilityOperations workerContextCompatibility;
     private final ControlPlaneCatalog catalog;
     private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     public WorkerApiController(WorkerQueryOperations workerQueries) {
         this(
                 workerQueries,
-                (WorkerContextCompatibilityOperations) null,
                 (ControlPlaneCatalog) null,
                 (RuntimeDiagnosticsOperations) null
         );
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               WorkerContextCompatibilityOperations workerContextCompatibility,
                                ControlPlaneCatalog catalog,
                                RuntimeDiagnosticsOperations runtimeDiagnostics) {
         this.workerQueries = workerQueries;
-        this.workerContextCompatibility = workerContextCompatibility;
         this.catalog = catalog;
         this.runtimeDiagnostics = runtimeDiagnostics;
     }
 
     @Autowired
     public WorkerApiController(WorkerQueryOperations workerQueries,
-                               ObjectProvider<WorkerContextCompatibilityOperations> workerContextCompatibilityProvider,
                                ObjectProvider<ControlPlaneCatalog> metadataCatalogProvider,
                                ObjectProvider<RuntimeDiagnosticsOperations> runtimeDiagnosticsProvider) {
         this(
                 workerQueries,
-                workerContextCompatibilityProvider == null ? null : workerContextCompatibilityProvider.getIfAvailable(),
                 metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
                 runtimeDiagnosticsProvider == null ? null : runtimeDiagnosticsProvider.getIfAvailable()
         );
@@ -90,33 +83,6 @@ public class WorkerApiController {
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("updateTime", formatDateTime(worker.getUpdateTime()));
-                    return item;
-                })
-                .toList();
-        return ApiResponse.success(Map.of(
-                "items", items,
-                "total", items.size()
-        ));
-    }
-
-    @GetMapping("/worker-contexts")
-    public ApiResponse<Map<String, Object>> listWorkerContexts() {
-        List<WorkerContextSnapshot> snapshots = workerContextCompatibility == null
-                ? List.of()
-                : workerContextCompatibility.getAllWorkerContexts();
-        List<Map<String, Object>> items = snapshots.stream()
-                .sorted(Comparator.comparing(WorkerContextSnapshot::getWorkerContextId, Comparator.nullsLast(String::compareTo)))
-                .map(workerContext -> {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("workerContextId", workerContext.getWorkerContextId());
-                    item.put("workerId", workerContext.getWorkerId());
-                    item.put("project", workerContext.getProject());
-                    item.put("status", workerContext.getStatus());
-                    item.put("routingTags", workerContext.getRoutingTags());
-                    item.put("attributes", workerContext.getAttributes());
-                    item.put("lastBindTaskId", workerContext.getLastBindTaskId());
-                    item.put("lastUsedTime", formatDateTime(workerContext.getLastUsedTime()));
-                    item.put("updateTime", formatDateTime(workerContext.getUpdateTime()));
                     return item;
                 })
                 .toList();

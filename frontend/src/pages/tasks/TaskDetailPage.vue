@@ -284,7 +284,11 @@
               <span class="mono">{{ row.workerId || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="workerContextId" label="Context" min-width="180">
+          <el-table-column
+            prop="workerContextId"
+            label="Legacy context"
+            min-width="180"
+          >
             <template #default="{ row }">
               <span class="mono">{{ row.workerContextId || '-' }}</span>
             </template>

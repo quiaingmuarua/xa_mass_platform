@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=true",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "sample.client.retry-attempts=1",

@@ -48,7 +48,7 @@ Fixture note:
 
 - E2E tests may still use white-box fixtures for setup and fault injection
 - prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")` for batch/file ingest setup code
-- only legacy WorkerContext compatibility tests should use `WorkerContextCompatibilityOperations.registerWorkerContext(...)`; new E2E setup should prefer worker attributes, event bindings, transport presence, and runtime load proof
+- WorkerContext compatibility registration has been removed; E2E setup should prefer worker attributes, event bindings, transport presence, and runtime load proof
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
 
 Proof-surface note:
@@ -90,21 +90,21 @@ Assignment and capacity:
 - retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
 - `BATCH` lease expiry consumes retry budget as attempt loss; exhausted budget closes the item as failure rather than logical timeout
 - representative multi-task assignment survives real server + SDK + engine wiring without double assignment
-- representative worker/context routing remains correct under the assignment scenarios carried by the server E2E suite
+- representative worker scheduling/routing remains correct under the assignment scenarios carried by the server E2E suite
 
-Worker and context:
+Worker scheduling and compatibility:
 
-- worker-context attribute routing selects the right context
-- stateless worker can execute tasks without routing-required context
+- worker attribute / routing-tag selection chooses an eligible worker
+- worker can execute tasks without WorkerContext compatibility setup
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal`
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
-- external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
+- external polling worker API can register a worker, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
 - the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/catalog/*`, complete task work, and exit cleanly
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
-- same worker can own multiple contexts without overwrite
-- releasing one context does not release sibling contexts
-- worker/context is reusable after normal terminal completion
-- worker/context is reusable after manual terminate
+- legacy WorkerContext compatibility tests, where retained, must stay clearly
+  named and must not be used as mainline scheduling proof
+- worker/resource capacity is reusable after normal terminal completion
+- worker/resource capacity is reusable after manual terminate
 
 Control console:
 
@@ -124,7 +124,7 @@ If a change touches:
 - terminal convergence
 - matching semantics
 - retry semantics
-- worker lock or context release
+- worker lock / capacity / resource release
 - lifecycle API contracts
 - policy interaction precedence
 

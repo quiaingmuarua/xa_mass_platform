@@ -13,10 +13,10 @@ const mockRules: RuleListResponse = {
         },
         {
             ruleId: 'rule-region-routing',
-            name: 'Routing tag match',
+            name: 'Worker attribute routing',
             type: 'QL_EXPRESS',
-            content: "workerContext.routingTags.contains('primary')",
-            description: 'Use explicit context routing tags instead of task-level ad hoc fields.',
+            content: "worker.attributes['routingTags'] != null",
+            description: 'Use worker-level scheduling attributes instead of legacy worker contexts.',
             enabled: true,
             priority: 20,
         },

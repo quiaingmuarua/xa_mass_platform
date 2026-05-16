@@ -14,7 +14,6 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
-import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -151,8 +150,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         for (int i = 0; i < matchedWorkers.size(); i++) {
             WorkerSchedulingCandidate matchedWorker = matchedWorkers.get(i);
-            WorkerDispatchResourceUsage resourceUsage = resourcePolicy.usageForCandidate(task, matchedWorker);
-            dispatchSlots.add(new DispatchSlot(matchedWorker, resourceUsage));
+            dispatchSlots.add(new DispatchSlot(matchedWorker));
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
@@ -277,13 +275,11 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
     private static final class DispatchSlot {
         private final WorkerSchedulingCandidate candidate;
-        private final WorkerDispatchResourceUsage resourceUsage;
         private final String batchId = java.util.UUID.randomUUID().toString();
         private int assignedCount;
 
-        private DispatchSlot(WorkerSchedulingCandidate candidate, WorkerDispatchResourceUsage resourceUsage) {
+        private DispatchSlot(WorkerSchedulingCandidate candidate) {
             this.candidate = candidate;
-            this.resourceUsage = resourceUsage;
         }
 
         private Worker worker() {
@@ -291,7 +287,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         }
 
         private String workerContextId() {
-            return resourceUsage.legacyWorkerContextResource() ? candidate.getWorkerContextId() : null;
+            return null;
         }
 
         private String batchId() {

@@ -19,7 +19,7 @@ class TaskContractSchedulingBehaviorTest {
     @Test
     void batchTaskTerminalsWhenSealedWorkDrainsThroughSchedulingPath() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-batch", "ctx-batch", "us");
+        harness.addWorker("worker-batch", "us");
         Task task = harness.createBatchTask(
                 "batch-drain-terminal",
                 List.of(harness.item("batch")),
@@ -53,7 +53,7 @@ class TaskContractSchedulingBehaviorTest {
     @Test
     void sessionTaskDoesNotAutoTerminalWhenQueueDrainsThroughSchedulingPath() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-session", "ctx-session", "us");
+        harness.addWorker("worker-session", "us");
         Task task = harness.createSessionTask(
                 "session-drain-open",
                 List.of(harness.item("first")),

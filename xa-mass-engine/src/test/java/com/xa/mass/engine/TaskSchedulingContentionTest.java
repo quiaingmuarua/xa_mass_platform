@@ -23,7 +23,7 @@ class TaskSchedulingContentionTest {
     @Test
     void multipleReadyBatchTasksCompeteForSingleContextWithoutDoubleAssignment() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-single", "ctx-single", "us");
+        harness.addWorker("worker-single", "us");
         Task firstTask = harness.createReadyBatchTask("contention-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("contention-second", List.of(harness.item("second")));
 
@@ -89,8 +89,8 @@ class TaskSchedulingContentionTest {
     @Test
     void multipleReadyBatchTasksCompeteForWorkerPoolWithoutDuplicateLeaseOrLostReadyWork() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-a", "ctx-a", "us");
-        harness.addWorkerWithContext("worker-b", "ctx-b", "us");
+        harness.addWorker("worker-a", "us");
+        harness.addWorker("worker-b", "us");
         Task firstTask = harness.createReadyBatchTask("pool-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("pool-second", List.of(harness.item("second")));
         Task thirdTask = harness.createReadyBatchTask("pool-third", List.of(harness.item("third")));
@@ -151,7 +151,7 @@ class TaskSchedulingContentionTest {
     void largeBulkTaskIsCappedAndLeavesWorkersForInteractiveTask() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         for (int i = 0; i < 25; i++) {
-            harness.addWorkerWithContext("worker-budget-" + i, "ctx-budget-" + i, "us");
+            harness.addWorker("worker-budget-" + i, "us");
         }
         List<java.util.Map<String, Object>> bulkItems = new java.util.ArrayList<>();
         for (int i = 0; i < 100; i++) {
@@ -187,7 +187,7 @@ class TaskSchedulingContentionTest {
     @Test
     void pausedBlockedAndTerminatedTasksDoNotDispatchEvenWhenReadyWorkExists() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-gate", "ctx-gate", "us");
+        harness.addWorker("worker-gate", "us");
         Task pausedTask = harness.createReadyBatchTask("paused-gate", List.of(harness.item("paused")));
         Task blockedTask = harness.createReadyBatchTask("blocked-gate", List.of(harness.item("blocked")));
         Task terminalTask = harness.createReadyBatchTask("terminal-gate", List.of(harness.item("terminal")));
@@ -214,7 +214,7 @@ class TaskSchedulingContentionTest {
     @Test
     void pausedWaitingTaskDoesNotAcquireReleasedResourceUntilResumed() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task runningTask = harness.createReadyBatchTask("pause-wait-running", List.of(harness.item("running")));
         Task waitingTask = harness.createReadyBatchTask("pause-wait-waiting", List.of(harness.item("waiting")));
 
@@ -252,7 +252,7 @@ class TaskSchedulingContentionTest {
     @Test
     void blockedWaitingTaskDoesNotAcquireReleasedResourceAndNextReadyTaskCanCompete() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task runningTask = harness.createReadyBatchTask("block-wait-running", List.of(harness.item("running")));
         Task blockedTask = harness.createReadyBatchTask("block-wait-blocked", List.of(harness.item("blocked")));
         Task nextReadyTask = harness.createReadyBatchTask("block-wait-next-ready", List.of(harness.item("next")));

@@ -1,7 +1,6 @@
 package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassRuntimeControl;
-import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
@@ -9,7 +8,6 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.storage.rule.RuleDefinition;
 import org.junit.jupiter.api.Test;
@@ -42,7 +40,6 @@ class DevDemoBootstrapDataProviderTest {
         provider.loadInto(runtime);
 
         assertEquals(4, runtime.workers.size());
-        assertEquals(4, runtime.workerContexts.size());
         assertEquals(12, runtime.createdTasks.size());
         assertEquals(12, runtime.appendRequests.size());
         assertEquals(12, runtime.sealedTaskIds.size());
@@ -75,15 +72,13 @@ class DevDemoBootstrapDataProviderTest {
         WorkerRegistration firstWorker = runtime.workers.get(0);
         assertTrue(firstWorker.getEventBindings().stream()
                 .allMatch(binding -> binding.getProjectCodes().containsAll(List.of("demoApp", "demoOps"))));
-
-        WorkerContextRegistration firstContext = runtime.workerContexts.get(0);
-        assertEquals(Set.of("us"), firstContext.getRoutingTags());
+        assertEquals("us", firstWorker.getAttributes().get("country"));
+        assertTrue(firstWorker.getAttributes().get("routingTags").contains("us"));
     }
 
-    private static final class RecordingRuntime implements MassRuntimeControl, WorkerContextCompatibilityOperations {
+    private static final class RecordingRuntime implements MassRuntimeControl {
 
         private final List<WorkerRegistration> workers = new ArrayList<>();
-        private final List<WorkerContextRegistration> workerContexts = new ArrayList<>();
         private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
         private final List<MassTaskItemBatchAppendRequest> appendRequests = new ArrayList<>();
         private final List<String> approvedTaskIds = new ArrayList<>();
@@ -183,26 +178,6 @@ class DevDemoBootstrapDataProviderTest {
         @Override
         public void registerWorker(WorkerRegistration request) {
             workers.add(request);
-        }
-
-        @Override
-        public void registerWorkerContext(WorkerContextRegistration request) {
-            workerContexts.add(request);
-        }
-
-        @Override
-        public List<com.xa.mass.sdk.model.WorkerContextSnapshot> getAllWorkerContexts() {
-            return List.of();
-        }
-
-        @Override
-        public List<com.xa.mass.sdk.model.WorkerContextSnapshot> getWorkerContexts(String workerId) {
-            return List.of();
-        }
-
-        @Override
-        public com.xa.mass.sdk.model.WorkerContextSnapshot getWorkerContextById(String workerContextId) {
-            return null;
         }
 
         @Override

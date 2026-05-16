@@ -3,7 +3,6 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -23,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -61,8 +59,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
             RuntimeTaskSnapshot secondTerminal = waitForRuntimeTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
             assertEquals(1, secondTerminal.stats().successCount());
 
-            WorkerContextSnapshot workerContext = app.getWorkerContexts(workerId).get(0);
-            assertEquals("IDLE", workerContext.getStatus());
+            assertEquals(0, secondTerminal.activeLeases().size());
         } finally {
             client.disconnect();
         }

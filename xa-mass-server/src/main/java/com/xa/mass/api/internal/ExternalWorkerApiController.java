@@ -6,9 +6,7 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.*;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.WorkerClientOperations;
-import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.WorkerRegistryOperations;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -17,13 +15,11 @@ import com.xa.mass.transport.model.TaskResultReport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/worker-api/v1")
@@ -34,29 +30,14 @@ public class ExternalWorkerApiController {
 
     private final WorkerRegistryOperations workerRegistry;
     private final WorkerClientOperations workerClient;
-    private final WorkerContextCompatibilityOperations workerContextCompatibility;
     private final ApiAuthorizationService apiAuthorizationService;
 
     @Autowired
     public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
                                        WorkerClientOperations workerClient,
-                                       ObjectProvider<WorkerContextCompatibilityOperations> workerContextCompatibilityProvider,
-                                       ApiAuthorizationService apiAuthorizationService) {
-        this(
-                workerRegistry,
-                workerClient,
-                workerContextCompatibilityProvider == null ? null : workerContextCompatibilityProvider.getIfAvailable(),
-                apiAuthorizationService
-        );
-    }
-
-    public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
-                                       WorkerClientOperations workerClient,
-                                       WorkerContextCompatibilityOperations workerContextCompatibility,
                                        ApiAuthorizationService apiAuthorizationService) {
         this.workerRegistry = workerRegistry;
         this.workerClient = workerClient;
-        this.workerContextCompatibility = workerContextCompatibility;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
     }
 
@@ -92,42 +73,6 @@ public class ExternalWorkerApiController {
                 "adapterId", workerClient.getWorkerAdapterId(workerId),
                 "transportHint", transportHint,
                 "eventBindings", request.getEventBindings()
-        ));
-    }
-
-    @PostMapping("/workers/{workerId}/contexts")
-    @Operation(
-            summary = "Register legacy worker context",
-            description = "Compatibility-only WorkerContext registration. New external workers should declare capability through worker eventBindings and may skip this endpoint.",
-            deprecated = true
-    )
-    public ApiResponse<Map<String, Object>> registerWorkerContextCompatibility(
-            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable String workerId,
-            @RequestBody ExternalWorkerContextRegisterApiRequest requestBody) {
-        WorkerContextCompatibilityOperations compatibility = requireWorkerContextCompatibility();
-        validateContextRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
-                apiKeyHeader,
-                authorizationHeader,
-                ApiSecurityScenario.WORKER_CONTEXT_REGISTER,
-                workerId,
-                blankToNull(requestBody.getProject()),
-                null
-        );
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
-        WorkerContextRegistration request = WorkerContextRegistration.builder()
-                .workerContextId(requireNonBlank(requestBody.getWorkerContextId(), "workerContextId"))
-                .workerId(boundWorkerId)
-                .project(blankToNull(requestBody.getProject()))
-                .routingTags(requestBody.getRoutingTags() == null ? Set.of() : requestBody.getRoutingTags())
-                .attributes(requestBody.getAttributes())
-                .build();
-        compatibility.registerWorkerContext(request);
-        return ApiResponse.success(Map.of(
-                "workerContextId", request.getWorkerContextId(),
-                "workerId", request.getWorkerId()
         ));
     }
 
@@ -258,16 +203,6 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private void validateContextRequest(ExternalWorkerContextRegisterApiRequest requestBody) {
-        if (requestBody == null) {
-            throw new IllegalArgumentException("worker context register request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker context register fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
-        }
-    }
-
     private void validatePresenceRequest(ExternalWorkerPresenceApiRequest requestBody) {
         if (requestBody != null && requestBody.hasUnknownFields()) {
             throw new IllegalArgumentException("Unsupported worker presence fields: "
@@ -322,13 +257,6 @@ public class ExternalWorkerApiController {
         throw new IllegalStateException("External worker API " + operation
                 + " only supports polling workers; worker "
                 + normalizedWorkerId + " uses transport '" + transportHint + "'");
-    }
-
-    private WorkerContextCompatibilityOperations requireWorkerContextCompatibility() {
-        if (workerContextCompatibility != null) {
-            return workerContextCompatibility;
-        }
-        throw new IllegalStateException("WorkerContext compatibility surface is not available");
     }
 
     private List<WorkerEventBinding> toEventBindings(List<ExternalWorkerEventBindingApiRequest> requests) {

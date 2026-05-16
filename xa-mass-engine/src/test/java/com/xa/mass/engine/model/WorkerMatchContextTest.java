@@ -1,11 +1,9 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import org.junit.jupiter.api.Test;
@@ -19,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class WorkerMatchContextTest {
 
     @Test
-    void contextUsesWorkerLevelSchedulingFieldsWhenLegacyContextIsPresent() {
+    void contextUsesWorkerLevelSchedulingFields() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-1");
         worker.setStatus(WorkerStatus.ONLINE);
@@ -27,21 +25,13 @@ public class WorkerMatchContextTest {
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setAttributes(Map.of("pool", "warmup", "country", "us", "routingTags", "shared,us"));
 
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-1");
-        workerContext.setWorkerId("worker-1");
-        workerContext.setProject("demoApp");
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerContext.setRoutingTags(Set.of("us"));
-        workerContext.setAttributes(Map.of("pool", "primary", "country", "us"));
-
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, workerContext), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
 
         assertEquals(Map.of("pool", "warmup", "country", "us", "routingTags", "shared,us"),
                 context.getContext().get("workerAttributes"));
@@ -90,7 +80,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
 
         assertEquals("worker-2", context.getContext().get("workerSchedulingResourceId"));
         assertEquals(null, context.getContext().get("workerSchedulingProject"));
@@ -122,7 +112,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
 
         assertEquals("worker-worker-attrs", context.getContext().get("workerSchedulingResourceId"));
         assertEquals(Set.of("shared", "us"), context.getContext().get("workerSchedulingRoutingTags"));
@@ -147,7 +137,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("_sdk", Map.of("eventCode", "demo.dispatch")));
         task.setStatus(TaskStatus.READY);
 
-        WorkerSchedulingCandidate candidate = candidate(worker, null);
+        WorkerSchedulingCandidate candidate = candidate(worker);
         WorkerMatchContext context = new WorkerMatchContext(candidate, task);
         Map<String, Object> snapshot = WorkerMatchContext.contextSnapshot(candidate, task);
 
@@ -161,18 +151,12 @@ public class WorkerMatchContextTest {
     }
 
     @Test
-    void legacyWorkerContextStateDoesNotDriveRuleContextResourceState() {
+    void workerSchedulingResourceStateComesFromLoadView() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setWorkerGroupId("us");
         worker.setSupportedProjects(List.of("demoApp"));
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-3");
-        workerContext.setWorkerId("worker-3");
-        workerContext.setStatus(WorkerContextStatus.RESERVED);
-        workerContext.setRoutingTags(Set.of("us"));
 
         Task task = new Task();
         task.setTid("task-3");
@@ -180,7 +164,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, workerContext), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
 
         assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAllocatable"));
         assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAvailable"));
@@ -204,7 +188,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker, null), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
 
         assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(false, context.getContext().get("workerSchedulingMatchesRoutingCode"));
@@ -227,10 +211,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
-        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
-                worker,
-                null,
-                WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
                 false,
                 new WorkerLoadSnapshot("worker-5", 3, 1, 2)
@@ -248,10 +229,10 @@ public class WorkerMatchContextTest {
         assertEquals(2.0, context.getContext().get("estimatedLoadRatio"));
     }
 
-    private WorkerSchedulingCandidate candidate(Worker worker, WorkerContext workerContext) {
+    private WorkerSchedulingCandidate candidate(Worker worker) {
         return new WorkerSchedulingCandidate(
                 worker,
-                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
         );
     }
 

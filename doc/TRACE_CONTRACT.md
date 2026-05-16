@@ -83,6 +83,11 @@ Current stable event types:
 - `WORKER_ONLINE`
 - `WORKER_OFFLINE`
 
+`WORKER_CONTEXT_STATUS_TRANSITION` remains a legacy compatibility event for
+older diagnostics and migration verification. It is not scheduling proof for
+new engine behavior; current scheduling analysis must prefer worker match,
+worker lock/resource, runtime lease, and worker scheduling evidence.
+
 Do not introduce synonym drift such as `*_CHANGED` beside `*_TRANSITION`, or
 parallel "summary" and "snapshot" names for the same semantic event.
 
@@ -139,7 +144,7 @@ Populate these when relevant:
 - task events: `identity.taskId`
 - task-message events: `identity.taskId + identity.messageId`
 - attempt events: `identity.taskId + identity.messageId + identity.attemptId`
-- worker-context events: `identity.workerId + identity.workerContextId`
+- worker-context compatibility events: `identity.workerId + identity.workerContextId`
 - lease-specific events: `identity.leaseToken` when available
 
 ### Transition rules
@@ -152,7 +157,7 @@ policy transition outcome:
 - `TASK_WORK_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
 - `TASK_WORK_RETRY_RESET`
-- `WORKER_CONTEXT_STATUS_TRANSITION`
+- `WORKER_CONTEXT_STATUS_TRANSITION` for legacy compatibility traces only
 - `LEASE_EXPIRED`
 
 Use:
@@ -233,10 +238,13 @@ Schedule analysis currently reads these event types from canonical sink output:
 - `TASK_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_CLOSED`
-- `WORKER_CONTEXT_STATUS_TRANSITION`
 - `RESOURCE_RELEASED`
 - `RESOURCE_RELEASE_FAILED`
 - `LEASE_EXPIRED`
+
+Legacy traces may also contain `WORKER_CONTEXT_STATUS_TRANSITION`. Operators may
+use it to diagnose compatibility paths, but analyzers must not require it as
+proof of current scheduling, assignment, or release correctness.
 
 Stable assignment-oriented fields are:
 
@@ -254,7 +262,8 @@ Stable assignment-oriented fields are:
   `dispatchedMessageCount`, `usedWorkerCount`, `peakAssignedWorkerCount`
 - dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
   `unassignedMessageCount`, `uniqueWorkerCount`,
-  `uniqueWorkerContextCount`, `perWorkerBatchLimit`
+  `uniqueWorkerContextCount` as a legacy compatibility count when present,
+  `perWorkerBatchLimit`
 - worker scheduling evidence: `workerSchedulingResourceId`,
   `workerSchedulingRoutingTags`, `workerSchedulingAttributes`,
   `workerSchedulingMatchesRoutingCode`
@@ -275,8 +284,8 @@ default is `1`.
 `foreground` is the canonical read-side declaration of the task's current
 scheduling mode. It defaults to `true`. When `false`, current engine behavior
 skips the long-lived worker lock and relies on process-local capacity
-reservation for stateless worker sharing; WorkerContext-backed resources still
-follow their legacy context lifecycle and are not shared by this field alone.
+reservation for worker sharing. `WorkerContext` is not consulted as the active
+resource-sharing truth.
 `workerBudget`, `currentTaskWorkerCount`, and `budgetLimited` are the
 assignment policy budget evidence fields. A missing `workerBudget` means no
 allocation plan reached budget policy for that event, for example an early
@@ -324,7 +333,9 @@ The canonical model must be able to represent these flows:
     attempt trace but converges the logical message through retry reset or `FAILED + RETRY_EXHAUSTED`
 - attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
-- worker-context reservation / occupation / release transitions
+- worker lock, capacity reservation, and resource release transitions
+- legacy worker-context reservation / occupation / release transitions only
+  while compatibility traces still exist
 - worker lock acquire / release
 - worker match accept / reject
 - dispatch request / skip
@@ -343,7 +354,8 @@ Given a `taskId`, operators must be able to reconstruct:
 
 1. when the task entered `READY`
 2. why it entered `RUNNING`
-3. which worker/context each message used
+3. which worker/resource/attempt each message used; `workerContextId` is
+   optional legacy compatibility payload when present
 4. which attempt delivered each message and how that attempt finished
 5. whether retry happened
 6. why the task closed to `TERMINAL`

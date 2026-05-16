@@ -1,6 +1,6 @@
 # Policy Interaction Baseline
 
-Last updated: 2026-05-11
+Last updated: 2026-05-16
 
 Status: current engine policy baseline.
 
@@ -9,6 +9,8 @@ This file defines engine policy interaction guardrails only.
 Use with:
 
 - [README.md](./README.md)
+- [SCHEDULING_KERNEL_GUARDRAILS.md](./SCHEDULING_KERNEL_GUARDRAILS.md)
+- [WORKER_SCHEDULING_VIEW_BASELINE.md](./WORKER_SCHEDULING_VIEW_BASELINE.md)
 - [../doc/STATE_MACHINE_BASELINE.md](../doc/STATE_MACHINE_BASELINE.md)
 - [../doc/TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md)
 - [../doc/E2E_BASELINE.md](../doc/E2E_BASELINE.md)
@@ -17,10 +19,13 @@ Use with:
 
 | Layer | Owns | May decide | Must not decide |
 | --- | --- | --- | --- |
-| Matching policy | worker and worker-context eligibility | whether a candidate can match | task terminal state, retry, resource release |
+| Matching policy | worker scheduling-view eligibility | whether a candidate can match | task terminal state, retry, resource release, allocation budget |
+| Ranking policy | preference order among rule-passed candidates | candidate ordering by load, routing affinity, or future fairness hints | eligibility correctness, runtime claim, task mutation |
+| Acquisition/resource policy | candidate resource acquisition semantics | capacity reservation and whether an exclusive worker lock is required | candidate ranking, task terminal state, runtime work claim |
 | Assignment policy | current dispatch shape | requested match count, minimum-worker start gate, dispatch candidate selection | result interpretation, task terminal state, runtime claim/bind |
+| Worker budget policy | per-task worker budget | task-level worker ceiling and budget-exhausted decision | matching eligibility, runtime claim, result interpretation |
 | Attempt policy | attempt lifecycle | create, close, expire, revoke, retry reset eligibility | task-level terminal reason except by reporting attempt outcome |
-| Resource-release policy | runtime slot release | when a worker/context slot can be released | logical message finality |
+| Resource-release mechanism | runtime slot release | release reservations and exclusive worker locks selected by resource policy | logical message finality, refill formula |
 | Refill policy | continued dispatch | whether pending `INIT` messages should re-enter assignment | worker matching semantics |
 | Terminal policy | task closure | whether a task should close and why | worker selection, attempt mutation |
 | Intake policy | append window | whether work items can be appended or sealed | worker/resource state |
@@ -35,6 +40,14 @@ Rule:
 - `TaskWorkerAssignListener` owns assignment orchestration around allocation
   decisions, while `SimpleTaskDispatchBinder` owns runtime claim and dispatch
   binding after candidates are selected
+- `RuleBasedTaskWorkerMatchingStrategy` currently combines eligibility,
+  ranking, capacity reservation, and optional worker-lock acquisition. That is
+  the current acquisition path, not proof that reservation/lock acquisition is
+  pure matching policy. Future splits must preserve the same lifecycle boundary
+  instead of adding pass-through wrappers.
+- `WorkerDispatchResourcePolicy` decides exclusive-lock usage. `WorkerDispatchResourceReleaser`
+  executes cleanup mechanics. Listener and binder paths must not duplicate those
+  formulas or cleanup primitives.
 
 ## 2. Global Precedence
 
@@ -60,10 +73,15 @@ Any change to this precedence must update state machine, trace contract, and E2E
 - `Worker.status` is engine control-plane worker lifecycle truth, not transport reachability truth
 - transport reachability truth comes from transport presence and is consumed through engine reachability read seams
 - worker lock truth remains in `WorkerStorage` / `WorkerManager.isLocked(...)`
-- `Worker.attributes` and `WorkerContext.attributes` remain matching labels only
-- routing truth must come from explicit rules and worker-context signals, not `workerGroupId`
-- stateless workers may match only tasks whose rules do not require worker-context-specific routing
-- resource release must target the exact worker and worker-context bound by the active or closing attempt
+- `Worker.attributes` and `WorkerSchedulingView` fields are matching labels only;
+  they are not engine-owned device/account lifecycle state
+- routing truth must come from explicit rules and worker scheduling attributes,
+  not `workerGroupId`
+- WorkerContext is not scheduling truth in the engine hot path; remaining
+  `workerContextId` fields are compatibility/runtime/trace residue until those
+  contracts are retired
+- resource release must target the exact worker bound by the active or closing
+  attempt and must apply the current `WorkerDispatchResourcePolicy`
 
 ## 4. Risky Interaction Pairs
 
@@ -76,9 +94,11 @@ Any change to this precedence must update state machine, trace contract, and E2E
 | pause + callback | paused task fails to converge after dispatched callbacks finish |
 | block + callback | runtime block erases valid in-flight results |
 | manual terminal + late callback | terminal task reopens or counters mutate incorrectly |
-| worker without context + routing rule | stateless worker satisfies context-specific routing by accident |
+| worker scheduling attributes + routing rule | worker satisfies routing without explicit scheduling evidence |
 | min worker gate + delayed availability | task is orphaned after an insufficient match |
-| multi-context worker + lock release | releasing one context unlocks unrelated sibling context incorrectly |
+| shared-capacity worker + lock release | releasing one attempt frees an exclusive lock or reservation still needed by another active attempt |
+| ranking + acquisition | high-ranked candidates leak reservations or locks when later acquisition/bind steps fail |
+| worker budget + refill | large backlog repeatedly refills and starves another task despite budget evidence |
 
 ## 5. Trace And Test Rule
 

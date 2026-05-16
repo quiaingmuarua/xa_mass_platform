@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.AssignmentRecord;
@@ -28,11 +27,11 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-unreachable", "ctx-unreachable", "us");
-        harness.addWorkerWithContext("worker-locked", "ctx-locked", "us");
-        harness.addWorkerWithContext("worker-occupied", "ctx-occupied", "us", WorkerContextStatus.OCCUPIED);
-        harness.addWorkerWithContext("worker-routing-mismatch", "ctx-routing-mismatch", "gb");
-        harness.addWorkerWithContext("worker-eligible", "ctx-eligible", "us");
+        harness.addWorker("worker-unreachable", "us");
+        harness.addWorker("worker-locked", "us");
+        harness.addWorker("worker-occupied", "us");
+        harness.addWorker("worker-routing-mismatch", "gb");
+        harness.addWorker("worker-eligible", "us");
         assertTrue(harness.workerManager.tryLockWorker("worker-locked"));
         assertTrue(harness.workerManager.tryLockWorker("worker-occupied"));
 
@@ -63,8 +62,8 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-primary", "ctx-primary", "us");
-        harness.addWorkerWithContext("worker-backup", "ctx-backup", "us");
+        harness.addWorker("worker-primary", "us");
+        harness.addWorker("worker-backup", "us");
         Task firstTask = harness.createReadyBatchTask("reachability-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("reachability-second", List.of(harness.item("second")));
 
@@ -91,8 +90,8 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-stable", "ctx-stable", "us");
-        harness.addWorkerWithContext("worker-dropped", "ctx-dropped", "us");
+        harness.addWorker("worker-stable", "us");
+        harness.addWorker("worker-dropped", "us");
         Task task = harness.createBatchTask(
                 "minimum-worker-reachability-drop",
                 List.of(harness.item("alpha"), harness.item("beta")),
@@ -113,10 +112,8 @@ class TaskWorkerEligibilityTest {
         assertEquals(2, stats.readyCount());
         assertEquals(0, stats.inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-stable").getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-dropped").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-stable"));
+        assertFalse(harness.workerManager.isLocked("worker-dropped"));
         assertRejected(harness, task.getTid(), "worker-dropped",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
 

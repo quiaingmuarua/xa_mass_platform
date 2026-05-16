@@ -3,14 +3,12 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
@@ -30,7 +28,6 @@ import com.xa.mass.storage.rule.RuleType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -154,8 +151,8 @@ final class TaskSchedulingTestHarness {
         return taskManager.getTask(task.getTid());
     }
 
-    Worker addWorkerWithContext(String workerId, String contextId, String routingCode) {
-        return addWorkerWithContext(workerId, contextId, routingCode, Map.of());
+    Worker addWorker(String workerId, String routingCode) {
+        return addWorker(workerId, routingCode, Map.of());
     }
 
     Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
@@ -165,34 +162,13 @@ final class TaskSchedulingTestHarness {
         return worker;
     }
 
-    Worker addWorkerWithContext(String workerId,
-                                String contextId,
-                                String routingCode,
-                                Map<String, String> attributes) {
+    Worker addWorker(String workerId,
+                     String routingCode,
+                     Map<String, String> attributes) {
         Worker worker = worker(workerId);
         worker.setAttributes(workerAttributes(routingCode, attributes));
         workerManager.addWorker(worker);
-        workerManager.addWorkerContext(workerContext(workerId, contextId, routingCode, WorkerContextStatus.IDLE));
         return worker;
-    }
-
-    Worker addWorkerWithContext(String workerId,
-                                String contextId,
-                                String routingCode,
-                                WorkerContextStatus status) {
-        Worker worker = worker(workerId);
-        worker.setAttributes(workerAttributes(routingCode, Map.of()));
-        workerManager.addWorker(worker);
-        WorkerContext context = workerContext(workerId, contextId, routingCode, status);
-        if (status == WorkerContextStatus.OCCUPIED || status == WorkerContextStatus.RESERVED) {
-            context.setLastBindTaskId("other-task");
-        }
-        workerManager.addWorkerContext(context);
-        return worker;
-    }
-
-    void addContextToWorker(String workerId, String contextId, String routingCode) {
-        workerManager.addWorkerContext(workerContext(workerId, contextId, routingCode, WorkerContextStatus.IDLE));
     }
 
     TaskWorkStats stats(String taskId) {
@@ -255,19 +231,6 @@ final class TaskSchedulingTestHarness {
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of());
         return worker;
-    }
-
-    private WorkerContext workerContext(String workerId,
-                                        String workerContextId,
-                                        String routingCode,
-                                        WorkerContextStatus status) {
-        WorkerContext context = new WorkerContext();
-        context.setWorkerId(workerId);
-        context.setWorkerContextId(workerContextId);
-        context.setStatus(status);
-        context.setRoutingTags(Set.of("shared", routingCode));
-        context.setAttributes(Map.of("country", routingCode));
-        return context;
     }
 
     private Map<String, String> workerAttributes(String routingCode, Map<String, String> attributes) {

@@ -31,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -71,7 +70,6 @@ class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
 
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
             assertTrue(List.of("EXPIRED", "FAILED").contains(String.valueOf(firstTerminal.messages().get(0).get("status"))));
-            assertEquals("IDLE", app.getWorkerContexts(workerId).get(0).getStatus());
 
             String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
             Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
@@ -85,7 +83,6 @@ class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
             Map<String, Object> secondTerminate = terminateTask(secondTaskId);
             assertApiOk(secondTerminate);
             waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-            assertEquals("IDLE", app.getWorkerContexts(workerId).get(0).getStatus());
         } finally {
             client.disconnect();
         }

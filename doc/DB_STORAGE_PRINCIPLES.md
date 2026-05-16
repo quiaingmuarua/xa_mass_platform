@@ -48,11 +48,6 @@ Current default scope:
   - supported projects and supported event codes
   - adapter / transport hint
   - static worker attributes
-- worker-context registration truth
-  - worker-context identity
-  - owning worker identity
-  - project/routing tags
-  - static attributes and expiry configuration
 - rule definitions
 - principal credential truth
   - principal identity and type
@@ -80,7 +75,7 @@ Do not use the control-plane DB for:
 - heartbeat streams
 - worker online/offline churn
 - worker lock churn
-- worker-context occupancy churn
+- worker capacity/reservation churn or any replacement runtime resource churn
 - poll / dispatch / callback event streams
 - manual debug/control side-channel history
 - cross-task failure analytics
@@ -104,11 +99,11 @@ placement authoritative.
 The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 
 - JDBC persists task truth
-- JDBC persists worker/worker-context registration truth
+- JDBC persists worker registration truth
 - JDBC persists rule definitions
 - JDBC persists principal credential truth
 - runtime message/attempt detail stays process-local
-- runtime worker online/lock/context occupancy state stays process-local
+- runtime worker online/lock/capacity/reservation state stays process-local
 - engine assembly must wire `TaskDetailStore` explicitly instead of inferring it from `TaskStorage`
 - startup cleanup may repair runtime residue, but it does not make JDBC the
   owner of queue, lease, or inflight execution truth

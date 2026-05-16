@@ -9,7 +9,6 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -25,7 +24,6 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -40,7 +38,6 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -82,13 +79,6 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2
                         "country", "us",
                         "region", "us"
                 ))
-                .build());
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId("ctx-" + workerId)
-                .workerId(workerId)
-                .project("crawlerApp")
-                .routingTags(Set.of("web", "us"))
-                .attributes(Map.of("region", "us"))
                 .build());
 
         assertFalse(app.isWorkerOnline(workerId), "SDK registration must not create transport presence");

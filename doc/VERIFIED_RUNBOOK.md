@@ -170,16 +170,20 @@ Result write-back and closure:
 - success, retry exhaustion, expiry, and manual terminal drain close the logical message.
 - once all engine runtime work items are final, the engine's internal task-progress convergence path closes any non-final task to `TERMINAL`.
 
-Worker and worker-context truth:
+Worker scheduling truth:
 
 - `Worker.status` is the worker model status on the control-plane side. Dispatch
   online/reachability truth comes from transport presence consumed through
   `WorkerReachabilityView`.
-- worker lock truth lives in `WorkerStorage` and is read through `WorkerManager.isLocked(...)`; the
-  server JDBC adapter intentionally keeps lock churn process-local instead of
-  persisting it in the control-plane DB.
-- `WorkerContext` is optional; stateless workers are verified for tasks without context-specific routing.
-- `WorkerContext.workerId` is the owner truth for context attachment.
+- worker lock truth is runtime/resource state and must stay out of the
+  control-plane DB. The server JDBC adapter intentionally keeps lock churn
+  process-local instead of persisting it in durable storage.
+- worker capability truth comes from worker registration and event bindings.
+  Routing uses worker scheduling attributes/tags and runtime reachability/load
+  facts.
+- `WorkerContext` is legacy compatibility residue where still present. It is
+  not engine scheduling truth, and new verification should not depend on
+  context-specific routing.
 
 Open-ended and targeted worker debug:
 
@@ -295,4 +299,7 @@ Focused command used for current high-signal scheduling-side runtime coverage:
 mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Coverage: worker/context routing, stateless workers, delayed availability, targeted worker debug, control-console routing, and matching-rule support checks around the representative scheduling path.
+Coverage: worker scheduling/routing, delayed availability, targeted worker
+debug, control-console routing, matching-rule support checks, and retained
+legacy WorkerContext compatibility tests around the representative scheduling
+path.

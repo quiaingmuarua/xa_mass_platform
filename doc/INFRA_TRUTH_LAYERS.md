@@ -30,14 +30,14 @@ more implemented than another.
 | Concern | Canonical layer | Why | Current allowed temporary placement | Must not drift into |
 | --- | --- | --- | --- | --- |
 | task shell truth (`Task` id/project/status/sharedConfig/terminal reason) | control-plane storage | restart recovery and operator task truth depend on it | none beyond caches | trace-only logs or hot queue state |
-| worker registration / worker-context registration | control-plane storage | stable registration truth | runtime cache/projection for lookup speed | transient transport events |
+| worker registration | control-plane storage | stable worker identity and declared scheduling capability truth | runtime cache/projection for lookup speed | transient transport events or active scheduling truth |
 | worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker registration or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |
 | ready queue membership | runtime state | hot-path scheduling state | none beyond bounded mirrors | JDBC durable truth |
 | delayed visibility / retry timing | runtime state | runtime scheduling truth | bounded mirrors for debug only | JDBC durable truth |
 | active lease ownership / expiry | runtime state | hot-path callback and expiry truth | bounded mirrors for debug only | JDBC durable truth |
-| worker lock / occupancy / online churn | runtime state | volatile worker execution state | bounded in-process residue | JDBC durable truth |
+| worker lock / capacity / reservation / online churn | runtime state | volatile worker execution state | bounded in-process residue | JDBC durable truth |
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
 | per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded projection residue | JDBC durable event history |
 | per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded projection residue | JDBC durable event history |
@@ -71,7 +71,7 @@ design and must not be implied by result ingress or projection residue.
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task/worker/rule/principal truth | correct control-plane role |
 | JDBC-local message/attempt projections | process-local compatibility residue | not a storage expansion license |
-| JDBC-local worker/context/lock residue | process-local runtime residue | not durable worker-runtime truth |
+| JDBC-local worker-context/lock residue | process-local compatibility/runtime residue | not durable worker-runtime truth; WorkerContext residue must not become scheduling truth |
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
 | memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |

@@ -60,10 +60,7 @@ class DefaultWorkerCandidateRankerTest {
         if (routingTags != null) {
             worker.setAttributes(Map.of("routingTags", String.join(",", routingTags)));
         }
-        WorkerSchedulingView view = WorkerSchedulingView.from(
-                worker,
-                null,
-                WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView view = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
                 false,
                 new WorkerLoadSnapshot(workerId, activeLeaseCount, 0, declaredCapacity)

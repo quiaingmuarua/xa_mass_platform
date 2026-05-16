@@ -171,8 +171,8 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         snapshot.setReservedCount(view.reservedCount());
         snapshot.setDeclaredCapacity(view.declaredCapacity());
         snapshot.setEstimatedLoadRatio(view.estimatedLoadRatio());
-        snapshot.setHasLegacyWorkerContext(view.hasWorkerContext());
-        snapshot.setLegacyWorkerContextId(view.workerContextId());
+        snapshot.setHasLegacyWorkerContext(false);
+        snapshot.setLegacyWorkerContextId(null);
         snapshot.setSchedulingResourceId(view.schedulingResourceId());
         snapshot.setSchedulingProject(view.schedulingProject());
         snapshot.setSchedulingRoutingTags(view.schedulingRoutingTags());

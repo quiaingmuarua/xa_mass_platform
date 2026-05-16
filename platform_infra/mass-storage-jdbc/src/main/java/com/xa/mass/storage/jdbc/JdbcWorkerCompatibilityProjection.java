@@ -1,7 +1,6 @@
 package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -22,8 +21,6 @@ import java.util.stream.Collectors;
 final class JdbcWorkerCompatibilityProjection {
 
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
-    private final Map<String, LinkedHashMap<String, WorkerContext>> workerContextsByWorker = new ConcurrentHashMap<>();
-    private final Map<String, String> workerIdByContextId = new ConcurrentHashMap<>();
     private final Map<String, LinkedHashSet<String>> workerIdsByProject = new ConcurrentHashMap<>();
     private final Map<String, LinkedHashSet<String>> workerIdsByEventCode = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> indexedProjectsByWorker = new ConcurrentHashMap<>();
@@ -59,10 +56,6 @@ final class JdbcWorkerCompatibilityProjection {
             Worker removed = workers.remove(workerId);
             if (removed != null) {
                 removeWorkerIndexes(removed);
-                LinkedHashMap<String, WorkerContext> removedContexts = workerContextsByWorker.remove(workerId);
-                if (removedContexts != null) {
-                    removedContexts.keySet().forEach(workerIdByContextId::remove);
-                }
                 lockedWorkers.remove(workerId);
             }
             return removed != null;
@@ -97,127 +90,6 @@ final class JdbcWorkerCompatibilityProjection {
         return new ArrayList<>(workers.values());
     }
 
-    void addWorkerContext(WorkerContext workerContext) {
-        synchronized (this) {
-            if (workerContext == null) {
-                throw new IllegalArgumentException("workerContext is required");
-            }
-            String workerId = workerContext.getWorkerId();
-            if (workerId == null || workerId.isBlank()) {
-                throw new IllegalArgumentException("workerId is required on workerContext");
-            }
-            LinkedHashMap<String, WorkerContext> contexts =
-                    workerContextsByWorker.computeIfAbsent(workerId, ignored -> new LinkedHashMap<>());
-            String workerContextId = workerContext.getWorkerContextId();
-            if (workerContextId == null || workerContextId.isBlank()) {
-                throw new IllegalArgumentException("workerContextId is required");
-            }
-
-            String previousWorkerId = workerIdByContextId.put(workerContextId, workerId);
-            if (previousWorkerId != null && !previousWorkerId.equals(workerId)) {
-                LinkedHashMap<String, WorkerContext> previousContexts = workerContextsByWorker.get(previousWorkerId);
-                if (previousContexts != null) {
-                    previousContexts.remove(workerContextId);
-                    if (previousContexts.isEmpty()) {
-                        workerContextsByWorker.remove(previousWorkerId);
-                    }
-                }
-            }
-
-            contexts.put(workerContextId, workerContext);
-        }
-    }
-
-    List<WorkerContext> getWorkerContexts(String workerId) {
-        synchronized (this) {
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            if (contexts == null || contexts.isEmpty()) {
-                return List.of();
-            }
-            return new ArrayList<>(contexts.values());
-        }
-    }
-
-    Optional<WorkerContext> getWorkerContextById(String workerContextId) {
-        synchronized (this) {
-            String workerId = workerIdByContextId.get(workerContextId);
-            if (workerId == null) {
-                return Optional.empty();
-            }
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            if (contexts == null) {
-                return Optional.empty();
-            }
-            return Optional.ofNullable(contexts.get(workerContextId));
-        }
-    }
-
-    boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
-        synchronized (this) {
-            if (workerContext == null) {
-                return false;
-            }
-            String workerId = workerIdByContextId.get(workerContextId);
-            if (workerId == null) {
-                return false;
-            }
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            if (contexts == null || !contexts.containsKey(workerContextId)) {
-                return false;
-            }
-
-            String newContextId = workerContext.getWorkerContextId();
-            if (newContextId == null || newContextId.isBlank()) {
-                return false;
-            }
-            String ownerWorkerId = workerContext.getWorkerId();
-            if (ownerWorkerId == null || ownerWorkerId.isBlank() || !workerId.equals(ownerWorkerId)) {
-                return false;
-            }
-            if (!workerContextId.equals(newContextId)) {
-                contexts.remove(workerContextId);
-                workerIdByContextId.remove(workerContextId);
-            }
-            contexts.put(newContextId, workerContext);
-            workerIdByContextId.put(newContextId, workerId);
-            return true;
-        }
-    }
-
-    boolean deleteWorkerContextById(String workerContextId) {
-        synchronized (this) {
-            String workerId = workerIdByContextId.get(workerContextId);
-            if (workerId == null) {
-                return false;
-            }
-            return removeWorkerContextById(workerId, workerContextId);
-        }
-    }
-
-    List<WorkerContext> getAllWorkerContexts() {
-        synchronized (this) {
-            return workerContextsByWorker.values().stream()
-                    .flatMap(contexts -> contexts.values().stream())
-                    .collect(Collectors.toCollection(ArrayList::new));
-        }
-    }
-
-    List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
-        if (workerIds == null || workerIds.isEmpty()) {
-            return List.of();
-        }
-        synchronized (this) {
-            List<WorkerContext> result = new ArrayList<>();
-            for (String workerId : workerIds) {
-                LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-                if (contexts != null) {
-                    result.addAll(contexts.values());
-                }
-            }
-            return result;
-        }
-    }
-
     boolean tryLockWorker(String workerId) {
         return lockedWorkers.add(workerId);
     }
@@ -232,22 +104,6 @@ final class JdbcWorkerCompatibilityProjection {
 
     List<String> getLockedWorkers() {
         return new ArrayList<>(lockedWorkers);
-    }
-
-    private boolean removeWorkerContextById(String workerId, String workerContextId) {
-        LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-        if (contexts == null) {
-            return false;
-        }
-        WorkerContext removed = contexts.remove(workerContextId);
-        if (removed == null) {
-            return false;
-        }
-        workerIdByContextId.remove(workerContextId);
-        if (contexts.isEmpty()) {
-            workerContextsByWorker.remove(workerId);
-        }
-        return true;
     }
 
     private void addWorkerIndexes(Worker worker) {

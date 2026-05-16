@@ -13,7 +13,6 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -256,12 +255,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 ))
                 .transportHint(WorkerTransportHints.REALTIME)
                 .adapterId("websocket")
-                .build());
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId(workerId + "-context")
-                .workerId(workerId)
-                .project(projectCode)
-                .routingTags(Set.of(routingCode))
+                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
     }
 
@@ -281,12 +275,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 ))
                 .transportHint(WorkerTransportHints.POLLING)
                 .adapterId("polling")
-                .build());
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId(workerId + "-context")
-                .workerId(workerId)
-                .project(projectCode)
-                .routingTags(Set.of(routingCode))
+                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
     }
 

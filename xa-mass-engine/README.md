@@ -23,13 +23,62 @@ covers engine-owned assets and when to use them.
 Assignment allocation is engine-internal policy ownership:
 
 - `AssignmentAllocationPolicy` owns this round's allocation decision: requested
-  match count, minimum-worker start gate, and the matched worker-contexts that
+  match count, minimum-worker start gate, and the matched worker candidates that
   may enter dispatch.
 - `TaskWorkerAssignListener` owns orchestration around that decision: invoking
   matching, unlocking skipped/surplus workers, task status transition, assignment
   trace, task update, and assignment event publication.
 - `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding only; it is
   not the assignment allocation policy owner.
+
+## Fixed Scheduling Mainlines
+
+These are the current engine scheduling mainlines. Treat them as owner
+boundaries, not as a promise that the current package layout is final.
+
+```text
+Assignment signal admission
+  -> TaskAssignWorker
+
+Task-level assignment orchestration
+  -> TaskWorkerAssignListener
+  -> AssignmentAllocationPolicy
+  -> matching/acquisition path
+  -> SimpleTaskDispatchBinder
+
+Worker scheduling read model
+  -> WorkerSchedulingCandidateEnumerator
+  -> WorkerSchedulingView
+  -> WorkerMatchContext
+
+Eligibility and preference
+  -> worker prefilter + QLExpress rules
+  -> WorkerCandidateRanker
+
+Allocation and budget
+  -> AssignmentAllocationPolicy
+  -> WorkerBudgetPolicy
+
+Resource usage and cleanup
+  -> WorkerDispatchResourcePolicy
+  -> WorkerDispatchResourceReleaser
+  -> AssignmentRefillPolicy
+
+Runtime and result truth
+  -> TaskWorkRuntime
+  -> TaskResultRuntime
+```
+
+The current `RuleBasedTaskWorkerMatchingStrategy` still combines rule-based
+eligibility, ranking, capacity reservation, and optional worker-lock acquisition.
+That is the current acquisition path, not a pure policy seam. Do not add more
+mechanism work to it casually; if future distributed capacity or worker-manager
+separation requires a split, introduce a real acquisition owner rather than a
+pass-through wrapper.
+
+WorkerContext is not scheduling truth in the engine hot path. Remaining
+`workerContextId` fields are compatibility/runtime/trace residue until the
+lower-level contracts are retired.
 
 ## Scheduling Core Test Intent
 
@@ -39,7 +88,7 @@ Read this before interpreting engine tests.
 - `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
   a second implementation world
 - keep these tests local when the real question is:
-  - which worker/context is eligible
+  - which worker scheduling candidate is eligible
   - whether contention produces a conflict, retry, or redispatch
   - whether a task re-enters competition correctly after delay, retry, or lease expiry
   - whether contract-aware scheduling/finality rules stay correct
@@ -108,6 +157,9 @@ Keep these facts fixed unless the owning global baselines change:
   semantics must not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
+- fixed scheduling mainlines are documented in
+  `SCHEDULING_KERNEL_GUARDRAILS.md`; scheduling changes must preserve those
+  owner boundaries or update the owning baseline in the same change
 - `AssignmentAllocationPolicy` owns allocation shape for a task-level assignment
   attempt; `TaskWorkerAssignListener` keeps cross-aggregate orchestration and
   trace ownership around that policy decision
@@ -147,15 +199,12 @@ Keep these facts fixed unless the owning global baselines change:
   another assignment attempt; `TaskResourceReleaseListener` releases resources
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
-  whether a task/candidate uses the long-lived worker-level exclusive lock and
-  whether a dispatch attempt carries legacy `workerContextId` compatibility
-  identity from the scheduling view.
+  whether a task/candidate uses the long-lived worker-level exclusive lock.
   Matching, assignment listener cleanup, binder compensation, and resource
-  release consume this decision instead of each re-deriving foreground/context
-  behavior. Legacy WorkerContext-backed view evidence keeps the
-  exclusive worker lock even when the task declares `foreground=false`; only
-  stateless background candidates may share worker capacity without the
-  long-lived lock.
+  release consume this decision instead of each re-deriving foreground
+  behavior. WorkerContext identity is no longer a resource policy input; only
+  `foreground=true` keeps the long-lived lock, while `foreground=false` relies
+  on capacity reservation.
 - `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
   releasing worker reservations, conditionally unlocking exclusive worker
   locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
@@ -374,13 +423,14 @@ Useful starting tests:
 
 Current scheduling-matrix scenarios include:
 
-- multi-task contention on a single context and across a worker pool
-- worker/context eligibility rejection for unreachable, locked, occupied, routing-mismatch, and target-attribute mismatch candidates
+- multi-task contention on worker resources and across a worker pool
+- worker eligibility rejection for unreachable, locked, capacity-exhausted,
+  routing-mismatch, and target-attribute mismatch candidates
 - active contention after transport reachability drops, with backup-worker dispatch
 - reachability-aware minimum-worker gates that avoid half-dispatch when an eligible worker drops
 - retry expiry re-entering the competition pool when retry budget remains
 - retry-exhausted batch finality releasing resources for waiting work
-- delayed worker/context availability moving READY work into dispatch
+- delayed worker availability moving READY work into dispatch
 - paused waiting tasks staying out of competition until explicit resume
 - `BATCH` drain-to-terminal and `SESSION` queue-drain without auto-terminal
 - minimum-worker gate, target worker id, and targeted worker attributes under contention
@@ -422,6 +472,16 @@ Engine-local owner docs:
 - [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
   proposed plan for retiring WorkerContext from the scheduling kernel; planning
   material only, not implemented baseline behavior
+- [`WORKER_MANAGER_SPLIT_ROADMAP.md`](./WORKER_MANAGER_SPLIT_ROADMAP.md):
+  proposed next roadmap for moving worker registration, capability, lifecycle
+  administration, and worker command/state-report ownership out of the engine
+  kernel while keeping the first split in-process through SDK/server wiring.
+  Direction material only.
+- [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
+  separate north-star roadmap for future event envelope metadata, priority,
+  response, convergence, target-scope, queue-placement, and task-stage
+  direction. It is not implemented baseline behavior and must not preempt the
+  worker-manager split.
 
 Global baselines:
 

@@ -7,35 +7,24 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
  * Default resource usage semantics.
  *
  * <p>Foreground tasks keep the historical worker-level exclusive lock. Background
- * tasks rely on capacity reservation for stateless workers. A WorkerContext on a
- * candidate remains a legacy resource lifecycle payload until WorkerContext is
- * retired from the scheduling hot path.</p>
+ * tasks rely on capacity reservation. WorkerContext identity is no longer a
+ * resource policy input.</p>
  */
 public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResourcePolicy {
 
     @Override
     public WorkerDispatchResourceUsage usageForTask(Task task) {
-        return new WorkerDispatchResourceUsage(requiresExclusiveWorkerLock(task), false);
+        return new WorkerDispatchResourceUsage(requiresExclusiveWorkerLock(task));
     }
 
     @Override
     public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-        boolean legacyWorkerContextResource = candidate != null
-                && candidate.getSchedulingView() != null
-                && candidate.getSchedulingView().hasWorkerContext();
-        return new WorkerDispatchResourceUsage(
-                requiresExclusiveWorkerLock(task) || legacyWorkerContextResource,
-                legacyWorkerContextResource
-        );
+        return usageForTask(task);
     }
 
     @Override
     public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
-        boolean legacyWorkerContextResource = workerContextId != null && !workerContextId.isBlank();
-        return new WorkerDispatchResourceUsage(
-                requiresExclusiveWorkerLock(task) || legacyWorkerContextResource,
-                legacyWorkerContextResource
-        );
+        return usageForTask(task);
     }
 
     private boolean requiresExclusiveWorkerLock(Task task) {

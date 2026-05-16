@@ -1,7 +1,6 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
@@ -13,13 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class WorkerSchedulingCandidateTest {
 
     @Test
-    void retainsWorkerAndSchedulingViewWithLegacyContextEvidence() {
+    void retainsWorkerAndSchedulingViewWithoutContextIdentity() {
         Worker worker = worker("worker-1");
-        WorkerContext workerContext = context("ctx-1", "worker-1");
-        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
-                worker,
-                workerContext,
-                WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
                 false
         );
@@ -29,16 +24,13 @@ class WorkerSchedulingCandidateTest {
         assertSame(worker, candidate.getWorker());
         assertSame(schedulingView, candidate.getSchedulingView());
         assertEquals("worker-1", candidate.getWorkerId());
-        assertEquals("ctx-1", candidate.getWorkerContextId());
+        assertNull(candidate.getWorkerContextId());
     }
 
     @Test
     void supportsNullLegacyWorkerContext() {
         Worker worker = worker("worker-2");
-        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
-                worker,
-                null,
-                WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
                 false
         );
@@ -54,10 +46,7 @@ class WorkerSchedulingCandidateTest {
     @Test
     void rejectsMissingRequiredFields() {
         Worker worker = worker("worker-3");
-        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
-                worker,
-                null,
-                WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
                 false
         );
@@ -70,12 +59,5 @@ class WorkerSchedulingCandidateTest {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         return worker;
-    }
-
-    private WorkerContext context(String workerContextId, String workerId) {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId(workerContextId);
-        workerContext.setWorkerId(workerId);
-        return workerContext;
     }
 }

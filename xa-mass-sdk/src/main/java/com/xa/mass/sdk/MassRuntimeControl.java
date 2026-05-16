@@ -19,9 +19,9 @@ import java.util.Collection;
  * <p>External bootstrap code, dev shells, fixture loaders, and custom
  * embedders should depend on this interface instead of reaching into
  * engine/starter internals. It covers the full supported mutation surface
- * for managing workers, rules, and task lifecycle after startup.
- * WorkerContext bootstrap remains available only through
- * {@link WorkerContextCompatibilityOperations}.
+ * for managing workers, rules, and task lifecycle after startup. Worker
+ * scheduling capabilities are declared through {@link WorkerRegistration}
+ * attributes and event bindings.
  */
 public interface MassRuntimeControl {
 

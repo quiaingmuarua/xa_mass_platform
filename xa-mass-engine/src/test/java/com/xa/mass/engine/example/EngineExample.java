@@ -8,7 +8,6 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
@@ -41,9 +40,6 @@ public class EngineExample {
         List<Worker> workers = genMockWorker();
         workers.forEach(workerManager::addWorker);
 
-        List<WorkerContext> workerContexts = genMockWorkerContext();
-        workerContexts.forEach(workerManager::addWorkerContext);
-
         TaskShellCreateRequestDto taskDto = new TaskShellCreateRequestDto();
         taskDto.setSourceRef("demo-task");
         taskDto.setProject("demoApp");
@@ -58,10 +54,6 @@ public class EngineExample {
     }
 
     public static Task genMockTask() {
-        return null;
-    }
-
-    public static List<WorkerContext> genMockWorkerContext() {
         return null;
     }
 

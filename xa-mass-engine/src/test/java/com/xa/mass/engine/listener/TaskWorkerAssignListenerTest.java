@@ -3,7 +3,6 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -447,12 +446,9 @@ public class TaskWorkerAssignListenerTest {
     }
 
     private WorkerSchedulingCandidate matched(Worker worker, String workerContextId) {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerId(worker.getWorkerId());
-        workerContext.setWorkerContextId(workerContextId);
         return new WorkerSchedulingCandidate(
                 worker,
-                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
         );
     }
 
@@ -495,21 +491,19 @@ public class TaskWorkerAssignListenerTest {
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
-        private final WorkerDispatchResourcePolicy delegate = new DefaultWorkerDispatchResourcePolicy();
-
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForTask(task).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForCandidate(task, candidate).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
     }
 }

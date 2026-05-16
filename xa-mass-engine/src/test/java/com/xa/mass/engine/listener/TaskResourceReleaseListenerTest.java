@@ -52,8 +52,6 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).getWorkerContextById("wctx-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -72,7 +70,7 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
-    void terminalBackgroundTaskWithWorkerContextStillUnlocksWorker() {
+    void terminalBackgroundTaskWithWorkerContextDoesNotUnlockFromContextIdentity() {
         Task task = new Task();
         task.setTid("task-1");
         task.getExecutionSpec().setForeground(false);
@@ -82,8 +80,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager, never()).unlockWorker("worker-1");
     }
 
     @Test
@@ -112,8 +109,6 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager, never()).getWorkerContextById("wctx-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -132,7 +127,6 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
@@ -151,7 +145,6 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
@@ -197,7 +190,6 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -225,7 +217,6 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager, never()).unlockWorker("worker-1");
     }
 
@@ -274,7 +265,6 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -313,7 +303,6 @@ public class TaskResourceReleaseListenerTest {
                             && "WORKER_LOCK".equals(mdc.get("resourceKind")));
         }
 
-        verify(workerManager, never()).updateWorkerContextById(eq("wctx-1"), any());
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -351,22 +340,20 @@ public class TaskResourceReleaseListenerTest {
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
-        private final WorkerDispatchResourcePolicy delegate = new DefaultWorkerDispatchResourcePolicy();
-
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForTask(task).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForCandidate(Task task,
                                                             com.xa.mass.engine.model.WorkerSchedulingCandidate candidate) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForCandidate(task, candidate).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
     }
 }

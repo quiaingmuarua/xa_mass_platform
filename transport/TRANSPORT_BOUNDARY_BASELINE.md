@@ -29,7 +29,7 @@ Transport owns delivery mechanics for workers:
 
 Engine remains the owner of task lifecycle:
 
-- worker matching and worker-context locks
+- worker matching and runtime worker/resource locks or reservations
 - `TaskMsgAttempt` creation, lease, active-attempt truth, and closure
 - `TaskMsg` status transitions, retry, release, and terminal policy
 - lifecycle security decisions that mutate task state
@@ -196,7 +196,8 @@ Presence owner semantics are also part of the transport contract:
 `TaskDispatchItem` is currently a hybrid dispatch payload:
 
 - worker-facing payload fields: task id, message id, event code, input, shared config
-- runtime metadata fields: worker id, worker-context id, batch id, internal attempt id
+- runtime metadata fields: worker id, optional legacy worker-context id, batch
+  id, internal attempt id
 
 Dispatch input projection should be payload-shape driven. If transport needs to
 unwrap a worker-facing wrapper such as the current SDK `type=json,data=...` or

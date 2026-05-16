@@ -2,7 +2,6 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 
@@ -16,9 +15,9 @@ import java.util.Set;
 /**
  * Transitional worker-level scheduling read view.
  *
- * <p>During WorkerContext convergence, legacy context identity can still be
- * exposed for runtime/trace compatibility, but scheduling evidence is
- * worker-level.</p>
+ * <p>Scheduling evidence is worker-level. Lower-level runtime and trace rows
+ * may still carry {@code workerContextId} while compatibility records are being
+ * retired, but this view must not read the WorkerContext model.</p>
  */
 public final class WorkerSchedulingView {
     private final String workerId;
@@ -33,16 +32,12 @@ public final class WorkerSchedulingView {
     private final boolean workerLocked;
     private final WorkerLoadSnapshot workerLoad;
 
-    private final boolean hasWorkerContext;
-    private final String workerContextId;
-
     private final String schedulingResourceId;
     private final String schedulingProject;
     private final Set<String> schedulingRoutingTags;
     private final Map<String, String> schedulingAttributes;
 
     private WorkerSchedulingView(Worker worker,
-                                 WorkerContext workerContext,
                                  WorkerReachabilityState reachability,
                                  boolean dispatchEnabled,
                                  boolean workerLocked,
@@ -63,9 +58,6 @@ public final class WorkerSchedulingView {
         this.workerLocked = workerLocked;
         this.workerLoad = workerLoad != null ? workerLoad : WorkerLoadSnapshot.empty(worker.getWorkerId());
 
-        this.hasWorkerContext = workerContext != null;
-        this.workerContextId = workerContext != null ? workerContext.getWorkerContextId() : null;
-
         this.schedulingResourceId = workerId;
         this.schedulingProject = null;
         this.schedulingRoutingTags = workerRoutingTags(workerAttributes);
@@ -73,19 +65,17 @@ public final class WorkerSchedulingView {
     }
 
     public static WorkerSchedulingView from(Worker worker,
-                                            WorkerContext workerContext,
                                             WorkerReachabilityState reachability,
                                             boolean dispatchEnabled,
                                             boolean workerLocked) {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        return new WorkerSchedulingView(worker, workerContext, reachability, dispatchEnabled, workerLocked,
+        return new WorkerSchedulingView(worker, reachability, dispatchEnabled, workerLocked,
                 WorkerLoadSnapshot.empty(worker.getWorkerId()));
     }
 
     public static WorkerSchedulingView from(Worker worker,
-                                            WorkerContext workerContext,
                                             WorkerReachabilityState reachability,
                                             boolean dispatchEnabled,
                                             boolean workerLocked,
@@ -93,7 +83,7 @@ public final class WorkerSchedulingView {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        return new WorkerSchedulingView(worker, workerContext, reachability, dispatchEnabled, workerLocked, workerLoad);
+        return new WorkerSchedulingView(worker, reachability, dispatchEnabled, workerLocked, workerLoad);
     }
 
     public String workerId() {
@@ -166,14 +156,6 @@ public final class WorkerSchedulingView {
 
     public double estimatedLoadRatio() {
         return workerLoad.estimatedLoadRatio();
-    }
-
-    public boolean hasWorkerContext() {
-        return hasWorkerContext;
-    }
-
-    public String workerContextId() {
-        return workerContextId;
     }
 
     public boolean schedulingResourceAllocatable() {

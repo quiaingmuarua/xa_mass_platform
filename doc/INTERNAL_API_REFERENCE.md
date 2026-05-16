@@ -682,11 +682,18 @@ Notes:
 - joins worker state with current connection snapshots
 - `eventBindings` remains the richer capability read model
 
-### 5.7 List Worker Contexts
+### 5.7 Worker Context Runtime View
 
-- Method: `GET`
 - Path: `/api/v1/runtime/worker-contexts`
-- Status: `Implemented`
+- Status: `Removed`
+
+Notes:
+
+- `WorkerContext` is no longer a server/runtime CRUD or diagnostic resource
+- worker mainline visibility belongs to `/api/v1/runtime/workers` plus
+  transport/session diagnostics
+- scheduling proof should use worker attributes, event bindings, transport
+  presence, runtime load/resource traces, and canonical assignment trace rows
 
 ### 5.8 List Rules
 
@@ -726,19 +733,15 @@ Request notes:
 
 ### 6.2 Register Worker Context
 
-- Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}/contexts`
-- Status: `Implemented, compatibility-only`
+- Status: `Removed`
 
-Request notes:
+Notes:
 
-- `workerContextId` is required
-- this route is a WorkerContext compatibility path for legacy/context-aware
-  workers
-- new external workers should declare capability with
-  `/worker-api/v1/workers` `eventBindings` and may skip this API entirely
-- server wiring keeps this route on `WorkerContextCompatibilityOperations`, not
-  the worker registry/client mainline
+- external workers declare capability through `/worker-api/v1/workers`
+  `eventBindings`, worker attributes, and transport presence
+- account/device inventory belongs to worker-management/system-event ownership,
+  not to engine/server WorkerContext CRUD
 
 ### 6.3 Worker Online
 
@@ -825,7 +828,6 @@ Contract rules:
   - `/`
   - `/tasks`
   - `/resources/workers`
-  - `/resources/worker-contexts`
   - `/resources/rules`
   - `/resources/configs`
   - `/runtime/diagnostics`
@@ -838,6 +840,8 @@ Behavior:
 
 - returns the SPA shell from the built `frontend/dist`
 - browser-side routing handles page view after shell load
+- WorkerContext console routes are removed; worker resource diagnostics live
+  under `/resources/workers` and runtime diagnostic views
 
 ## 9. Health and Docs
 

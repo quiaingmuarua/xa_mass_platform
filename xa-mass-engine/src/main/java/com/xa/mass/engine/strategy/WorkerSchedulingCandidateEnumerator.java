@@ -40,7 +40,6 @@ public class WorkerSchedulingCandidateEnumerator {
                 worker,
                 WorkerSchedulingView.from(
                         worker,
-                        null,
                         reachability,
                         dispatchEnabled,
                         workerLocked,

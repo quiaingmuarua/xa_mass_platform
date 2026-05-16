@@ -1,7 +1,6 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
-import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -9,7 +8,6 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,9 +35,6 @@ class WorkerApiControllerTest {
     @Mock
     private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
-    @Mock
-    private WorkerContextCompatibilityOperations workerContextCompatibility;
-
     private MockMvc mockMvc;
     private ProjectEventCatalogRegistry metadataCatalog;
 
@@ -61,7 +56,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerQueries, workerContextCompatibility, metadataCatalog, runtimeDiagnostics))
+                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, runtimeDiagnostics))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -119,31 +114,4 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));
     }
 
-    @Test
-    void listWorkerContextsReturnsReadModel() throws Exception {
-        WorkerContextSnapshot workerContext = new WorkerContextSnapshot(
-                "ctx-001",
-                "worker-001",
-                "demoApp",
-                "OCCUPIED",
-                java.util.Set.of("telegram", "sms"),
-                "task-123",
-                null,
-                null,
-                LocalDateTime.of(2026, 4, 21, 9, 55),
-                LocalDateTime.of(2026, 4, 21, 9, 50),
-                Map.of("account", "acc-01")
-        );
-
-        when(workerContextCompatibility.getAllWorkerContexts()).thenReturn(List.of(workerContext));
-
-        mockMvc.perform(get("/api/v1/runtime/worker-contexts"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].workerContextId").value("ctx-001"))
-                .andExpect(jsonPath("$.data.items[0].project").value("demoApp"))
-                .andExpect(jsonPath("$.data.items[0].status").value("OCCUPIED"))
-                .andExpect(jsonPath("$.data.items[0].lastBindTaskId").value("task-123"));
-    }
 }

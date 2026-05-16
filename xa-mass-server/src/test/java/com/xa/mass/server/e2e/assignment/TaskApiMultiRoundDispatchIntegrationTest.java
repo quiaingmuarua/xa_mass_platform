@@ -6,7 +6,6 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -33,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -83,8 +81,6 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ProjectionSampleE2eTest {
                 assertEquals(workerId, message.get("latestAttemptWorkerId"));
             }
 
-            WorkerContextSnapshot workerContext = app.getWorkerContexts(workerId).get(0);
-            assertEquals("IDLE", workerContext.getStatus());
         } finally {
             client.disconnect();
         }

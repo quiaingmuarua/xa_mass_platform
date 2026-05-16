@@ -3,7 +3,6 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -31,9 +30,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * order when a polling worker completes a task:
  *
  * <ol>
- *   <li>{@link WorkerSystemEventChannel} — worker announces online</li>
- *   <li>{@link TaskDispatchChannel} — engine dispatches task messages</li>
- *   <li>{@link TaskResultIngestChannel} — worker submits result</li>
+ *   <li>{@link WorkerSystemEventChannel} - worker announces online</li>
+ *   <li>{@link TaskDispatchChannel} - engine dispatches task messages</li>
+ *   <li>{@link TaskResultIngestChannel} - worker submits result</li>
  * </ol>
  */
 @SpringBootTest(
@@ -42,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -132,12 +130,6 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
                                 .build()
                 ))
                 .transportHint("polling")
-                .build());
-
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId("ctx-" + workerId)
-                .workerId(workerId)
-                .routingTags(java.util.Set.of("us"))
                 .build());
     }
 }

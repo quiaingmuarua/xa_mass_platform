@@ -2,8 +2,10 @@
 
 Last updated: 2026-05-16
 
-Status: active phased plan. WC-0 through WC-3C have begun; public/storage
-deletion is not implemented baseline behavior.
+Status: active phased plan. WorkerContext physical model, storage, SDK/server
+API, frontend/operator resource pages, and test-only worker-context fixture
+inputs have been removed. Remaining work is limited to runtime/transport/trace
+`workerContextId` string residue and historical trace compatibility.
 
 ## Position
 
@@ -40,7 +42,10 @@ Preferred rule:
 
 ## Current Dependency Surface
 
-`WorkerContext` is still live in multiple meanings:
+`WorkerContext` physical model, storage CRUD, SDK registration/query surface,
+and server endpoints have been deleted. Remaining references are compatibility
+residue around string payloads, historical trace fields, and migration
+documentation:
 
 - legacy rule/read-model compatibility:
   - `workerContext*` variables have been retired from `WorkerMatchContext`
@@ -49,19 +54,15 @@ Preferred rule:
 - runtime payload compatibility:
   - `workerContextId` can still be carried on runtime attempts and dispatch
     bindings when a legacy context-backed candidate is selected
-- public/server/storage API:
-  - context registration DTOs
-  - context CRUD endpoints
-  - context storage contract
 - trace and diagnostics:
   - `workerContextId`
   - `uniqueWorkerContextCount`
   - `WORKER_CONTEXT_STATUS_TRANSITION`
   - legacy context fields in historical trace/operator rows
 - tests and fixtures:
-  - context-backed routing tests
-  - mock worker-context JSON fixtures
-  - startup/recovery tests that assert context release
+  - trace/operator scenarios that reject context-backed proof
+  - worker scheduling test fixtures declare routing and capability directly on
+    worker attributes
 
 Current convergence work already reduced the blast radius:
 
@@ -104,17 +105,16 @@ repo-wide rename:
 | Engine matching | legacy rule fields remain; production candidate expansion is worker-level | keep `WorkerSchedulingCandidate` / `WorkerSchedulingView`; remove nullable context payload and then remove legacy rule fields |
 | Engine runtime resource lifecycle | context-backed attempts still carry `workerContextId` as a legacy payload | keep worker lock, capacity reservation, attempt close, load finalization, and resource release as runtime proof |
 | Engine diagnostics | assignment records snapshot `WorkerSchedulingView`; legacy context identity is payload-only | keep worker scheduling evidence as the diagnostic subject; do not reintroduce context lifecycle snapshots |
-| Storage | `WorkerStorage` still has context CRUD and lookup methods | delete after SDK/server no longer expose context registration or context query paths |
-| SDK | `WorkerContextRegistration` and context query operations | move capability/account declaration to `WorkerRegistration.attributes` or system events; remove context registration API in a dedicated SDK slice |
-| Server/API | runtime worker-context endpoints and auth catalog entries | remove after SDK and storage contract deletion; do not replace with engine-owned account CRUD |
+| Storage | WorkerContext CRUD and lookup methods have been deleted | keep worker-only storage; do not recreate account/context CRUD in engine storage |
+| SDK | `WorkerContextRegistration` and context query operations have been deleted | declare scheduling capability with `WorkerRegistration.attributes` / event bindings or future system events |
+| Server/API | runtime worker-context endpoints and auth catalog entries have been deleted | do not replace with engine-owned account CRUD |
 | Trace/operator | `workerContextId`, `uniqueWorkerContextCount`, `WORKER_CONTEXT_STATUS_TRANSITION` | keep as legacy runtime payload evidence until analyzers use worker scheduling/load/resource proof exclusively |
 | Tests/fixtures | context-backed routing and recovery fixtures | keep only explicitly named legacy/resource tests; default scheduling proof must be stateless worker attributes |
 
-The runtime lifecycle and diagnostic snapshot deletions have started at the
-binder/release and assignment-record seams. The next deletion phase should
-narrow matching that still expands WorkerContext, not public API deletion.
-Public/storage deletion is safer after runtime binding payloads and trace proof
-no longer need context-specific fields.
+The runtime lifecycle, diagnostic snapshot, public API, SDK, and storage
+deletions are complete for WorkerContext as a model. Remaining cleanup should
+narrow runtime/transport/trace `workerContextId` payload residue without
+reintroducing account CRUD into the engine.
 
 ## Proof Replacement Matrix
 
@@ -350,11 +350,11 @@ and stopped `WorkerSchedulingView` from flattening WorkerContext
 status/project/routing/attributes into scheduling facts. Canonical trace includes worker scheduling evidence on worker match
 rows, and `worker-attribute-routing-without-context` proves stateless worker
 attribute routing without using `workerContextId`. `WorkerSchedulingCandidate`
-now carries only `Worker` plus `WorkerSchedulingView`; legacy `workerContextId`
-compatibility identity is read from the view instead of carrying a nullable
-`WorkerContext` object through the scheduling handoff. Assignment diagnostics
-now snapshot `WorkerSchedulingView` through `WorkerSchedulingSnapshot` instead
-of `WorkerContextSnapshot`.
+now carries only `Worker` plus `WorkerSchedulingView`, and
+`WorkerSchedulingView` no longer accepts or reads `WorkerContext`. Assignment
+diagnostics now snapshot worker-level scheduling evidence through
+`WorkerSchedulingSnapshot`; legacy context identity is always absent from
+scheduling snapshots on the default path.
 
 Goal: make engine matching fully worker-view based.
 
@@ -367,7 +367,7 @@ Scope:
   `RuleBasedTaskWorkerMatchingStrategy` and from matching candidate enumeration
   (done)
 - update `WorkerSchedulingView.from(...)` so it no longer accepts a
-  `WorkerContext`
+  `WorkerContext` (done)
 - remove context allocatability/project/routing prefilter branches (done)
 - update `WorkerMatchContext` to stop exposing `workerContext*` variables
   (done)
@@ -395,6 +395,8 @@ Acceptance:
 
 - no production matching code imports `WorkerContext`
 - no production matching code reads WorkerContext storage
+- `WorkerSchedulingView` does not import, accept, or expose WorkerContext
+  identity
 - no context-backed matching fixtures remain in
   `RuleBasedTaskWorkerMatchingStrategyTest`
 - no rule context exposes `workerContext*`
@@ -403,13 +405,14 @@ Acceptance:
 
 ### Phase WC-3: Remove Legacy WorkerContext Runtime Lifecycle
 
-Status: WC-3A, WC-3B, and WC-3D implemented.
+Status: WC-3A, WC-3B, WC-3D, WC-3E, and WC-3F implemented.
 `LegacyWorkerContextResourceLifecycle` has been deleted and engine
 binder/release paths no longer mutate `WorkerContextStatus`. Assignment
 diagnostics no longer snapshot `WorkerContext` lifecycle state.
 `WorkerSchedulingCandidate` no longer carries a nullable `WorkerContext`
-payload. Some runtime attempts can still carry `workerContextId` as legacy
-compatibility identity.
+payload. `WorkerDispatchResourceUsage.legacyWorkerContextResource` has been
+collapsed into worker-level exclusive-lock usage, and the default binder no
+longer passes candidate `workerContextId` into runtime claim targets.
 
 Goal: delete the engine-owned context slot state machine.
 
@@ -426,9 +429,10 @@ Scope:
 - remove `WORKER_CONTEXT_STATUS_TRANSITION` emission from engine mainline (done)
 - delete engine-owned `WorkerContextSnapshot` assignment diagnostics (done)
 - delete `WorkerDispatchResourceUsage.legacyWorkerContextResource` or collapse
-  it to worker-level resource usage only (remaining)
+  it to worker-level resource usage only (done)
 - remove context-specific attempt binding fields where they are no longer
-  needed by runtime contracts
+  needed by runtime contracts (partially done: default binder no longer writes
+  candidate `workerContextId` into runtime claim targets)
 
 Out of scope:
 
@@ -450,7 +454,8 @@ Acceptance:
 
 ### Phase WC-4: Remove WorkerContext Storage And Public API
 
-Goal: delete the remaining CRUD surface.
+Goal: delete the remaining CRUD surface. Status: complete in the current
+mainline; only runtime/trace string residue remains.
 
 Scope:
 
@@ -462,7 +467,7 @@ Scope:
 - delete `WorkerManager` context methods
 - delete SDK `WorkerContextRegistration` and related client methods
 - delete server worker-context endpoints and request/response DTOs
-- delete mock worker-context JSON fixtures
+- delete legacy mock worker-context JSON fixture inputs
 - update startup/demo data loader to use worker attributes only
 
 Out of scope:

@@ -8,7 +8,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -44,8 +43,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -302,13 +299,6 @@ public final class TaskWorkloadMixSmokeRunner {
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
-
-                WorkerContext workerContext = new WorkerContext();
-                workerContext.setWorkerContextId("workload-smoke-context-" + i);
-                workerContext.setWorkerId(worker.getWorkerId());
-                workerContext.setProject("demoApp");
-                workerContext.setRoutingTags(Set.of("default"));
-                workerManager.addWorkerContext(workerContext);
             }
         }
 
@@ -352,23 +342,9 @@ public final class TaskWorkloadMixSmokeRunner {
                 if (!workerManager.tryLockWorker(worker.getWorkerId())) {
                     continue;
                 }
-                WorkerContext selectedContext = null;
-                for (WorkerContext workerContext : workerManager.getWorkerContexts(worker.getWorkerId())) {
-                    if (workerContext != null
-                            && workerContext.isAllocatable()
-                            && Objects.equals(task.getProject(), workerContext.getProject())) {
-                        selectedContext = workerContext;
-                        break;
-                    }
-                }
-                if (selectedContext == null) {
-                    workerManager.unlockWorker(worker.getWorkerId());
-                    continue;
-                }
                 matched.add(new WorkerSchedulingCandidate(
                         worker,
-                        selectedContext,
-                        WorkerSchedulingView.from(worker, selectedContext, WorkerReachabilityState.ONLINE, true, true)
+                        WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, true)
                 ));
             }
             return matched;

@@ -2,7 +2,6 @@ package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -75,29 +74,6 @@ class WorkerDispatchResourceReleaserTest {
 
         verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
         verify(workerManager, never()).unlockWorker("worker-1");
-    }
-
-    @Test
-    void backgroundContextCandidateReleasesReservationAndUnlocksWorker() {
-        WorkerManager workerManager = mock(WorkerManager.class);
-        WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
-                new DefaultWorkerDispatchResourcePolicy(),
-                TraceEventLogger.noop()
-        );
-        Task task = task("task-1");
-        task.getExecutionSpec().setForeground(false);
-
-        releaser.releaseReservationsAndLocks(
-                task,
-                List.of(contextCandidate("worker-1", "ctx-1")),
-                "UNLOCK_WORKER",
-                "TestSource",
-                "test release"
-        );
-
-        verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
     }
 
     @Test
@@ -178,38 +154,26 @@ class WorkerDispatchResourceReleaserTest {
         worker.setWorkerId(workerId);
         return new WorkerSchedulingCandidate(
                 worker,
-                WorkerSchedulingView.from(worker, null, WorkerReachabilityState.ONLINE, true, false)
-        );
-    }
-
-    private WorkerSchedulingCandidate contextCandidate(String workerId, String workerContextId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerId(workerId);
-        workerContext.setWorkerContextId(workerContextId);
-        return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
         );
     }
 
     private static final class CandidateExclusiveResourcePolicy extends DefaultWorkerDispatchResourcePolicy {
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
-            return new WorkerDispatchResourceUsage(false, false);
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-            return new WorkerDispatchResourceUsage(true, false);
+            return new WorkerDispatchResourceUsage(true);
         }
     }
 
     private static final class AttemptNonExclusiveResourcePolicy extends DefaultWorkerDispatchResourcePolicy {
         @Override
         public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
-            return new WorkerDispatchResourceUsage(false, super.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
     }
 }
