@@ -20,7 +20,7 @@ import static org.mockito.Mockito.verify;
 class WorkerDispatchResourceReleaserTest {
 
     @Test
-    void releaseReservationsAndLocksReleasesEachWorkerOnceAndEmitsLockTrace() {
+    void releaseReservationsAndLocksReleasesEachWorkerOnceAndEmitsWorkerResourceTrace() {
         WorkerManager workerManager = mock(WorkerManager.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
                 workerManager,
@@ -41,6 +41,12 @@ class WorkerDispatchResourceReleaserTest {
             capture.assertHasEvent("WORKER_LOCK_RELEASED", mdc ->
                     "task-1".equals(mdc.get("taskId"))
                             && "worker-1".equals(mdc.get("workerId"))
+                            && "TestSource".equals(mdc.get("source")));
+            capture.assertHasEvent("RESOURCE_RELEASED", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "worker-1".equals(mdc.get("workerId"))
+                            && "WORKER_LOCK".equals(mdc.get("resourceKind"))
+                            && !mdc.containsKey("workerContextId")
                             && "TestSource".equals(mdc.get("source")));
         }
 

@@ -2,8 +2,6 @@ package com.xa.mass.engine.service;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -29,8 +27,7 @@ public interface AssignmentDiagnosticRecorder {
                                             boolean workerLocked);
 
     AssignmentRecord recordMessageAssignment(Task task,
-                                             Worker worker,
-                                             WorkerContext workerContext,
+                                             WorkerSchedulingCandidate candidate,
                                              String messageId,
                                              String batchId,
                                              AssignmentResult result,

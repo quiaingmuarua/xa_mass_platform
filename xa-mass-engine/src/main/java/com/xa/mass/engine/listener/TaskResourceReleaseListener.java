@@ -9,7 +9,6 @@ import com.xa.mass.engine.assignment.AssignmentRefillPolicy;
 import com.xa.mass.engine.assignment.AssignmentRefillRequest;
 import com.xa.mass.engine.assignment.DefaultAssignmentRefillPolicy;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
-import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
@@ -30,7 +29,6 @@ public class TaskResourceReleaseListener {
     private final TraceEventLogger traceEventLogger;
     private final AssignmentRefillPolicy refillPolicy;
     private final WorkerDispatchResourcePolicy resourcePolicy;
-    private final LegacyWorkerContextResourceLifecycle workerContextLifecycle;
     private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
@@ -64,25 +62,12 @@ public class TaskResourceReleaseListener {
                                 TraceEventLogger traceEventLogger,
                                 AssignmentRefillPolicy refillPolicy,
                                 WorkerDispatchResourcePolicy resourcePolicy,
-                                LegacyWorkerContextResourceLifecycle workerContextLifecycle) {
-        this(maintenancePort, workerManager, traceEventLogger, refillPolicy, resourcePolicy, workerContextLifecycle, null);
-    }
-
-    TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
-                                WorkerManager workerManager,
-                                TraceEventLogger traceEventLogger,
-                                AssignmentRefillPolicy refillPolicy,
-                                WorkerDispatchResourcePolicy resourcePolicy,
-                                LegacyWorkerContextResourceLifecycle workerContextLifecycle,
                                 WorkerDispatchResourceReleaser resourceReleaser) {
         this.maintenancePort = maintenancePort;
         this.workerManager = workerManager;
         this.traceEventLogger = traceEventLogger;
         this.refillPolicy = refillPolicy == null ? new DefaultAssignmentRefillPolicy() : refillPolicy;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
-        this.workerContextLifecycle = workerContextLifecycle == null
-                ? new LegacyWorkerContextResourceLifecycle(workerManager, traceEventLogger)
-                : workerContextLifecycle;
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
@@ -104,17 +89,6 @@ public class TaskResourceReleaseListener {
             WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, lease.workerContextId());
             if (usage.exclusiveWorkerLock()) {
                 exclusiveAttemptContextByWorkerId.putIfAbsent(lease.workerId(), lease.workerContextId());
-            }
-            if (usage.legacyWorkerContextResource()) {
-                workerContextLifecycle.releaseIfOwnedByTask(
-                        task.getTid(),
-                        lease.workerId(),
-                        lease.workerContextId(),
-                        "RELEASE_WORKER_CONTEXT",
-                        "TaskResourceReleaseListener",
-                        "workerContext released after task/message completion",
-                        true
-                );
             }
         }
 
@@ -138,17 +112,6 @@ public class TaskResourceReleaseListener {
         }
 
         WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, event.workerContextId());
-        if (usage.legacyWorkerContextResource()) {
-            workerContextLifecycle.releaseIfOwnedByTask(
-                    task.getTid(),
-                    workerId,
-                    event.workerContextId(),
-                    "RELEASE_WORKER_CONTEXT",
-                    "TaskResourceReleaseListener",
-                    "workerContext released after task/message completion",
-                    true
-            );
-        }
         resourceReleaser.releaseAttemptLockIfExclusive(task, workerId, event.workerContextId(),
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 

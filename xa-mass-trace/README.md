@@ -92,6 +92,7 @@ Current built-in scenario analyzers:
 - `background-worker-sharing`
 - `worker-attribute-routing-without-context`
 - `cross-task-worker-fairness`
+- `worker-resource-cleanup-without-context`
 
 ## Test Pairing Workflow
 

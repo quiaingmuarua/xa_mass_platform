@@ -1,6 +1,6 @@
 # Worker Scheduling View Baseline
 
-Last updated: 2026-05-15
+Last updated: 2026-05-16
 
 Status: current transitional baseline for the WorkerContext convergence path,
 including scheduling-candidate handoff, default rule surface convergence,
@@ -12,10 +12,12 @@ usage. Stateless background tasks can share workers up to declared capacity;
 legacy WorkerContext-backed resources remain context-exclusive. The
 foreground/context resource decision is now owned by
 `WorkerDispatchResourcePolicy` and consumed by matching, dispatch binding,
-assignment cleanup, and release mechanisms. The legacy WorkerContext state
-mutation itself is owned by `LegacyWorkerContextResourceLifecycle`. Repeated
-dispatch cleanup of reservations, exclusive worker locks, and lock-release trace
-is owned by `WorkerDispatchResourceReleaser`, including release-listener
+assignment cleanup, and release mechanisms. The legacy WorkerContext runtime
+state machine has been removed from the engine mainline: binder and release
+paths no longer mutate `WorkerContextStatus` or emit
+`WORKER_CONTEXT_STATUS_TRANSITION`. Repeated dispatch cleanup of reservations,
+exclusive worker locks, and lock-release trace is owned by
+`WorkerDispatchResourceReleaser`, including release-listener
 attempt/terminal close lock-release paths and dispatch-submit failure retry
 compensation. These owner boundaries are now guarded by
 `EngineSchedulingCoreArchitectureGuardTest`.
@@ -70,9 +72,10 @@ WorkerContext is still live in these engine paths:
 - `AssignmentDiagnosticRecorder`
   - records worker-level matching diagnostics from
     `WorkerSchedulingCandidate`
-  - keeps legacy WorkerContext snapshot extraction inside the diagnostic owner
-    while message-level assignment diagnostics still accept the current runtime
-    `WorkerContext` payload
+  - snapshots `WorkerSchedulingView` evidence through
+    `WorkerSchedulingSnapshot`
+  - keeps legacy `workerContextId` only as payload identity while runtime
+    attempts still carry that field
 - `WorkerSchedulingCandidate`
   - is the internal handoff type between matching, allocation, listener
     orchestration, and dispatch binding
@@ -89,11 +92,9 @@ WorkerContext is still live in these engine paths:
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
   - exposes worker load and reservation fields from `WorkerLoadView`
 - `SimpleTaskDispatchBinder`
-  - asks `LegacyWorkerContextResourceLifecycle` to reserve/occupy WorkerContext
-    during runtime claim and dispatch binding when
+  - records `workerContextId` on runtime attempts and dispatch trace when
     `WorkerDispatchResourcePolicy` classifies the candidate as a legacy
-    WorkerContext resource
-  - records `workerContextId` on runtime attempts and dispatch trace
+    WorkerContext payload
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
@@ -102,16 +103,9 @@ WorkerContext is still live in these engine paths:
   - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
     after dispatch-submit failure is compensated back to retry
 - `TaskResourceReleaseListener`
-  - asks `LegacyWorkerContextResourceLifecycle` to release WorkerContext after
-    final result, lease expiry, or cleanup paths when the dispatch resource
-    policy classifies the attempt as a legacy WorkerContext resource
   - releases observed worker load on attempt-closed and terminal cleanup paths
   - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
     after attempt or terminal close
-- `LegacyWorkerContextResourceLifecycle`
-  - owns the transitional WorkerContext `IDLE -> RESERVED -> OCCUPIED -> IDLE`
-    mutation and trace path while WorkerContext remains a runtime binding
-    payload
 - `WorkerDispatchResourceReleaser`
   - owns assignment and binder compensation cleanup for worker reservations,
     conditional exclusive worker unlock, canonical lock-release trace, and
@@ -121,8 +115,8 @@ WorkerContext is still live in these engine paths:
 - `EngineSchedulingCoreArchitectureGuardTest`
   - prevents listener/binder orchestration from directly calling dispatch
     cleanup primitives that belong to `WorkerDispatchResourceReleaser`
-  - prevents WorkerContext state mutation and direct context state CRUD from
-    leaking outside `LegacyWorkerContextResourceLifecycle`
+  - prevents WorkerContext runtime state mutation and direct context state CRUD
+    from returning to the engine mainline
   - prevents retired context-first matching handoff types from returning to
     engine source or scheduling tests
   - keeps production strategy-package `WorkerContext` imports and direct
@@ -134,10 +128,11 @@ WorkerContext is still live in these engine paths:
   - keeps strategy-level WorkerContext registration fixtures explicitly named
     as `legacyContext*` transitional coverage
 
-WorkerContext is therefore still both:
+WorkerContext is therefore still:
 
 - a matching-attribute source
-- a runtime resource slot with lifecycle state
+- a nullable legacy runtime payload carried into attempts and trace/runtime
+  compatibility fields
 
 The scheduling upgrade target is to retire the second meaning from engine
 matching first. Physical model/API deletion is a later phase.
@@ -201,23 +196,19 @@ the existing long-lived worker lock. `foreground=false` still reserves capacity
 but skips that long-lived lock, so multiple background tasks may share a
 stateless worker until `active + reserved >= declaredCapacity`.
 WorkerContext-backed resources are not shared by this slice; they still follow
-their current context reservation/occupation lifecycle and still require the
-long-lived worker lock even when the task declares `foreground=false`.
+the worker-level exclusive lock even when the task declares `foreground=false`.
 `WorkerDispatchResourcePolicy` is the single engine-internal owner for this
 resource usage classification. It keeps worker-level lock requirements separate
-from legacy WorkerContext lifecycle handling, which is necessary before
+from legacy WorkerContext payload handling, which is necessary before
 WorkerContext can be retired without touching every scheduling mechanism again.
-`LegacyWorkerContextResourceLifecycle` is the single owner for the remaining
-legacy WorkerContext state mutation. This keeps binder and release listeners
-focused on runtime claim/bind and release orchestration rather than duplicating
-the context state machine.
 `WorkerDispatchResourceReleaser` owns repeated dispatch cleanup for worker
 reservations and exclusive worker locks. Assignment orchestration and binder
 compensation use it instead of duplicating reservation release, unlock, and
 `WORKER_LOCK_RELEASED` trace decisions. Release listeners also use it for
 attempt/terminal close lock-release decisions after runtime load and
-WorkerContext release orchestration is complete. Binder compensation also uses
-it after dispatch-submit failure is compensated back to retry, so the
+attempt/terminal close lock-release decisions after runtime load finalization is
+complete. Binder compensation also uses it after dispatch-submit failure is
+compensated back to retry, so the
 foreground worker lock is not left waiting for an attempt-close event that will
 not be published on that path.
 Candidate cleanup paths resolve lock release with the same
@@ -276,6 +267,11 @@ routing decisions. The main matching handoff now passes
 Prefilter diagnostics now use `WorkerMatchContext.contextSnapshot(...)`, so rule
 evaluation and rejected-candidate records share one scheduling read-model field
 owner.
+
+Assignment records now use `WorkerSchedulingSnapshot` as their diagnostic
+subject. The retired `WorkerContextSnapshot` shape must not be reintroduced in
+engine diagnostics; context identity can remain only as legacy payload evidence
+until the runtime contract stops carrying `workerContextId`.
 Representative engine and server routing proof now uses stateless worker
 registration attributes for the matched/mismatched routing candidates. Legacy
 WorkerContext-backed routing remains covered only as transitional lifecycle
@@ -356,14 +352,22 @@ trace analyzer tests, and one server trace-observed wiring proof.
 
 The cross-task fairness trace scenario is now available as
 `cross-task-worker-fairness`; it analyzes `<bulkTaskId>,<interactiveTaskId>`
-against canonical assignment rows. A later cut can add a server trace-observed
-mixed-workload acceptance using that analyzer. Do not move budget formulas into
-`TaskWorkerAssignListener`; the listener should remain orchestration and trace
-owner.
+against canonical assignment rows. A server trace-observed mixed-workload
+acceptance now uses that analyzer after real Boot/API/SDK/WebSocket dispatch:
+BULK work remains capped by the default budget with ready backlog, and
+INTERACTIVE work dispatches to distinct remaining worker capacity. Do not move
+budget formulas into `TaskWorkerAssignListener`; the listener should remain
+orchestration and trace owner.
 Post-release refill is now owned by `AssignmentRefillPolicy`;
 `TaskResourceReleaseListener` releases resources and consumes that decision.
 Do not add cooldown, debounce, fairness, or budget-aware refill formulas back
 into the release listener.
+
+Worker-level cleanup now emits `RESOURCE_RELEASED` alongside
+`WORKER_LOCK_RELEASED` when an exclusive worker lock is released. The
+`worker-resource-cleanup-without-context` trace analyzer uses this to prove
+stateless worker cleanup without `workerContextId` or
+`WORKER_CONTEXT_STATUS_TRANSITION` as the success evidence.
 
 WorkerContext physical model/API deletion remains a later, larger phase after
 runtime binding and trace compatibility no longer need context-specific fields.

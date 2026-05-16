@@ -2,7 +2,6 @@ package com.xa.mass.engine.util;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
@@ -201,31 +200,6 @@ public final class TraceEventLogger {
                         "retryCount", workView.retryCount(),
                         "workRetryDelayMillis", workRetryDelayMillis,
                         "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
-                ))
-                .build());
-    }
-
-    public void workerContextStatusTransition(String taskId,
-                                              WorkerContext workerContext,
-                                              WorkerContextStatus fromStatus,
-                                              WorkerContextStatus toStatus,
-                                              String trigger,
-                                              String source,
-                                              String reason) {
-        if (workerContext == null) {
-            return;
-        }
-        emit(event(ExecutionEventType.WORKER_CONTEXT_STATUS_TRANSITION)
-                .identity(identity -> identity
-                        .taskId(taskId)
-                        .workerId(workerContext.getWorkerId())
-                        .workerContextId(workerContext.getWorkerContextId()))
-                .transition(enumName(fromStatus), enumName(toStatus), reason)
-                .attrs(attrs(
-                        "trigger", trigger,
-                        "source", source,
-                        "reason", reason,
-                        "result", "SUCCESS"
                 ))
                 .build());
     }
@@ -594,6 +568,17 @@ public final class TraceEventLogger {
     }
 
     public void resourceReleased(String taskId, String workerId, String workerContextId, String reason) {
+        resourceReleased(taskId, workerId, workerContextId,
+                null, "TaskResourceReleaseListener", reason, null);
+    }
+
+    public void resourceReleased(String taskId,
+                                 String workerId,
+                                 String workerContextId,
+                                 String trigger,
+                                 String source,
+                                 String reason,
+                                 String resourceKind) {
         emit(event(ExecutionEventType.RESOURCE_RELEASED)
                 .identity(identity -> identity
                         .taskId(taskId)
@@ -601,8 +586,10 @@ public final class TraceEventLogger {
                         .workerContextId(workerContextId))
                 .outcome(true, null, reason)
                 .attrs(attrs(
-                        "source", "TaskResourceReleaseListener",
+                        "trigger", trigger,
+                        "source", source,
                         "reason", reason,
+                        "resourceKind", resourceKind,
                         "result", "SUCCESS"
                 ))
                 .build());

@@ -11,6 +11,7 @@ import org.junit.platform.suite.api.Suite;
         TaskApiAssignmentTraceObservedIntegrationTest.class,
         TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest.class,
         TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest.class,
+        TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest.class,
         TaskApiMinimumWorkerGateIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
         TaskApiSingleWorkerReuseIntegrationTest.class,

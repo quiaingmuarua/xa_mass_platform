@@ -52,8 +52,7 @@ class TaskSchedulingContentionTest {
         assertEquals("worker locked", rejectedRecord.getReason());
         assertEquals(1, harness.successfulMessageAssignments(firstTask.getTid(), "worker-single"));
         assertEquals(0, harness.successfulMessageAssignments(secondTask.getTid(), "worker-single"));
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-single").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-single"));
     }
 
     @Test
@@ -293,8 +292,7 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(nextReadyTask.getTid()).getStatus());
         assertEquals(0, harness.stats(nextReadyTask.getTid()).readyCount());
         assertEquals(1, harness.stats(nextReadyTask.getTid()).inflightCount());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-shared"));
     }
 
     private Task createReadyBackgroundTask(TaskSchedulingTestHarness harness, String sourceRef, String target) {

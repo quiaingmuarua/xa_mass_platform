@@ -232,6 +232,7 @@ Schedule analysis currently reads these event types from canonical sink output:
 - `WORKER_LOCK_RELEASED`
 - `TASK_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
+- `TASK_WORK_ATTEMPT_CLOSED`
 - `WORKER_CONTEXT_STATUS_TRANSITION`
 - `RESOURCE_RELEASED`
 - `RESOURCE_RELEASE_FAILED`
@@ -296,11 +297,20 @@ The `worker-attribute-routing-without-context` analyzer uses worker scheduling
 evidence instead of `workerContextId`: accepted worker matches must have no
 `workerContextId`, must carry worker-level scheduling attributes or routing
 tags, and must show `workerSchedulingMatchesRoutingCode=true`.
+The `worker-resource-cleanup-without-context` analyzer proves stateless worker
+cleanup without WorkerContext evidence: accepted match, binding, attempt close,
+worker lock release, and `RESOURCE_RELEASED` must all be visible without
+`workerContextId`, and the scenario rejects WorkerContext lifecycle cleanup as
+the success proof.
 The `cross-task-worker-fairness` analyzer is intentionally a two-task scenario:
 its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
 assignment rows for both tasks and proves that a budget-limited BULK assignment
 under backlog pressure still leaves distinct worker capacity for a successful
 INTERACTIVE assignment.
+
+Trace operator queries must read rotated canonical JSONL files with a unioned
+schema. Schedule fields may first appear in later rotated files, so analyzer
+proof must not depend on a single-file or first-file JSON schema inference.
 
 ## 5. Minimum Required Paths
 

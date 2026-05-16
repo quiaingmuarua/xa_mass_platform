@@ -214,8 +214,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals("worker-target", waitingLeases.getFirst().workerId());
         assertEquals("ctx-target", waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-target").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-target"));
         assertEquals(WorkerContextStatus.IDLE,
                 harness.workerManager.getWorkerContextById("ctx-backup").getStatus());
     }

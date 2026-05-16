@@ -86,6 +86,19 @@ class InMemoryWorkerLoadViewTest {
     }
 
     @Test
+    void confirmedReservationContributesToTaskActiveWorkerCount() {
+        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
+
+        assertTrue(loadView.tryReserveCapacity("worker-1", "task-1"));
+        assertTrue(loadView.confirmReservation("worker-1", "task-1"));
+
+        assertEquals(1, loadView.getActiveWorkerCountForTask("task-1"));
+
+        loadView.recordWorkFinal("worker-1", "task-1");
+        assertEquals(0, loadView.getActiveWorkerCountForTask("task-1"));
+    }
+
+    @Test
     void registeredDeclaredCapacityAllowsMultipleReservations() {
         InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
         loadView.recordDeclaredCapacity("worker-1", 3);

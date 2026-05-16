@@ -13,7 +13,6 @@ import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
-import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
@@ -44,7 +43,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
     private final WorkerDispatchResourcePolicy resourcePolicy;
-    private final LegacyWorkerContextResourceLifecycle workerContextLifecycle;
     private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
@@ -85,18 +83,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                              TaskDispatchBatchListener dispatchListener,
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy,
-                             LegacyWorkerContextResourceLifecycle workerContextLifecycle) {
-        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
-                resourcePolicy, workerContextLifecycle, null);
-    }
-
-    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerManager workerManager,
-                             AssignmentDiagnosticRecorder recordService,
-                             TaskDispatchBatchListener dispatchListener,
-                             TraceEventLogger traceEventLogger,
-                             WorkerDispatchResourcePolicy resourcePolicy,
-                             LegacyWorkerContextResourceLifecycle workerContextLifecycle,
                              WorkerDispatchResourceReleaser resourceReleaser) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerManager = workerManager;
@@ -104,9 +90,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
-        this.workerContextLifecycle = workerContextLifecycle == null
-                ? new LegacyWorkerContextResourceLifecycle(workerManager, traceEventLogger)
-                : workerContextLifecycle;
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
@@ -169,19 +152,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         for (int i = 0; i < matchedWorkers.size(); i++) {
             WorkerSchedulingCandidate matchedWorker = matchedWorkers.get(i);
-            Worker worker = matchedWorker.getWorker();
-            WorkerContext workerContext = matchedWorker.getWorkerContext();
             WorkerDispatchResourceUsage resourceUsage = resourcePolicy.usageForCandidate(task, matchedWorker);
-            if (resourceUsage.legacyWorkerContextResource()
-                    && !workerContextLifecycle.prepareForDispatch(task, workerContext, "SimpleTaskDispatchBinder")) {
-                log.warn("[MsgAssign] Skip worker {} context {} for task {} because workerContext state is not dispatchable",
-                        worker.getWorkerId(),
-                        workerContext != null ? workerContext.getWorkerContextId() : "null",
-                        task.getTid());
-                resourceReleaser.releaseReservationAndLock(task, matchedWorker,
-                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "workerContext not dispatchable");
-                continue;
-            }
             dispatchSlots.add(new DispatchSlot(matchedWorker, resourceUsage));
         }
 
@@ -215,7 +186,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
-                    task, slot.worker(), slot.workerContext(), work.messageId(), slot.batchId(),
+                    task, slot.candidate, work.messageId(), slot.batchId(),
                     AssignmentResult.SUCCESS, "message assigned",
                     workerManager.isLocked(slot.worker().getWorkerId())
             );
@@ -223,8 +194,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
-                workerContextLifecycle.releaseIfOwnedByTask(task, slot.workerContext(),
-                        "RELEASE_WORKER_CONTEXT", "SimpleTaskDispatchBinder", "matched worker received no messages");
                 resourceReleaser.releaseReservationAndLock(task, slot.candidate,
                         "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
             }
@@ -272,7 +241,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 log.error("[MsgAssign] Dispatch submit failed for task {} with {} bindings; compensating assignment state",
                         task.getTid(), immutableDispatchBindings.size(), e);
                 boolean compensated = assignmentRuntime.compensateDispatchSubmitFailure(task, immutableDispatchBindings, detail);
-                releaseAssignedWorkerContexts(task, dispatchSlots);
                 if (!compensated) {
                     throw new IllegalStateException("dispatch submit compensation failed for task " + task.getTid(), e);
                 }
@@ -407,18 +375,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerContextId(),
                 work.batchId()
         );
-    }
-
-    private void releaseAssignedWorkerContexts(Task task, List<DispatchSlot> dispatchSlots) {
-        for (DispatchSlot slot : dispatchSlots) {
-            if (slot.assignedCount() <= 0) {
-                continue;
-            }
-            workerContextLifecycle.releaseIfOwnedByTask(task, slot.workerContext(),
-                    "RELEASE_WORKER_CONTEXT",
-                    "SimpleTaskDispatchBinder",
-                    "workerContext released after dispatch submit failure");
-        }
     }
 
     private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {

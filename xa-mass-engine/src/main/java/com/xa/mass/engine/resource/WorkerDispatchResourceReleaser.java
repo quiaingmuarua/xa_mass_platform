@@ -103,6 +103,15 @@ public class WorkerDispatchResourceReleaser {
                               String reason) {
         workerManager.unlockWorker(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
+        traceEventLogger.resourceReleased(
+                task.getTid(),
+                workerId,
+                null,
+                trigger,
+                source,
+                reason,
+                "WORKER_LOCK"
+        );
     }
 
     public void releaseAttemptLockIfExclusive(Task task,

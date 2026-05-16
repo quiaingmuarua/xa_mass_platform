@@ -101,19 +101,20 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerContextStateMutationStaysBehindLegacyLifecycleOwner() throws IOException {
+    void workerContextStateMutationStaysOutOfEngineMainline() throws IOException {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("getWorkerContextById", Pattern.compile("\\bgetWorkerContextById\\s*\\(")),
                 Map.entry("updateWorkerContextById", Pattern.compile("\\bupdateWorkerContextById\\s*\\(")),
                 Map.entry("deleteWorkerContextById", Pattern.compile("\\bdeleteWorkerContextById\\s*\\(")),
                 Map.entry("addWorkerContext", Pattern.compile("\\baddWorkerContext\\s*\\(")),
                 Map.entry("bindToTask", Pattern.compile("\\.bindToTask\\s*\\(")),
-                Map.entry("startOccupying", Pattern.compile("\\.startOccupying\\s*\\("))
+                Map.entry("startOccupying", Pattern.compile("\\.startOccupying\\s*\\(")),
+                Map.entry("workerContextStatusTransition", Pattern.compile("\\bworkerContextStatusTransition\\s*\\("))
         );
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
-            if (isWorkerManager(path) || isLegacyWorkerContextLifecycle(path)) {
+            if (isWorkerManager(path)) {
                 continue;
             }
             String source = Files.readString(path, StandardCharsets.UTF_8);
@@ -126,8 +127,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerContext state mutation must stay in LegacyWorkerContextResourceLifecycle "
-                        + "while WorkerManager remains the underlying storage facade:\n"
+                "WorkerContext runtime state mutation is retired from the engine mainline. "
+                        + "WorkerManager remains a transitional storage facade only:\n"
                         + String.join("\n", violations));
     }
 
@@ -196,6 +197,30 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void assignmentDiagnosticsDoNotSnapshotWorkerContextLifecycle() throws IOException {
+        Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
+        Pattern workerContextSnapshot = Pattern.compile("\\bWorkerContextSnapshot\\b");
+        Pattern workerContextSnapshotAccessor = Pattern.compile("\\b(?:get|set)WorkerContextSnapshot\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(engineRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (workerContextSnapshot.matcher(source).find()) {
+                violations.add(path + " references WorkerContextSnapshot");
+            }
+            if (workerContextSnapshotAccessor.matcher(source).find()) {
+                violations.add(path + " reads or writes WorkerContextSnapshot on assignment diagnostics");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Assignment diagnostics must snapshot WorkerSchedulingView evidence. "
+                        + "Legacy workerContextId may remain as payload identity, but WorkerContext lifecycle "
+                        + "snapshots must not return to engine diagnostics:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void ruleBasedMatchingStrategyContextFixturesStayExplicitlyLegacy() throws IOException {
         Path strategyTestPath = TEST_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java");
@@ -216,7 +241,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void retiredContextFirstSchedulingTypesStayRemoved() throws IOException {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("MatchedWorkerContext", Pattern.compile("\\bMatchedWorkerContext\\b")),
-                Map.entry("WorkerContextAllocator", Pattern.compile("\\bWorkerContextAllocator\\b"))
+                Map.entry("WorkerContextAllocator", Pattern.compile("\\bWorkerContextAllocator\\b")),
+                Map.entry("LegacyWorkerContextResourceLifecycle",
+                        Pattern.compile("\\bLegacyWorkerContextResourceLifecycle\\b"))
         );
 
         List<String> violations = new ArrayList<>();
@@ -302,7 +329,4 @@ class EngineSchedulingCoreArchitectureGuardTest {
         return path.endsWith(Path.of("com/xa/mass/engine/WorkerManager.java"));
     }
 
-    private static boolean isLegacyWorkerContextLifecycle(Path path) {
-        return path.endsWith(Path.of("com/xa/mass/engine/resource/LegacyWorkerContextResourceLifecycle.java"));
-    }
 }

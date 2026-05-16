@@ -43,7 +43,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(to_json(attrs), '$.source') AS source,
                     json_extract_string(to_json(attrs), '$.reason') AS reason,
                     json_extract_string(to_json(attrs), '$.terminalReason') AS terminalReason
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 ORDER BY ts, eventId
                 LIMIT %d
@@ -59,7 +59,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 outcomeJson,
                 outcomeJson,
                 outcomeJson,
-                sql(source.duckDbPattern()),
+                readNdjson(source),
                 where,
                 limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
@@ -117,12 +117,12 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
         }
         String query = """
                 SELECT eventType, severity, count(*) AS cnt
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 GROUP BY eventType, severity
                 ORDER BY cnt DESC, eventType, severity
                 LIMIT %d
-                """.formatted(sql(source.duckDbPattern()), where, limit);
+                """.formatted(readNdjson(source), where, limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
@@ -160,6 +160,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     'WORKER_LOCK_RELEASED',
                     'TASK_STATUS_TRANSITION',
                     'TASK_WORK_ATTEMPT_STATUS_TRANSITION',
+                    'TASK_WORK_ATTEMPT_CLOSED',
                     'WORKER_CONTEXT_STATUS_TRANSITION',
                     'RESOURCE_RELEASED',
                     'RESOURCE_RELEASE_FAILED',
@@ -227,7 +228,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     try_cast(json_extract_string(%s, '$.retryDelayMillis') AS BIGINT) AS retryDelayMillis,
                     json_extract_string(%s, '$.src') AS src,
                     json_extract_string(%s, '$.dst') AS dst
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 ORDER BY ts, eventId
                 LIMIT %d
@@ -243,7 +244,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 transitionJson, transitionJson,
-                sql(source.duckDbPattern()),
+                readNdjson(source),
                 where,
                 limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
@@ -316,7 +317,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     @Override
     public long countRows(TraceSource source) throws Exception {
-        String query = "SELECT count(*) AS cnt FROM read_ndjson('%s')".formatted(sql(source.duckDbPattern()));
+        String query = "SELECT count(*) AS cnt FROM %s".formatted(readNdjson(source));
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
@@ -329,6 +330,10 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     private static String sql(String value) {
         return value.replace("'", "''");
+    }
+
+    private static String readNdjson(TraceSource source) {
+        return "read_ndjson('%s', union_by_name = true)".formatted(sql(source.duckDbPattern()));
     }
 
     private static Integer integerOrNull(ResultSet resultSet, String column) throws Exception {

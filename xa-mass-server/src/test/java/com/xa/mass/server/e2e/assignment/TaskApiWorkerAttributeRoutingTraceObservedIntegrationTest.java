@@ -106,20 +106,37 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
             assertEquals("attribute-routing-worker-us", WsFrameTestSupport.workerId(matchedDispatch));
             assertTrue(rejectedDispatch == null, "mismatched worker must not receive routed task");
 
-            TraceAnalyzeResponse trace = awaitTraceScenarioOk(new TraceOperatorService(), taskId);
+            TraceOperatorService traceOperator = new TraceOperatorService();
+            TraceAnalyzeResponse trace = awaitTraceScenarioOk(
+                    traceOperator,
+                    "worker-attribute-routing-without-context",
+                    taskId
+            );
             assertTrue(trace.ok(), trace.issues().toString());
             assertEquals("worker-attribute-routing-without-context", trace.scenarioId());
             assertEquals(1L, trace.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
 
             matchedClient.sendSuccess(matchedDispatch, "attribute-routing-trace-ok");
             assertEquals("ALL_MESSAGES_SUCCEEDED", waitForTerminalRuntimeTask(taskId).task().get("terminalReason"));
+
+            TraceAnalyzeResponse cleanupTrace = awaitTraceScenarioOk(
+                    traceOperator,
+                    "worker-resource-cleanup-without-context",
+                    taskId
+            );
+            assertTrue(cleanupTrace.ok(), cleanupTrace.issues().toString());
+            assertEquals("worker-resource-cleanup-without-context", cleanupTrace.scenarioId());
+            assertTrue(cleanupTrace.eventTypeCounts().containsKey("RESOURCE_RELEASED"),
+                    "canonical trace must include worker-level RESOURCE_RELEASED");
         } finally {
             otherClient.disconnect();
             matchedClient.disconnect();
         }
     }
 
-    private TraceAnalyzeResponse awaitTraceScenarioOk(TraceOperatorService traceOperator, String taskId)
+    private TraceAnalyzeResponse awaitTraceScenarioOk(TraceOperatorService traceOperator,
+                                                      String scenarioId,
+                                                      String taskId)
             throws InterruptedException {
         TraceAnalyzeResponse latestResponse = null;
         Exception latestException = null;
@@ -127,7 +144,7 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
             try {
                 latestResponse = traceOperator.analyze(new TraceAnalyzeRequest(
                         TRACE_OUTPUT_DIR.toString(),
-                        "worker-attribute-routing-without-context",
+                        scenarioId,
                         taskId
                 ));
                 if (latestResponse.ok()) {

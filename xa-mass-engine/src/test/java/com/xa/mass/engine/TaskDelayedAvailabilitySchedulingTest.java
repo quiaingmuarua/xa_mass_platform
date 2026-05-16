@@ -70,8 +70,7 @@ class TaskDelayedAvailabilitySchedulingTest {
         assertEquals(1, activeLeases.size());
         assertEquals("worker-blocked-context", activeLeases.getFirst().workerId());
         assertEquals("ctx-blocked-context", activeLeases.getFirst().workerContextId());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-blocked-context").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-blocked-context"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
     }
 }

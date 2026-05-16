@@ -41,18 +41,17 @@ class TaskWorkerContextContentionTest {
         assertEquals("ctx-us", activeLeases.getFirst().workerContextId());
         assertEquals(WorkerContextStatus.IDLE,
                 harness.workerManager.getWorkerContextById("ctx-gb").getStatus());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-us").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-multi"));
 
         List<AssignmentRecord> workerRecords = harness.workerRecords(task.getTid(), "worker-multi");
         assertEquals(2, workerRecords.size());
         assertTrue(workerRecords.stream().anyMatch(record ->
                 AssignmentResult.RULE_NOT_MATCH.equals(record.getResult())
                         && "routing code mismatch".equals(record.getReason())
-                        && "ctx-gb".equals(record.getWorkerContextSnapshot().getWorkerContextId())));
+                        && "ctx-gb".equals(record.getWorkerSchedulingSnapshot().getLegacyWorkerContextId())));
         assertTrue(workerRecords.stream().anyMatch(record ->
                 AssignmentResult.SUCCESS.equals(record.getResult())
-                        && "ctx-us".equals(record.getWorkerContextSnapshot().getWorkerContextId())));
+                        && "ctx-us".equals(record.getWorkerSchedulingSnapshot().getLegacyWorkerContextId())));
     }
 
     @Test
@@ -127,7 +126,7 @@ class TaskWorkerContextContentionTest {
         assertEquals(1, workerRecords.size());
         assertTrue(workerRecords.stream().anyMatch(record ->
                 AssignmentResult.SUCCESS.equals(record.getResult())
-                        && "ctx-us-a".equals(record.getWorkerContextSnapshot().getWorkerContextId())));
+                        && "ctx-us-a".equals(record.getWorkerSchedulingSnapshot().getLegacyWorkerContextId())));
     }
 
     @Test
@@ -188,7 +187,6 @@ class TaskWorkerContextContentionTest {
         assertEquals(1, harness.stats(secondTask.getTid()).inflightCount());
         assertEquals(WorkerContextStatus.IDLE,
                 harness.workerManager.getWorkerContextById("ctx-us").getStatus());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-gb").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-multi"));
     }
 }

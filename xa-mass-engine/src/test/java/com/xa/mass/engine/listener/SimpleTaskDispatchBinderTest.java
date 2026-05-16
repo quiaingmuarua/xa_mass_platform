@@ -1,6 +1,5 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -11,7 +10,6 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
-import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -120,11 +118,6 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(batchIds.get(1), batchIds.get(3));
         assertNotEquals(batchIds.get(0), batchIds.get(1));
         assertTrue(projected.stream().allMatch(msg -> msg.assignedTime() != null));
-        assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
-        assertEquals(task.getTid(), wc1.getLastBindTaskId());
-        assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
-        assertEquals(task.getTid(), wc2.getLastBindTaskId());
-
         List<TaskDetailStore.TaskMessageAttemptProjection> attempts = stored.stream()
                 .map(msg -> latestActiveAttemptProjection(task.getTid(), msg.messageId()))
                 .collect(Collectors.toList());
@@ -139,10 +132,10 @@ public class SimpleTaskDispatchBinderTest {
                 .allMatch(lease -> lease != null && lease.leasedAt() != null && lease.leaseExpireAt() != null));
 
         verify(recordService, times(4)).recordMessageAssignment(
-                any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
+                any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(4)).isLocked(anyString());
-        verify(workerManager, times(2)).updateWorkerContextById(anyString(), any(WorkerContext.class));
+        verify(workerManager, never()).updateWorkerContextById(anyString(), any(WorkerContext.class));
     }
 
     @Test
@@ -475,9 +468,8 @@ public class SimpleTaskDispatchBinderTest {
                 == TaskMessageAttemptProjectionFinalReason.REVOKED_FOR_RETRY));
         assertTrue(attempts.stream().allMatch(attempt -> "DISPATCH_SUBMIT_FAILED".equals(attempt.errorCode())));
 
-        assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
-        verify(workerManager, times(2)).updateWorkerContextById(eq("tk1"), same(wc));
+        verify(workerManager, never()).updateWorkerContextById(eq("tk1"), same(wc));
         verify(workerManager).unlockWorker("d1");
         assertEquals(2, taskManager.countDispatchReadyWork(task.getTid()));
 
@@ -496,7 +488,7 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
-    void assignmentEmitsAttemptAndWorkerContextTraceEvents() {
+    void assignmentEmitsAttemptTraceWithLegacyWorkerContextPayload() {
         Task task = createTask(1);
         task.getExecutionSpec().setBatchSize(1);
         WorkerContext wc = workerContext("tk1", "d1");
@@ -516,16 +508,6 @@ public class SimpleTaskDispatchBinderTest {
                             && "LEASED".equals(mdc.get("fromStatus"))
                             && "DISPATCHED".equals(mdc.get("toStatus"))
                             && "d1".equals(mdc.get("workerId"))
-                            && "tk1".equals(mdc.get("workerContextId")));
-            capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->
-                    task.getTid().equals(mdc.get("taskId"))
-                            && "IDLE".equals(mdc.get("fromStatus"))
-                            && "RESERVED".equals(mdc.get("toStatus"))
-                            && "tk1".equals(mdc.get("workerContextId")));
-            capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->
-                    task.getTid().equals(mdc.get("taskId"))
-                            && "RESERVED".equals(mdc.get("fromStatus"))
-                            && "OCCUPIED".equals(mdc.get("toStatus"))
                             && "tk1".equals(mdc.get("workerContextId")));
         }
     }
@@ -633,25 +615,26 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() != null && !msg.latestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
-                any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
+                any(), argThat(candidate -> candidate != null && candidate.getWorkerContext() == null),
+                anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(2)).isLocked("d1");
     }
 
     @Test
-    void nonDispatchableWorkerContextSkipsWorkerAndUnlocksIt() {
+    void binderDoesNotUseWorkerContextStatusAsDispatchGate() {
         Task task = createTask(1);
         WorkerContext blocked = workerContext("tk-blocked", "d1");
         blocked.block();
-        assertTrue(listener.bindDispatches(task, List.of(matched(worker("d1"), blocked))).isEmpty());
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), blocked)));
 
         List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
+        assertEquals(1, dispatched.size());
         assertEquals(TaskMessageProjectionStatus.INIT, stored.get(0).status());
-        verify(workerManager).releaseWorkerReservation("d1", task.getTid());
-        verify(workerManager).unlockWorker("d1");
-        verify(recordService, never()).recordMessageAssignment(
-                any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
-        );
+        assertEquals("tk-blocked", dispatched.getFirst().workerContextId());
+        verify(workerManager, never()).updateWorkerContextById(eq("tk-blocked"), same(blocked));
+        verify(workerManager, never()).releaseWorkerReservation("d1", task.getTid());
+        verify(workerManager, never()).unlockWorker("d1");
     }
 
     @Test
@@ -674,31 +657,6 @@ public class SimpleTaskDispatchBinderTest {
         assertNull(dispatched.get(0).workerContextId());
         verify(workerManager, never()).updateWorkerContextById(eq("tk-blocked"), same(blocked));
         verify(workerManager, never()).unlockWorker("d1");
-    }
-
-    @Test
-    void injectedWorkerContextLifecycleOwnsBinderPrepareDecision() {
-        Task task = createTask(1);
-        WorkerContext workerContext = workerContext("tk1", "d1");
-        LegacyWorkerContextResourceLifecycle lifecycle = mock(LegacyWorkerContextResourceLifecycle.class);
-        listener = new SimpleTaskDispatchBinder(
-                taskManager,
-                workerManager,
-                recordService,
-                null,
-                TraceEventLogger.noop(),
-                null,
-                lifecycle
-        );
-
-        when(lifecycle.prepareForDispatch(same(task), same(workerContext), eq("SimpleTaskDispatchBinder")))
-                .thenReturn(false);
-
-        assertTrue(listener.bindDispatches(task, List.of(matched(worker("d1"), workerContext))).isEmpty());
-
-        verify(lifecycle).prepareForDispatch(same(task), same(workerContext), eq("SimpleTaskDispatchBinder"));
-        verify(workerManager).releaseWorkerReservation("d1", task.getTid());
-        verify(workerManager).unlockWorker("d1");
     }
 
     @Test

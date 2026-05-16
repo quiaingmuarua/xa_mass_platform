@@ -148,17 +148,13 @@ Keep these facts fixed unless the owning global baselines change:
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
   whether a task/candidate uses the long-lived worker-level exclusive lock and
-  whether a dispatch attempt carries the legacy WorkerContext lifecycle payload.
+  whether a dispatch attempt carries a legacy WorkerContext payload.
   Matching, assignment listener cleanup, binder compensation, and resource
   release consume this decision instead of each re-deriving foreground/context
   behavior. Legacy WorkerContext-backed candidates and attempts keep the
   exclusive worker lock even when the task declares `foreground=false`; only
   stateless background candidates may share worker capacity without the
   long-lived lock.
-- `LegacyWorkerContextResourceLifecycle` owns transitional WorkerContext state
-  mutation and trace while WorkerContext remains a runtime binding payload:
-  dispatch binding asks it to prepare a context for dispatch, and release paths
-  ask it to release a context owned by the task.
 - `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
   releasing worker reservations, conditionally unlocking exclusive worker
   locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
@@ -169,10 +165,9 @@ Keep these facts fixed unless the owning global baselines change:
 - `EngineSchedulingCoreArchitectureGuardTest` is an executable owner-boundary
   guard for the scheduling kernel. It keeps scheduling-core tests off
   compatibility projection proof helpers, prevents listener/binder
-  orchestration from calling dispatch cleanup primitives directly, keeps
-  transitional WorkerContext state mutation behind
-  `LegacyWorkerContextResourceLifecycle`, and prevents the retired
-  context-first matching handoff types from returning.
+  orchestration from calling dispatch cleanup primitives directly, prevents
+  WorkerContext runtime state mutation from returning to the engine mainline,
+  and prevents the retired context-first matching handoff types from returning.
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived
@@ -300,6 +295,9 @@ Matching boundaries:
 - `WorkerMatchContext` owns the rule and diagnostic snapshot field map;
   `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
   records instead of maintaining a duplicate snapshot builder
+- assignment records snapshot `WorkerSchedulingView` evidence through
+  `WorkerSchedulingSnapshot`; `workerContextId` is legacy payload identity, not
+  the diagnostic subject
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject
