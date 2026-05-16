@@ -75,6 +75,22 @@ Current convergence work already reduced the blast radius:
   and release paths
 - repeated reservation and worker-lock cleanup is owned by
   `WorkerDispatchResourceReleaser`
+- attempt resource cleanup is task/worker based; `workerContextId` is no longer
+  accepted as a `WorkerDispatchResourcePolicy` input
+- dispatch binding now creates runtime claim targets through
+  `WorkerClaimTarget.workerLevel(...)`; legacy constructors remain only for
+  lower-level runtime compatibility tests and decoded historical payloads
+- current dispatch binding generates attempt ids through the worker-level
+  attempt-id helper; legacy context-backed runtime leases keep their historical
+  context-inclusive attempt-id shape
+- result correlation now has explicit worker-level, no-active-lease, and
+  legacy-context-backed construction paths; current null-context leases produce
+  worker-level correlation snapshots
+- runtime work-contract and in-memory/Redis runtime tests now use worker-level
+  claim targets for normal claim/lease proof; context-backed claim targets are
+  retained only in explicitly named compatibility or historical trace cases
+- current worker-level dispatch omits `workerContextId` from transport payloads
+  when the runtime binding has no legacy context identity
 - architecture guards prevent context-first handoff types and scattered context
   state mutation from returning
 
@@ -103,7 +119,7 @@ repo-wide rename:
 | Owner surface | Current WorkerContext use | Retirement direction |
 | --- | --- | --- |
 | Engine matching | legacy rule fields remain; production candidate expansion is worker-level | keep `WorkerSchedulingCandidate` / `WorkerSchedulingView`; remove nullable context payload and then remove legacy rule fields |
-| Engine runtime resource lifecycle | context-backed attempts still carry `workerContextId` as a legacy payload | keep worker lock, capacity reservation, attempt close, load finalization, and resource release as runtime proof |
+| Engine runtime resource lifecycle | runtime attempt records still expose nullable `workerContextId` as a legacy payload field | keep worker lock, capacity reservation, attempt close, load finalization, and resource release as runtime proof; do not feed `workerContextId` into release policy |
 | Engine diagnostics | assignment records snapshot `WorkerSchedulingView`; legacy context identity is payload-only | keep worker scheduling evidence as the diagnostic subject; do not reintroduce context lifecycle snapshots |
 | Storage | WorkerContext CRUD and lookup methods have been deleted | keep worker-only storage; do not recreate account/context CRUD in engine storage |
 | SDK | `WorkerContextRegistration` and context query operations have been deleted | declare scheduling capability with `WorkerRegistration.attributes` / event bindings or future system events |

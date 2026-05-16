@@ -574,6 +574,7 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(1, dispatched.size());
         assertEquals(TaskMessageProjectionStatus.INIT, stored.get(0).status());
         assertNull(dispatched.getFirst().workerContextId());
+        assertFalse(dispatched.getFirst().attemptId().contains("-na-"));
         verify(workerManager, never()).releaseWorkerReservation("d1", task.getTid());
         verify(workerManager, never()).unlockWorker("d1");
     }
@@ -756,7 +757,7 @@ public class SimpleTaskDispatchBinderTest {
         }
 
         @Override
-        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
             return new WorkerDispatchResourceUsage(false);
         }
     }

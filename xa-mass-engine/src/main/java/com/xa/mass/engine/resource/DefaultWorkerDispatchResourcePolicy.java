@@ -23,7 +23,7 @@ public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResour
     }
 
     @Override
-    public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+    public WorkerDispatchResourceUsage usageForAttempt(Task task) {
         return usageForTask(task);
     }
 

@@ -38,7 +38,7 @@ class DefaultWorkerDispatchResourcePolicyTest {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 
-        WorkerDispatchResourceUsage usage = policy.usageForAttempt(task, "ctx-1");
+        WorkerDispatchResourceUsage usage = policy.usageForAttempt(task);
 
         assertFalse(usage.exclusiveWorkerLock());
     }

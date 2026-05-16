@@ -3,12 +3,14 @@ package com.xa.mass.transport.model;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -62,6 +64,20 @@ class TaskDispatchItemTest {
         assertEquals("worker-1", item.getWorkerId());
         assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
+    }
+
+    @Test
+    void workerLevelDispatchPayloadOmitsLegacyWorkerContextIdWhenNull() {
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskDispatchItem item = TaskDispatchItem.from(
+                TaskDispatchContext.from(task),
+                binding(Map.of("target", "worker-a"), null)
+        );
+
+        assertNull(item.getWorkerContextId());
+        assertFalse(item.transportPayloadView().containsKey(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID));
     }
 
     @Test
@@ -301,6 +317,10 @@ class TaskDispatchItemTest {
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {
+        return binding(payload, "ctx-1");
+    }
+
+    private TaskDispatchBinding binding(Map<String, Object> payload, String workerContextId) {
         return new TaskDispatchBinding(
                 "task-1",
                 "msg-1",
@@ -312,7 +332,7 @@ class TaskDispatchItemTest {
                 1,
                 null,
                 "worker-1",
-                "ctx-1",
+                workerContextId,
                 "batch-1"
         );
     }

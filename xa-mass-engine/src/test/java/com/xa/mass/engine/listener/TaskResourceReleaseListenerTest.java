@@ -244,7 +244,6 @@ public class TaskResourceReleaseListenerTest {
         verify(resourceReleaser).releaseAttemptLockIfExclusive(
                 task,
                 "worker-1",
-                "wctx-1",
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED",
                 "TaskResourceReleaseListener",
                 "worker has no in-flight messages"
@@ -352,7 +351,7 @@ public class TaskResourceReleaseListenerTest {
         }
 
         @Override
-        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
             return new WorkerDispatchResourceUsage(false);
         }
     }

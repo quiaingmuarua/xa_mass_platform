@@ -116,14 +116,13 @@ public class WorkerDispatchResourceReleaser {
 
     public void releaseAttemptLockIfExclusive(Task task,
                                               String workerId,
-                                              String workerContextId,
                                               String trigger,
                                               String source,
                                               String reason) {
         if (task == null || workerId == null || workerId.isBlank()) {
             return;
         }
-        if (!resourcePolicy.usageForAttempt(task, workerContextId).exclusiveWorkerLock()) {
+        if (!resourcePolicy.usageForAttempt(task).exclusiveWorkerLock()) {
             return;
         }
         unlockWorker(task, workerId, trigger, source, reason);

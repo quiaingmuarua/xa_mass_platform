@@ -134,7 +134,6 @@ class WorkerDispatchResourceReleaserTest {
         releaser.releaseAttemptLockIfExclusive(
                 task,
                 "worker-1",
-                "wctx-1",
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED",
                 "TestSource",
                 "test attempt release"
@@ -172,7 +171,7 @@ class WorkerDispatchResourceReleaserTest {
 
     private static final class AttemptNonExclusiveResourcePolicy extends DefaultWorkerDispatchResourcePolicy {
         @Override
-        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
+        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
             return new WorkerDispatchResourceUsage(false);
         }
     }

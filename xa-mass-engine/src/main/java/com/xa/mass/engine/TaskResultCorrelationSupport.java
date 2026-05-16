@@ -12,24 +12,35 @@ final class TaskResultCorrelationSupport {
                                                   String messageId,
                                                   String projectedAttemptId,
                                                   ActiveLeaseRecord activeLease) {
-        String runtimeAttemptId = activeLease != null
-                ? TaskWorkAttemptIdSupport.runtimeAttemptId(
+        if (activeLease == null) {
+            return TaskResultCorrelation.noActiveLease(taskId, messageId);
+        }
+        String runtimeAttemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                 messageId,
                 Math.max(1, activeLease.retryCount() + 1),
                 activeLease
-        )
-                : null;
-        return new TaskResultCorrelation(
+        );
+        String resolvedAttemptId = projectedAttemptId != null && !projectedAttemptId.isBlank()
+                ? projectedAttemptId
+                : runtimeAttemptId;
+        if (activeLease.workerContextId() == null || activeLease.workerContextId().isBlank()) {
+            return TaskResultCorrelation.workerLevel(
+                    taskId,
+                    messageId,
+                    resolvedAttemptId,
+                    activeLease.leaseToken(),
+                    activeLease.workerId(),
+                    activeLease.batchId()
+            );
+        }
+        return TaskResultCorrelation.legacyContextBacked(
                 taskId,
                 messageId,
-                activeLease != null,
-                projectedAttemptId != null && !projectedAttemptId.isBlank()
-                        ? projectedAttemptId
-                        : runtimeAttemptId,
-                activeLease != null ? activeLease.leaseToken() : null,
-                activeLease != null ? activeLease.workerId() : null,
-                activeLease != null ? activeLease.workerContextId() : null,
-                activeLease != null ? activeLease.batchId() : null
+                resolvedAttemptId,
+                activeLease.leaseToken(),
+                activeLease.workerId(),
+                activeLease.workerContextId(),
+                activeLease.batchId()
         );
     }
 }

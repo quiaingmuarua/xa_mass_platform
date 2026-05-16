@@ -154,9 +154,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
-                .map(slot -> new WorkerClaimTarget(
+                .map(slot -> WorkerClaimTarget.workerLevel(
                         slot.worker().getWorkerId(),
-                        slot.workerContextId(),
                         slot.batchId(),
                         perWorkerBatchLimit,
                         supportedEventCodes(slot.worker())
@@ -286,10 +285,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return candidate.getWorker();
         }
 
-        private String workerContextId() {
-            return null;
-        }
-
         private String batchId() {
             return batchId;
         }
@@ -314,11 +309,10 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
     private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work) {
         int attemptNo = Math.max(0, work.retryCount()) + 1;
-        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 work.messageId(),
                 attemptNo,
                 work.workerId(),
-                work.workerContextId(),
                 work.batchId()
         );
         traceEventLogger.taskWorkAttemptStatusTransition(

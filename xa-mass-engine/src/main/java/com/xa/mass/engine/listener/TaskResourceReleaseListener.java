@@ -15,9 +15,9 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * Releases runtime-only resource occupancy when a task reaches TERMINAL.
@@ -79,21 +79,21 @@ public class TaskResourceReleaseListener {
         }
 
         List<ActiveLeaseRecord> leases = maintenancePort.getActiveLeases(task.getTid());
-        Map<String, String> exclusiveAttemptContextByWorkerId = new LinkedHashMap<>();
+        Set<String> exclusiveWorkerIds = new LinkedHashSet<>();
 
         for (ActiveLeaseRecord lease : leases) {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
             workerManager.recordWorkFinal(lease.workerId(), task.getTid());
-            WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, lease.workerContextId());
+            WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task);
             if (usage.exclusiveWorkerLock()) {
-                exclusiveAttemptContextByWorkerId.putIfAbsent(lease.workerId(), lease.workerContextId());
+                exclusiveWorkerIds.add(lease.workerId());
             }
         }
 
-        for (Map.Entry<String, String> workerLock : exclusiveAttemptContextByWorkerId.entrySet()) {
-            resourceReleaser.releaseAttemptLockIfExclusive(task, workerLock.getKey(), workerLock.getValue(),
+        for (String workerId : exclusiveWorkerIds) {
+            resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
                     "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
         }
     }
@@ -111,8 +111,7 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, event.workerContextId());
-        resourceReleaser.releaseAttemptLockIfExclusive(task, workerId, event.workerContextId(),
+        resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         AssignmentRefillDecision refillDecision = refillPolicy.decide(new AssignmentRefillRequest(

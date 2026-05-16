@@ -204,6 +204,12 @@ Progress:
   removal was implemented. `WorkerSchedulingView` no longer imports, accepts,
   or exposes `WorkerContext`; scheduling-core harness workers are registered
   through worker attributes instead of WorkerContext fixtures.
+- 2026-05-16: WorkerContext retirement runtime proof convergence continued.
+  Runtime work-contract, in-memory runtime, and Redis runtime tests now use
+  `WorkerClaimTarget.workerLevel(...)` for normal claim/lease proof. Direct
+  context-backed claim targets remain only in explicit compatibility or
+  historical trace cases, and an architecture guard prevents scattered direct
+  `TaskResultCorrelation` construction outside its named factories.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -526,7 +532,12 @@ longer depends on them.
 Status: physical model, storage CRUD, SDK API, server endpoints,
 frontend/operator resource pages, and test-only context fixture inputs are
 removed. Remaining work is runtime/transport/trace `workerContextId` payload
-residue.
+residue. The current worker-level dispatch path no longer passes a context
+identity into runtime claim targets, creates runtime claim targets through
+`WorkerClaimTarget.workerLevel(...)`, generates worker-level attempt ids without
+a legacy context placeholder, builds worker-level result-correlation snapshots
+for null-context leases, omits the legacy payload field when null, and release
+policy no longer accepts `workerContextId` as an input.
 
 ### Scope
 

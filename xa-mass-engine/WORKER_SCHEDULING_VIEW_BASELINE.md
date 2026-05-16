@@ -124,6 +124,12 @@ WorkerContext compatibility is still visible around these engine paths:
 - `SimpleTaskDispatchBinder`
   - does not pass legacy candidate `workerContextId` into runtime claim targets
     on the default scheduling path
+  - uses `WorkerClaimTarget.workerLevel(...)` when claiming runtime work for
+    scheduling candidates
+  - generates current attempt ids with worker-level identity rather than a
+    legacy `workerContextId` placeholder
+  - produces worker-level dispatch bindings whose nullable `workerContextId`
+    stays absent from transport payload maps when no legacy identity exists
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
@@ -135,10 +141,25 @@ WorkerContext compatibility is still visible around these engine paths:
   - releases observed worker load on attempt-closed and terminal cleanup paths
   - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
     after attempt or terminal close
+  - does not preserve attempt `workerContextId` as release-policy input; the
+    decision is task/worker resource usage
+- `TaskResultCorrelationSupport`
+  - creates worker-level result-correlation snapshots for current null-context
+    runtime leases
+  - keeps legacy context-backed correlation shape only when the runtime lease
+    explicitly carries a non-null `workerContextId`
+  - relies on named `TaskResultCorrelation` factories so worker-level,
+    no-active-lease, and legacy-context semantics stay visible at call sites
+- runtime contract tests
+  - use `WorkerClaimTarget.workerLevel(...)` for normal claim/lease proof
+  - keep direct context-backed claim targets only for compatibility or
+    historical trace payload proof
 - `WorkerDispatchResourceReleaser`
   - owns assignment and binder compensation cleanup for worker reservations,
     conditional exclusive worker unlock, canonical lock-release trace, and
     release-listener attempt/terminal close lock-release paths
+  - keeps `workerContextId` out of attempt lock-release policy flow while the
+    lower-level runtime schemas still expose the nullable field
   - releases foreground worker locks after dispatch-submit failure compensation
     because that pre-transport failure path does not publish attempt close
 - `EngineSchedulingCoreArchitectureGuardTest`

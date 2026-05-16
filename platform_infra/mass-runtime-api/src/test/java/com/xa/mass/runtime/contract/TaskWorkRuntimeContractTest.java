@@ -128,9 +128,9 @@ public abstract class TaskWorkRuntimeContractTest {
         List<ClaimedTaskWork> claimed = runtime.claimReady(
                 "t1",
                 List.of(
-                        new WorkerClaimTarget("crawler-worker", "ctx-crawler", "batch-crawler", 1,
+                        WorkerClaimTarget.workerLevel("crawler-worker", "batch-crawler", 1,
                                 Set.of("crawler.fetch-page")),
-                        new WorkerClaimTarget("stock-worker", "ctx-stock", "batch-stock", 1,
+                        WorkerClaimTarget.workerLevel("stock-worker", "batch-stock", 1,
                                 Set.of("stock.quote.fetch"))
                 ),
                 2,
@@ -161,8 +161,8 @@ public abstract class TaskWorkRuntimeContractTest {
         List<ClaimedTaskWork> claimed = runtime.claimReady(
                 "t1",
                 List.of(
-                        new WorkerClaimTarget("w1", "ctx-1", "batch-1", 1),
-                        new WorkerClaimTarget("w2", "ctx-2", "batch-2", 1)
+                        WorkerClaimTarget.workerLevel("w1", "batch-1", 1),
+                        WorkerClaimTarget.workerLevel("w2", "batch-2", 1)
                 ),
                 2,
                 30
@@ -250,13 +250,34 @@ public abstract class TaskWorkRuntimeContractTest {
     // ── applyResultWithContext ────────────────────────────────────────────────
 
     @Test
-    void applyResultWithContext_success_returnsSnapshotMatchingLeaseAndWork() {
+    void applyResultWithContext_success_returnsWorkerLevelSnapshotMatchingLeaseAndWork() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        List<ClaimedTaskWork> claimed = runtime.claimReady(
+        List<ClaimedTaskWork> claimed = runtime.claimReady("t1", targets("w1"), 1, 30);
+        ClaimedTaskWork work = claimed.get(0);
+
+        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
+                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
+
+        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
+        assertThat(ctx.hasLeaseSnapshot()).isTrue();
+        assertThat(ctx.workerId()).isEqualTo("w1");
+        assertThat(ctx.workerContextId()).isNull();
+        assertThat(ctx.batchId()).isEqualTo("batch-1");
+        assertThat(ctx.activeLeaseToken()).isEqualTo(work.leaseToken());
+        assertThat(ctx.retryCount()).isEqualTo(0);
+        assertThat(ctx.maxRetryCount()).isEqualTo(3);
+        assertThat(ctx.leasedAt()).isNotNull();
+    }
+
+    @Test
+    void applyResultWithContext_success_preservesLegacyContextSnapshot() {
+        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady(
                 "t1",
                 List.of(new WorkerClaimTarget("w1", "ctx-worker-1", "batch-1", 1)),
-                1, 30);
-        ClaimedTaskWork work = claimed.get(0);
+                1,
+                30
+        ).get(0);
 
         RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
                 TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
@@ -266,18 +287,13 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(ctx.workerId()).isEqualTo("w1");
         assertThat(ctx.workerContextId()).isEqualTo("ctx-worker-1");
         assertThat(ctx.batchId()).isEqualTo("batch-1");
-        assertThat(ctx.activeLeaseToken()).isEqualTo(work.leaseToken());
-        assertThat(ctx.retryCount()).isEqualTo(0);
-        assertThat(ctx.maxRetryCount()).isEqualTo(3);
-        assertThat(ctx.leasedAt()).isNotNull();
     }
 
     @Test
     void applyResultWithContext_success_producesIdenticalRuntimeSideEffectsAsApplyResult() {
         // Enqueue two identical items in two separate runtimes to verify side effects.
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
 
         RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
                 TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
@@ -304,8 +320,7 @@ public abstract class TaskWorkRuntimeContractTest {
     @Test
     void applyResultWithContext_staleLease_returnsSnapshotWithActualLeaseHolder() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30);
+        runtime.claimReady("t1", targets("w1"), 1, 30);
 
         RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
                 TaskWorkResult.success("t1", "m1", "stale-token-xyz", "done", Map.of()));
@@ -320,8 +335,7 @@ public abstract class TaskWorkRuntimeContractTest {
     @Test
     void applyResultWithContext_retryScheduled_returnsSnapshotAndPreRetryRetryCount() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
 
         RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
                 TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true));
@@ -342,8 +356,7 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(
                 new TaskWorkEnvelope("t1", "m1", "demo.event", Map.of(), null, 0, 0, null, null, clock.get()),
                 WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
 
         RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
                 TaskWorkResult.failure("t1", "m1", work.leaseToken(), "ERR", "boom", Map.of(), true));
@@ -358,8 +371,7 @@ public abstract class TaskWorkRuntimeContractTest {
     @Test
     void applyResultWithContext_isIdempotentOnSecondCall_returnsNoLeaseContext() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        ClaimedTaskWork work = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
         // First apply — succeeds.
         runtime.applyResultWithContext(
                 TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
@@ -374,8 +386,7 @@ public abstract class TaskWorkRuntimeContractTest {
     @Test
     void applyResultWithContext_onRetry_retryCountIncrements_acrossAttempts() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work1 = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w1", "ctx-1", "b1", 1)), 1, 30).get(0);
+        ClaimedTaskWork work1 = runtime.claimReady("t1", targets("w1"), 1, 30).get(0);
 
         // First attempt fails → retry
         RuntimeResultApplyContext ctx1 = runtime.applyResultWithContext(
@@ -384,8 +395,7 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(ctx1.outcome().status()).isEqualTo(ResultApplyStatus.RETRY_SCHEDULED);
 
         // Second attempt
-        ClaimedTaskWork work2 = runtime.claimReady(
-                "t1", List.of(new WorkerClaimTarget("w2", "ctx-2", "b2", 1)), 1, 30).get(0);
+        ClaimedTaskWork work2 = runtime.claimReady("t1", targets("w2"), 1, 30).get(0);
         RuntimeResultApplyContext ctx2 = runtime.applyResultWithContext(
                 TaskWorkResult.success("t1", "m1", work2.leaseToken(), "done", Map.of()));
         assertThat(ctx2.retryCount()).isEqualTo(1);   // second attempt
@@ -595,6 +605,6 @@ public abstract class TaskWorkRuntimeContractTest {
     }
 
     protected List<WorkerClaimTarget> targets(String workerId) {
-        return List.of(new WorkerClaimTarget(workerId, "ctx-1", "batch-1", 1));
+        return List.of(WorkerClaimTarget.workerLevel(workerId, "batch-1", 1));
     }
 }
